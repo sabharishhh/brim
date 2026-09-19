@@ -48,7 +48,19 @@ public struct FixtureTreeGenerator {
     private func createSandboxedApp(name: String, bundleID: String) throws {
         let fm = FileManager.default
         let appURL = rootURL.appendingPathComponent("Applications/\(name)")
-        try fm.createDirectory(at: appURL, withIntermediateDirectories: true)
+        try fm.createDirectory(at: appURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        
+        let plistData = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>\(bundleID)</string>
+        </dict>
+        </plist>
+        """.data(using: .utf8)!
+        fm.createFile(atPath: appURL.appendingPathComponent("Contents/Info.plist").path, contents: plistData)
         
         let containerURL = rootURL.appendingPathComponent("Library/Containers/\(bundleID)")
         try fm.createDirectory(at: containerURL, withIntermediateDirectories: true)
@@ -60,7 +72,19 @@ public struct FixtureTreeGenerator {
     private func createNonSandboxedApp(name: String, bundleID: String) throws {
         let fm = FileManager.default
         let appURL = rootURL.appendingPathComponent("Applications/\(name)")
-        try fm.createDirectory(at: appURL, withIntermediateDirectories: true)
+        try fm.createDirectory(at: appURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        
+        let plistData = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>\(bundleID)</string>
+        </dict>
+        </plist>
+        """.data(using: .utf8)!
+        fm.createFile(atPath: appURL.appendingPathComponent("Contents/Info.plist").path, contents: plistData)
         
         let appSupport = rootURL.appendingPathComponent("Library/Application Support/\(name)")
         try fm.createDirectory(at: appSupport, withIntermediateDirectories: true)
