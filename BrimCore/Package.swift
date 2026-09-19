@@ -31,7 +31,7 @@ let package = Package(
         ]),
         .target(name: "BrimOps", dependencies: ["BrimScanShim"]),
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
-        .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore"]),
+        .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
         .target(name: "BrimHelperCore", dependencies: ["BrimCore", "BrimOps", "BrimProtocol"]),
         
         .executableTarget(name: "BrimCLI", dependencies: ["BrimProtocol"]),
