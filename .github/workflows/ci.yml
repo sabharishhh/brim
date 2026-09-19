@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
+
+jobs:
+  build_and_test:
+    name: Build & Test
+    runs-on: macos-15 # Use latest macOS runner
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cache SPM
+      uses: actions/cache@v4
+      with:
+        path: BrimCore/.build
+        key: ${{ runner.os }}-spm-${{ hashFiles('BrimCore/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-
+
+    - name: Build BrimCore Package
+      working-directory: ./BrimCore
+      run: |
+        swift build \
+          -Xswiftc -strict-concurrency=complete \
+          -Xswiftc -warnings-as-errors
+
+    - name: Test BrimCore Package
+      working-directory: ./BrimCore
+      run: |
+        swift test \
+          -Xswiftc -strict-concurrency=complete \
+          -Xswiftc -warnings-as-errors
+
+    - name: Build Xcode Project
+      run: |
+        xcodebuild clean build \
+          -project Brim.xcodeproj \
+          -scheme brim \
+          -destination 'platform=macOS,arch=arm64' \
+          OTHER_SWIFT_FLAGS="-strict-concurrency=complete -warnings-as-errors"
+
+  lint:
+    name: Lint & Format
+    runs-on: macos-15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Linters
+      run: brew install swiftformat swiftlint
+
+    - name: Run SwiftFormat
+      run: swiftformat --lint .
+
+    - name: Run SwiftLint
+      run: swiftlint --strict
