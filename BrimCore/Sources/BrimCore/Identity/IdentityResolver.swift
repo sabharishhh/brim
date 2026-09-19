@@ -10,8 +10,41 @@ public actor IdentityResolver {
         self.root = root
     }
     
-    public func resolve(bundleURL: URL) -> Identity {
+    public func resolve(bundleURL: URL) async -> Identity {
         if let cached = cache[bundleURL] { return cached }
+        let identity = await Task.detached {
+            self.parseBundle(bundleURL)
+        }.value
+        cache[bundleURL] = identity
+        return identity
+    }
+    
+    public func resolve(launchdPlistURL: URL) async -> Identity {
+        if let cached = cache[launchdPlistURL] { return cached }
+        let identity = await Task.detached {
+            self.parseLaunchd(launchdPlistURL)
+        }.value
+        cache[launchdPlistURL] = identity
+        return identity
+    }
+    
+    public func resolve(receiptURL: URL) async -> Identity {
+        if let cached = cache[receiptURL] { return cached }
+        let identity = await Task.detached {
+            self.parseReceipt(receiptURL)
+        }.value
+        cache[receiptURL] = identity
+        return identity
+    }
+    
+    // MARK: - Offloaded Blocking Parsing
+    
+    nonisolated private func parseBundle(_ bundleURL: URL) -> Identity {
+        // Enforce boundary check
+        let realPath = (try? bundleURL.resolvingSymlinksInPath().path) ?? bundleURL.path
+        guard realPath.hasPrefix(root.rootURL.path) else {
+            return Identity(name: "Out of bounds")
+        }
         
         let name = bundleURL.deletingPathExtension().lastPathComponent
         let bundle = Bundle(url: bundleURL)
@@ -27,7 +60,6 @@ public actor IdentityResolver {
         var staticCode: SecStaticCode?
         if SecStaticCodeCreateWithPath(bundleURL as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode {
             var signInfo: CFDictionary?
-            // kSecCSRequirementInformation flag gets entitlements
             if SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSRequirementInformation), &signInfo) == errSecSuccess {
                 let infoDict = signInfo as? [String: Any]
                 teamID = infoDict?[kSecCodeInfoTeamIdentifier as String] as? String
@@ -45,7 +77,7 @@ public actor IdentityResolver {
             }
         }
         
-        let identity = Identity(
+        return Identity(
             bundleID: bundleID,
             teamID: teamID,
             name: name,
@@ -54,13 +86,9 @@ public actor IdentityResolver {
             groupContainers: groupContainers,
             cdHash: cdHashString
         )
-        cache[bundleURL] = identity
-        return identity
     }
     
-    public func resolve(launchdPlistURL: URL) -> Identity {
-        if let cached = cache[launchdPlistURL] { return cached }
-        
+    nonisolated private func parseLaunchd(_ launchdPlistURL: URL) -> Identity {
         let name = launchdPlistURL.deletingPathExtension().lastPathComponent
         var label: String? = nil
         var programPath: String? = nil
@@ -76,17 +104,11 @@ public actor IdentityResolver {
             }
         }
         
-        let identity = Identity(name: name, launchdLabel: label, launchdProgramPath: programPath)
-        cache[launchdPlistURL] = identity
-        return identity
+        return Identity(name: name, launchdLabel: label, launchdProgramPath: programPath)
     }
     
-    public func resolve(receiptURL: URL) -> Identity {
-        if let cached = cache[receiptURL] { return cached }
-        
+    nonisolated private func parseReceipt(_ receiptURL: URL) -> Identity {
         let name = receiptURL.deletingPathExtension().lastPathComponent
-        let identity = Identity(name: name, packageIdentifier: name)
-        cache[receiptURL] = identity
-        return identity
+        return Identity(name: name, packageIdentifier: name)
     }
 }
