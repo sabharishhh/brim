@@ -60,7 +60,7 @@
 				000000000000000000000010 /* Brim */,
 			);
 			name = brim;
-			productName = MyApp;
+			productName = Brim;
 			productReference = 000000000000000000000120 /* brim.app */;
 			productType = "com.apple.product-type.application";
 		};
