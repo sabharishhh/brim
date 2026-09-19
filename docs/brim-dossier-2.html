@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brim II — architecture, agents, security</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --paper:#F3F5F5;--panel:#FFFFFF;--ink:#14181B;--muted:#5B676C;
+  --rule:#CBD3D5;--rule-soft:#E2E7E8;--keep:#1F6B58;--risk:#A2402A;--flag:#8A6A12;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#111517;--panel:#171C1F;--ink:#E6EBEC;--muted:#9AA8AD;
+    --rule:#333D41;--rule-soft:#232A2D;--keep:#6FC5AB;--risk:#E08A6E;--flag:#D5B24C;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111517;--panel:#171C1F;--ink:#E6EBEC;--muted:#9AA8AD;
+  --rule:#333D41;--rule-soft:#232A2D;--keep:#6FC5AB;--risk:#E08A6E;--flag:#D5B24C;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 1.5rem);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:1.0625rem;line-height:1.62;font-variant-numeric:oldstyle-nums proportional-nums}
+.wrap{max-width:82rem;margin:0 auto;padding:0 1.25rem 6rem}
+
+.masthead{padding:4.5rem 0 2rem;border-bottom:1px solid var(--rule)}
+.volume{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin:0 0 1rem}
+.masthead h1{font-family:var(--sans);font-weight:600;font-size:clamp(2.1rem,5.5vw,3.4rem);line-height:1.05;letter-spacing:-.02em;margin:0 0 .6rem;max-width:20ch}
+.standfirst{font-size:1.2rem;color:var(--muted);max-width:62ch;margin:0 0 1.6rem}
+.meta{font-family:var(--sans);font-size:.85rem;color:var(--muted);line-height:1.8}
+.meta b{color:var(--ink);font-weight:500}
+
+.pipeline{margin:2.5rem 0 0;background:var(--panel);border:1px solid var(--rule);overflow-x:auto}
+.pipeline .ph{font-family:var(--sans);font-size:.8rem;color:var(--muted);padding:.7rem 1rem;border-bottom:1px solid var(--rule-soft)}
+.pipe-row{display:grid;grid-template-columns:repeat(5,minmax(9rem,1fr));min-width:48rem}
+.pipe-row>div{padding:.9rem 1rem;border-right:1px solid var(--rule-soft)}
+.pipe-row>div:last-child{border-right:0}
+.pipe-step{font-family:var(--sans);font-weight:600;font-size:.92rem;margin-bottom:.3rem}
+.pipe-who{font-family:var(--mono);font-size:.72rem;color:var(--muted);display:block;margin-bottom:.4rem}
+.pipe-note{font-family:var(--sans);font-size:.82rem;color:var(--muted);line-height:1.45}
+.pipe-row>div.gate{background:linear-gradient(0deg,var(--rule-soft),var(--rule-soft));}
+.pipe-row>div.gate .pipe-step{color:var(--risk)}
+
+.columns{display:grid;grid-template-columns:1fr;gap:3rem;margin-top:3.5rem}
+@media(min-width:62rem){
+  .columns{grid-template-columns:15rem minmax(0,1fr);gap:4rem;align-items:start}
+  nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 1.5rem);max-height:82vh;overflow-y:auto}
+}
+nav.toc{font-family:var(--sans);font-size:.85rem;line-height:1.55}
+nav.toc ol{list-style:none;margin:0;padding:0}
+nav.toc li{margin:0 0 .45rem}
+nav.toc a{color:var(--muted);text-decoration:none;display:block}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink)}
+nav.toc .tnum{font-family:var(--mono);font-size:.75rem;margin-right:.45rem;color:var(--rule)}
+nav.toc .tgroup{color:var(--ink);font-weight:600;margin-top:1.2rem;display:block}
+
+main{min-width:0}
+section{margin:0 0 4.5rem;scroll-margin-top:2rem}
+h2{font-family:var(--sans);font-weight:600;font-size:1.55rem;line-height:1.2;letter-spacing:-.01em;margin:0 0 .35rem;padding-top:1.4rem;border-top:2px solid var(--ink)}
+h2 .snum{font-family:var(--mono);font-size:.95rem;color:var(--muted);margin-right:.6rem;font-weight:400}
+h3{font-family:var(--sans);font-weight:600;font-size:1.08rem;margin:2.2rem 0 .6rem}
+h4{font-family:var(--sans);font-weight:600;font-size:.92rem;margin:1.5rem 0 .4rem;color:var(--muted)}
+p{margin:0 0 1.05rem;max-width:74ch}
+ul,ol{max-width:74ch;padding-left:1.15rem;margin:0 0 1.05rem}
+li{margin:0 0 .5rem}
+a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--rule)}
+a:hover{text-decoration-color:currentColor}
+code{font-family:var(--mono);font-size:.85em;background:var(--rule-soft);padding:.08em .32em;border-radius:2px;word-break:break-word}
+strong{font-weight:600}
+
+.challenge{border-left:3px solid var(--risk);padding:.15rem 0 .15rem 1.15rem;margin:1.6rem 0}
+.challenge h4{color:var(--risk);margin-top:0}
+.reval{border-left:3px solid var(--rule);padding:.15rem 0 .15rem 1.15rem;margin:1.6rem 0}
+.reval h4{margin-top:0}
+.decision{border:1px solid var(--ink);background:var(--panel);padding:1.1rem 1.25rem;margin:1.8rem 0}
+.decision h4{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:0 0 .5rem}
+.decision p{margin-bottom:0;font-size:1.02rem}
+.decision p+p{margin-top:.8rem}
+.decision ul{margin-top:.8rem;margin-bottom:0}
+
+table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:.87rem;margin:1.4rem 0 1.6rem;line-height:1.45}
+.tablewrap{overflow-x:auto;margin:1.4rem 0 1.6rem}
+.tablewrap table{margin:0;min-width:38rem}
+th,td{text-align:left;vertical-align:top;padding:.6rem .7rem;border-bottom:1px solid var(--rule-soft)}
+thead th{border-bottom:1px solid var(--rule);font-weight:600;color:var(--muted);font-size:.8rem}
+tbody tr:last-child td{border-bottom:0}
+td:first-child,th:first-child{padding-left:0}
+
+.tag{font-family:var(--sans);font-size:.7rem;font-weight:600;padding:.12rem .4rem;border:1px solid currentColor;white-space:nowrap}
+.tag.fact{color:var(--keep)}
+.tag.inf{color:var(--flag)}
+.tag.rec{color:var(--ink)}
+.labelline{font-family:var(--sans);font-size:.8rem;color:var(--muted);margin:0 0 1rem}
+.callout{background:var(--panel);border:1px solid var(--rule-soft);padding:1rem 1.15rem;margin:1.6rem 0}
+.callout p:last-child{margin-bottom:0}
+.callout h4{margin-top:0}
+.kicker{font-family:var(--sans);font-size:.95rem;color:var(--muted);margin:-.1rem 0 1.4rem;max-width:70ch}
+
+sup.ref{font-family:var(--sans);font-size:.62em;vertical-align:super;line-height:0}
+sup.ref a{text-decoration:none;color:var(--muted);padding:0 .08em}
+sup.ref a:hover{color:var(--ink)}
+.sources{font-family:var(--sans);font-size:.82rem;line-height:1.55}
+.sources ol{padding-left:1.6rem;max-width:80ch}
+.sources li{margin-bottom:.55rem;color:var(--muted)}
+.sources a{color:var(--ink)}
+.final h2{border-top-color:var(--keep)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{nav.toc{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="volume">Volume II — follows the research dossier of 19 September 2026</p>
+  <h1>How Brim should be built, and who is allowed to press the button</h1>
+  <p class="standfirst">Volume I settled what Brim is for. This settles the architecture, the agent surface, the stack, the security model and the interface — and finds that one structure answers most of them at once.</p>
+  <p class="meta">
+    <b>Scope</b> Only what volume I left open, plus the places its conclusions need correcting now that implementation constraints are known.<br>
+    <b>Method</b> unchanged: research, compare two or three real approaches, attack the leader, re-evaluate, decide.<br>
+    <b>Note</b> volume I is treated as evidence, not as settled truth. Six of its conclusions are amended below; the rest stand.
+  </p>
+
+  <div class="pipeline">
+    <div class="ph">The whole design in one row: the only sequence by which anything on this Mac can be changed</div>
+    <div class="pipe-row">
+      <div>
+        <div class="pipe-step">Observe</div>
+        <span class="pipe-who">core · unprivileged</span>
+        <div class="pipe-note">Index the filesystem, launchd, background items, processes. Reads only.</div>
+      </div>
+      <div>
+        <div class="pipe-step">Plan</div>
+        <span class="pipe-who">safety engine</span>
+        <div class="pipe-note">Produce a signed, content-addressed plan: every step, its evidence tier, its cost of error.</div>
+      </div>
+      <div class="gate">
+        <div class="pipe-step">Approve</div>
+        <span class="pipe-who">human only</span>
+        <div class="pipe-note">No API, no tool call, no agent, no model. Returns a token bound to one plan hash.</div>
+      </div>
+      <div>
+        <div class="pipe-step">Apply</div>
+        <span class="pipe-who">helper · re-validates</span>
+        <div class="pipe-note">Executes steps by identifier, revalidating each independently. Never accepts a path.</div>
+      </div>
+      <div>
+        <div class="pipe-step">Verify</div>
+        <span class="pipe-who">core</span>
+        <div class="pipe-note">Re-observe, measure the real free-space delta, write the outcome to the ledger.</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="columns">
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><span class="tgroup">Analysis</span></li>
+    <li><a href="#s0"><span class="tnum">0</span>State of the baseline</a></li>
+    <li><a href="#s1"><span class="tnum">1</span>Core architecture</a></li>
+    <li><a href="#s2"><span class="tnum">2</span>Agent-native Brim</a></li>
+    <li><a href="#s3"><span class="tnum">3</span>Technology stack</a></li>
+    <li><a href="#s4"><span class="tnum">4</span>GPU and performance</a></li>
+    <li><a href="#s5"><span class="tnum">5</span>UI and UX</a></li>
+    <li><a href="#s6"><span class="tnum">6</span>Security</a></li>
+    <li><a href="#s7"><span class="tnum">7</span>Analytics and insights</a></li>
+    <li><a href="#s8"><span class="tnum">8</span>Simplicity and habit</a></li>
+    <li><span class="tgroup">Conclusions</span></li>
+    <li><a href="#c1">Brim architecture</a></li>
+    <li><a href="#c2">Agent architecture</a></li>
+    <li><a href="#c3">Tech stack</a></li>
+    <li><a href="#c4">GPU and performance</a></li>
+    <li><a href="#c5">Security model</a></li>
+    <li><a href="#c6">UI/UX direction</a></li>
+    <li><a href="#c7">Analytics strategy</a></li>
+    <li><a href="#c8">Changes to the spec</a></li>
+    <li><a href="#c9">What stands unchanged</a></li>
+    <li><a href="#c10">New differentiators</a></li>
+    <li><a href="#src">Sources</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="s0">
+<h2><span class="snum">0</span>State of the baseline</h2>
+<p class="labelline"><span class="tag fact">Fact</span> verified, cited.  <span class="tag inf">Inference</span> my reasoning from those facts.  <span class="tag rec">Recommendation</span> a judgement call.</p>
+
+<h3>Settled, and not reopened here</h3>
+<p>Market positioning and the outcomes framing; the four-tier evidence model with a shared-file veto; the orphaned-versus-unclaimed split; updates without a private database; the background-items approach; storage accounting that separates logical, reclaimable and snapshot-pinned space; per-app energy from public counters; the rejected-features list; open engine with a paid signed build. Volume II assumes all of it.</p>
+
+<h3>Left open, and answered here</h3>
+<p>Process topology. Where the index lives. How privilege is bounded. What an agent may do. Which framework draws a table of forty thousand rows. Whether any of this needs the GPU. What breaks Brim if someone attacks it.</p>
+
+<h3>Where volume I now needs correcting</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Volume I said</th><th>Problem</th><th>Amended to</th></tr></thead>
+<tbody>
+<tr><td>"No resident process" (§3)</td><td>Conflates three different things: an install watcher, an on-demand XPC service, and an opt-in sampler. Only the first was ever the problem</td><td>No <em>watcher</em>. On-demand services are fine. Any process that outlives the app is opt-in, visible, and listed by Brim in its own background-items view (§1)</td></tr>
+<tr><td>Energy sampling is "a small opt-in sampler" (§10)</td><td>Never said where it runs. The counters reset when a process exits, so the sampler must outlive the app to be useful</td><td>A registered agent the user turns on, which Brim then polices like any other background item (§1)</td></tr>
+<tr><td>AI is optional and confined to three jobs (§11)</td><td>Modelled an in-app assistant. It did not model external agents driving Brim, which is a far larger surface</td><td>The constraint holds and now has teeth: approval is a human-only capability with no programmatic path (§2)</td></tr>
+<tr><td>"Table-backed lists" for density (§13)</td><td>Correct instinct, no evidence, no boundary</td><td>A measured rule with numbers attached (§3, §4)</td></tr>
+<tr><td>Performance targets stated as round numbers (§14)</td><td>Unmeasurable as written, and silent on the cost Brim imposes while scanning</td><td>Budgets that include what Brim takes from the user, not only what it delivers (§4)</td></tr>
+<tr><td>Removal ledger as the audit artefact (§2)</td><td>Records what happened. Nothing records what was <em>going</em> to happen, which is what an agent, a script or a support request needs</td><td>The plan becomes the primary object; the ledger becomes its outcome (§1)</td></tr>
+</tbody>
+</table>
+</div>
+<p><span class="tag inf">Inference</span> Five of those six corrections come from one place: volume I designed a program, and the moment anything other than a person can drive that program, a program is not enough. The unit of work has to be a thing you can inspect before it runs.</p>
+</section>
+
+<section id="s1">
+<h2><span class="snum">1</span>Core architecture</h2>
+
+<h3>The constraint that decides the topology</h3>
+<p><span class="tag fact">Fact</span> Privacy permissions on macOS attach to code identity, not to a user. A command-line tool is a separate binary with a separate identity, so it needs its own grant; Apple's guidance on shipping entitled command-line tools is that they have nowhere to carry a provisioning profile and must be packaged inside a bundle-like structure to pick one up.<sup class="ref"><a href="#r17">17</a></sup> <span class="tag inf">Inference</span> If Brim's CLI, its MCP server and its app are each independent processes touching the filesystem directly, the user is asked for Full Disk Access three times, and the three can disagree about what they saw. That single fact eliminates the most obvious architecture.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. One app, thin helper</th><th>B. Shared library, several peers</th><th>C. One service, many clients</th></tr></thead>
+<tbody>
+<tr><td>Shape</td><td>Everything in the app; helper for root work</td><td>Core compiled into app, CLI and MCP server; they share the database file</td><td>App, CLI, MCP server and intents are all clients of one local service that owns the index and the engine</td></tr>
+<tr><td>Permission grants</td><td>One, but the CLI has to be the app</td><td><strong>One per binary.</strong> Three prompts, three identities</td><td>One</td></tr>
+<tr><td>Index consistency</td><td>Single owner</td><td>Multiple writers on one SQLite file; readers fine under WAL, writers contend</td><td>Single writer, single truth</td></tr>
+<tr><td>Where safety lives</td><td>In the app</td><td><strong>In three places, and they can drift</strong></td><td>One place, in front of every caller</td></tr>
+<tr><td>Cost</td><td>Lowest</td><td>Low</td><td>One more process and an IPC boundary to get right</td></tr>
+<tr><td>Agent story</td><td>Poor — agents can't drive a GUI</td><td>Workable but unsafe: each peer can act alone</td><td>Natural — an agent is just another client</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>Three processes for a utility written by one person is how projects die. Cross-process debugging is miserable, XPC interfaces are tedious to evolve, and every release now has to keep three binaries version-compatible.</p>
+<p>The security objection is sharper. A local service is a permanently reachable endpoint holding Full Disk Access. If its caller check is weak, any process on the machine inherits that reach. This is not theoretical for Mac utilities: the privileged helper in a widely used open-source Mac system monitor accepted every incoming connection without validating the caller, exposing fan control and a <code>powermetrics</code> wrapper with a command-injection flaw that gave arbitrary code execution as root.<sup class="ref"><a href="#r11">11</a></sup></p>
+<p>And there is an optics problem volume I should have anticipated: a tool whose pitch is "see what runs on your Mac without being asked" that installs something which runs on your Mac without being asked.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The maintainability objection is answered by making the service thin and the core a library. The engine is one Swift package with no UI and no privilege; the service is a few hundred lines that owns a database handle and exports an interface. Debugging the engine does not require the service at all, because the engine is testable in isolation against a fixture tree (§3).</p>
+<p>The reachability objection is answered by identity, not by obscurity. <span class="tag fact">Fact</span> macOS 13 added <code>-[NSXPCConnection setCodeSigningRequirement:]</code>, which Apple's developer support explicitly recommends as the fix for this exact class of problem; the C API equivalent arrived in macOS 12, and there are further changes for Swift's <code>XPCListener</code> in macOS 26.<sup class="ref"><a href="#r9">9</a></sup> Process identifiers must not be used, because they are recycled and the check can be raced.<sup class="ref"><a href="#r10">10</a></sup> With a code-signing requirement applied in both directions, the endpoint is reachable only by Brim's own signed components.</p>
+<p>The optics objection turns into a feature. Brim's service does not need to outlive the app for the app's own work — an XPC service inside the bundle is launched on demand and dies with its client. Only two features genuinely need persistence: energy sampling and scheduled reporting. Both are opt-in, both register visibly, and Brim lists itself in its own background-items view alongside everything else. A tool that polices background items and exempts itself is not trustworthy; one that shows itself in the list is making an argument.</p>
+</div>
+
+<div class="decision">
+<h4>Decision — the component model</h4>
+<p><strong>One engine, one service, many clients, one gate.</strong></p>
+<ul>
+<li><strong>Brim Core</strong> — a pure Swift package: no UI, no privilege, no network, no global state. Identity, footprint, graph, evidence, safety, planning, verification. Everything else is a shell around it.</li>
+<li><strong>Identity Layer</strong> — resolves "what is this?" to a stable key: bundle identifier, Team ID, code-directory hash, receipt identifier, launchd label, coalition. Every artefact and every actor in the system is named by this layer, and nothing downstream matches on strings.</li>
+<li><strong>Artifact Graph</strong> — nodes are artefacts (paths, launchd jobs, background-item records, privacy grants, running processes, receipts); edges are evidence relations carrying a tier. Volume I's tiers are edge labels here, which is why the same structure serves uninstall, reset, leftovers and background items without special cases.</li>
+<li><strong>Application Footprint</strong> — a projection over the graph for one identity. Not a stored object; a query. This matters: a footprint computed on demand can never go stale.</li>
+<li><strong>Persistent index</strong> — one SQLite database, one writer, inside the service.</li>
+<li><strong>Evidence engine</strong> — a pure function from graph to tiers. Deterministic, snapshot-testable, version-stamped per macOS release.</li>
+<li><strong>Safety engine</strong> — the only component permitted to emit a plan. Applies the tier defaults, the shared-file veto, the capability checks, and the cost-of-error annotation.</li>
+<li><strong>Plan</strong> — a first-class, persisted, content-addressed, locally signed object: ordered steps, each with target identity, evidence, tier, expected byte delta, reversibility, and required privilege. A plan is readable, storable, diffable and replayable.</li>
+<li><strong>Transaction and rollback</strong> — plan, then journal, then apply, then verify. The journal is written before the first mutation, so a crash mid-apply is recoverable on next launch rather than mysterious.</li>
+<li><strong>Verification</strong> — re-observe, measure the filesystem delta, reconcile against the plan's expectation, record the difference honestly.</li>
+<li><strong>Background observation</strong> — differential snapshots plus filesystem events while the service is alive. No content inspection, no install hooking.</li>
+<li><strong>Privileged helper</strong> — smallest possible vocabulary (§6). It does not accept paths.</li>
+<li><strong>Adapters</strong> — SwiftUI app, CLI, MCP server, App Intents. None of them contains logic. All of them speak plan.</li>
+</ul>
+<p><span class="tag inf">Inference</span> The plan object is doing most of the work in this design. It is the audit record, the agent interface, the undo source, the support artefact and the test fixture, and it is the reason the capability boundary in §2 can be enforced rather than merely intended.</p>
+</div>
+</section>
+
+<section id="s2">
+<h2><span class="snum">2</span>Agent-native Brim</h2>
+<p class="kicker">The question is not how an agent talks to Brim. It is what an agent is structurally incapable of doing.</p>
+
+<h3>What the threat actually is</h3>
+<p><span class="tag fact">Fact</span> Indirect prompt injection — instructions hidden in content the agent reads rather than typed by the user — is the dominant attack class against tool-using agents. A 2026 meta-analysis across adaptive attacks found success rates against state-of-the-art defences above 85%, with most defences achieving under 50% mitigation.<sup class="ref"><a href="#r29">29</a></sup> Real incidents in 2026 include a proof-of-concept against coding agents where a repository with no malicious code convinces the agent to run a setup step that fetches and executes a payload,<sup class="ref"><a href="#r31">31</a></sup> and a disclosed chain against Anthropic's own GitHub action composing authorisation bypass, indirect injection and environment exfiltration.<sup class="ref"><a href="#r30">30</a></sup></p>
+<p><span class="tag inf">Inference</span> Brim has a version of this that is worse than most, and it is specific enough to name. <strong>Filenames are attacker-controlled text.</strong> Any application, including a malicious one, can create a directory whose name is a paragraph of instructions. Brim's entire job is to read those names and hand them to something that reasons. A cleaner with an agent interface is an injection surface by construction, and no amount of filtering fixes it — the security literature is consistent that filtering has a ceiling.<sup class="ref"><a href="#r29">29</a></sup></p>
+<p><span class="tag fact">Fact</span> The mitigation the research converges on is architectural rather than linguistic: separate the reasoning layer from the layer that holds the credentials. A model that analyses and produces a structured recommendation, but cannot itself execute the resulting action, cannot be weaponised into performing it.<sup class="ref"><a href="#r30">30</a></sup></p>
+
+<h3>Three surfaces, and they are not alternatives</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. CLI</th><th>B. MCP server</th><th>C. App Intents</th></tr></thead>
+<tbody>
+<tr><td>Reaches</td><td>Local coding agents, scripts, power users, remote shells</td><td>Any MCP host: desktop assistants, local agents, hosted agents through a local host</td><td>Shortcuts, Spotlight actions, macOS automations, Siri and Apple Intelligence<sup class="ref"><a href="#r6">6</a></sup><sup class="ref"><a href="#r7">7</a></sup></td></tr>
+<tr><td>Integration cost for the caller</td><td>Zero — agents already have shells</td><td>Low — declare the server once</td><td>Zero for users; the system surfaces it</td></tr>
+<tr><td>Typing and discovery</td><td>Weak; the agent must read help text</td><td>Strong; tools are typed and described</td><td>Strong; typed intents and entities</td></tr>
+<tr><td>Consent model</td><td>None. Whatever the shell allows</td><td>Host-enforced. The specification places consent on the host and says tool annotations are untrusted unless the server is trusted;<sup class="ref"><a href="#r2">2</a></sup> its human-in-the-loop primitives, such as elicitation, also run through the host<sup class="ref"><a href="#r4">4</a></sup></td><td>System-mediated, but Mac automations can run unattended with nobody at the screen<sup class="ref"><a href="#r8">8</a></sup></td></tr>
+<tr><td>Risk</td><td>Composable into anything: pipe output into a deletion</td><td>Brim does not control the host, so it cannot rely on the host's consent step</td><td>Unattended execution of a destructive action is the worst case</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to the obvious answer</h4>
+<p>The obvious answer is "ship all three and let each host's consent flow protect the user". That is wrong twice over.</p>
+<p>First, it outsources the safety property to software Brim does not write. MCP's own specification is explicit that the protocol cannot enforce its security principles and that hosts <em>should</em> build consent flows.<sup class="ref"><a href="#r2">2</a></sup> A "should" in someone else's client is not a boundary. National security guidance published in 2026 on MCP deployments catalogues exactly this gap, including unverified task propagation between components and weaknesses in session handling.<sup class="ref"><a href="#r3">3</a></sup></p>
+<p>Second, a CLI with useful verbs is a destructive primitive with a friendly name. If <code>brim remove</code> exists, an agent that has been injected will run it, and a human who approves a plausible-looking command will let it. The consent that matters is consent to <em>this specific set of files</em>, and a command line cannot express that.</p>
+<p>There is a third, quieter problem. Volume I's Tier C items are the ones requiring human judgement. An agent is exactly the wrong thing to adjudicate them and exactly the thing most likely to be asked to.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The surfaces are fine; the vocabulary is the problem. If the only verbs are <em>inspect</em>, <em>plan</em>, <em>request approval</em>, <em>apply an approved plan</em> and <em>verify</em>, then every property above changes. An injected agent can produce a plan — which is inert. It can ask for approval — which raises Brim's own window showing the real file list. It cannot approve, because there is no call that approves.</p>
+<p>This also resolves the Tier C worry without a special rule: an agent cannot select a Tier C item because selection is the safety engine's job, and the safety engine does not consult the caller.</p>
+<p>On unattended automation: it is safe for anything read-only and unsafe for anything else, so the intents split along that line rather than being excluded wholesale.</p>
+</div>
+
+<div class="decision">
+<h4>Decision — capability tiers, enforced in the service</h4>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Capability</th><th>App</th><th>CLI</th><th>MCP</th><th>Intents</th><th>Model</th></tr></thead>
+<tbody>
+<tr><td><strong>Inspect</strong> — footprints, leftovers, background items, storage, energy, history</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td><td>read-only view</td></tr>
+<tr><td><strong>Plan</strong> — produce a signed plan with evidence and expected delta</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
+<tr><td><strong>Explain</strong> — render a plan or artefact in prose</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><strong>Request approval</strong> — raise Brim's review window for a plan hash</td><td>n/a</td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
+<tr><td><strong>Approve</strong></td><td colspan="5"><strong>Human only, in Brim's own interface. No API exists. Returns a single-use token bound to one plan hash, one requester identity and a short expiry.</strong></td></tr>
+<tr><td><strong>Apply</strong> — execute an approved plan</td><td>with token</td><td>with token</td><td>with token</td><td>no</td><td>no</td></tr>
+<tr><td><strong>Verify</strong> — re-observe and report the real delta</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td><td>read-only view</td></tr>
+</tbody>
+</table>
+</div>
+<p>Supporting rules, all enforced in the service rather than in the adapters:</p>
+<ul>
+<li><strong>Everything read from disk is data.</strong> Paths, display names, property-list values and process names are delimited and labelled as untrusted when they reach any model or any tool result. Brim treats its own index as hostile input.</li>
+<li><strong>Model output cannot name a target.</strong> A model may reference steps of an existing plan by identifier; it can never emit a path that the safety engine did not already produce. This removes the injection payoff entirely: the worst an injected model achieves is a misleading sentence about a plan the user can read.</li>
+<li><strong>No network listener.</strong> The MCP server is a local process speaking over standard input and output, launched by the host; with that transport the server inherits the host's permissions rather than exposing a socket.<sup class="ref"><a href="#r5">5</a></sup> Cloud agents reach Brim only through a local host the user is running. Brim ships no HTTP transport — the 2026 revision's move to stateless HTTP is excellent for hosted services and wrong for a root-adjacent local utility.<sup class="ref"><a href="#r1">1</a></sup></li>
+<li><strong>Agent actions are labelled in History,</strong> with the requesting identity recorded, so "what did the agent do" is answerable.</li>
+</ul>
+<p><strong>Staging.</strong> The plan object, the approval token and the service-side capability check must exist from the first line of code; they are not retrofittable. V1 ships the CLI and the MCP server with inspect, plan, explain, request-approval, apply and verify, plus read-only App Intents and one intent that opens a plan for review. Standing policies that pre-authorise a narrow class of future plans, unattended reporting automations, and anything resembling autonomous maintenance wait until the approval path has been in the field long enough to trust.</p>
+</div>
+</section>
+
+<section id="s3">
+<h2><span class="snum">3</span>Technology stack</h2>
+
+<h3>Interface layer</h3>
+<p><span class="tag fact">Fact</span> The numbers here are unambiguous. A 2026 comparison rendering 100,000 rows on macOS measured <code>NSTableView</code> at 45 MB and a constant 60 frames per second, SwiftUI's <code>List</code> at 800 MB and 22 frames per second, and a <code>LazyVStack</code> in a scroll view at over 1.2 GB and under 20 frames per second. The stated cause is that <code>List</code> on macOS is backed by <code>NSCollectionView</code>, which creates views lazily but does not reclaim them aggressively, so memory tracks total rows rather than visible ones.<sup class="ref"><a href="#r18">18</a></sup> <span class="tag fact">Fact</span> On Apple's own forums, developers report SwiftUI <code>Table</code> performance regressing on macOS 15.5 and 26 despite session claims of improvement, with the advice being to use <code>NSTableView</code> directly.<sup class="ref"><a href="#r19">19</a></sup> <span class="tag fact">Fact</span> SwiftUI's <code>body</code> is main-actor and re-read on every state change, so any non-trivial work placed inside it blocks rendering.<sup class="ref"><a href="#r20">20</a></sup></p>
+<p><span class="tag rec">Recommendation</span> SwiftUI for the shell, navigation, inspector, sheets and every view with a bounded number of subviews. <code>NSTableView</code> behind <code>NSViewRepresentable</code> for any list that can exceed roughly a thousand rows — leftovers, the file browser, the background-items list, the duplicate view. The boundary is a measured rule, not a preference, and it should be written into the project's conventions so it is not relitigated per view.</p>
+
+<h3>Language</h3>
+<p>The honest question is whether any part of Brim justifies Rust.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>All Swift</th><th>Swift with a Rust core</th><th>Swift with small C shims</th></tr></thead>
+<tbody>
+<tr><td>Access to the APIs Brim needs</td><td>Direct — <code>getattrlistbulk</code>, <code>libproc</code>, Security, ServiceManagement, IOKit are all C interfaces Swift imports natively</td><td>Every one needs a binding written and maintained</td><td>Direct, with a shim only where Swift's importer is awkward</td></tr>
+<tr><td>Memory safety at the privilege boundary</td><td>Good; the helper's risky operations are syscalls either way</td><td>Better in theory; the unsafe parts are the syscalls, which Rust does not make safer</td><td>Good; shims are tens of lines and reviewable</td></tr>
+<tr><td>Build, test and signing surface</td><td>One toolchain</td><td><strong>Two toolchains, cross-compilation, universal binaries, a second dependency tree inside a notarised helper</strong></td><td>One toolchain</td></tr>
+<tr><td>Where it would actually pay</td><td>—</td><td>Hashing and traversal — which §4 shows are input/output bound</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+<div class="challenge">
+<h4>Challenge</h4>
+<p>The case for Rust is not really performance; it is correctness in the component that runs as root. Recursive deletion with symlink safety is precisely the kind of code where a memory-safe language with a strong ecosystem of audited primitives looks attractive.</p>
+</div>
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>That case does not survive contact with the specific bug class. The canonical recursive-delete vulnerability is not a memory-safety bug — it is a logic bug about symlinks, and it happened <em>in Rust's own standard library</em>, where <code>remove_dir_all</code> checked whether a target was a symlink and then deleted it, leaving a window an attacker could win within seconds.<sup class="ref"><a href="#r14">14</a></sup> Language choice does not prevent it; using the right syscalls does (§6). Meanwhile the cost is real: a second toolchain inside a notarised privileged helper, for one developer.</p>
+</div>
+<div class="decision">
+<h4>Decision</h4>
+<p>Swift throughout, with C shims where the importer is inconvenient. Rust fluency is not a reason to introduce Rust here; the platform surface Brim touches is C and Objective-C, and the one place Rust's guarantees would matter turns out to be a logic problem rather than a memory problem.</p>
+</div>
+
+<h3>Storage, concurrency, scanning</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Concern</th><th>Choice</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Database</td><td><strong>GRDB over SQLite</strong>, write-ahead logging, a connection pool, explicit migrations, value observation for the UI<sup class="ref"><a href="#r21">21</a></sup></td><td>Direct SQLite access outperforms Core Data, which outperforms SwiftData;<sup class="ref"><a href="#r22">22</a></sup> one 2026 comparison puts GRDB at roughly twenty times SwiftData's insert throughput and recommends it as the least painful option under Swift 6 concurrency.<sup class="ref"><a href="#r23">23</a></sup> Brim's index is a database problem, not an object-graph problem, and a non-UI writer serving several clients is not what SwiftData is for</td></tr>
+<tr><td>Concurrency</td><td>Swift 6 strict concurrency; an actor owning the index; structured task groups bounded to the performance-core count; nothing but view construction on the main actor</td><td>The framework will enforce what would otherwise be discipline, and the main-actor rule above is a rendering requirement<sup class="ref"><a href="#r20">20</a></sup></td></tr>
+<tr><td>Enumeration</td><td><code>getattrlistbulk</code> with a single attribute set covering size, dates, identifiers, link count and flags</td><td>Many entries per system call, one pass, no second visit per file</td></tr>
+<tr><td>Freshness</td><td>Filesystem events while the service lives; differential snapshots across sessions</td><td>Volume I's footprint tracking without a watcher</td></tr>
+<tr><td>Install observation</td><td><strong>Not Endpoint Security</strong></td><td><span class="tag fact">Fact</span> The client entitlement must be requested from Apple,<sup class="ref"><a href="#r16">16</a></sup> approvals are slow enough that developers publicly ask how to expedite them after two months,<sup class="ref"><a href="#r17">17</a></sup> and the entitlement must be allow-listed by a provisioning profile that a plain command-line tool has nowhere to carry.<sup class="ref"><a href="#r17">17</a></sup> Wrong dependency for a consumer utility</td></tr>
+<tr><td>IPC</td><td><code>NSXPCConnection</code> with a code-signing requirement set in both directions</td><td>Apple's recommended answer to caller validation since macOS 13<sup class="ref"><a href="#r9">9</a></sup></td></tr>
+<tr><td>Updates</td><td>Sparkle 2 with signature verification, feed URL compiled in</td><td>Volume I's conclusion; §6 adds the constraints</td></tr>
+<tr><td>Testing</td><td>Swift Testing, plus a synthetic installation corpus and a shadow-root dry-run mode</td><td>The evidence engine is a pure function, so it can be regression-tested against fixtures without a real Mac — which is also the thing that would have kept volume I's frozen competitor alive when its author lost access to hardware</td></tr>
+<tr><td>Packaging</td><td>Developer ID, hardened runtime, notarisation, stapling; a published code-directory hash per release; a Homebrew cask</td><td>Single-origin distribution was a volume I risk response; publishing the hash makes it checkable</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="s4">
+<h2><span class="snum">4</span>GPU, Metal, and what actually makes Brim fast</h2>
+
+<h3>Where the time really goes</h3>
+<p><span class="tag fact">Fact</span> A direct measurement on an M4 Pro with a 1 TB internal drive, hashing two 20 GB files read from disk, gave 10.7 seconds for SHA-256 and 8.2 seconds for BLAKE3 — about 25% faster from disk, against the several-fold advantage BLAKE3 shows in memory-bound benchmarks.<sup class="ref"><a href="#r24">24</a></sup> <span class="tag fact">Fact</span> The gap narrows on Apple silicon specifically because ARM cryptography extensions accelerate SHA-256, while BLAKE3 has no dedicated silicon and relies on general vector width and core count.<sup class="ref"><a href="#r25">25</a></sup></p>
+<p><span class="tag inf">Inference</span> Duplicate detection is a storage-bandwidth problem wearing a cryptography costume. If changing the hash function — the single biggest lever available — buys 25% on real files, then moving hashing to the GPU, which requires pushing the same bytes across the same memory system, cannot buy meaningfully more. The entire GPU discussion for hashing is settled by one measurement.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Workload</th><th>CPU-first</th><th>Hybrid</th><th>GPU-heavy</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>Window chrome, animation, scrolling</td><td>Already GPU-composited by Core Animation</td><td>—</td><td>—</td><td><strong>Nothing to do.</strong> Custom Metal here would replace working system code with code Brim must maintain across two Liquid Glass revisions</td></tr>
+<tr><td>Storage treemap</td><td>Layout is arithmetic over a few thousand rectangles; drawing is a system primitive</td><td>Useful only past the point of legibility</td><td>Solves a problem nobody has</td><td><strong>CPU.</strong> Aggregate before drawing; a human cannot read a million rectangles, so do not render them</td></tr>
+<tr><td>Charts and energy history</td><td>Hundreds to low thousands of points</td><td>—</td><td>—</td><td><strong>CPU.</strong> System charting</td></tr>
+<tr><td>Hashing and duplicates</td><td>Hardware-accelerated SHA-256, or BLAKE3 for a modest gain<sup class="ref"><a href="#r24">24</a></sup></td><td>Transfer cost exceeds the win</td><td>Bound by the same reads</td><td><strong>CPU, and mostly avoid hashing at all</strong></td></tr>
+<tr><td>Any future model</td><td>—</td><td>Neural engine through Core ML, or the on-device system model</td><td>—</td><td><strong>Neither CPU nor GPU is the question;</strong> volume I already confined models to presentation</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to CPU-first</h4>
+<p>It sounds like an excuse for not building anything impressive, and it assumes today's workloads. A storage view that renders a genuinely huge hierarchy fluidly, with continuous zoom, is the kind of thing that makes a utility feel expensive — and that is a rendering problem where a custom pipeline genuinely helps.</p>
+</div>
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>Partly fair, and the answer is to be precise about the threshold rather than to refuse on principle. Continuous zoom over a pre-aggregated hierarchy is hundreds of nodes on screen at any moment; the system handles that. A custom pipeline only pays when the node count on screen exceeds what the compositor can batch, which for a storage map means rendering detail below one pixel. That is a correctness problem, not a performance one.</p>
+<p>The challenge does land on one thing: perceived speed is a real product attribute and it is not delivered by raw throughput. It is delivered by never blocking, by showing partial results immediately, and by never making the machine feel worse while Brim runs.</p>
+</div>
+
+<div class="decision">
+<h4>Decision — CPU-first, and spend the effort on what users feel</h4>
+<ul>
+<li><strong>Read less.</strong> Bulk enumeration in one pass. Size classes first, then a sparse fingerprint of the head, tail and length, then a full hash only for survivors. Detect clone-shared extents before claiming any saving — a duplicate finder that counts cloned files as recoverable space is reporting fiction.</li>
+<li><strong>Never scan twice.</strong> One full pass, then event-driven deltas. The second launch should be near-instant.</li>
+<li><strong>Stream, never materialise.</strong> Memory bounded by working set, not by volume size.</li>
+<li><strong>Do not evict the user's cache.</strong> Large one-shot hashing passes read with caching disabled, so a duplicate scan across a few hundred gigabytes does not push everything the user was working with out of memory. <span class="tag inf">Inference</span> This is the most commonly skipped courtesy in this category, and it is the direct cause of the "my Mac got slow after running a cleaner" impression.</li>
+<li><strong>Yield to the system.</strong> Background quality-of-service for scanning so the scheduler can place it on efficiency cores; back off on thermal pressure and in low-power mode; declare long work as an activity rather than fighting App Nap.</li>
+<li><strong>Partial results immediately.</strong> The review queue populates as evidence arrives; no modal progress bar owns the window.</li>
+</ul>
+<p><strong>Budgets, stated as two-sided.</strong> Every performance target names both what Brim delivers and what it costs: first index under a minute on a typical machine <em>at background priority</em>; incremental refresh under two seconds; steady-state memory bounded regardless of volume size; measurable energy cost of a full scan published in Brim's own energy view. <span class="tag rec">Recommendation</span> Brim should be able to show its own line in its own energy list. A tool that reports what software costs and hides its own cost has not earned the feature.</p>
+</div>
+</section>
+
+<section id="s5">
+<h2><span class="snum">5</span>UI and information architecture</h2>
+<p class="kicker">Fresh research, because the ground moved: Apple revised the design language three months ago.</p>
+
+<h3>What changed since volume I</h3>
+<p><span class="tag fact">Fact</span> At WWDC 2026 Apple revamped Liquid Glass for iOS 27, iPadOS 27 and macOS 27 in response to criticism: reduced default transparency, a changed glass effect, changed sidebar corners on macOS, revamped app icons, and a user-facing slider that moves the interface between clearer and more heavily tinted glass.<sup class="ref"><a href="#r26">26</a></sup> <span class="tag fact">Fact</span> The consistent guidance for the material is that it belongs on sidebars, toolbars, navigation chrome, floating panels and popovers, and does not belong on primary content areas, dense data displays such as tables and long lists, or text-heavy interfaces where readability matters.<sup class="ref"><a href="#r27">27</a></sup> <span class="tag fact">Fact</span> Apple's own adoption guidance is that standard components pick up the new look automatically when built against the current SDK, that split views with sidebar, content and detail receive glass on the sidebar and inspector without custom work, and that content needs safe-area treatment to sit correctly beneath floating chrome.<sup class="ref"><a href="#r28">28</a></sup></p>
+<p><span class="tag inf">Inference</span> This makes volume I's position stronger and cheaper than it was. Adopt standard components, get the platform look for free, keep the data opaque — and the user's own transparency slider now handles the taste disagreement that made this contentious a year ago.</p>
+
+<h3>Three directions</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Browser</th><th>B. Console</th><th>C. Report</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>Finder-like: navigate the machine by location</td><td>Activity Monitor-like: entities in a list, detail in an inspector</td><td>Each scan is a document you read, act on, and keep</td></tr>
+<tr><td>Fits the data</td><td>Poorly — Brim's unit is an application, not a folder</td><td>Well</td><td>Well, and it matches the plan object exactly</td></tr>
+<tr><td>Posture it invites</td><td>Browsing</td><td><strong>Diagnosis.</strong> You open Activity Monitor when something is wrong</td><td>Reading. Calm, unhurried, reviewable</td></tr>
+<tr><td>Handles forty thousand rows</td><td>Yes</td><td>Yes</td><td>Only for the reviewed subset</td></tr>
+<tr><td>Native precedent</td><td>Strong</td><td>Strong</td><td>Weak for a utility; documents imply a document model</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to B, which volume I chose</h4>
+<p>Console interfaces are tools of last resort. People open Activity Monitor when the fan is loud, and they close it when the fan stops. If Brim's shape says "diagnostic instrument", it will be opened in moments of anxiety and forgotten in between — which is the opposite of §8's goal and, in a one-time-purchase business, the opposite of word of mouth.</p>
+<p>There is also a mismatch volume I did not notice. A console shows <em>current state</em>. Brim's most valuable outputs are a <em>proposed change</em> and a <em>completed change</em>, neither of which is state. Rendering a plan as a filtered list underplays it.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>C is not a viable shell — a utility that opens into an untitled document is disorienting, and macOS users do not expect to manage files for a maintenance tool. But C is the right treatment for exactly the two things B renders badly. The architecture already produces a first-class plan object (§1), so treating a plan as a readable, savable, shareable document costs almost nothing and fills B's gap precisely.</p>
+<p>A contributes one thing worth taking: a location-oriented view for storage, because storage genuinely is about places rather than applications.</p>
+</div>
+
+<div class="decision">
+<h4>Decision — console shell, document-grade plans</h4>
+<p>A three-column split view as the shell. Sidebar: <strong>Review, Applications, Leftovers, Background, Storage, Energy, Developer, Updates, History</strong>. Content column is an opaque table. Detail column is the inspector, where evidence lives. Plans open as readable documents, savable and shareable, and appear in History after they run.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Surface</th><th>Decision</th></tr></thead>
+<tbody>
+<tr><td>Overview / review queue</td><td>The landing surface. Ranked by confidence times impact, not by size. Shows a count and a byte total, never a score, never a percentage, never a colour-coded verdict on the machine's health</td></tr>
+<tr><td>Application views</td><td>One row per application identity; footprint computed on demand so it cannot be stale; inspector shows the artefact graph grouped by evidence tier</td></tr>
+<tr><td>Progressive disclosure</td><td>Three depths and no more: row (what and how big), inspector (why, and what happens if it is wrong), plan document (every step, every path). Nothing important hidden below depth two</td></tr>
+<tr><td>Deep-uninstall review</td><td>A plan document, not a checklist. Groups by tier with tier stated in words; shared items shown excluded with the other claimant named; per-item capability shown before the button, not discovered during</td></tr>
+<tr><td>Evidence presentation</td><td>Tier and reason in the row itself. One sentence, naming the mechanism: "listed in the installer receipt", "sandbox container for this bundle identifier", "name resembles the vendor"</td></tr>
+<tr><td>Verification</td><td>The one moment that gets motion. Plan expectation and measured result side by side, including when they disagree. "Expected 2.1 GB, recovered 0 bytes — blocks held by a snapshot" is the single most valuable screen in the product</td></tr>
+<tr><td>Energy</td><td>Per application, in real units and as a share of a charge, with coverage gaps drawn rather than hidden. Assertion and graphics context beside the number</td></tr>
+<tr><td>Storage</td><td>The one location-oriented view. Three figures always visible together: logical, reclaimable now, held by snapshots or purgeable</td></tr>
+<tr><td>Background items</td><td>What runs unasked, who registered it, whether its owner still exists — and Brim's own entries in the same list on the same terms</td></tr>
+<tr><td>History</td><td>A permanent destination listing plans with outcomes, undo state, and whether a human or an agent requested each one</td></tr>
+<tr><td>Permissions</td><td>No wall. First run shows real findings from what is readable without any grant. Each capability is requested at the moment it would change a result, phrased as consequence: "Full Disk Access would let me check four more locations"</td></tr>
+<tr><td>Onboarding</td><td>There isn't one. The first window is the review queue with real content in it</td></tr>
+<tr><td>Empty and error states</td><td>Direction, never mood. "Nothing to review" is a legitimate, welcome result and should look deliberate. Failures name the capability and the fix, because macOS returns these silently</td></tr>
+<tr><td>Accessibility</td><td>Tier never encoded by colour alone; spoken labels read the evidence, not just the filename; honour Reduce Transparency and Increase Contrast — which, combined with the system's own glass slider, means the data layer must be legible at every setting<sup class="ref"><a href="#r26">26</a></sup></td></tr>
+<tr><td>Keyboard</td><td>Full traversal, type-select in tables, space to preview an artefact, return to open the inspector, a command for every action in the menu bar. The power user should never need the mouse, and the CLI should never be the only fast path</td></tr>
+<tr><td>Motion and material</td><td>Glass on sidebar, toolbar, inspector and sheets via standard components; opaque data surfaces.<sup class="ref"><a href="#r27">27</a></sup><sup class="ref"><a href="#r28">28</a></sup> One orchestrated moment — verification. Everything else instant, and all of it respecting Reduce Motion</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
+<section id="s6">
+<h2><span class="snum">6</span>Security</h2>
+
+<h3>Assets, and the one that is usually missed</h3>
+<p>Three obvious assets: root through the helper, broad read access through Full Disk Access, and the ability to delete. The missed one is the index itself. <span class="tag inf">Inference</span> A database listing every installed application, every support path, every background registration, every privacy grant and a history of energy behaviour is an excellent reconnaissance artefact — arguably more useful to an attacker than root on a machine they have already compromised. Brim must treat its own database as sensitive: owner-only permissions, no export without an explicit user action, and no inclusion in diagnostics by default.</p>
+
+<h3>The four vulnerability classes Brim will actually face</h3>
+<p>These are not hypotheticals. Each has a recent, documented instance in software of exactly Brim's shape.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Class</th><th>Documented instance</th><th>What it means for Brim</th></tr></thead>
+<tbody>
+<tr><td><strong>Unvalidated helper callers</strong></td><td>A popular open-source Mac system monitor's privileged helper accepted every connection, exposing fan control and a <code>powermetrics</code> wrapper carrying a command-injection flaw that yielded arbitrary root execution<sup class="ref"><a href="#r11">11</a></sup></td><td>Validate with a code-signing requirement, never a process identifier.<sup class="ref"><a href="#r9">9</a></sup><sup class="ref"><a href="#r10">10</a></sup> And never build a helper method that passes a caller-supplied string to a command line — this is the specific reason volume I's rejection of parsing <code>powermetrics</code> as root was correct for security as well as accuracy</td></tr>
+<tr><td><strong>Caller impersonation plus path swap</strong></td><td>A commercial macOS client's privileged helper combined improper certificate validation with a symlink swap during installation, giving local privilege escalation to root<sup class="ref"><a href="#r12">12</a></sup></td><td>Both halves must be closed. Identity checking alone is insufficient if the path can change after the check</td></tr>
+<tr><td><strong>Check-then-use races on paths</strong></td><td>A macOS VPN client's quarantine-and-restore flow allowed a local attacker to redirect privileged file operations through symlinks and corrupt arbitrary files<sup class="ref"><a href="#r13">13</a></sup></td><td>Every privileged file operation must be immune by construction, not by checking first</td></tr>
+<tr><td><strong>Recursive deletion following links</strong></td><td>Rust's standard library checked whether a target was a symlink then deleted recursively, a race researchers reproduced reliably within seconds;<sup class="ref"><a href="#r14">14</a></sup> a widely used duplicate-file finder had the same class of bug allowing arbitrary file deletion via symlink<sup class="ref"><a href="#r15">15</a></sup></td><td>Brim does recursive deletion <em>and</em> duplicate finding. Both canonical instances of this bug are in Brim's exact feature set</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Prevention</h3>
+<ul>
+<li><strong>A helper vocabulary too small to abuse.</strong> The helper exposes one operation: execute step <em>n</em> of approved plan <em>h</em>. It does not accept paths, patterns, globs, or command strings. It reads the plan from a location only Brim's signed components can write, verifies the plan's signature and hash, and — this is the part that matters — <strong>re-runs the evidence and safety checks itself</strong> using the same core library, rather than trusting the caller's conclusions. A completely compromised application process still cannot persuade the helper to touch something the evidence does not support.</li>
+<li><strong>Identity on both ends.</strong> Code-signing requirements on both directions of every connection, applied before any interface is exported.<sup class="ref"><a href="#r9">9</a></sup></li>
+<li><strong>Race-immune file operations.</strong> Open the parent directory without following links, operate relative to that verified descriptor, confirm the descriptor's device and inode match what the plan recorded, and refuse if anything moved. Never a check followed by an operation on a path string. This closes the class in <sup class="ref"><a href="#r14">14</a></sup> and <sup class="ref"><a href="#r15">15</a></sup> structurally.</li>
+<li><strong>Trash, not unlink,</strong> wherever the filesystem permits it, including for privileged items.</li>
+<li><strong>Bundles are data.</strong> Display names, property-list values, appcast URLs and icons read from scanned applications are never executed, never used to construct a command, and never trusted as instructions. Vendor uninstallers are revealed to the user, never run by Brim.</li>
+<li><strong>Update channel.</strong> Signature verification on every update, feed URL compiled in rather than read from anywhere, public key pinned, notarised and stapled builds, and a published code-directory hash per release so a user can verify the binary they hold. Given that volume I documented a fake distribution site pushing malware under a competitor's name, single-origin distribution is a security control, not marketing.</li>
+<li><strong>Dependencies.</strong> Two significant ones — a database layer and an update framework. Pin them, review their diffs, and keep signing keys in hardware. A utility with root access has no business carrying a large dependency tree.</li>
+<li><strong>Agent boundary.</strong> The capability table in §2, enforced in the service rather than in any adapter, plus the rule that model output can reference plan steps but never name a target.</li>
+</ul>
+
+<h3>Runtime detection</h3>
+<ul>
+<li><strong>Append-only journal.</strong> Every executed step recorded with the plan hash, the requesting identity, the outcome, and the measured delta. This is the ledger volume I specified, extended to record intent as well as effect.</li>
+<li><strong>Self-verification on launch.</strong> Brim checks its own signature and the helper's; a helper whose version or hash does not match the app refuses to serve and offers reinstallation.</li>
+<li><strong>Shape anomalies.</strong> A plan whose breadth is unusual for its evidence profile, a run of rejected connections failing the signing requirement, repeated approval requests for the same plan, or a plan referencing paths outside every known domain — all logged and surfaced rather than silently handled.</li>
+<li><strong>Agent actions visibly distinct</strong> in History, so an unexpected pattern is legible to the user rather than buried.</li>
+</ul>
+
+<h3>Recovery</h3>
+<ul>
+<li><strong>Crash-safe application.</strong> The journal is written before the first mutation; on next launch Brim reconciles it and offers to complete or roll back, rather than leaving a half-removed application.</li>
+<li><strong>Undo bound to reality.</strong> Before offering to restore, confirm the Trash items still exist; say "no longer recoverable" rather than failing.</li>
+<li><strong>Total self-removal.</strong> Brim can remove itself, its helper, its agent, its index and its registrations completely, and verify the result. <span class="tag inf">Inference</span> For a product whose claim is complete uninstallation, being unable to uninstall itself perfectly would be disqualifying; being able to demonstrate it is the cheapest credibility Brim can buy.</li>
+</ul>
+
+<div class="decision">
+<h4>Decision — the minimum that makes Brim trustworthy</h4>
+<p>Five controls, and everything else is depth on top of them:</p>
+<ol>
+<li>A helper whose vocabulary cannot express an arbitrary deletion, and which re-validates independently.</li>
+<li>Code-signing requirements on both ends of every connection.</li>
+<li>Race-immune file operations using directory descriptors, never path strings.</li>
+<li>Trash-first, with an append-only journal written before the first change.</li>
+<li>Approval as a human-only capability with no programmatic path.</li>
+</ol>
+<p><span class="tag inf">Inference</span> Four of the five are the same control seen from different angles: <em>never act on a name someone handed you</em>. That is also, exactly, the safety model volume I derived for deciding which files belong to an application. The security architecture and the product thesis turn out to be one idea.</p>
+</div>
+</section>
+
+<section id="s7">
+<h2><span class="snum">7</span>Analytics and insight</h2>
+
+<p>The test for every candidate metric: does seeing it change a decision? If not, it is a dashboard, and dashboards are how utilities become things people close.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Candidate</th><th>Changes a decision?</th><th>Placement</th></tr></thead>
+<tbody>
+<tr><td><strong>Application footprint change</strong> — "support data grew 4 GB since April"</td><td>Yes. Growth is the signal that identifies a problem application, and it is invisible in every competitor</td><td><strong>Default</strong>, in the review queue when the change is material</td></tr>
+<tr><td><strong>New background registrations</strong> — "three items appeared last week"</td><td>Yes. Event-driven, rare, and directly actionable</td><td><strong>Default</strong></td></tr>
+<tr><td><strong>Energy cost per application over time</strong></td><td>Yes, when expressed as a share of a charge. No, as an instantaneous score</td><td><strong>On demand</strong>, surfaced in review only when an application is an outlier against its own history</td></tr>
+<tr><td><strong>Storage trend</strong></td><td>Sometimes. A flat trend is as informative as a rising one</td><td><strong>On demand</strong></td></tr>
+<tr><td><strong>Cleanup history and recovered bytes</strong></td><td>Yes, but as verification rather than as a score</td><td><strong>History</strong></td></tr>
+<tr><td><strong>Update status</strong></td><td>Yes, including "this application has no automatic update source"</td><td><strong>On demand</strong></td></tr>
+<tr><td><strong>Repeated issues</strong> — the same leftover returning, an item reappearing after removal</td><td>Yes, strongly. A reappearing artefact means something is actively recreating it</td><td><strong>Default</strong> when detected</td></tr>
+<tr><td>Health score, cleanliness percentage, junk trend</td><td>No. Manufactured, and incompatible with an evidence model</td><td><strong>Does not exist</strong></td></tr>
+<tr><td>Streaks, badges, "last cleaned" nags</td><td>No</td><td><strong>Does not exist</strong></td></tr>
+<tr><td>Anything compared to other users</td><td>No, and it would require telemetry Brim will not collect</td><td><strong>Does not exist</strong></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge</h4>
+<p>"Change, not state" sounds disciplined and is quietly expensive: it requires history, which requires the index to persist and be trusted over months, which means every schema migration risks the feature. It also fails for exactly the user volume I identified as the target — someone installing Brim on an already-cluttered, migrated machine, who has no history at all.</p>
+</div>
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The cold-start problem is real and already has an answer from volume I: the first run leans on present-tense evidence, and the historical layer compounds. Saying so plainly in the empty state is more honest than fabricating a trend. The migration risk argues for treating history as append-only observations with a stable shape, rather than as derived aggregates that must be recomputed — observations survive schema changes, summaries do not.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Everything local, no exceptions, no telemetry, no accounts. Default-visible: only findings that are both new and actionable. On demand: every trend. Non-existent: any score, any gamification, any comparison.</p>
+<p><span class="tag rec">Recommendation</span> Build one insight nobody else will ship: <strong>"you don't have a problem."</strong> When reclaimable space has not moved in months, when no new background items have appeared, when no application is an energy outlier — say so, and say it as a result rather than an absence. It is true more often than the category admits, it costs nothing to compute, and it is the single clearest signal that Brim's numbers can be trusted when they are not zero.</p>
+</div>
+</section>
+
+<section id="s8">
+<h2><span class="snum">8</span>Simplicity and the habit problem</h2>
+
+<p>Three models for how a utility earns a second launch.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Scheduled ritual</th><th>B. Ambient presence</th><th>C. Event-triggered recall</th></tr></thead>
+<tbody>
+<tr><td>Mechanism</td><td>Weekly reminder to run a scan</td><td>Menu-bar item, always visible</td><td>Be the obvious tool at the moments something happens</td></tr>
+<tr><td>Works because</td><td>Habit by repetition</td><td>Availability</td><td>The need is genuine and already felt</td></tr>
+<tr><td>Cost</td><td><strong>Notification fatigue, and it requires inventing reasons to notify</strong></td><td>A resident process and permanent screen real estate for an occasional tool</td><td>Requires being discoverable at those moments</td></tr>
+<tr><td>Compatible with Brim's positioning</td><td>No. Scheduled nagging is fear-based messaging with a timer</td><td>Weakly. Brim is not a monitor</td><td>Yes</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>Software that never asks for attention gets forgotten, and forgotten software does not get recommended, updated or repurchased. C optimises for dignity and may optimise away the business. Every successful consumer utility has some recall mechanism.</p>
+</div>
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The objection assumes engagement is the goal. Under the one-time-purchase model volume I recommended, it is not — there is no renewal to protect, which removes the structural incentive to manufacture attention. That is worth stating as a deliberate advantage rather than treating as a gap.</p>
+<p>But the discoverability half of the objection stands, and it has a concrete answer that is not notification. Brim should already be present at each of the four moments a person needs it: when they drag an application to the Trash, when they install something, when they are low on space, and when the battery drains strangely. Presence at those moments comes from placement — a Finder extension, a Dock drop target, Spotlight actions through App Intents,<sup class="ref"><a href="#r6">6</a></sup> a command-line entry point — not from reminders.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<ul>
+<li><strong>Immediate value with zero setup.</strong> The first window shows real, specific findings without any permission grant. No onboarding, no account, no tour.</li>
+<li><strong>One notification class, opt-in:</strong> something registered itself to run in the background that you did not install. Event-driven, rare, actionable. Nothing else, ever — no storage warnings, no weekly summaries, no "it's been a while".</li>
+<li><strong>No fear language anywhere.</strong> No red, no "your Mac is at risk", no percentage of health. Findings are described by what they are and what they cost.</li>
+<li><strong>Complexity lives in the inspector.</strong> Three depths (§5), every advanced capability reachable, none of it in the way.</li>
+<li><strong>Be where the moment is:</strong> Finder extension, Dock drop target, Spotlight actions, CLI.</li>
+<li><strong>Willing to say nothing needs doing</strong> (§7), which is the behaviour that makes the other results believable.</li>
+<li><strong>Measure the right thing.</strong> The success metric is whether Brim was opened at the moment it mattered and gave a correct answer, not how many days a month it was opened.</li>
+</ul>
+</div>
+</section>
+
+<section id="c1" class="final">
+<h2>1 · Final Brim architecture</h2>
+<p><strong>One engine, one service, many clients, one gate.</strong></p>
+<ul>
+<li><strong>Brim Core</strong> — pure Swift package: identity layer, artifact graph, evidence engine, safety engine, planner, verifier. No UI, no privilege, no network, no global state. Linked by every other component, including the helper.</li>
+<li><strong>Brim Service</strong> — owns the index (one SQLite database, one writer) and is the only component that answers requests. Runs on demand as an XPC service inside the bundle for app-driven work. Persists only when the user opts into energy sampling or scheduled reporting, and then registers visibly and appears in Brim's own background-items list.</li>
+<li><strong>Brim Helper</strong> — privileged, installed only when a system-domain action first requires it, fully removable. Vocabulary: execute step <em>n</em> of approved plan <em>h</em>. Re-validates independently using Core. Never accepts a path.</li>
+<li><strong>Adapters</strong> — SwiftUI app, CLI, MCP server, App Intents. No logic; all speak plan.</li>
+<li><strong>The plan</strong> is the unit of work: signed, content-addressed, persisted, readable, diffable, replayable. It is simultaneously the audit record, the agent interface, the undo source, the support artefact and the test fixture.</li>
+<li><strong>The pipeline</strong> is fixed and has no bypass: observe, plan, approve, apply, verify.</li>
+</ul>
+</section>
+
+<section id="c2" class="final">
+<h2>2 · Final agent-native architecture</h2>
+<p>Three adapters over one API, with capability tiers enforced in the service.</p>
+<ul>
+<li><strong>CLI</strong> — JSON output, verbs limited to inspect, plan, explain, request-approval, apply-with-token, verify. No destructive primitive exists to compose.</li>
+<li><strong>MCP server</strong> — local process over standard input and output, shipped inside the bundle, same vocabulary. No HTTP transport, now or later; cloud agents reach Brim only through a local host the user runs.</li>
+<li><strong>App Intents</strong> — read-only intents for Shortcuts, Spotlight and automations, plus one intent that opens a plan for review. Nothing destructive is reachable by unattended automation.</li>
+<li><strong>Approve is human-only.</strong> No API, no tool, no model, no standing exception in V1. Approval returns a single-use token bound to one plan hash, one requester identity and a short expiry.</li>
+<li><strong>Filesystem strings are untrusted input.</strong> Paths and names are delimited and labelled wherever they reach a model. Model output may reference plan steps by identifier and may never name a target.</li>
+<li><strong>Agent actions are labelled in History</strong> with the requesting identity.</li>
+<li><strong>Must exist now:</strong> the plan object, approval tokens, service-side capability enforcement. <strong>V1:</strong> CLI, MCP, read-only intents. <strong>Later:</strong> scoped standing policies, unattended reporting, anything autonomous.</li>
+</ul>
+</section>
+
+<section id="c3" class="final">
+<h2>3 · Final technology stack</h2>
+<div class="tablewrap">
+<table>
+<tbody>
+<tr><td>Language</td><td>Swift throughout, C shims where the importer is awkward. No Rust</td></tr>
+<tr><td>Interface</td><td>SwiftUI shell; <code>NSTableView</code> via <code>NSViewRepresentable</code> for any list that can exceed ~1,000 rows</td></tr>
+<tr><td>Persistence</td><td>GRDB over SQLite: write-ahead logging, connection pool, explicit migrations, value observation</td></tr>
+<tr><td>Concurrency</td><td>Swift 6 strict concurrency; actor-owned index; task groups bounded to performance cores; only view construction on the main actor</td></tr>
+<tr><td>Scanning</td><td><code>getattrlistbulk</code>, one attribute set, one pass; filesystem events for freshness; differential snapshots across sessions</td></tr>
+<tr><td>IPC</td><td><code>NSXPCConnection</code> with code-signing requirements in both directions</td></tr>
+<tr><td>Privilege</td><td><code>SMAppService</code> daemon, installed on first need, closed vocabulary</td></tr>
+<tr><td>Observation</td><td>No Endpoint Security. The entitlement requires Apple's approval, is slow to obtain, and needs provisioning-profile packaging a plain tool cannot carry</td></tr>
+<tr><td>Optional model</td><td>System on-device model through the platform framework, off by default; provider-agnostic path available later through the same native API</td></tr>
+<tr><td>Updates</td><td>Sparkle 2, signature verification, compiled-in feed URL, pinned key</td></tr>
+<tr><td>Testing</td><td>Swift Testing; synthetic installation corpus; shadow-root dry run; golden files for evidence tiers per macOS version</td></tr>
+<tr><td>Packaging</td><td>Developer ID, hardened runtime, notarisation, stapling, published per-release hash, Homebrew cask, single official origin</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="c4" class="final">
+<h2>4 · Final GPU and performance strategy</h2>
+<p><strong>CPU-first. No custom Metal in V1 or V2.</strong> Rendering is already GPU-composited by the system; hashing is bound by storage bandwidth, where the largest available algorithmic lever measures about 25% on real files read from disk.</p>
+<p>Speed comes from six things: read less (bulk enumeration, size class then sparse fingerprint then full hash), never scan twice (event-driven deltas), stream rather than materialise, disable caching on large one-shot hashing passes so Brim does not evict the user's working set, yield to the scheduler with background quality-of-service and thermal back-off, and show partial results immediately.</p>
+<p>Budgets are two-sided: every target names what Brim delivers <em>and</em> what it costs, and Brim's own energy cost appears in Brim's own energy view.</p>
+</section>
+
+<section id="c5" class="final">
+<h2>5 · Final security model</h2>
+<p>Five controls constitute the minimum trustworthy architecture: a helper vocabulary that cannot express arbitrary deletion and re-validates independently; code-signing requirements on both ends of every connection; race-immune file operations using verified directory descriptors rather than path strings; Trash-first with an append-only journal written before the first mutation; and approval as a human-only capability.</p>
+<p><strong>Prevention:</strong> the five above, plus bundles-as-data, a hardened update channel, a minimal pinned dependency set, and the agent capability table.<br>
+<strong>Detection:</strong> append-only journal with requesting identity, launch-time self and helper verification, shape anomalies on plans and rejected connections, agent actions distinguished in History.<br>
+<strong>Recovery:</strong> crash-safe reconciliation from the journal, undo validated against the Trash before it is offered, and complete verified self-removal.</p>
+<p>The index is treated as a sensitive asset in its own right: owner-only, never exported without explicit action, never included in diagnostics by default.</p>
+</section>
+
+<section id="c6" class="final">
+<h2>6 · Final UI/UX direction</h2>
+<p><strong>Console shell, document-grade plans.</strong> Three-column split view; opaque data surfaces; glass only on sidebar, toolbar, inspector and sheets via standard components, which now also respect the user's own system transparency control.</p>
+<p>Review queue as the landing surface, ranked by confidence times impact. Three depths of disclosure and no more. Evidence and capability visible in the row. Verification is the one moment with motion, and it shows expectation against measurement including when they disagree. No permission wall, no onboarding, no score. History is a permanent destination. Keyboard traversal is complete, and the CLI is never the only fast path.</p>
+</section>
+
+<section id="c7" class="final">
+<h2>7 · Final analytics and insight strategy</h2>
+<p>Local only, no telemetry, no accounts, no comparison to anyone. Default-visible: findings that are both new and actionable — footprint growth, new background registrations, artefacts that keep returning. On demand: storage trend, energy history, update status. In History: verified outcomes. Non-existent: health scores, cleanliness percentages, junk trends, streaks, scheduled nags.</p>
+<p>History is stored as append-only observations rather than derived summaries, so it survives schema evolution. And Brim says "nothing needs doing" when that is the truth.</p>
+</section>
+
+<section id="c8" class="final">
+<h2>8 · What must change in the existing specification</h2>
+<ol>
+<li><strong>Add the plan as a first-class object.</strong> Signed, content-addressed, persisted, readable. This is architectural and cannot be retrofitted — everything in volumes I and II depends on it.</li>
+<li><strong>Add the approval token and the human-only approval gate</strong> to the V1 core, even before any agent ships.</li>
+<li><strong>Restate "no resident process" precisely:</strong> no watcher; on-demand services are fine; anything persistent is opt-in, visible, and listed by Brim in its own background-items view.</li>
+<li><strong>Give energy sampling a home:</strong> an opt-in registered agent, self-policed like any other background item.</li>
+<li><strong>Add agent interfaces to V1 scope</strong> — CLI and local MCP server — because they are nearly free once the plan API exists, and retrofitting safety around them later is how this goes wrong.</li>
+<li><strong>Add self-verification and complete self-removal</strong> to V1. The product's central claim is complete uninstallation; Brim must demonstrate it on itself.</li>
+<li><strong>Replace round performance targets with two-sided budgets</strong> that include cache politeness, quality-of-service discipline and thermal back-off.</li>
+<li><strong>Add the four vulnerability classes of §6 to the test plan</strong> as explicit regression cases, including a symlink-swap test against the helper.</li>
+<li><strong>Codify the UI density rule</strong> — table-backed above roughly a thousand rows — as a project convention rather than a per-view judgement.</li>
+</ol>
+</section>
+
+<section id="c9" class="final">
+<h2>9 · What remains unchanged</h2>
+<p>All of volume I's substantive conclusions stand. Positioning as outcomes built on a record. The four-tier evidence model and the shared-file veto. Orphaned versus unclaimed. Reset and archive as first-class lifecycle actions. Updates without a private database, with the source stated per application. Background-item truth plus the guided reversible reset. Three-class developer cleanup. Honest APFS storage accounting with verified deltas. Per-app energy measured from public counters, expressed as a share of a charge, with no predicted battery life. Deterministic explanations as the product and any model as optional presentation. Open engine, paid signed build, no subscription without a recurring cost to justify it. The rejected list, in full — nothing in this volume's research argues for readmitting malware scanning, health scores, memory optimisation, scheduled deletion or an always-on install watcher.</p>
+</section>
+
+<section id="c10" class="final">
+<h2>10 · New differentiators found in this pass</h2>
+<div class="tablewrap">
+<table>
+<thead><tr><th>#</th><th>Differentiator</th><th>Why it is worth the complexity</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>The plan as a portable, signed, verifiable object</strong></td><td>Nothing in this category has a removal plan you can read before it runs, keep afterwards, send to support, diff against last month, or replay on another machine. It is one data structure that simultaneously solves audit, undo, scripting, testing and agent safety. Hard to copy because it is a data-model decision, not a feature</td></tr>
+<tr><td>2</td><td><strong>An agent surface with an unbypassable approval gate</strong></td><td>Indirect prompt injection defeats most defences — above 85% success against state-of-the-art under adaptive attack<sup class="ref"><a href="#r29">29</a></sup> — so the only credible answer is architectural separation of reasoning from execution.<sup class="ref"><a href="#r30">30</a></sup> Brim would be the first Mac utility where an agent can do the work and is structurally unable to do the damage. Demonstrable, and a genuine reason for a technical audience to talk about it</td></tr>
+<tr><td>3</td><td><strong>A helper that re-derives its own authorisation</strong></td><td>Most privileged helpers trust their caller's conclusions; the documented failures in this space are exactly that.<sup class="ref"><a href="#r11">11</a></sup><sup class="ref"><a href="#r12">12</a></sup> A helper that independently re-runs the evidence check means a fully compromised app cannot escalate into a destructive one. Cheap, because it links the same pure library</td></tr>
+<tr><td>4</td><td><strong>Brim in its own background-items list</strong></td><td>Self-application as proof. It polices itself on the same terms, shows its own energy cost, verifies its own signature, and removes itself completely. Costs almost nothing and answers the category's central credibility problem without an argument</td></tr>
+<tr><td>5</td><td><strong>Cache-polite scanning</strong></td><td>A maintenance tool that does not make the machine feel worse while it runs. Measurable, rarely done, and the direct cause of the impression that cleaners slow Macs down</td></tr>
+<tr><td>6</td><td><strong>"You don't have a problem"</strong></td><td>The one result no competitor can afford to return, and the one that makes every other number believable</td></tr>
+</tbody>
+</table>
+</div>
+<p><span class="tag inf">Inference</span> The first two are the durable ones. They arise from a single decision — make the unit of work an inspectable object rather than a function call — and that decision happens to answer the architecture question, the agent question, the security question and the audit question at once. If only one thing from this volume survives contact with implementation, it should be that.</p>
+</section>
+
+<section id="src" class="sources">
+<h2>Sources</h2>
+<p>Facts above are keyed to these. Unmarked statements are inference or recommendation, per §0.</p>
+<ol>
+<li id="r1">Model Context Protocol, "The New MCP Roadmap" — the 2026-07-28 release removed protocol-level sessions and the initialization handshake, added <code>server/discover</code>, moved tasks to an extension and replaced server-initiated requests with multi round-trip requests. <a href="https://blog.modelcontextprotocol.io/posts/mcp-roadmap/">blog.modelcontextprotocol.io</a></li>
+<li id="r2">Model Context Protocol specification 2026-07-28, security and trust principles — hosts must obtain explicit user consent before invoking any tool; tool annotations are untrusted unless the server is trusted; the protocol cannot enforce these principles itself. <a href="https://modelcontextprotocol.io/specification/2026-07-28">modelcontextprotocol.io</a></li>
+<li id="r3">NSA, "Model Context Protocol: Security Design" cybersecurity information sheet, May 2026 — unverified task propagation, session handling weaknesses, and gaps left to implementors. <a href="https://media.defense.gov/2026/Jun/02/2003943289/-1/-1/0/CSI_MCP_SECURITY.PDF">media.defense.gov</a></li>
+<li id="r4">MCP specification revision 2025-11-25 changelog — elicitation changes, tool calling in sampling, experimental tasks, updated security best practices. <a href="https://muhammad-fiaz.github.io/mcp.zig/guide/protocol-version.html">protocol version summary</a></li>
+<li id="r5">WorkOS, "Everything your team needs to know about MCP in 2026" — local stdio servers run as a subprocess and inherit the host application's permissions; MCP was donated to the Agentic AI Foundation under the Linux Foundation in December 2025. <a href="https://workos.com/blog/everything-your-team-needs-to-know-about-mcp-in-2026">workos.com</a></li>
+<li id="r6">Apple, App Intents framework documentation — structured actions and data discoverable by Siri, Spotlight, Shortcuts, widgets and the Action button. <a href="https://developer.apple.com/documentation/appintents">developer.apple.com</a></li>
+<li id="r7">Apple, "Explore new advances in App Intents", WWDC25 — interactive snippets, Spotlight and visual intelligence as new clients of App Intents. <a href="https://developer.apple.com/videos/play/wwdc2025/275/">developer.apple.com</a></li>
+<li id="r8">Analysis of App Intents in the 27 releases — long-running intents beyond the 30-second background limit, cross-device entity identity, and macOS automations that run shortcuts unattended with nobody at the screen. <a href="https://blakecrosley.com/blog/app-intents-ios-27-background-execution">blakecrosley.com</a></li>
+<li id="r9">Apple Developer Forums, "Validating signature of XPC process" — Apple's recommended answer: <code>-[NSXPCConnection setCodeSigningRequirement:]</code> from macOS 13, <code>xpc_connection_set_peer_code_signing_requirement</code> from macOS 12, with further developments for <code>XPCListener</code> in macOS 26. <a href="https://developer.apple.com/forums/thread/681053">developer.apple.com/forums</a></li>
+<li id="r10">HackTricks, macOS XPC mach service abuse — process-identifier checks are raceable through identifier reuse; validation must use the audit token and verify the code signature. <a href="https://hacktricks.wiki/en/macos-hardening/macos-security-and-privilege-escalation/macos-proces-abuse/macos-xpc-mach-services-abuse.html">hacktricks.wiki</a></li>
+<li id="r11">GitHub security advisory GHSA-qwhf-px96-7f6v, exelban/stats — privileged helper accepted every connection without client verification, exposing fan control and a <code>powermetrics</code> method vulnerable to command injection with root privileges. <a href="https://github.com/exelban/stats/security/advisories/GHSA-qwhf-px96-7f6v">github.com</a></li>
+<li id="r12">CVE-2026-12374 — improper certificate validation plus a TOCTOU symlink swap in a macOS client's privileged helper XPC service, allowing local privilege escalation to root. <a href="https://app.opencve.io/cve/CVE-2026-12374">opencve.io</a></li>
+<li id="r13">CVE-2026-2638 — TOCTOU race combined with symlink manipulation in a macOS VPN client's quarantine and restore workflow, allowing corruption of files in privileged locations. <a href="https://www.sentinelone.com/vulnerability-database/cve-2026-2638/">sentinelone.com</a></li>
+<li id="r14">Rust security advisory CVE-2022-21658 — <code>std::fs::remove_dir_all</code> checked for symlinks before deleting rather than telling the system not to follow them; researchers reproduced the race reliably within seconds. <a href="https://blog.rust-lang.org/2022/01/20/cve-2022-21658/">blog.rust-lang.org</a></li>
+<li id="r15">CVE-2022-48682 — TOCTOU race in a duplicate-file finder's deletion routine allowing arbitrary file deletion via symlink. <a href="https://tenable.com/cve/CVE-2022-48682">tenable.com</a></li>
+<li id="r16">Apple, <code>com.apple.developer.endpoint-security.client</code> entitlement — must be requested from Apple; without it, client creation fails as not entitled. <a href="https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.endpoint-security.client">developer.apple.com</a></li>
+<li id="r17">Apple Developer Forums on the Endpoint Security entitlement — approval delays reported at two months without response; the entitlement must be allow-listed by a provisioning profile, and a plain command-line tool has nowhere to carry one, so it must be packaged in a bundle structure. <a href="https://developer.apple.com/forums/thread/743263">thread 743263</a>, <a href="https://developer.apple.com/forums/thread/688261">thread 688261</a></li>
+<li id="r18">"Virtual-scrolling 100k network requests in SwiftUI", March 2026 — <code>NSTableView</code> 45 MB at 60 fps, SwiftUI <code>List</code> 800 MB at 22 fps, <code>LazyVStack</code> over 1.2 GB below 20 fps; <code>List</code> on macOS is backed by <code>NSCollectionView</code> and does not reclaim views aggressively. <a href="https://rockxy.io/blog/virtual-scrolling-swiftui">rockxy.io</a></li>
+<li id="r19">Apple Developer Forums, "macOS 15.5 destroys SwiftUI Table performance" — regression reported on 15.5 and 26, with the recommendation to use AppKit's <code>NSTableView</code> directly. <a href="https://developer.apple.com/forums/thread/784845">developer.apple.com/forums</a></li>
+<li id="r20">"AppKit vs SwiftUI on macOS: layout, performance, and trade-offs", April 2026 — SwiftUI's <code>body</code> is main-actor and re-read on every state change, so expensive work inside it blocks rendering; cell reuse exists specifically to bound memory for large collections. <a href="https://digitalblake.com/2026/04/28/swiftui-vs-appkit-macos-ui-performance/">digitalblake.com</a></li>
+<li id="r21">GRDB — SQLite toolkit with write-ahead-mode connection pooling and concurrency primitives for multi-threaded applications. <a href="https://github.com/groue/GRDB.swift">github.com/groue/GRDB.swift</a></li>
+<li id="r22">"Key considerations before using SwiftData" — read and write performance ranks direct SQLite frameworks above Core Data above SwiftData, as a consequence of abstraction level. <a href="https://fatbobman.com/en/posts/key-considerations-before-using-swiftdata/">fatbobman.com</a></li>
+<li id="r23">"iOS databases in 2026" — GRDB measured at roughly twenty times SwiftData's insert throughput, and recommended as the least painful option under Swift 6 concurrency. <a href="https://fractal-dev.com/blog/ios-databases">fractal-dev.com</a></li>
+<li id="r24">The Eclectic Light Company, "Intel Macs can be much slower computing SHA-256 hashes", July 2025, including reader measurements — two 20 GB files read from disk on an M4 Pro: SHA-256 10.7 s, BLAKE3 8.2 s, about 25% faster from disk. <a href="https://eclecticlight.co/2025/07/23/intel-macs-can-be-much-slower-computing-sha-256-hashes/">eclecticlight.co</a></li>
+<li id="r25">"BLAKE3 vs SHA-256", 2026 — modern x86 and ARM chips ship dedicated SHA extensions that accelerate SHA-256, while BLAKE3 has no equivalent silicon and depends on vector width and core count. <a href="https://shattered.io/blake3-vs-sha256-2026/">shattered.io</a></li>
+<li id="r26">Liquid Glass overview — at WWDC 2026 Apple revamped the design for iOS 27, iPadOS 27 and macOS 27: reduced default transparency, changed glass effect and sidebar corners, revamped icons, and a user-facing slider between clearer and more tinted appearances. <a href="https://en.wikipedia.org/wiki/Liquid_Glass">en.wikipedia.org</a></li>
+<li id="r27">macOS Human Interface Guidelines design reference for Tahoe — Liquid Glass belongs on sidebars, toolbars, navigation chrome and floating panels, and not on primary content areas, dense data displays, or text-heavy interfaces where readability is critical. <a href="https://skills.sh/designnotdrum/skills/macos-hig-designer">macos-hig-designer reference</a></li>
+<li id="r28">Apple, "Build a SwiftUI app with the new design", WWDC25 — standard components adopt the material automatically; split views give sidebars and inspectors glass; background extension and safe-area treatment for content beneath floating chrome. <a href="https://developer.apple.com/videos/play/wwdc2025/323/">developer.apple.com</a></li>
+<li id="r29">Endor Labs, "Prompt injection against coding agents" — 2026 meta-analysis across adaptive attacks reports success rates above 85% against state-of-the-art defences, with most defences achieving under 50% mitigation. <a href="https://www.endorlabs.com/learn/prompt-injection-against-coding-agents-the-attack-surface-nobody-owns">endorlabs.com</a></li>
+<li id="r30">Cloud Security Alliance research note, June 2026 — analysis of a disclosed agent supply-chain chain, concluding that the fundamental mitigation is architectural separation of the reasoning layer from the credential-holding execution layer. <a href="https://labs.cloudsecurityalliance.org/research/csa-research-note-claude-code-github-action-prompt-injection/">labs.cloudsecurityalliance.org</a></li>
+<li id="r31">Help Net Security, June 2026 — Mozilla's 0DIN demonstrates indirect prompt injection against coding agents via a repository containing no malicious code, with the payload fetched and executed only at runtime. <a href="https://www.helpnetsecurity.com/2026/06/29/mozilla-warns-of-indirect-prompt-injection-risk-in-ai-coding-agents/">helpnetsecurity.com</a></li>
+</ol>
+</section>
+
+</main>
+</div>
+</div>
+</body>
+</html>

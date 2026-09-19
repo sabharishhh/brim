@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brim — research dossier and product recommendation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+
+  --paper:#F3F5F5;
+  --panel:#FFFFFF;
+  --ink:#14181B;
+  --muted:#5B676C;
+  --rule:#CBD3D5;
+  --rule-soft:#E2E7E8;
+  --keep:#1F6B58;
+  --risk:#A2402A;
+  --flag:#8A6A12;
+
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#111517;
+    --panel:#171C1F;
+    --ink:#E6EBEC;
+    --muted:#9AA8AD;
+    --rule:#333D41;
+    --rule-soft:#232A2D;
+    --keep:#6FC5AB;
+    --risk:#E08A6E;
+    --flag:#D5B24C;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111517;--panel:#171C1F;--ink:#E6EBEC;--muted:#9AA8AD;
+  --rule:#333D41;--rule-soft:#232A2D;--keep:#6FC5AB;--risk:#E08A6E;--flag:#D5B24C;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 1.5rem);-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--serif);font-size:1.0625rem;line-height:1.62;
+  font-variant-numeric:oldstyle-nums proportional-nums;
+}
+.wrap{max-width:82rem;margin:0 auto;padding:0 1.25rem 6rem}
+
+/* ---------- masthead ---------- */
+.masthead{padding:4.5rem 0 2rem;border-bottom:1px solid var(--rule)}
+.masthead h1{
+  font-family:var(--sans);font-weight:600;font-size:clamp(2.1rem,5.5vw,3.4rem);
+  line-height:1.05;letter-spacing:-.02em;margin:0 0 .6rem;max-width:20ch;
+}
+.standfirst{font-size:1.2rem;color:var(--muted);max-width:60ch;margin:0 0 1.6rem}
+.meta{font-family:var(--sans);font-size:.85rem;color:var(--muted);line-height:1.8}
+.meta b{color:var(--ink);font-weight:500}
+
+/* ---------- hero evidence panel ---------- */
+.evidence-hero{
+  margin:2.5rem 0 0;background:var(--panel);border:1px solid var(--rule);
+  overflow-x:auto;
+}
+.evidence-hero .eh-head{
+  font-family:var(--sans);font-size:.8rem;color:var(--muted);
+  padding:.7rem 1rem;border-bottom:1px solid var(--rule-soft);
+}
+.eh-row{display:grid;grid-template-columns:minmax(18rem,2.2fr) 7rem minmax(16rem,2fr);gap:0;min-width:44rem}
+.eh-row>div{padding:.85rem 1rem;border-bottom:1px solid var(--rule-soft)}
+.eh-row:last-child>div{border-bottom:0}
+.eh-path{font-family:var(--mono);font-size:.82rem;word-break:break-all}
+.eh-why{font-family:var(--sans);font-size:.85rem;color:var(--muted)}
+.tier{font-family:var(--sans);font-size:.72rem;font-weight:600;letter-spacing:.01em}
+.t-a{color:var(--keep)}.t-b{color:var(--flag)}.t-c{color:var(--risk)}
+
+/* ---------- layout ---------- */
+.columns{display:grid;grid-template-columns:1fr;gap:3rem;margin-top:3.5rem}
+@media(min-width:62rem){
+  .columns{grid-template-columns:15rem minmax(0,1fr);gap:4rem;align-items:start}
+  nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 1.5rem);max-height:82vh;overflow-y:auto}
+}
+nav.toc{font-family:var(--sans);font-size:.85rem;line-height:1.55}
+nav.toc ol{list-style:none;margin:0;padding:0}
+nav.toc li{margin:0 0 .45rem}
+nav.toc a{color:var(--muted);text-decoration:none;display:block}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink)}
+nav.toc .tnum{font-family:var(--mono);font-size:.75rem;margin-right:.45rem;color:var(--rule)}
+nav.toc .tgroup{color:var(--ink);font-weight:600;margin-top:1.2rem;display:block}
+
+main{min-width:0}
+section{margin:0 0 4.5rem;scroll-margin-top:2rem}
+h2{
+  font-family:var(--sans);font-weight:600;font-size:1.55rem;line-height:1.2;
+  letter-spacing:-.01em;margin:0 0 .35rem;padding-top:1.4rem;border-top:2px solid var(--ink);
+}
+h2 .snum{font-family:var(--mono);font-size:.95rem;color:var(--muted);margin-right:.6rem;font-weight:400}
+h3{font-family:var(--sans);font-weight:600;font-size:1.08rem;margin:2.2rem 0 .6rem}
+h4{font-family:var(--sans);font-weight:600;font-size:.92rem;margin:1.5rem 0 .4rem;color:var(--muted)}
+p{margin:0 0 1.05rem;max-width:74ch}
+ul,ol{max-width:74ch;padding-left:1.15rem;margin:0 0 1.05rem}
+li{margin:0 0 .5rem}
+a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--rule)}
+a:hover{text-decoration-color:currentColor}
+code,.path{font-family:var(--mono);font-size:.85em;background:var(--rule-soft);padding:.08em .32em;border-radius:2px;word-break:break-word}
+strong{font-weight:600}
+em{font-style:italic}
+
+/* ---------- structural blocks ---------- */
+.challenge{
+  border-left:3px solid var(--risk);padding:.15rem 0 .15rem 1.15rem;margin:1.6rem 0;
+}
+.challenge h4{color:var(--risk);margin-top:0}
+.reval{border-left:3px solid var(--rule);padding:.15rem 0 .15rem 1.15rem;margin:1.6rem 0}
+.reval h4{margin-top:0}
+.decision{
+  border:1px solid var(--ink);background:var(--panel);padding:1.1rem 1.25rem;margin:1.8rem 0;
+}
+.decision h4{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:0 0 .5rem}
+.decision p{margin-bottom:0;font-size:1.02rem}
+.decision p+p{margin-top:.8rem}
+
+table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:.87rem;margin:1.4rem 0 1.6rem;line-height:1.45}
+.tablewrap{overflow-x:auto;margin:1.4rem 0 1.6rem}
+.tablewrap table{margin:0;min-width:38rem}
+th,td{text-align:left;vertical-align:top;padding:.6rem .7rem;border-bottom:1px solid var(--rule-soft)}
+thead th{border-bottom:1px solid var(--rule);font-weight:600;color:var(--muted);font-size:.8rem}
+tbody tr:last-child td{border-bottom:0}
+td:first-child,th:first-child{padding-left:0}
+
+.tag{font-family:var(--sans);font-size:.7rem;font-weight:600;padding:.12rem .4rem;border:1px solid currentColor;white-space:nowrap}
+.tag.fact{color:var(--keep)}
+.tag.inf{color:var(--flag)}
+.tag.rec{color:var(--ink)}
+.labelline{font-family:var(--sans);font-size:.8rem;color:var(--muted);margin:0 0 1rem}
+
+.callout{background:var(--panel);border:1px solid var(--rule-soft);padding:1rem 1.15rem;margin:1.6rem 0}
+.callout p:last-child{margin-bottom:0}
+.callout h4{margin-top:0}
+
+sup.ref{font-family:var(--sans);font-size:.62em;vertical-align:super;line-height:0}
+sup.ref a{text-decoration:none;color:var(--muted);padding:0 .08em}
+sup.ref a:hover{color:var(--ink)}
+
+.sources{font-family:var(--sans);font-size:.82rem;line-height:1.55}
+.sources ol{padding-left:1.6rem;max-width:80ch}
+.sources li{margin-bottom:.55rem;color:var(--muted)}
+.sources a{color:var(--ink)}
+
+.final h2{border-top-color:var(--keep)}
+.kicker{font-family:var(--sans);font-size:.95rem;color:var(--muted);margin:-.1rem 0 1.4rem;max-width:70ch}
+
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{nav.toc{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <h1>Brim: what to build, and what the evidence says to drop</h1>
+  <p class="standfirst">A research pass over the macOS application-management market, Brim's proposed scope, and the technical ground it would stand on — with every major decision argued against itself before being made.</p>
+  <p class="meta">
+    <b>Prepared</b> 19 September 2026 · macOS 27 released five days earlier<br>
+    <b>Source material</b> the Brim description supplied in conversation. No specification file was attached to the request; if one exists, section conclusions should be re-checked against it.<br>
+    <b>Method</b> for each area: survey the market, put 2–3 real approaches side by side, attack the leading one, re-evaluate, then decide.
+  </p>
+
+  <div class="evidence-hero">
+    <div class="eh-head">The product in one screen: three candidate files from one uninstall, and why Brim treats them differently</div>
+    <div class="eh-row">
+      <div class="eh-path">/Library/LaunchDaemons/com.vendor.updater.plist</div>
+      <div class="tier t-a">Tier A · receipt</div>
+      <div class="eh-why">Listed in the installer receipt bill of materials. Loaded now. Removing it stops a daemon that survives the app.</div>
+    </div>
+    <div class="eh-row">
+      <div class="eh-path">~/Library/Containers/com.vendor.app</div>
+      <div class="tier t-a">Tier A · container</div>
+      <div class="eh-why">Sandbox container keyed to this exact bundle identifier. Nothing else can write here.</div>
+    </div>
+    <div class="eh-row">
+      <div class="eh-path">~/Library/Application Support/Vendor</div>
+      <div class="tier t-c">Tier C · name match</div>
+      <div class="eh-why">Two other installed apps from the same vendor also read this folder. Not selected. This is the class of guess that breaks Adobe installs.</div>
+    </div>
+  </div>
+</header>
+
+<div class="columns">
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><span class="tgroup">Analysis</span></li>
+    <li><a href="#s0"><span class="tnum">0</span>Method and labels</a></li>
+    <li><a href="#s1"><span class="tnum">1</span>Market and competitors</a></li>
+    <li><a href="#s2"><span class="tnum">2</span>Ownership, evidence, safety</a></li>
+    <li><a href="#s3"><span class="tnum">3</span>Deep uninstall</a></li>
+    <li><a href="#s4"><span class="tnum">4</span>Leftovers and orphans</a></li>
+    <li><a href="#s5"><span class="tnum">5</span>Lifecycle management</a></li>
+    <li><a href="#s6"><span class="tnum">6</span>Updates</a></li>
+    <li><a href="#s7"><span class="tnum">7</span>Background and system items</a></li>
+    <li><a href="#s8"><span class="tnum">8</span>Developer and system cleanup</a></li>
+    <li><a href="#s9"><span class="tnum">9</span>Storage analysis</a></li>
+    <li><a href="#s10"><span class="tnum">10</span>Energy and battery</a></li>
+    <li><a href="#s11"><span class="tnum">11</span>AI capabilities</a></li>
+    <li><a href="#s12"><span class="tnum">12</span>Open source vs premium</a></li>
+    <li><a href="#s13"><span class="tnum">13</span>UI and information architecture</a></li>
+    <li><a href="#s14"><span class="tnum">14</span>Performance and privacy</a></li>
+    <li><a href="#s15"><span class="tnum">15</span>Other candidate features</a></li>
+    <li><span class="tgroup">Conclusions</span></li>
+    <li><a href="#c1">What Brim should be</a></li>
+    <li><a href="#c2">The real differentiators</a></li>
+    <li><a href="#c3">Final V1 feature set</a></li>
+    <li><a href="#c4">V2 and later</a></li>
+    <li><a href="#c5">Rejected entirely</a></li>
+    <li><a href="#c6">UI/UX direction</a></li>
+    <li><a href="#c7">Technical principles</a></li>
+    <li><a href="#c8">Risks</a></li>
+    <li><a href="#src">Sources</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="s0">
+<h2><span class="snum">0</span>Method and labels</h2>
+<p>Three labels run through this document, and they mean different things:</p>
+<p class="labelline"><span class="tag fact">Fact</span> Verified against a cited source, dated.  <span class="tag inf">Inference</span> My reasoning from those facts, not itself sourced.  <span class="tag rec">Recommendation</span> A judgement call I am making for Brim.</p>
+<p>Where the research contradicts the brief you supplied, I say so and give the reason rather than quietly reconciling it. Three parts of the brief do get overturned below: the energy forecasting framing, the breadth of the privacy-cleanup and system-maintenance surface, and the implied role of the intelligence layer.</p>
+<p>One structural note on the sequencing. The brief lists deep uninstall first and the safety model fifth. I have swapped them. Everything Brim does that is consequential — uninstalling, reclaiming, resetting, disabling background items — is an instance of the same underlying problem: <em>proving that a file belongs to a thing before acting on it</em>. If that model is right, the features are straightforward. If it is wrong, no amount of feature work saves the product. So it comes second, immediately after the market.</p>
+</section>
+
+<section id="s1">
+<h2><span class="snum">1</span>Market and competitors</h2>
+
+<h3>What is actually out there</h3>
+<p>The category splits into four tiers that behave very differently.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Tier</th><th>Examples</th><th>What they really do</th><th>Weakness</th></tr></thead>
+<tbody>
+<tr><td>Mass-market suite</td><td>CleanMyMac (MacPaw), BuhoCleaner, MacBooster, CCleaner for Mac, MacKeeper</td><td>One-click "smart" cleanup, malware scanning, storage visualiser, uninstaller, updater, background-process manager<sup class="ref"><a href="#r12">12</a></sup></td><td>Opaque. The user is shown a number of gigabytes and a button, not a reason. Subscription pricing around $40/year<sup class="ref"><a href="#r13">13</a></sup></td></tr>
+<tr><td>Focused paid uninstaller</td><td>App Cleaner &amp; Uninstaller (Nektony), TrashMe 3, Sensei, Uninstaller Pro</td><td>Bundle-ID and name-based leftover scanning, extension/login-item lists, some with a background daemon that watches installs</td><td>Detection is largely name matching. Users distrust the always-on daemon<sup class="ref"><a href="#r2">2</a></sup></td></tr>
+<tr><td>Free / open source</td><td>AppCleaner (FreeMacSoft), Pearcleaner, Uninstally, numerous MIT clones</td><td>Drag-and-drop uninstall, orphan search, Homebrew management, architecture stripping, Trash-based undo<sup class="ref"><a href="#r1">1</a></sup></td><td>Maintenance fragility. Coverage of system-domain and background-item state is partial</td></tr>
+<tr><td>Single-purpose tools</td><td>DaisyDisk, GrandPerspective, OmniDiskSweeper, Latest, OnyX, Lingon X, Pacifist</td><td>One job, done properly</td><td>No shared model of the machine; the user integrates them by hand</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The 2025–26 shakeout, which changes the answer</h3>
+<p>Three events in the last twelve months matter more than any feature comparison.</p>
+<p><span class="tag fact">Fact</span> <strong>Pearcleaner is on hold indefinitely.</strong> The strongest open-source competitor — 14.6k GitHub stars, 374 forks, version 5.4.3, covering uninstall, orphan search, a development-environment manager, Homebrew, package receipts, services and an app updater — carries a maintainer notice that development stopped at the end of 2025. The reason is mundane and instructive: a job change, other priorities, and loss of access to a Mac to build on. Issues, pull requests and releases are paused.<sup class="ref"><a href="#r1">1</a></sup> Its licence, Apache 2.0 with the Commons Clause, prohibits monetisation, which foreclosed the obvious route to sustaining it.<sup class="ref"><a href="#r1">1</a></sup></p>
+<p><span class="tag fact">Fact</span> <strong>MacUpdater is dead.</strong> CoreCode discontinued it on 1 January 2026 after eight years. It supported real-time updates for about 6,700 apps and tracked version information for over 100,000 more. The stated reason was not technical: they could not build a sustainable non-subscription model, did no marketing, failed to enter the enterprise market, and declined on principle to sell subscription software.<sup class="ref"><a href="#r6">6</a></sup><sup class="ref"><a href="#r7">7</a></sup> A free offline build remains, without database updates.<sup class="ref"><a href="#r6">6</a></sup></p>
+<p><span class="tag fact">Fact</span> <strong>MacPaw is contracting at the edges.</strong> Setapp Mobile closed on 16 February 2026, and CleanMyMac Business — the Jamf-distributed fleet product launched in January 2025 — closes on 14 July 2026.<sup class="ref"><a href="#r9">9</a></sup><sup class="ref"><a href="#r8">8</a></sup> For scale: MacPaw's reported 2024 revenue was about $90M, roughly 80% of it from CleanMyMac.<sup class="ref"><a href="#r10">10</a></sup></p>
+
+<p><span class="tag inf">Inference</span> The category leader is a ~$70M/year consumer product retreating from anything that requires deep per-customer engineering. The best free alternative is frozen. The one tool that solved update management is gone and its technology is for sale. That is an unusual configuration: high demand, a weakened incumbent, and a vacated adjacent category — all at once.</p>
+
+<h3>What is commoditised, and what is not</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Capability</th><th>State</th><th>Verdict for Brim</th></tr></thead>
+<tbody>
+<tr><td>Bundle-ID leftover scan in <code>~/Library</code></td><td>Free, everywhere, roughly equivalent across a dozen tools</td><td>Table stakes. Cannot be a differentiator</td></tr>
+<tr><td>Large-file and duplicate finding</td><td>Commoditised; DaisyDisk and GrandPerspective set the bar</td><td>Include only if the accounting is more honest than theirs</td></tr>
+<tr><td>Cache deletion</td><td>Commoditised and mostly pointless; macOS manages most caches itself<sup class="ref"><a href="#r2">2</a></sup></td><td>De-emphasise. Do not headline</td></tr>
+<tr><td>Trash-based undo</td><td>Recently commoditised — Pearcleaner routes every deletion through an undo manager with history<sup class="ref"><a href="#r1">1</a></sup></td><td>Mandatory, not distinctive</td></tr>
+<tr><td><strong>Justifying</strong> a deletion to the user</td><td>Essentially unsolved</td><td>The opening</td></tr>
+<tr><td><strong>Background Task Management hygiene</strong></td><td>Unsolved; the OS surface is nearly opaque<sup class="ref"><a href="#r3">3</a></sup><sup class="ref"><a href="#r5">5</a></sup></td><td>The opening</td></tr>
+<tr><td><strong>Truthful storage accounting on APFS</strong></td><td>Unsolved; incumbents quote purgeable figures they cannot deliver<sup class="ref"><a href="#r20">20</a></sup></td><td>The opening</td></tr>
+<tr><td><strong>Update coverage without a private database</strong></td><td>Vacated January 2026<sup class="ref"><a href="#r6">6</a></sup></td><td>Openable, with the right architecture</td></tr>
+<tr><td><strong>Per-app energy accounting over time</strong></td><td>Activity Monitor shows a relative score and a 12-hour average; nothing accumulates history<sup class="ref"><a href="#r11">11</a></sup></td><td>The opening</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The complaint underneath all the others</h3>
+<p>The most useful single piece of evidence I found is not a feature comparison. In the comment thread under Howard Oakley's January 2025 essay on macOS cleanup, a reader reports running Pearcleaner, finding roughly 3 GB of leftovers, deleting the ones that were obviously safe — and leaving the rest, because they could not tell whether they were false positives.<sup class="ref"><a href="#r2">2</a></sup></p>
+<p><span class="tag inf">Inference</span> That is the market. Detection is solved well enough that a free tool finds gigabytes. <em>Adjudication</em> is not solved at all, so users abandon most of the result. Every tool competes on how much it finds; none competes on how much the user is willing to act on. The conversion rate from "found" to "removed with confidence" is the actual product metric, and nobody is optimising it.</p>
+<p>Oakley's own position sharpens it. He argues the problem is properly the developer's to solve — an app should declare what it installs outside its bundle — and notes that name-based searching fails because many components deliberately do not carry the app's name.<sup class="ref"><a href="#r2">2</a></sup> He also records the real harm, which is not wasted disk: leftover launch daemons and agents from incompletely removed software, security software especially, cause instability and occasionally kernel panics.<sup class="ref"><a href="#r2">2</a></sup></p>
+
+<h3>Three positioning options</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Better CleanMyMac</th><th>B. Maintained Pearcleaner</th><th>C. The machine's application record</th></tr></thead>
+<tbody>
+<tr><td>Promise</td><td>More gigabytes, nicer UI, no subscription games</td><td>Same jobs, actively developed, more polish</td><td>Know what every app installed, what it is doing, and what happens when it goes</td></tr>
+<tr><td>Real usefulness</td><td>Moderate — buyers already distrust the claim</td><td>High for the existing audience; that audience is small and unwilling to pay</td><td>High if adjudication genuinely works; unproven</td></tr>
+<tr><td>Differentiation</td><td>Weak. Competes on marketing spend against a $70M product</td><td>Weak. Competes on stamina against free</td><td>Strong if executed; nobody currently sells confidence</td></tr>
+<tr><td>Feasibility</td><td>High</td><td>High</td><td>Medium — depends on evidence tiers holding up (§2)</td></tr>
+<tr><td>Maintenance</td><td>Grows with rules and heuristics</td><td>Grows with surface area</td><td>Grows with macOS's own interfaces, which change slowly</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>"Confidence" is not a thing people search for. Nobody types <em>Mac tool that explains its reasoning</em> into a search bar; they type <em>free up space on Mac</em>. C risks being a beautifully argued product that never gets found, sold against a competitor whose messaging is one number and one button. There is also a harder problem: a user who cannot judge whether <code>~/Library/Application Support/Vendor</code> is safe to delete probably cannot judge Brim's explanation of it either. Explanations may simply relocate the anxiety.</p>
+<p>And the hidden assumption in C is that users want a record. Most users want a result. A record is what a technician wants.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The challenge kills C <em>as marketing copy</em> and leaves it standing as architecture. The fix is to separate the two. The record is how Brim works; what it sells is the outcome that record makes possible — removals that are complete, reversible, and verified afterwards; space that actually comes back; a laptop that stops losing an hour of battery to something the user never chose to run.</p>
+<p>On the second objection: an explanation that requires judgement has failed. The evidence model has to produce a <em>default</em> the user can accept without reading, with the reasoning available underneath for the minority who look. Confidence tiers do this. The user's decision becomes "accept Brim's defaults" rather than "adjudicate 40 files".</p>
+<p>B is not worthless either. With Pearcleaner frozen, there is a real, warm audience of tens of thousands who will try a credible successor on day one. That is distribution, not positioning.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Position Brim as <strong>C internally, and as outcomes externally</strong>: "Remove an app completely, and see proof that it's gone." Use B as the launch wedge — be visibly the maintained, native, no-subscription successor that the Pearcleaner audience is currently looking for — and let the record-keeping become visible as users go deeper.</p>
+<p>Do not compete with CleanMyMac on gigabyte counts. That is the one fight where the incumbent's weakness — inflated, unverifiable numbers — becomes a strength, because Brim's honest number will always be smaller.</p>
+</div>
+</section>
+
+<section id="s2">
+<h2><span class="snum">2</span>Ownership, evidence and the safety model</h2>
+<p class="kicker">The load-bearing section. Everything consequential in Brim reduces to a claim of the form "this file belongs to that app."</p>
+
+<h3>Why naïve matching fails, concretely</h3>
+<p><span class="tag fact">Fact</span> In 2013 a MacPaw engineer posted publicly on Adobe's forums asking for help: uninstalling one Adobe product with CleanMyMac was corrupting others, apparently because the products shared resources.<sup class="ref"><a href="#r21">21</a></sup> That is the canonical failure and it has never gone away — Adobe, Microsoft, Steam, Electron apps with shared framework caches, and anything using group containers all have files that more than one app depends on.</p>
+<p><span class="tag fact">Fact</span> Oakley's rebuttal to a reader's 40-line <code>find</code> script is that it would not even catch his own app's files, because components frequently do not use the app's name, for good reasons.<sup class="ref"><a href="#r2">2</a></sup> Name matching has both false positives and false negatives, and they are not symmetric in cost.</p>
+
+<h3>Three evidence models</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Heuristic matching</th><th>B. Curated rules database</th><th>C. Tiered evidence graph</th></tr></thead>
+<tbody>
+<tr><td>How it works</td><td>Bundle ID and name substrings across a known path list</td><td>Per-app hand-written removal recipes, shipped and updated</td><td>Classify every candidate by <em>what kind of proof</em> links it to the app, act only on strong proof by default</td></tr>
+<tr><td>Coverage</td><td>Wide, shallow</td><td>Deep for covered apps, zero otherwise</td><td>Wide, with coverage stated honestly per item</td></tr>
+<tr><td>Safety</td><td>Poor. This is the Adobe failure mode</td><td>Good where curated</td><td>Good by construction — strength of proof is the selection criterion</td></tr>
+<tr><td>Maintenance</td><td>Low, but every bug report adds an exception</td><td><strong>Very high</strong> — MacUpdater died of exactly this cost class<sup class="ref"><a href="#r6">6</a></sup></td><td>Low. The proof sources are OS interfaces, not per-app knowledge</td></tr>
+<tr><td>Explains itself</td><td>No</td><td>No — "we know" is not a reason</td><td>Yes. The evidence is the explanation</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The tiers</h3>
+<p><span class="tag rec">Recommendation</span> Four tiers, assigned per candidate path, visible in the interface.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Tier</th><th>Evidence</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><strong>A — Declared</strong></td><td>Installer receipt bill of materials for <code>.pkg</code>-installed software (<code>pkgutil</code>, <code>lsbom</code>, <code>/var/db/receipts</code>); sandbox container at <code>~/Library/Containers/&lt;bundle-id&gt;</code>; group containers named in the app's entitlements; <code>SMAppService</code> items declared inside the bundle; Background Task Management records associated to the bundle; Launch Services registration</td><td>Selected</td></tr>
+<tr><td><strong>B — Attributed</strong></td><td>Path component is an exact bundle-identifier match; property list or binary signed by the same Team ID; a launchd job whose program path resolves inside the bundle; <code>HTTPStorages</code>, <code>Saved Application State</code>, <code>Application Scripts</code> keyed by bundle ID</td><td>Selected</td></tr>
+<tr><td><strong>C — Correlated</strong></td><td>Vendor-name folder, product-name folder, filename similarity, timestamps clustering with install time</td><td><strong>Not selected.</strong> Shown, individually selectable, never bulk-selected</td></tr>
+<tr><td><strong>S — Shared</strong></td><td>Claimed by two or more installed apps, referenced by a receipt belonging to another installed product, or inside a group container shared by a still-present app</td><td><strong>Excluded</strong>, with the other claimant named</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><span class="tag inf">Inference</span> Tier S is the single most valuable line in this table and the cheapest to build. It is a set intersection over data Brim already has. It is also precisely what would have prevented the Adobe incident.</p>
+
+<h3>Reversibility and verification</h3>
+<p>Three layers, in order of cost:</p>
+<ul>
+<li><strong>Trash, never <code>unlink</code>.</strong> Everything removable goes through <code>trashItem</code>. Now table stakes<sup class="ref"><a href="#r1">1</a></sup>, but the root-owned items a privileged helper touches are the ones that need it most and are hardest to do.</li>
+<li><strong>A removal ledger.</strong> A durable local record per operation: every path, its size, its tier, the evidence string, the timestamp, the app it belonged to, and whether removal succeeded. This is the undo source, the audit trail, and — exported — the receipt the user can keep.</li>
+<li><strong>Verification.</strong> After the operation, re-scan and report what remains, and measure the filesystem's free space before and after with <code>statfs</code>, reporting the real delta. When the delta is zero because blocks are pinned by a snapshot, say so (§9).</li>
+</ul>
+
+<div class="challenge">
+<h4>Challenge to the tiered model</h4>
+<p>Four attacks, and the fourth is serious.</p>
+<p><strong>Coverage collapse.</strong> Tier A depends on installer receipts, but most Mac apps are drag-installed and have no receipt at all. Tier B depends on bundle identifiers appearing in paths, which is exactly the assumption Oakley says fails. Strip out Tier C and Brim may find dramatically <em>less</em> than AppCleaner, and users will read that as a worse product.</p>
+<p><strong>Tier S under-counts.</strong> Shared usage is often invisible on disk: two apps reading the same support folder leaves no artefact unless one of them declares it. Brim will mark things unshared that are shared.</p>
+<p><strong>Ledger integrity.</strong> An undo record that points at Trash items the user has since emptied is a promise Brim cannot keep.</p>
+<p><strong>Permissions make tiers partly unenforceable.</strong> TCC protects <code>~/Library/Containers</code> and <code>~/Library/Group Containers</code>, and root does not bypass it — <code>sudo rm</code> returns "Operation not permitted".<sup class="ref"><a href="#r17">17</a></sup> Apple's own guidance distinguishes <code>EPERM</code> (a privacy denial) from <code>EACCES</code> (a POSIX one) for exactly this reason.<sup class="ref"><a href="#r16">16</a></sup> Worse, macOS 27 extends container-style protection to a hand-picked set of <em>non-sandboxed</em> apps' <code>~/Library/Application Support/&lt;name&gt;</code> folders, and has moved the user TCC database into a protected system location.<sup class="ref"><a href="#r18">18</a></sup> Brim can have perfect evidence and still be unable to act.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The coverage objection is real but misdiagnosed. Brim does not have to find less — Tier C candidates are still <em>found and shown</em>, just not pre-selected. The headline number is "48 items, 1.9 GB", with "41 confirmed, 7 need your call". That is more information than AppCleaner gives, not less.</p>
+<p>Tier S under-counting is a genuine limit and the honest response is asymmetry: Tier S is a one-way veto. It can only move items out of the default selection, never into it. Missing a shared file leaves it at Tier B or C, where the existing defaults already apply.</p>
+<p>The ledger objection argues for recording the Trash destination path and verifying it still exists before offering undo, and for saying "no longer recoverable" rather than failing.</p>
+<p>The permissions objection is the one that changes the design. It means Brim must treat <em>capability</em> as a first-class part of the evidence display: not just "this belongs to the app" but "and here is whether I can remove it, and what you must do if I can't". This is a better product than one that silently fails, and macOS 27's direction of travel means it will matter more every year, not less.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build the tiered evidence graph. Ship Tier S as a hard veto from the first release. Store a removal ledger with evidence strings and verify free-space deltas after every operation.</p>
+<p>Add one thing the challenge surfaced: a <strong>capability check per item</strong>, computed before the operation, not discovered during it. The interface distinguishes "will remove", "needs the helper", "needs Full Disk Access", and "macOS will not permit this — here is the vendor's uninstaller instead".</p>
+<p>Reject the curated rules database outright. It is the cost structure that killed MacUpdater,<sup class="ref"><a href="#r6">6</a></sup> and it cannot explain itself.</p>
+</div>
+</section>
+
+<section id="s3">
+<h2><span class="snum">3</span>Deep uninstall and application footprint</h2>
+
+<h3>Three strategies</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Scan at removal time</th><th>B. Observe installs continuously</th><th>C. Declared manifests</th></tr></thead>
+<tbody>
+<tr><td>Mechanism</td><td>Evidence graph over the filesystem when the user asks</td><td>A background watcher records what appears after each install; Pearcleaner's Sentinel watches the Trash in ~2 MB of RAM<sup class="ref"><a href="#r1">1</a></sup></td><td>Apps ship a property list declaring what they install outside the bundle — Oakley's proposal<sup class="ref"><a href="#r2">2</a></sup></td></tr>
+<tr><td>Covers existing apps</td><td>Yes</td><td>No — only apps installed after Brim</td><td>No — only apps that adopt it</td></tr>
+<tr><td>Accuracy</td><td>Tier-limited</td><td>Very high for what it sees</td><td>Perfect where present</td></tr>
+<tr><td>Cost to user</td><td>None</td><td>A resident process; readers openly distrust always-on watchers<sup class="ref"><a href="#r2">2</a></sup></td><td>None</td></tr>
+<tr><td>Ecosystem dependency</td><td>None</td><td>None</td><td>Total. No adoption today</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to A, the obvious winner</h4>
+<p>A inherits every weakness of §2 and adds one. It is retrospective: at removal time the app's own installer log, download quarantine attributes and installation timestamp context are gone or stale. A is structurally incapable of finding a file that shares nothing with the app — no name, no bundle ID, no receipt, no Team ID — and such files demonstrably exist.</p>
+<p>The temptation is then to add B and get the accuracy back. But B's honest description is "a daemon that logs what you install." In the same thread where Oakley proposes manifests, a reader explains why they leave Nektony's watcher off: they do not know what a permanently resident third-party process is doing, and Oakley calls that suspicion reasonable.<sup class="ref"><a href="#r2">2</a></sup> For a product whose entire proposition is trustworthiness, shipping an always-on observer as a default is a contradiction.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>B's problem is the daemon, not the idea. Most of B's value comes from a much weaker mechanism: record the state of the known install locations periodically and on app-launch, and diff. Brim is already enumerating those paths for its index (§14). If Brim takes a snapshot of the install surface on each run, a newly appeared app's footprint is <em>derivable by subtraction</em> without watching anything in real time. No daemon, no install-time hooking, no privacy story to defend.</p>
+<p>C is not buildable by Brim alone, but it is <em>publishable</em> by Brim alone, and that is a different and much cheaper proposition. A small open specification — an <code>uninstall-manifest.plist</code> with mandatory and optional entries, exactly as Oakley sketched<sup class="ref"><a href="#r2">2</a></sup> — plus Brim reading it when present and Brim's own bundle shipping one, costs a few days. If even a handful of indie developers adopt it, Brim becomes the reference implementation of the ecosystem's fix. If nobody adopts it, Brim loses nothing.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Ship A as the engine. Add <strong>differential footprint tracking</strong> — periodic snapshots of the install surface, diffed — as the accuracy layer, with no resident process. Publish the manifest specification, read it when present, and lead by example.</p>
+<p>Explicitly reject the always-running install watcher for V1. It is the single feature most likely to undermine the trust the rest of the product is built on. Revisit only as an opt-in, clearly explained, with its exact behaviour documented.</p>
+</div>
+
+<h3>What "footprint" should contain</h3>
+<p>The brief's list is right and worth making concrete. For each app: the bundle and its real on-disk size; containers and group containers; preferences including <code>ByHost</code>; application support; caches and <code>HTTPStorages</code>; saved application state; logs and crash reports; launch agents and daemons in all three domains; login and background items; privileged helper tools; system and app extensions; command-line tools in <code>/usr/local/bin</code> and <code>/opt</code>; installer receipts; quarantine and Gatekeeper status; Team ID and signing state; and the TCC permissions the app currently holds.</p>
+<p><span class="tag rec">Recommendation</span> Add one item nobody shows: <strong>the app's privacy grants</strong>. On removal, offer <code>tccutil reset</code> scoped to the bundle identifier. A removed app that still holds camera, microphone, accessibility or full-disk entries in the privacy database is a real residue with real consequences, and it is invisible in every competing tool.</p>
+</section>
+
+<section id="s4">
+<h2><span class="snum">4</span>Leftover and orphan detection</h2>
+
+<h3>The definition problem</h3>
+<p>"Orphan" sounds simple and is not. A file whose owning app is absent from <code>/Applications</code> may be: genuinely abandoned; belonging to an app in another user's account; belonging to an app on an external or network volume; belonging to a command-line tool with no bundle at all; or belonging to an app the user will reinstall next week and would like to keep settings for.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Present-tense matching</th><th>B. Historical ledger</th><th>C. Behavioural ageing</th></tr></thead>
+<tbody>
+<tr><td>Rule</td><td>Residue with a bundle ID not currently installed</td><td>Residue whose owner Brim previously recorded as installed and has since seen removed</td><td>Rank by last-access time, size, and whether anything has opened the file</td></tr>
+<tr><td>Precision</td><td>Low — every false negative in app discovery becomes a false orphan</td><td>High</td><td>Medium</td></tr>
+<tr><td>Works on first run</td><td>Yes</td><td><strong>No</strong></td><td>Yes</td></tr>
+<tr><td>Cost</td><td>Free</td><td>Requires the ledger to exist and persist</td><td>Cheap; <code>getattrlistbulk</code> returns access times in the same pass</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to the historical ledger</h4>
+<p>B is correct and nearly useless at the moment of maximum value. A user installs Brim precisely <em>because</em> their machine is already cluttered — often a machine migrated across several Macs, which Oakley identifies as the worst case for inherited clutter.<sup class="ref"><a href="#r2">2</a></sup> On day one, B has no history and answers nothing. It only becomes good after months, by which time the user has already judged the product.</p>
+<p>There is also a quieter failure: last-access time is unreliable on macOS. Backup software, indexing, antivirus and Brim's own scanning can all touch files. Ranking by "not opened in two years" invites false confidence.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The day-one gap is real, which means A must carry the first run — but A's precision problem is fixable by widening the search for owners rather than by weakening the rule. Before declaring anything orphaned, check: all mounted volumes, other user accounts that are readable, Launch Services' registration database, and installer receipts (a receipt for an absent product is strong evidence of removal rather than of an undiscovered app).</p>
+<p>Where ownership is genuinely unresolvable, the honest label is not "orphaned". It is <strong>unclaimed</strong>, and the difference should be visible. An item Brim watched an app leave behind is a different kind of fact from an item Brim simply cannot attribute.</p>
+<p>On access times: use them to sort, never to justify. Size, and the presence of a confirmed removal event, carry the decision.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Two categories, never merged. <strong>Orphaned</strong> — the owner was recorded present and is now gone, or an installer receipt exists for an absent product. Safe to pre-select. <strong>Unclaimed</strong> — residue Brim cannot attribute to any installed app, after checking all volumes and accounts. Shown, sorted by size, never pre-selected.</p>
+<p>Start the ledger on first launch even though it has no history yet, and say so in the empty state: the value compounds, and being explicit about that is more honest than a fabricated day-one result.</p>
+</div>
+</section>
+
+<section id="s5">
+<h2><span class="snum">5</span>Application lifecycle management</h2>
+
+<p>The brief's strongest original idea is treating an app as an entity with a life, not an item in a list. Three ways to express that:</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Inventory with actions</th><th>B. Timeline per app</th><th>C. State machine</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>A list; each row offers uninstall, reset, update, reveal</td><td>Each app has a history: first seen, versions, what it registered, how it grew</td><td>Apps occupy explicit states: active, dormant, stale, orphaned, quarantined</td></tr>
+<tr><td>User value</td><td>Immediate, familiar</td><td>Answers "when did this start?" and "what changed?"</td><td>Drives good default triage</td></tr>
+<tr><td>Cost</td><td>Low</td><td>Medium — needs the ledger and snapshots</td><td>Low on top of B</td></tr>
+<tr><td>Risk</td><td>Indistinguishable from competitors</td><td>Feels like surveillance if framed badly</td><td>Mislabelling an app "stale" is annoying and wrong</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to the timeline</h4>
+<p>A per-app history is the thing that makes Brim structurally different from every competitor, and it is also the thing most likely to feel creepy. "Brim noticed you haven't opened this in 11 months" is one sentence away from "Brim is watching what you use." The information is stored locally and never leaves the machine, but users do not audit storage; they react to tone.</p>
+<p>It also has a cold-start problem identical to §4 and a correctness problem: last-used date on macOS is soft, and a dormant-looking app may be a dependency of something the user very much needs — a driver panel, a licence manager, an audio plug-in host.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The framing fix is to make the timeline <em>about the app, not about the user</em>. "Installed 14 March. Registered a launch daemon on 2 April. Support data grew from 40 MB to 2.1 GB." — that is a record of software behaviour, which is exactly what Brim promises to surface, and it never says what the person did.</p>
+<p>The dormancy risk argues for demoting "unused app" from a recommendation to a sort order, and for never pre-selecting an app for removal on dormancy alone. Growth, background activity and energy cost are better signals than last-used, because they describe what the app is doing <em>now</em>.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build B, worded as a record of the software. Layer C on top but use it only for grouping and sorting. Never auto-select an app for removal.</p>
+<p>Two lifecycle actions deserve first-class treatment beyond uninstall, because they are underserved everywhere:</p>
+<p><strong>Reset.</strong> Return an app to first-run state — remove preferences, caches, saved state and container data while keeping the bundle and, critically, keeping licence and keychain material where it can be identified. This is the fix for a large share of "app is broken" problems and today requires manual path surgery. It uses exactly the same evidence graph as uninstall with a different selection filter, so it is nearly free to build.</p>
+<p><strong>Archive.</strong> Export the bundle plus its data and a manifest before removal, so removal stops being a one-way door. Pearcleaner proved the demand with app-bundle export;<sup class="ref"><a href="#r1">1</a></sup> pairing it with the removal ledger makes it a genuine restore path.</p>
+</div>
+</section>
+
+<section id="s6">
+<h2><span class="snum">6</span>Updates</h2>
+
+<p class="kicker">The area where the research most clearly overturns the obvious plan.</p>
+
+<p><span class="tag fact">Fact</span> MacUpdater tracked over 100,000 apps with real-time support for about 6,700, required daily database maintenance, had tens of thousands of paying customers, and shut down because the model could not be sustained without a subscription its authors declined to sell.<sup class="ref"><a href="#r6">6</a></sup><sup class="ref"><a href="#r7">7</a></sup> <span class="tag fact">Fact</span> MacUpdater itself used Homebrew Cask data to support automatic updates for thousands of apps that lack their own updater.<sup class="ref"><a href="#r24">24</a></sup> <span class="tag fact">Fact</span> Sparkle's appcast is the de-facto standard for non-App-Store updates and is explicitly designed to be readable by third-party update trackers; Latest drives updates through Sparkle with its own user interface.<sup class="ref"><a href="#r23">23</a></sup><sup class="ref"><a href="#r25">25</a></sup></p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Own version database</th><th>B. Read the sources already in the system</th><th>C. Detect and route only</th></tr></thead>
+<tbody>
+<tr><td>Coverage</td><td>Highest possible</td><td>Sparkle feeds + Homebrew Cask + Mac App Store. Broad but not universal</td><td>Same detection, no installation</td></tr>
+<tr><td>Ongoing cost</td><td><strong>Daily, forever, by a human</strong></td><td>Near zero — the maintenance is someone else's, and already funded</td><td>Near zero</td></tr>
+<tr><td>Failure mode</td><td>Business death<sup class="ref"><a href="#r6">6</a></sup></td><td>Silent gaps where an app uses neither mechanism</td><td>Same gaps, plus more user work</td></tr>
+<tr><td>Risk of breaking apps</td><td>Medium</td><td>Low — each update is performed by the app's own mechanism</td><td>None</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to B</h4>
+<p>B's coverage gap is not evenly distributed. The apps most likely to lack both a Sparkle feed and a Homebrew cask are exactly the awkward ones — enterprise agents, vendor-installed drivers, creative suites with their own updaters — which are also the ones most likely to be outdated and to matter for security. Brim will show a clean update list while the genuinely stale software sits outside it.</p>
+<p>There is a second risk. Reading a Sparkle appcast means making a network request to a third-party URL taken from an app's property list. For a product whose privacy claim is "no network by default", that is a meaningful boundary crossing, and the appcast URL is attacker-influenced input if an app bundle has been tampered with.</p>
+<p>And updating an app means replacing a bundle that may be signed, quarantined, running, or protected. Doing that badly is how a utility destroys someone's install.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The coverage gap argues for stating it rather than hiding it. Brim should show, per app, <em>how</em> it can check: "Sparkle feed", "Homebrew cask", "App Store", or "no automatic source — last checked never". An app with no source is itself a finding worth surfacing, and it is a finding no competitor reports.</p>
+<p>The network objection is answered by consent and scoping, not avoidance: update checking is a user-initiated action, requests go only to URLs already present in installed bundles, and the feature can be turned off entirely. This is the one place Brim legitimately touches the network.</p>
+<p>The installation risk argues for delegation: where Sparkle is present, drive Sparkle; where Homebrew manages the app, invoke <code>brew</code>; where it is App Store software, hand off to the App Store. Brim should never hand-roll a bundle replacement.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build B, with C as the fallback for anything B cannot install. Never build A. State the source per app and treat "no update source" as a reportable condition.</p>
+<p>Do not auto-install anything by default. The value here is knowing, not automating, and automatic replacement of signed bundles is the highest-blast-radius thing a utility can do.</p>
+<p><span class="tag inf">Inference</span> This is also a positioning gift. A credible update view that costs Brim nothing to maintain lands into a category that has been empty since 1 January 2026, and it can be advertised truthfully as "we don't run a database, so this can't go dark on you."</p>
+</div>
+</section>
+
+<section id="s7">
+<h2><span class="snum">7</span>Background and system item management</h2>
+<p class="kicker">The most under-served problem on the platform, and the clearest 10× opportunity.</p>
+
+<h3>What the OS actually exposes</h3>
+<p><span class="tag fact">Fact</span> macOS records login items, launch agents, launch daemons and service-management payloads in a Background Task Management database. Apple's deployment documentation names two commands for it: <code>sfltool dumpbtm</code>, which prints the full status of every item, and <code>sfltool resetbtm</code>, which resets the data.<sup class="ref"><a href="#r4">4</a></sup> Both require root.<sup class="ref"><a href="#r5">5</a></sup> Oakley documents both as undocumented options whose manual page has not caught up.<sup class="ref"><a href="#r3">3</a></sup></p>
+<p><span class="tag fact">Fact</span> The System Settings panel is far less informative than the underlying data. One practitioner's machine showed 19 items in Settings and 40 in the dump — many of them entries from applications already uninstalled — and Settings shows no bundle identifier and no path.<sup class="ref"><a href="#r5">5</a></sup> On Apple's own developer forums, an engineer diagnoses a case where uninstalling an app garbage-collected its agent but left its daemon registered.<sup class="ref"><a href="#r26">26</a></sup></p>
+<p><span class="tag fact">Fact</span> The only remedy in circulation is the reset, which wipes every login and background item and requires a restart, after which apps may forget their settings.<sup class="ref"><a href="#r3">3</a></sup><sup class="ref"><a href="#r5">5</a></sup></p>
+
+<p><span class="tag inf">Inference</span> This is an unusually clean gap. There is a real, widespread, user-visible problem — "Background Items Added" notifications for software that no longer exists — where the OS's own interface hides the diagnostic information, the fix is a blunt instrument, and no consumer tool does better. It is also directly continuous with Brim's uninstall story, because stale background items are precisely what incomplete uninstalls leave behind.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Parse the BTM dump</th><th>B. Supported APIs only</th><th>C. On-disk job files only</th></tr></thead>
+<tbody>
+<tr><td>Source</td><td><code>sfltool dumpbtm</code> via privileged helper</td><td><code>SMAppService</code> status, <code>launchctl print</code></td><td><code>LaunchAgents</code>/<code>LaunchDaemons</code> in all domains</td></tr>
+<tr><td>Sees stale entries for removed apps</td><td><strong>Yes</strong> — the whole point</td><td>No</td><td>Partially</td></tr>
+<tr><td>Stability across OS releases</td><td>Low — undocumented format<sup class="ref"><a href="#r3">3</a></sup></td><td>High</td><td>High</td></tr>
+<tr><td>Can act on what it finds</td><td>Only via reset, or by removing the backing item</td><td>Yes, for Brim's own items</td><td>Yes — unload and remove</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to A</h4>
+<p>Building a headline feature on an undocumented text format printed by a tool whose manual page is out of date is a maintenance liability that recurs every September. Worse, parsing gives Brim <em>visibility without agency</em>: knowing that a phantom entry exists does not let Brim delete that specific record. The only supported lever remains the global reset, which is exactly the blunt instrument users are already unhappy with.</p>
+<p>There is also a real hazard in offering the reset at all. It clears legitimate login items too, and apps may lose their "do not open at login" preference afterwards.<sup class="ref"><a href="#r5">5</a></sup> A utility that recommends it casually will break working setups.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The agency objection is the important one, and it reframes the feature. Brim's contribution is not deleting BTM records; it is <strong>making the reset safe to use</strong>, which nobody has done. Concretely: dump and join the records to installed apps; show exactly which entries are phantoms and which are live; capture a complete restore list before the reset; perform the reset; then walk the user through re-enabling the items that should come back. The dangerous operation becomes a reviewed, reversible one.</p>
+<p>Separately, for the common case where a phantom entry has a backing file still on disk, C acts directly: unload the job and remove the property list, which is supported, targeted and safe.</p>
+<p>The fragility objection argues for layering. Parsing is an <em>enrichment</em> layer. If a future macOS changes the format, Brim degrades to B plus C — a worse feature, not a broken product. Nothing consequential should depend on the parse succeeding.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build all three as layers: supported APIs for structure, on-disk job files for targeted action, BTM parsing for visibility. Feature them as one view answering "what runs on this Mac without being asked, and who put it there."</p>
+<p>Ship the guided reset with a captured restore list. This is a small amount of code sitting on top of a problem the platform has left open for four years, and it is the kind of thing a reviewer writes about.</p>
+</div>
+</section>
+
+<section id="s8">
+<h2><span class="snum">8</span>Developer and system cleanup</h2>
+
+<p>Developer caches are the highest-yield, lowest-risk reclaimable data on a working Mac — Xcode derived data, archives, device support directories and simulator runtimes; npm, pnpm and Yarn stores; pip and uv caches; the Cargo registry and build directories; the Go module cache; Gradle and Maven; Homebrew's download cache; and container disk images.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Delete the paths</th><th>B. Invoke each tool's own cleanup</th><th>C. Report only</th></tr></thead>
+<tbody>
+<tr><td>Speed</td><td>Fastest</td><td>Slower — a subprocess per tool</td><td>Instant</td></tr>
+<tr><td>Correctness</td><td>Breaks tools with read-only caches or internal indexes</td><td>Correct by construction</td><td>Correct</td></tr>
+<tr><td>Coverage</td><td>Anything with a known path</td><td>Only tools that are installed and expose a clean command</td><td>Everything</td></tr>
+<tr><td>Risk</td><td>Real. Deleting a container's disk image destroys every image and volume inside it</td><td>Low</td><td>None</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to B</h4>
+<p>Delegation sounds unimpeachable but it is slow, it requires the tool to be installed and on a path Brim can find, and it hands control to a subprocess whose behaviour Brim does not define. <code>brew cleanup</code>, <code>go clean -modcache</code> and a container prune each do somewhat more than "free space", and a user who clicked a button in a cleanup app has not consented to a container prune's semantics. Delegation can be <em>less</em> predictable than deletion, not more.</p>
+<p>And B cannot cover the biggest single item on many developer machines: a container runtime's virtual disk file, which is sparse, does not shrink when images are deleted, and cannot be safely truncated by an outside process.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The objection is about consent and predictability rather than about the mechanism. The resolution is to classify by what the reclamation actually costs the user, and to let the class determine the treatment:</p>
+<ul>
+<li><strong>Pure regenerable caches</strong> — derived data, download caches, package stores. Delete directly. Cost of being wrong is a slower next build.</li>
+<li><strong>Tool-managed stores with internal state</strong> — module caches with read-only permissions, Homebrew, package managers with lockfile-linked layouts. Delegate, and show the exact command before running it.</li>
+<li><strong>Stateful artefacts</strong> — container disk images, simulator devices holding app data, archives containing shipped builds' debug symbols. <strong>Report and route.</strong> Never act. Open the tool that owns them.</li>
+</ul>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Three-class model. Show reclaimable size per class and the regeneration cost in plain words — "next build will be slower" versus "these are your only copies of the debug symbols for shipped builds".</p>
+<p><span class="tag rec">Recommendation</span> Keep this feature but do not let it expand into general system maintenance. Cache clearing, log rotation, maintenance-script running and permission repair are either handled by macOS already or are folklore. Oakley's position on the folder macOS controls is direct: caches and temporary directories are the system's job, and files land in places macOS empties itself.<sup class="ref"><a href="#r2">2</a></sup> Brim including a "run maintenance scripts" button would import the exact credibility problem it is differentiating against.</p>
+</div>
+</section>
+
+<section id="s9">
+<h2><span class="snum">9</span>Storage analysis</h2>
+<p class="kicker">Where the incumbents are most vulnerable, because their headline number is frequently not true.</p>
+
+<h3>The accounting problem</h3>
+<p><span class="tag fact">Fact</span> On APFS, free space is not "total minus the sum of visible files". Copy-on-write means deleted files' blocks stay allocated while any snapshot still references them, so emptying the Trash can free nothing at all.<sup class="ref"><a href="#r22">22</a></sup> Local Time Machine snapshots count as purgeable space, and macOS purges them itself when space is needed.<sup class="ref"><a href="#r20">20</a></sup> <span class="tag fact">Fact</span> Purgeable accounting has been inconsistent and misleading since APFS shipped — Oakley has documented the same class of discrepancy repeatedly from 2017 through Tahoe 26.6, including cases where the system failed to recognise purgeable space that was available.<sup class="ref"><a href="#r20">20</a></sup></p>
+<p><span class="tag inf">Inference</span> This is why "System Data" is the most-complained-about number on macOS and why cleaners are so often accused of not working. A tool quotes a recoverable figure, the user runs it, and the bar does not move — because the space was pinned, or was already purgeable and would have been reclaimed automatically anyway.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Treemap visualiser</th><th>B. Junk-category cleaner</th><th>C. Reconciled storage account</th></tr></thead>
+<tbody>
+<tr><td>Question answered</td><td>"What is biggest?"</td><td>"What can I delete?"</td><td>"Where did my space go, and what will actually come back?"</td></tr>
+<tr><td>Honesty</td><td>High but incomplete — treemaps rarely show snapshot-pinned or purgeable space</td><td><strong>Low</strong> — the headline figure is usually not deliverable</td><td>High by construction</td></tr>
+<tr><td>Differentiation</td><td>None; DaisyDisk and GrandPerspective own this</td><td>None; everyone ships it</td><td>Nobody does this</td></tr>
+<tr><td>Effort</td><td>Medium — fast enumeration plus rendering</td><td>Low</td><td>Medium — mostly arithmetic and honesty</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>C is intellectually right and commercially awkward. Its output is frequently "you cannot reclaim anything useful here, and the 200 GB you are worried about is snapshots that macOS will handle." That is the correct answer and a terrible sales pitch against a competitor promising 47 GB.</p>
+<p>It also cannot deliver its best trick without cooperation from a system Brim does not control: snapshot purging is macOS's decision, and Oakley shows the accounting itself is sometimes wrong on Apple's side.<sup class="ref"><a href="#r20">20</a></sup> Brim can explain the situation but cannot guarantee an outcome.</p>
+<p>And there is a coverage trap. Large-file and duplicate finding is what users actually ask for, and C by itself does not provide it.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>"You do not have a problem" is only a bad pitch if the product is sold on gigabytes. If it is sold on understanding, it is the payoff. The framing that survives is diagnostic: <em>why doesn't deleting things free space?</em> — a question with hundreds of thousands of search results and no good software answer.</p>
+<p>C does not have to be alone. Treemap enumeration and duplicate detection are cheap once Brim has a fast enumerator for its index. The improvement Brim can make over the commodity versions is again accuracy: a duplicate finder that reports clone-linked files as recoverable space is lying, because APFS clones already share their blocks. Detecting shared extents and reporting real savings would put Brim ahead of most duplicate finders on the only axis that matters.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build C as the storage feature, with a treemap and duplicate detection as supporting views rather than headlines. Three numbers, always shown together and never collapsed into one: <strong>logical size</strong> of what you see, <strong>reclaimable now</strong>, and <strong>held by snapshots or purgeable</strong>. Verify every reclamation with a measured free-space delta.</p>
+<p>Duplicate detection: size filter, then head and tail hashes, then full content hash only on survivors — and exclude clone-linked pairs from the savings total, labelling them as already sharing storage.</p>
+</div>
+</section>
+
+<section id="s10">
+<h2><span class="snum">10</span>Energy and battery intelligence</h2>
+<p class="kicker">The brief's most ambitious claim, and the one where the research most changes what is buildable.</p>
+
+<h3>What is actually measurable</h3>
+<p><span class="tag fact">Fact</span> Activity Monitor's "Energy Impact" is explicitly a <em>relative</em> measure, not a physical quantity; laptops additionally show a 12-hour average.<sup class="ref"><a href="#r11">11</a></sup> Practitioner analysis suggests it blends CPU usage and power draw, GPU use, power assertions, memory and network activity.<sup class="ref"><a href="#r27">27</a></sup> Its underlying wakeup counters come from <code>task_power_info</code> via <code>task_info</code>.<sup class="ref"><a href="#r28">28</a></sup></p>
+<p><span class="tag fact">Fact</span> <code>powermetrics</code> can print per-process energy impact with <code>--show-process-energy</code>, and can group processes into coalitions so that time from exited children is still attributed correctly.<sup class="ref"><a href="#r12">12</a></sup> It requires root.</p>
+<p><span class="tag fact">Fact</span> The most useful finding: <code>proc_pid_rusage</code> with <code>RUSAGE_INFO_V6</code> returns per-process cumulative counters including <code>ri_energy_nj</code> and <code>ri_penergy_nj</code> in nanojoules, alongside instructions, cycles and billed energy.<sup class="ref"><a href="#r13b">13b</a></sup> Tools that read it report per-process energy without requiring root.<sup class="ref"><a href="#r14">14</a></sup></p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. <code>powermetrics</code> as root</th><th>B. IOReport energy model</th><th>C. <code>proc_pid_rusage</code> sampling</th></tr></thead>
+<tbody>
+<tr><td>Unit</td><td>Relative impact score</td><td>Real joules, per hardware block</td><td>Real joules (kernel's accounting), per process</td></tr>
+<tr><td>Per-app attribution</td><td>Yes, with coalitions</td><td><strong>No</strong> — it is per component, not per process</td><td>Yes</td></tr>
+<tr><td>Privilege</td><td>Root; a helper must run it continuously</td><td>None reported<sup class="ref"><a href="#r14">14</a></sup></td><td>None, for the user's own processes</td></tr>
+<tr><td>Stability</td><td>Command-line output parsing</td><td>Undocumented private interface</td><td>Public SDK header; semantics undocumented</td></tr>
+<tr><td>Cost to run</td><td>A resident root subprocess</td><td>Low</td><td>Very low — one syscall per process per sample</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>Five problems, and they are not small.</p>
+<p><strong>Counters are cumulative from process start.</strong> Every quit and relaunch resets to zero. A week of history requires Brim to sample regularly and persist deltas — which means Brim needs to be running, which reintroduces the resident-process question from §3.</p>
+<p><strong>Process is not app.</strong> Modern apps are many processes — helpers, XPC services, web content renderers. Attribution requires coalition or bundle-path grouping, and getting it wrong makes a browser look free and its renderers look like the problem.</p>
+<p><strong>Root-owned processes are invisible</strong> without elevation, and daemons are exactly the background consumers the feature promises to expose.</p>
+<p><strong>It measures compute, not consequence.</strong> An app that keeps the display awake, holds a power assertion, pins the radio, or triggers the discrete GPU may cost far more battery than its own energy counter shows.</p>
+<p><strong>Forecasting is where this becomes indefensible.</strong> The brief asks for "projected future battery cost for continuously running applications". Projection requires stable behaviour, constant conditions and a known baseline. None hold: workloads vary, the OS reschedules discretionary work, thermal state changes, and battery capacity itself degrades. A forecast in minutes of battery life would be wrong often enough to destroy the credibility the rest of the product is built on.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>Four of the five problems are answerable and one changes the feature.</p>
+<p>Sampling cadence: energy counters are cumulative, so sampling can be slow — every few minutes is ample — and the sampler is tiny. That is a very different proposition from a filesystem watcher: it reads counters about processes, stores numbers locally, and has no access to content. It can be an opt-in that starts when the user first opens the energy view. Gaps while Brim is closed are acceptable if reported as coverage rather than hidden.</p>
+<p>Attribution: group by coalition where possible and by bundle path otherwise, and show the breakdown. "Browser: 41%, of which renderers 33%" is more useful than a single figure anyway.</p>
+<p>Root processes: read what is available without elevation, mark the rest as requiring the helper, and let the user decide.</p>
+<p>Compute-versus-consequence: this is fixable by widening the display rather than the model. Power assertions are readable, and App Nap status and high-performance GPU use are already surfaced by the OS.<sup class="ref"><a href="#r11">11</a></sup> Showing "holds a display-sleep assertion" next to an energy figure is more actionable than any refinement of the figure itself.</p>
+<p>Forecasting does not survive as prediction. It survives as <strong>arithmetic the user can check</strong>: this app averaged <em>X</em> mWh per day over the last 14 days; your battery's design capacity is <em>Y</em> mWh; that is <em>Z</em>% of a full charge per day. Every term is measured, the operation is a division, and the user can audit it. That is a defensible version of the brief's intent.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Build on <code>proc_pid_rusage</code>. Report energy in real units and as a share of the battery's design capacity. Persist deltas locally with a small, opt-in sampler that the user starts by opening the feature, and show coverage honestly.</p>
+<p>Overturn the brief on forecasting: ship <strong>observed cost expressed as a rate</strong>, with the arithmetic visible, and reject predicted battery life in minutes, hours or any modelled future. No trend extrapolation, no machine learning.</p>
+<p>Add the assertion and GPU context alongside — it is cheap and it is what makes the number actionable.</p>
+<p><span class="tag inf">Inference</span> Done this way, this is the most defensible differentiator in the whole product. Activity Monitor has no memory, every competitor reports instantaneous impact, and "this app you never open cost you 11% of a charge this week" is a sentence nobody else can currently produce.</p>
+</div>
+</section>
+
+<section id="s11">
+<h2><span class="snum">11</span>AI capabilities</h2>
+
+<p><span class="tag fact">Fact</span> Apple's Foundation Models framework gives Swift apps direct access to the on-device model behind Apple Intelligence, on macOS among other platforms, with no API key, no cloud cost and no network requirement — but only on Apple-Intelligence-capable devices in supported regions, and the framework exposes an availability check with explicit unavailability reasons.<sup class="ref"><a href="#r15b">15b</a></sup> The on-device model is around three billion parameters.<sup class="ref"><a href="#r15c">15c</a></sup> <span class="tag fact">Fact</span> At WWDC 2026 Apple opened the framework to any provider conforming to a language-model protocol, including cloud models, with multimodal prompts and on-device Vision tools.<sup class="ref"><a href="#r15">15</a></sup></p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Cloud LLM</th><th>B. On-device model</th><th>C. No model — deterministic explanation</th></tr></thead>
+<tbody>
+<tr><td>Privacy</td><td>Incompatible with the product's premise</td><td>Good — local by construction</td><td>Perfect</td></tr>
+<tr><td>Availability</td><td>Universal, with a key</td><td>Conditional on hardware, region, and the user enabling Apple Intelligence<sup class="ref"><a href="#r15b">15b</a></sup></td><td>Universal</td></tr>
+<tr><td>Correctness on this domain</td><td>Plausible-sounding errors about file paths</td><td>Same risk, smaller model</td><td>Correct by construction — it renders facts Brim already holds</td></tr>
+<tr><td>Cost</td><td>Per-token, forever</td><td>Zero</td><td>Zero</td></tr>
+<tr><td>Failure mode</td><td>Confident wrong advice about deletion</td><td>Same</td><td>Dull prose</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>C is obviously safest and obviously less marketable. Every competitor will ship an assistant; MacPaw is already testing one at scale.<sup class="ref"><a href="#r10">10</a></sup> A product with no AI in 2026 looks like a product that could not build one, and there are real jobs a model does better than templates: summarising an unfamiliar vendor's footprint, answering "why is this running", and turning a question into a query over the local index.</p>
+<p>The deeper objection is that C's premise — "the evidence graph already contains the explanation" — is only true if the explanations are genuinely readable. Rendering an evidence tier as a sentence is easy; making forty of them feel like an answer rather than a log is not.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The challenge does not dislodge C as the engine; it argues for a model as a <em>presentation</em> layer over facts Brim already has, which is the one use where hallucination risk is bounded. The distinction that matters is authority: a model may phrase, summarise and search. It may never decide, select, or authorise a deletion. If the model is removed, the product loses polish and loses nothing else.</p>
+<p>The conditional availability of the on-device model settles the architecture on its own. A feature that is unavailable on ineligible hardware, in unsupported regions, or when the user has not enabled Apple Intelligence cannot be load-bearing. And WWDC 2026's provider protocol means a bring-your-own-key path later costs almost nothing, through the same native API.<sup class="ref"><a href="#r15">15</a></sup></p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Deterministic explanations are the product. The model is optional, local-first, off by default, and confined to three jobs: plain-language summaries of a scan result, answering "what is this?" about a path or process from data already gathered, and natural-language search over the local index.</p>
+<p>A hard constraint, stated in the interface: <strong>nothing the model produces can select a file for deletion or confirm a consequential action.</strong> Selection comes from the evidence tiers; confirmation comes from the person.</p>
+<p>Overturn the brief's framing slightly. It describes the intelligence layer as explaining unusual resource usage and summarising cleanup opportunities "without replacing user control". That is the right instinct but the wrong boundary — the boundary should be that the layer never touches the decision path at all, not that a human approves its conclusions.</p>
+</div>
+</section>
+
+<section id="s12">
+<h2><span class="snum">12</span>Open source versus premium positioning</h2>
+
+<p>Three data points bound this decision. Pearcleaner is Apache 2.0 with the Commons Clause, which explicitly forbids monetisation of the project or derivatives — and it stalled when its maintainer's circumstances changed, with no mechanism to fund continuation.<sup class="ref"><a href="#r1">1</a></sup> MacUpdater had tens of thousands of paying customers and died refusing a subscription.<sup class="ref"><a href="#r6">6</a></sup><sup class="ref"><a href="#r7">7</a></sup> CleanMyMac is a closed, subscription-priced product generating roughly $70M a year.<sup class="ref"><a href="#r10">10</a></sup></p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Free and open, donations</th><th>B. Open core</th><th>C. Open engine, paid product</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>Everything public, sponsorship</td><td>Public basics, paid proprietary advanced features</td><td>Engine, evidence rules and ledger format public and auditable; the notarised, supported application is paid</td></tr>
+<tr><td>Auditability of safety logic</td><td>Full</td><td><strong>Partial — the risky parts are likely the paid ones</strong></td><td>Full</td></tr>
+<tr><td>Sustainability</td><td>Poor. Pearcleaner's outcome<sup class="ref"><a href="#r1">1</a></sup></td><td>Proven generally</td><td>Proven in Mac utilities</td></tr>
+<tr><td>Trust posture</td><td>Strongest</td><td>Weakest — "trust us" applies to exactly the unauditable part</td><td>Strong and coherent</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to C</h4>
+<p>If the engine is public, someone builds and distributes free binaries, and Brim competes with its own source. Worse, in this category that is not merely lost revenue — it is a safety problem, because a repackaged unsigned build of a tool that deletes system files is an ideal malware vector. This is not hypothetical: Pearcleaner's README warns that a domain impersonating it was distributing malware, with only one legitimate site.<sup class="ref"><a href="#r1">1</a></sup></p>
+<p>The second objection is that openness may buy nothing commercially. Almost no buyer reads source. They read reviews.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The impersonation risk argues for the model rather than against it, but changes what is emphasised. What buyers pay for is not bytes; it is a <em>notarised, signed, single-origin build with a known publisher</em> — which is precisely what the malware incident shows is scarce and valuable. Openness and paid distribution reinforce each other here: the source is the safety argument, the signature is the product.</p>
+<p>The "nobody reads source" objection is true of individuals and false of the people who create demand for this category — the technically literate users who answer "what should I use instead of CleanMyMac?" in forums. That audience is the distribution channel, and auditability is the argument that wins them.</p>
+<p>On licensing: the Commons Clause is a cautionary example, not a model. It blocked the maintainer's own path to sustainability while doing little to prevent repackaging.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>Open the parts that constitute the safety claim — the evidence-tier rules, the path model, the ledger format, the manifest specification — under a permissive licence, so they can be audited, cited and adopted. Sell the assembled, signed, notarised application with support and updates.</p>
+<p>Price it as a one-time purchase with paid major upgrades, not a subscription, <em>unless</em> a recurring cost emerges that genuinely scales with time. Following §6's architecture there is none, which is a structural advantage worth stating publicly: Brim runs no database, so it has no reason to need a subscription, and no way to go dark the way MacUpdater did.</p>
+<p><span class="tag rec">Recommendation</span> Register the obvious lookalike domains at launch and publish the signing identity prominently. Given what happened to Pearcleaner, this is a launch-day task, not a later one.</p>
+</div>
+</section>
+
+<section id="s13">
+<h2><span class="snum">13</span>UI, UX and information architecture</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>A. Score dashboard</th><th>B. Inspector: sidebar, list, detail</th><th>C. Task wizards</th></tr></thead>
+<tbody>
+<tr><td>Precedent</td><td>CleanMyMac, most Windows cleaners</td><td>Finder, Xcode, Activity Monitor, Mail</td><td>Migration Assistant, installers</td></tr>
+<tr><td>Fits an evidence model</td><td><strong>No.</strong> A score is the opposite of evidence</td><td>Yes — the detail pane is where evidence lives</td><td>Partly — good for one decision, bad for browsing</td></tr>
+<tr><td>Handles density</td><td>Poorly</td><td>Well</td><td>Poorly</td></tr>
+<tr><td>Novice comfort</td><td>High</td><td>Medium</td><td>High</td></tr>
+<tr><td>Native feel on macOS</td><td>Low — it is a web app in a window</td><td>High</td><td>Medium</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="challenge">
+<h4>Challenge to B</h4>
+<p>A three-pane inspector is correct and cold. It presents a list and waits, which is fine for Activity Monitor — a diagnostic tool opened with a question in mind — and wrong for a utility people open without one. The dashboard exists because it answers "what should I do?" before the user can formulate it. B risks a beautiful, empty-feeling product that users open once.</p>
+<p>The platform is also unsettled. Liquid Glass shipped in macOS 26 and Apple has made clear it is permanent, that Xcode 27 removes the opt-out flag, and that from the Q1 2027 App Store minimum it is enabled globally.<sup class="ref"><a href="#r29">29</a></sup> At the same time, developers six months after Tahoe's release were still cataloguing alignment and legibility defects in Apple's own apps.<sup class="ref"><a href="#r29">29</a></sup> Building a dense data interface on an unsettled material has real cost.</p>
+</div>
+
+<div class="reval">
+<h4>Re-evaluation</h4>
+<p>The coldness objection is answered inside B rather than by adopting A. Give the sidebar a first item that is a <em>ranked review queue</em> — the findings that matter, ordered by confidence and impact, each expanding into the same evidence detail used everywhere else. That answers "what should I do?" without inventing a score, and it reuses the one component that must be excellent anyway.</p>
+<p>The Liquid Glass tension resolves by scope. Adopt it where Apple's controls provide it — window chrome, sidebar, toolbars, sheets — and keep data surfaces quiet, opaque and high-contrast. That is not resisting the platform; it is what Apple's own data-dense apps do.</p>
+<p>C survives for exactly three flows, where a wizard's sequence matches a genuinely consequential decision: uninstall, reclaim space, and the guided background-items reset from §7.</p>
+</div>
+
+<div class="decision">
+<h4>Decision</h4>
+<p>B as the shell, with a ranked review queue as its first surface and C for the three consequential flows.</p>
+<p>Sidebar: <strong>Review · Applications · Leftovers · Background · Storage · Energy · Developer · Updates · History</strong>. History is the removal ledger, and giving it a permanent place in the navigation is the clearest single statement of what Brim is.</p>
+<p>Two rules for the detail pane. Every removable item shows its evidence and its tier without a click. Every consequential action shows what will happen, what it costs to be wrong, and how to undo it — before the button, not after.</p>
+</div>
+</section>
+
+<section id="s14">
+<h2><span class="snum">14</span>Performance, reliability, privacy and responsiveness</h2>
+
+<h3>Scanning</h3>
+<p>Brim's index is the app. Enumerate with <code>getattrlistbulk</code>, which returns metadata for many entries per call, rather than per-entry <code>stat</code>. Fetch size, dates, inode, link count and flags in the same pass so nothing needs a second visit. Persist the index in a local database, keep it current with filesystem events rather than rescanning, and bound concurrency to the number of performance cores so a background scan never makes the machine feel slow. Never read file contents except when hashing candidate duplicates, and then only after cheap filters have eliminated almost everything.</p>
+<p><span class="tag rec">Recommendation</span> Publish targets and hold to them: cold index under a minute on a typical machine, warm open under a second, no unbounded memory growth on a million-file volume, and no operation that blocks the interface.</p>
+
+<h3>Permissions</h3>
+<p>The permission ladder is a design problem, not a dialog. TCC blocks container access even from root;<sup class="ref"><a href="#r17">17</a></sup> a privileged daemon established with <code>SMAppService</code> is needed for the system domain;<sup class="ref"><a href="#r16">16</a></sup> and macOS 27 extends protection to some non-sandboxed apps' support folders.<sup class="ref"><a href="#r18">18</a></sup></p>
+<p><span class="tag rec">Recommendation</span> Brim should run usefully with no elevated permissions at all, showing exactly what it cannot see and why, and ask for each capability at the moment it would change the result — never in an onboarding wall. A tool that demands Full Disk Access before showing anything is asking for maximum trust at minimum evidence, which is backwards for this product.</p>
+
+<h3>Privacy</h3>
+<p>No analytics, no accounts, no crash reporting that leaves the machine without an explicit per-incident decision, and no network traffic except user-initiated update checks (§6). This is not merely a value statement; it is the competitive position. It should be verifiable — the open engine, a documented list of every path Brim reads, and a build users can inspect.</p>
+
+<h3>Reliability</h3>
+<p><span class="tag rec">Recommendation</span> The failure mode to engineer against is a partial operation: some items removed, some blocked by permissions, some failed. The ledger must record per-item outcomes, the interface must report the mixed result plainly, and the app bundle should be removed last so that a failed run can be retried after permissions are fixed rather than leaving an app that is gone but still registered.</p>
+</section>
+
+<section id="s15">
+<h2><span class="snum">15</span>Other features worth considering</h2>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Idea</th><th>Assessment</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><strong>Vendor uninstaller detection</strong> — find the vendor's own uninstaller and offer it before guessing</td><td>Directly addresses the documented class of failure where a third-party cleaner corrupted a suite with shared resources.<sup class="ref"><a href="#r21">21</a></sup> Cheap: look for a bundled uninstaller, a receipt-declared script, or a known vendor tool</td><td><strong>V1.</strong> Small, and it converts Brim's most dangerous cases into safe ones</td></tr>
+<tr><td><strong>Migration hygiene</strong> — what arrived from an old Mac and never ran here</td><td>Oakley identifies migrated Macs as the worst case for inherited clutter.<sup class="ref"><a href="#r2">2</a></sup> Detectable from install dates versus system install date and first-launch records</td><td><strong>V1.</strong> A distinctive, high-yield view built from data Brim already has</td></tr>
+<tr><td><strong>Privacy grant review</strong> — which apps hold camera, microphone, accessibility, full-disk access, including absent ones</td><td>Readable with Full Disk Access; resettable per bundle. Nobody frames this as part of an app's footprint</td><td><strong>V1</strong> as part of the footprint; a standalone view in V2</td></tr>
+<tr><td><strong>Locked-app handling</strong> — detect immutable flags that block removal</td><td>Real: some products set the immutable flag so they cannot be trashed, and users are told to clear it in Terminal<sup class="ref"><a href="#r30">30</a></sup></td><td><strong>V1.</strong> Detect and explain; clear only on explicit confirmation</td></tr>
+<tr><td><strong>Architecture stripping and language pruning</strong></td><td>Popularised by Pearcleaner.<sup class="ref"><a href="#r1">1</a></sup> Real savings, but it modifies signed bundles, which can break signature validation and future updates</td><td><strong>Reject for V1.</strong> Revisit only with per-app signature re-verification</td></tr>
+<tr><td><strong>Malware scanning</strong></td><td>CleanMyMac's differentiator.<sup class="ref"><a href="#r12">12</a></sup> Requires a signature pipeline with permanent maintenance — the cost structure §6 rejects — and duplicates XProtect</td><td><strong>Reject.</strong> Show signing, notarisation and quarantine status instead, which is free and more informative</td></tr>
+<tr><td><strong>Memory "optimisation", RAM purge, speed boosters</strong></td><td>No mechanism by which these help on a modern system</td><td><strong>Reject.</strong> Shipping one would forfeit the credibility argument entirely</td></tr>
+<tr><td><strong>Browser and privacy cleanup as a headline</strong></td><td>Commodity, high breakage risk, and it logs people out of things</td><td><strong>Reject as a headline.</strong> Include browser data only inside a specific app's footprint</td></tr>
+<tr><td><strong>Scheduled automatic cleaning</strong></td><td>Incompatible with the evidence model: it acts without adjudication, which is the exact behaviour Brim exists to replace</td><td><strong>Reject.</strong> Scheduled <em>reporting</em> is fine; scheduled deletion is not</td></tr>
+<tr><td><strong>Fleet or MDM management</strong></td><td>MacPaw just exited this with more resources than Brim will have<sup class="ref"><a href="#r8">8</a></sup></td><td><strong>Reject for now.</strong> The exportable ledger is the seed if demand appears</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="c1" class="final">
+<h2>What Brim should be</h2>
+<p><strong>Brim is the record of what software has done to this Mac, and the safest way to undo it.</strong></p>
+<p>Not a cleaner. Cleaners compete on a number they cannot substantiate, against an incumbent with a $70M marketing budget, in a category where the free alternatives are good enough for the basics. That fight is unwinnable and not worth winning.</p>
+<p>What is unsolved is adjudication. Existing tools find far more than users act on, because users cannot tell a real leftover from a shared dependency — and the documented cost of getting it wrong ranges from a corrupted creative suite<sup class="ref"><a href="#r21">21</a></sup> to an unstable system with leftover daemons.<sup class="ref"><a href="#r2">2</a></sup> Brim's product is the conversion from <em>found</em> to <em>removed with confidence</em>: every claim backed by a named kind of evidence, every consequential action reversible, every result verified against the filesystem afterwards.</p>
+<p>Around that core sit three facts the OS makes visible only to people who use undocumented commands — what runs at login and who put it there, where storage actually went, and what software costs in battery over time. Brim's job is to make those legible and actionable, and to stop there.</p>
+</section>
+
+<section id="c2" class="final">
+<h2>The differentiators worth building</h2>
+<p>Judged on whether each is genuinely valuable, measurable, technically realistic, hard to copy, and worth its complexity.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>#</th><th>Differentiator</th><th>Why it holds</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>Tiered evidence with a shared-file veto</strong></td><td>Turns "we found 48 files" into "41 confirmed, 7 your call, 3 shared with apps you still use". Hard to retrofit because it changes the data model, not the UI. It is also the only credible answer to the Adobe-class failure<sup class="ref"><a href="#r21">21</a></sup></td></tr>
+<tr><td>2</td><td><strong>Verified removal with measured free-space delta</strong></td><td>Directly attacks the incumbents' weakest point: quoted reclamations that do not materialise.<sup class="ref"><a href="#r20">20</a></sup> Unfakeable, and competitors cannot adopt it without admitting their numbers were wrong</td></tr>
+<tr><td>3</td><td><strong>Background-item truth plus a guided, reversible reset</strong></td><td>A four-year-old platform gap. The data needs root and an undocumented command;<sup class="ref"><a href="#r4">4</a></sup> Settings shows a fraction of it with no paths.<sup class="ref"><a href="#r5">5</a></sup> Nobody has made the reset safe</td></tr>
+<tr><td>4</td><td><strong>Measured per-app energy over time, as a share of a charge</strong></td><td>Real joules from a public interface,<sup class="ref"><a href="#r13b">13b</a></sup> accumulated into history nothing else keeps.<sup class="ref"><a href="#r11">11</a></sup> Produces sentences no competitor can currently produce</td></tr>
+<tr><td>5</td><td><strong>Honest APFS storage accounting</strong></td><td>Separating logical, reclaimable and snapshot-pinned space answers the platform's most persistent storage confusion<sup class="ref"><a href="#r20">20</a></sup><sup class="ref"><a href="#r22">22</a></sup></td></tr>
+<tr><td>6</td><td><strong>The removal ledger as a durable, exportable record</strong></td><td>Undo, audit trail and receipt in one artefact. Compounds in value with use and makes migration hygiene possible later</td></tr>
+<tr><td>7</td><td><strong>Update coverage with no database to maintain</strong></td><td>Walks into a category vacated in January 2026<sup class="ref"><a href="#r6">6</a></sup> with a cost structure that cannot repeat its failure</td></tr>
+<tr><td>8</td><td><strong>Capability-aware operations</strong></td><td>Knowing in advance what macOS will refuse, and routing to the vendor's uninstaller instead of failing. Increasingly valuable as macOS 27 tightens access<sup class="ref"><a href="#r18">18</a></sup></td></tr>
+</tbody>
+</table>
+</div>
+<p><span class="tag inf">Inference</span> Of these, 1, 2 and 3 are the ones that would make someone switch. 4 is the one they would tell someone else about.</p>
+</section>
+
+<section id="c3" class="final">
+<h2>Final V1 feature set</h2>
+<p>Scoped so a single maintainer can ship it and keep it alive — which, given what happened to both Pearcleaner and MacUpdater, is a product requirement rather than a constraint.</p>
+<ul>
+<li><strong>Application inventory</strong> with real footprint size, install date, signing and notarisation status, background registrations, and the privacy grants held.</li>
+<li><strong>Deep uninstall</strong> on the tiered evidence graph, with the shared-file veto, per-item capability checks, Trash-based removal, vendor-uninstaller routing, optional privacy-grant reset, and post-removal verification.</li>
+<li><strong>Leftovers</strong>, split into orphaned and unclaimed, with the ledger seeded on first run.</li>
+<li><strong>Reset an app</strong> to first-run state, and <strong>archive before removal</strong>.</li>
+<li><strong>Background and login items</strong>: what runs unasked, who registered it, whether its owner still exists, targeted removal where a backing file exists, and the guided reset with a captured restore list.</li>
+<li><strong>Storage</strong>: logical, reclaimable and snapshot-pinned shown separately; treemap; duplicates with clone-aware savings.</li>
+<li><strong>Energy</strong>: measured per-app energy, opt-in sampling, expressed as a share of a charge, with assertions and GPU context.</li>
+<li><strong>Developer cleanup</strong> on the three-class model.</li>
+<li><strong>Updates</strong>: detect via Sparkle feeds, Homebrew and the App Store; state the source per app; install by delegation only.</li>
+<li><strong>Migration hygiene</strong> view.</li>
+<li><strong>History</strong>: the removal ledger, browsable, undoable, exportable.</li>
+<li><strong>Explanations</strong>: deterministic, everywhere, by default.</li>
+</ul>
+</section>
+
+<section id="c4" class="final">
+<h2>V2 and later</h2>
+<ul>
+<li>Optional on-device model for summaries and natural-language search, with a bring-your-own-key path through the same provider protocol.<sup class="ref"><a href="#r15">15</a></sup></li>
+<li>Opt-in install observation, only if differential snapshots prove insufficient in practice — and only with its behaviour fully documented.</li>
+<li>Standalone privacy-grant management across all apps.</li>
+<li>Architecture stripping and language pruning, with signature re-verification.</li>
+<li>Multi-user and multi-volume footprint consolidation.</li>
+<li>Command-line interface over the same engine — cheap, and it reaches the audience that evangelises.</li>
+<li>Adoption work on the uninstall-manifest specification: a validator, a build-phase helper, documentation.</li>
+<li>Fleet reporting built on the exportable ledger, only if demand appears unprompted.</li>
+</ul>
+</section>
+
+<section id="c5" class="final">
+<h2>Rejected entirely</h2>
+<ul>
+<li><strong>A curated per-app rules database.</strong> The cost structure that killed MacUpdater<sup class="ref"><a href="#r6">6</a></sup> and it cannot explain itself.</li>
+<li><strong>Predicted battery life.</strong> Not defensible from available measurements; one wrong forecast costs more trust than the feature earns.</li>
+<li><strong>A cleanliness score or health percentage.</strong> Manufactured anxiety, and structurally incompatible with an evidence model.</li>
+<li><strong>Malware scanning.</strong> Permanent maintenance, duplicates XProtect, wrong product.</li>
+<li><strong>Memory purging and performance boosters.</strong> No mechanism.</li>
+<li><strong>System maintenance scripts and permission repair.</strong> Handled by macOS or folklore.<sup class="ref"><a href="#r2">2</a></sup></li>
+<li><strong>Scheduled automatic deletion.</strong> Acting without adjudication is what Brim exists to replace.</li>
+<li><strong>An always-on install watcher in V1.</strong> Contradicts the trust position; readers say so directly.<sup class="ref"><a href="#r2">2</a></sup></li>
+<li><strong>Browser and privacy cleaning as a headline feature.</strong> Commodity, breakage-prone.</li>
+<li><strong>An AI layer with authority over deletions.</strong></li>
+<li><strong>Subscription pricing without a recurring cost to justify it.</strong></li>
+</ul>
+</section>
+
+<section id="c6" class="final">
+<h2>Recommended UI/UX direction</h2>
+<p>A native inspector — sidebar, list, detail — with a ranked review queue as the landing surface and wizard flows for uninstall, reclaim and the background-items reset.</p>
+<ul>
+<li><strong>Evidence is never behind a click.</strong> Tier and reason are visible in the row.</li>
+<li><strong>Selection encodes confidence.</strong> Tier A and B pre-selected; C shown and selectable but never bulk-selected; shared items excluded with the other claimant named.</li>
+<li><strong>Every consequential screen states cost-of-error and undo path</strong> before the action.</li>
+<li><strong>Numbers are qualified or absent.</strong> Never a single figure that mixes reclaimable and pinned space.</li>
+<li><strong>Liquid Glass at the chrome, opacity and contrast at the data.</strong> Adopt the platform material where the platform provides it;<sup class="ref"><a href="#r29">29</a></sup> keep dense tables legible.</li>
+<li><strong>Empty and blocked states give direction.</strong> "Full Disk Access would let me check 4 more locations" beats a silent gap — and macOS returns these failures silently.<sup class="ref"><a href="#r17">17</a></sup></li>
+<li><strong>History is a permanent destination,</strong> not a dialog.</li>
+</ul>
+</section>
+
+<section id="c7" class="final">
+<h2>Technical and product principles</h2>
+<ol>
+<li><strong>Evidence before action.</strong> If Brim cannot name why a file belongs to an app, it does not select it.</li>
+<li><strong>Prefer the owner's mechanism.</strong> Sparkle updates via Sparkle, Homebrew via <code>brew</code>, vendor uninstallers over guesses, tool caches via the tool's own command.</li>
+<li><strong>Measure, do not estimate, where a measurement exists</strong> — and label an estimate as one where it does not.</li>
+<li><strong>Verify after acting.</strong> Re-scan and measure the real free-space delta. Report zero honestly.</li>
+<li><strong>Documented interfaces first, undocumented ones as enrichment only.</strong> Nothing consequential may depend on parsing output Apple does not specify.</li>
+<li><strong>Degrade, never fail.</strong> Missing permissions, an unparseable format, an absent helper — reduce capability and say so.</li>
+<li><strong>Determinism over models.</strong> Removing the model must cost polish only.</li>
+<li><strong>No cost that scales with time.</strong> No database requiring daily human maintenance. This is why Brim can outlive MacUpdater.<sup class="ref"><a href="#r6">6</a></sup></li>
+<li><strong>Local by default.</strong> One network call class, user-initiated, disableable.</li>
+<li><strong>Open what makes the safety claim.</strong> The rules are the argument; the signed build is the product.</li>
+<li><strong>Scope for one maintainer.</strong> Every feature must be affordable in a week where nothing goes wrong.</li>
+</ol>
+</section>
+
+<section id="c8" class="final">
+<h2>Key risks</h2>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Risk</th><th>Severity</th><th>Response</th></tr></thead>
+<tbody>
+<tr><td><strong>Brim deletes something it should not.</strong> One credible report ends the product</td><td>Existential</td><td>Tier S as a one-way veto; Tier C never bulk-selected; Trash only; ledger with per-item undo; app bundle removed last; vendor-uninstaller routing for the suites that historically break<sup class="ref"><a href="#r21">21</a></sup></td></tr>
+<tr><td><strong>macOS closes off access.</strong> macOS 27 already extends protection to some non-sandboxed support folders and has moved the privacy database<sup class="ref"><a href="#r18">18</a></sup></td><td>High, and structural</td><td>Capability checks as a first-class feature; treat blocked paths as reportable findings; keep the vendor-uninstaller path; track each September's release as a planned work item</td></tr>
+<tr><td><strong>Undocumented interfaces break.</strong> BTM parsing, energy counter semantics</td><td>Medium, recurring</td><td>Layered architecture; supported APIs carry function, undocumented ones carry detail; automated checks on each beta</td></tr>
+<tr><td><strong>Honest numbers look worse than inflated ones</strong> in side-by-side comparisons</td><td>High, commercial</td><td>Make verification the pitch. Show the measured delta. Invite the comparison rather than avoiding it</td></tr>
+<tr><td><strong>Single-maintainer fragility.</strong> This is exactly how the leading open-source competitor stopped<sup class="ref"><a href="#r1">1</a></sup></td><td>High</td><td>Ruthless scope discipline; revenue from day one; open engine so the work survives; no feature whose upkeep is a daily obligation</td></tr>
+<tr><td><strong>Impersonation and malware distribution.</strong> Already happened to Pearcleaner<sup class="ref"><a href="#r1">1</a></sup></td><td>High</td><td>Single official origin stated everywhere; defensive domain registration at launch; published signing identity; in-app verification of its own signature</td></tr>
+<tr><td><strong>Energy attribution is wrong or misread</strong></td><td>Medium</td><td>Show units, coverage gaps and the arithmetic; group by coalition with the breakdown visible; never express it as predicted battery life</td></tr>
+<tr><td><strong>Scope creep back into "cleaner"</strong></td><td>Medium, insidious</td><td>The rejected list is a commitment, not a snapshot. Every proposed feature must answer: what evidence does it act on, and how is it verified?</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="src" class="sources">
+<h2>Sources</h2>
+<p>Facts above are keyed to these. Unmarked statements are my inference or recommendation, per §0.</p>
+<ol>
+<li id="r1">Pearcleaner repository — project status, feature list, requirements, licence, impersonation warning. <a href="https://github.com/alienator88/Pearcleaner">github.com/alienator88/Pearcleaner</a> (retrieved 19 Sep 2026)</li>
+<li id="r2">Howard Oakley, "Last Week on My Mac: Can we make cleaning up our Macs simpler?", 26 Jan 2025, and its comment thread. <a href="https://eclecticlight.co/2025/01/26/last-week-on-my-mac-can-we-make-cleaning-up-our-macs-simpler/">eclecticlight.co</a></li>
+<li id="r3">Howard Oakley, "Manage Login and Background items", 3 Dec 2025. <a href="https://eclecticlight.co/2025/12/03/manage-login-and-background-items/">eclecticlight.co</a></li>
+<li id="r4">Apple, "Manage login items and background tasks on Mac", Deployment guide. <a href="https://support.apple.com/guide/deployment/manage-login-items-background-tasks-mac-depdca572563/web">support.apple.com</a></li>
+<li id="r5">"How to Remove 'Allow in the Background' Item on macOS" — practitioner account of Settings showing 19 items against 40 in the dump. <a href="https://www.atpeaz.com/how-to-remove-allow-in-the-background-item-on-macos/">atpeaz.com</a></li>
+<li id="r6">Adam Engst / TidBITS, "MacUpdater Shuts Down, Leaving Users Searching for Alternatives", 9 Jan 2026. <a href="https://tidbits.com/2026/01/09/macupdater-shuts-down-leaving-users-searching-for-alternatives/">tidbits.com</a></li>
+<li id="r7">Michael Tsai, "MacUpdater for Sale", 2 May 2025, quoting CoreCode's announcement. <a href="https://mjtsai.com/blog/2025/05/02/macupdater-for-sale">mjtsai.com</a></li>
+<li id="r8">AppleInsider, "Setapp Mobile EU app store and CleanMyMac Business both close down for good", 15 Jan 2026. <a href="https://appleinsider.com/articles/26/01/15/setapp-mobile-eu-app-store-cleanmymac-business-both-close-down-for-good">appleinsider.com</a></li>
+<li id="r9">TechCrunch, "One of the first alternative app stores in the EU is shutting down", 20 Jan 2026. <a href="https://techcrunch.com/2026/01/20/one-of-the-first-alternative-app-stores-in-the-eu-is-shutting-down/">techcrunch.com</a></li>
+<li id="r10">dev.ua, report on MacPaw's Setapp Mobile closure including 2024 revenue composition and the Eney assistant beta, 16 Jan 2026. <a href="https://dev.ua/en/news/u-liutomu-macpaw-zakryvaie-svii-alternatyvnyi-mahazyn-zastosunkiv-dlia-ios-v-yes-1768564351">dev.ua</a></li>
+<li id="r11">Apple, "View energy consumption in Activity Monitor on Mac". <a href="https://support.apple.com/guide/activity-monitor/view-energy-consumption-actmntr43697/mac">support.apple.com</a></li>
+<li id="r12">powermetrics manual, including <code>--show-process-energy</code> and coalition grouping. <a href="https://ss64.com/mac/powermetrics.html">ss64.com/mac/powermetrics</a></li>
+<li id="r13">CleanMyMac product description, Mac App Store listing (feature set including Smart Scan, malware scanning, background process management, Space Lens); pricing indication from TechRadar's sponsored MacPaw offer page</li>
+<li id="r13b"><code>rusage_info_v6</code> field list including <code>ri_energy_nj</code>, <code>ri_penergy_nj</code>, <code>ri_billed_energy</code>, <code>ri_instructions</code>, <code>ri_cycles</code>. <a href="https://docs.rs/tss-esapi-sys/latest/x86_64-apple-darwin/tss_esapi_sys/struct.rusage_info_v6.html">docs.rs</a></li>
+<li id="r14">macpow, data-source table — per-process billed energy from <code>proc_pid_rusage</code>, component energy from IOReport, no elevated privileges required. <a href="https://docs.rs/crate/macpow/latest/source/README.md">docs.rs/crate/macpow</a></li>
+<li id="r15">Apple, "What's New — macOS": Foundation Models framework opened to any provider conforming to the language-model protocol, multimodal prompts, on-device Vision tools. <a href="https://developer.apple.com/macos/whats-new/">developer.apple.com</a></li>
+<li id="r15b">Apple, "Meet the Foundation Models framework", WWDC25 — availability is conditional on Apple-Intelligence-enabled devices in supported regions. <a href="https://developer.apple.com/videos/play/wwdc2025/286/">developer.apple.com</a></li>
+<li id="r15c">Developer write-up of the framework's on-device model size and availability enumeration. <a href="https://dev.to/arshtechpro/apples-foundation-models-framework-run-ai-on-device-with-just-a-few-lines-of-swift-lbp">dev.to</a></li>
+<li id="r16">Apple Developer Forums, "Privileged helper with SMAppService" — daemons for privilege escalation; and thread 762901 on the <code>EPERM</code> versus <code>EACCES</code> distinction after migrating from <code>SMJobBless</code>. <a href="https://developer.apple.com/forums/thread/739940">developer.apple.com/forums</a></li>
+<li id="r17">AppCleaner (popyapp) README — TCC protects <code>~/Library/Containers</code> and <code>~/Library/Group Containers</code>; administrator rights do not bypass it. <a href="https://github.com/popyapp/app_cleaner">github.com/popyapp/app_cleaner</a></li>
+<li id="r18">Michael Tsai, "Golden Gate Application Support Protection", 24 Jul 2026 — macOS 27 extends container-style protection to selected non-sandboxed apps' Application Support folders and relocates the user privacy database. <a href="https://mjtsai.com/blog/2026/07/24/golden-gate-application-support-protection/">mjtsai.com</a></li>
+<li id="r19">MacRumors, "Apple Announces macOS Golden Gate Release Date" — macOS 27 released 14 Sep 2026, Apple silicon only; Tahoe 26 the final Intel-compatible release. <a href="https://macrumors.com/2026/09/10/macos-27-golden-gate-release-date/">macrumors.com</a></li>
+<li id="r20">Howard Oakley, "Aren't snapshots purgeable?", 24 Aug 2026 — purgeable accounting inconsistencies from 2017 through Tahoe 26.6. <a href="https://eclecticlight.co/2026/08/24/arent-snapshots-purgeable/">eclecticlight.co</a></li>
+<li id="r21">Adobe Community, "CleanMyMac application affects Adobe software on uninstallation" — MacPaw engineer's public request for help after uninstalls corrupted sibling products through shared resources. <a href="https://community.adobe.com/questions-98/cleanmymac-application-affects-adobe-software-on-uninstallation-587095">community.adobe.com</a></li>
+<li id="r22">Technical guide on APFS copy-on-write, snapshot pinning, and the difference between logical size, <code>df</code> accounting and reported purgeable space. <a href="https://mole.fit/blog/how-to-delete-local-time-machine-snapshots-mac">mole.fit</a></li>
+<li id="r23">Sparkle framework README — appcast as a de-facto standard supported by third-party update-tracking programs; EdDSA and code-signature verification. <a href="https://github.com/sparkle-project/Sparkle">github.com/sparkle-project/Sparkle</a></li>
+<li id="r24">Latest issue thread in which MacUpdater's developer describes using Homebrew Cask data to support automatic updates for thousands of apps. <a href="https://www.github.com/mangerlahn/Latest/issues/19">github.com/mangerlahn/Latest</a></li>
+<li id="r25">Sparkle discussion on detecting Sparkle-enabled apps and how Latest drives updates with its own user driver. <a href="https://github.com/sparkle-project/Sparkle/discussions/2141">github.com/sparkle-project/Sparkle</a></li>
+<li id="r26">Apple Developer Forums thread 717609 — an app's agent garbage-collected on uninstall while its daemon remained registered; diagnosis via <code>sfltool dumpbtm</code>. <a href="https://developer.apple.com/forums/thread/717609">developer.apple.com/forums</a></li>
+<li id="r27">Jamf, "macOS Performance Monitoring" — analysis of the inputs to the energy impact score. <a href="https://www.jamf.com/blog/macos-performance-monitoring-collection/">jamf.com</a></li>
+<li id="r28">Mozilla, Firefox performance documentation on Activity Monitor and <code>top</code>, identifying <code>task_power_info</code> fields behind the wakeup columns. <a href="https://firefox-source-docs.mozilla.org/performance/activity_monitor_and_top.html">firefox-source-docs.mozilla.org</a></li>
+<li id="r29">Michael Tsai, "Liquid Glass Is Permanent", 23 Mar 2026 — Apple's position on adoption and the Xcode 27 deferral flag, alongside developer reports of persistent Tahoe interface defects. <a href="https://mjtsai.com/blog/2026/03/23/liquid-glass-is-permanent">mjtsai.com</a></li>
+<li id="r30">Uninstall walkthrough documenting an application locked with the immutable flag and the Terminal command required to clear it. <a href="https://dev.to/asya_karapetyan_7dd3a62f8/how-to-uninstall-crashplan-from-mac-3bga">dev.to</a></li>
+</ol>
+</section>
+
+</main>
+</div>
+</div>
+</body>
+</html>

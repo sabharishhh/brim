@@ -1,0 +1,12 @@
+{
+  "dark" : {
+    "classicTheme" : {
+      "name" : "Midnight.xccolortheme"
+    }
+  },
+  "light" : {
+    "default" : {
+
+    }
+  }
+}
