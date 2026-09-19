@@ -2,6 +2,7 @@ import Foundation
 import BrimCore
 import BrimScan
 import BrimProtocol
+import BrimOps
 
 /// The in-process implementation of the BrimService.
 public actor BrimService: BrimServiceProtocol {
@@ -82,7 +83,13 @@ public actor BrimService: BrimServiceProtocol {
             if step.kind == .trashPath {
                 let url = URL(fileURLWithPath: step.target)
                 if fm.fileExists(atPath: url.path) {
-                    try fm.removeItem(at: url)
+                    if let fp = step.targetFingerprint {
+                        try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
+                    } else {
+                        // Fallback only if no fingerprint
+                        var resultingURL: NSURL? = nil
+                        try fm.trashItem(at: url, resultingItemURL: &resultingURL)
+                    }
                 }
             }
         }
