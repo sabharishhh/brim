@@ -1,0 +1,20 @@
+{
+  "bundleID": "com.brim.sandboxed",
+  "expectedItems": [
+    {
+      "relativePath": "Applications/SandboxedApp.app",
+      "tier": "A",
+      "description": "The application bundle itself"
+    },
+    {
+      "relativePath": "Library/Containers/com.brim.sandboxed",
+      "tier": "A",
+      "description": "Sandbox container keyed to this bundle identifier"
+    },
+    {
+      "relativePath": "Library/Group Containers/group.com.brim.sandboxed",
+      "tier": "A",
+      "description": "Group container declared in application entitlements"
+    }
+  ]
+}

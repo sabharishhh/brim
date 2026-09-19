@@ -1,0 +1,20 @@
+{
+  "bundleID": "com.brim.classic",
+  "expectedItems": [
+    {
+      "relativePath": "Applications/ClassicApp.app",
+      "tier": "A",
+      "description": "The application bundle itself"
+    },
+    {
+      "relativePath": "Library/Application Support/ClassicApp.app",
+      "tier": "B",
+      "description": "Matches the application's bundle name"
+    },
+    {
+      "relativePath": "Library/Preferences/com.brim.classic.plist",
+      "tier": "B",
+      "description": "Preferences keyed to the bundle identifier"
+    }
+  ]
+}
