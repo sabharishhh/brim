@@ -16,10 +16,14 @@ public enum EvidenceTier: String, Codable, Equatable, Sendable {
 public struct Evidence: Codable, Equatable, Sendable {
     public let url: URL
     public let tier: EvidenceTier
+    public let mechanism: String
+    public let humanSentence: String
     
-    public init(url: URL, tier: EvidenceTier) {
+    public init(url: URL, tier: EvidenceTier, mechanism: String, humanSentence: String) {
         self.url = url
         self.tier = tier
+        self.mechanism = mechanism
+        self.humanSentence = humanSentence
     }
 }
 
