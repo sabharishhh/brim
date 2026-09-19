@@ -38,7 +38,9 @@ let package = Package(
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol"]),
         
         // Tests
-        .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures"),
+        .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures", resources: [
+            .copy("Manifests")
+        ]),
         .testTarget(name: "BrimCoreTests", dependencies: ["BrimCore", "BrimFixtures"]),
         .testTarget(name: "BrimIndexTests", dependencies: ["BrimIndex", "BrimFixtures"]),
         .testTarget(name: "BrimSecurityTests", dependencies: ["BrimService", "BrimHelperCore", "BrimFixtures"]),
