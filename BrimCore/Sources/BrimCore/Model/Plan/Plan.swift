@@ -82,10 +82,14 @@ public enum IntentType: String, Codable, Equatable, Sendable {
 public struct PlanIntent: Codable, Equatable, Sendable {
     public let type: IntentType
     public let subjectIdentity: Identity
+    public let requesterKind: String
+    public let requesterIdentity: String
     
-    public init(type: IntentType, subjectIdentity: Identity) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user") {
         self.type = type
         self.subjectIdentity = subjectIdentity
+        self.requesterKind = requesterKind
+        self.requesterIdentity = requesterIdentity
     }
 }
 
