@@ -16,27 +16,35 @@ public struct SafetyChecker: Sendable {
     /// Evaluates if a given URL is safe to remove.
     public func isSafeToRemove(url: URL) -> Bool {
         // 1. Cannot remove outside the FileSystemRoot (for synthetic tree testing)
-        // If the url does not have the root prefix, it's unsafe.
-        guard url.path.hasPrefix(root.rootURL.path) else {
+        let rootComponents = root.rootURL.standardized.pathComponents
+        let urlComponents = url.standardized.pathComponents
+        
+        guard urlComponents.count >= rootComponents.count,
+              Array(urlComponents.prefix(rootComponents.count)) == rootComponents else {
             return false
         }
         
-        let relativePath = url.path.replacingOccurrences(of: root.rootURL.path, with: "")
+        // Get the relative components
+        let relativeComponents = Array(urlComponents.dropFirst(rootComponents.count))
         
         // 2. Protect /System
-        if relativePath.hasPrefix("/System") || relativePath == "/System" {
+        if relativeComponents.first == "System" {
             return false
         }
         
         // 3. Protect iCloud Drive (Mobile Documents)
-        // A naive check: contains /Library/Mobile Documents
-        if relativePath.contains("/Library/Mobile Documents") {
+        if let libIndex = relativeComponents.firstIndex(of: "Library"), 
+           libIndex + 1 < relativeComponents.count, 
+           relativeComponents[libIndex + 1] == "Mobile Documents" {
             return false
         }
         
         // 4. Protect the Brim App itself
-        if url.path.hasPrefix(brimAppURL.path) || brimAppURL.path.hasPrefix(url.path) {
-            // Note: `brimAppURL.path.hasPrefix(url.path)` prevents removing a parent directory of Brim.
+        let brimComponents = brimAppURL.standardized.pathComponents
+        let isBrimSubdir = urlComponents.count >= brimComponents.count && Array(urlComponents.prefix(brimComponents.count)) == brimComponents
+        let isBrimParent = brimComponents.count >= urlComponents.count && Array(brimComponents.prefix(urlComponents.count)) == urlComponents
+        
+        if isBrimSubdir || isBrimParent {
             return false
         }
         

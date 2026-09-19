@@ -39,8 +39,19 @@ public struct FixtureTreeGenerator {
         // 8. Orphaned item
         try createOrphanedItem()
         
-        // 9. App on a second "volume"
+    // 9. App on a second "volume"
         try createSecondVolumeApp()
+    }
+    
+    /// Cleans up the generated tree, including unsetting immutable flags so it can be deleted.
+    public func destroy() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/chflags")
+        process.arguments = ["-R", "nouchg", rootURL.path]
+        try? process.run()
+        process.waitUntilExit()
+        
+        try? FileManager.default.removeItem(at: rootURL)
     }
     
     // MARK: - Tree Generation Steps
@@ -127,7 +138,12 @@ public struct FixtureTreeGenerator {
         let itemURL = rootURL.appendingPathComponent("Library/Application Support/ImmutableItem")
         try fm.createDirectory(at: itemURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         fm.createFile(atPath: itemURL.path, contents: Data("immutable".utf8))
-        // TODO: apply immutable file attribute via chflags or FileManager attributes
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/chflags")
+        process.arguments = ["uchg", itemURL.path]
+        try process.run()
+        process.waitUntilExit()
     }
     
     private func createOrphanedItem() throws {
