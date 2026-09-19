@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum Capability: String, Codable, Equatable, Sendable {
     case ok
@@ -64,32 +65,52 @@ public struct Step: Codable, Equatable, Sendable {
     }
 }
 
+public struct ExcludedItem: Codable, Equatable, Sendable {
+    public let target: String
+    public let reason: String
+    
+    public init(target: String, reason: String) {
+        self.target = target
+        self.reason = reason
+    }
+}
+
+public enum IntentType: String, Codable, Equatable, Sendable {
+    case uninstall
+}
+
+public struct PlanIntent: Codable, Equatable, Sendable {
+    public let type: IntentType
+    public let subjectIdentity: Identity
+    
+    public init(type: IntentType, subjectIdentity: Identity) {
+        self.type = type
+        self.subjectIdentity = subjectIdentity
+    }
+}
+
 public struct Plan: Codable, Equatable, Sendable {
     public let formatVersion: Int
     public let planId: UUID
     public let createdAt: Date
     public let engineVersion: String
     public let osVersion: String
-    // In a real implementation `intent` and `requester` would have their own structs.
-    public let intentType: String
-    public let intentSubject: String
-    public let requesterKind: String
-    public let requesterIdentity: String
+    
+    public let intent: PlanIntent
     public let steps: [Step]
-    // Excluded items could be defined here
+    public let excludedItems: [ExcludedItem]
+    
     public let expectedTotalBytes: Int64
     
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intentType: String, intentSubject: String, requesterKind: String, requesterIdentity: String, steps: [Step], expectedTotalBytes: Int64) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64) {
         self.formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
         self.engineVersion = engineVersion
         self.osVersion = osVersion
-        self.intentType = intentType
-        self.intentSubject = intentSubject
-        self.requesterKind = requesterKind
-        self.requesterIdentity = requesterIdentity
+        self.intent = intent
         self.steps = steps
+        self.excludedItems = excludedItems
         self.expectedTotalBytes = expectedTotalBytes
     }
     
@@ -97,7 +118,19 @@ public struct Plan: Codable, Equatable, Sendable {
     public func canonicalData() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            var container = encoder.singleValueContainer()
+            try container.encode(formatter.string(from: date))
+        }
+        
         return try encoder.encode(self)
+    }
+    
+    public func contentHash() throws -> String {
+        let data = try canonicalData()
+        let hash = SHA256.hash(data: data)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
