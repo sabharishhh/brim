@@ -16,15 +16,14 @@ public struct DatabaseManager: Sendable {
             try pool?.read { db in
                 _ = try String.fetchOne(db, sql: "PRAGMA schema_version")
             }
-        } catch {
-            // Corrupt or unreadable. Nuke it and recreate.
+        } catch let error as DatabaseError where error.resultCode.rawValue == 11 || error.resultCode.rawValue == 26 {
+            // ONLY nuke if explicitly corrupt (11) or not a DB (26).
             try? FileManager.default.removeItem(at: databaseURL)
-            // Also remove WAL and SHM
             try? FileManager.default.removeItem(atPath: databaseURL.path + "-wal")
             try? FileManager.default.removeItem(atPath: databaseURL.path + "-shm")
             
             pool = try DatabasePool(path: databaseURL.path, configuration: configuration)
-        }
+        } // Any other error (like SQLITE_BUSY, locked, permission denied) throws up to caller to prevent data loss
         
         self.dbPool = pool!
         

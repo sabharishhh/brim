@@ -7,9 +7,9 @@ final class IdentityResolverTests: XCTestCase {
     
     func testResolveFromFixtureTree() async throws {
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
-        
         let gen = FixtureTreeGenerator(rootURL: tempRoot)
+        defer { gen.destroy() }
+        
         try gen.generate()
         
         let fsRoot = FileSystemRoot(rootURL: tempRoot)

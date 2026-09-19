@@ -8,15 +8,15 @@ final class FixtureTests: XCTestCase {
         let root1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         
+        let gen1 = FixtureTreeGenerator(rootURL: root1)
+        let gen2 = FixtureTreeGenerator(rootURL: root2)
+        
         defer {
-            try? FileManager.default.removeItem(at: root1)
-            try? FileManager.default.removeItem(at: root2)
+            gen1.destroy()
+            gen2.destroy()
         }
         
-        let gen1 = FixtureTreeGenerator(rootURL: root1)
         try gen1.generate()
-        
-        let gen2 = FixtureTreeGenerator(rootURL: root2)
         try gen2.generate()
         
         // Ensure both directories have the same number of items and matching paths
