@@ -41,7 +41,7 @@ let package = Package(
         .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures", resources: [
             .copy("Manifests")
         ]),
-        .testTarget(name: "BrimCoreTests", dependencies: ["BrimCore", "BrimFixtures"]),
+        .testTarget(name: "BrimCoreTests", dependencies: ["BrimCore", "BrimScan", "BrimFixtures"]),
         .testTarget(name: "BrimIndexTests", dependencies: ["BrimIndex", "BrimFixtures"]),
         .testTarget(name: "BrimSecurityTests", dependencies: ["BrimService", "BrimHelperCore", "BrimFixtures"]),
         .testTarget(name: "BrimGoldenTests", dependencies: ["BrimCore", "BrimFixtures"]),
