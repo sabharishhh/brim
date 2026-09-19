@@ -10,6 +10,7 @@ public actor BrimService: BrimServiceProtocol {
     private let safetyEngine: SafetyEngine
     private let planner: Planner
     private let planStore: PlanStore
+    private let tokenStore: TokenStore
     
     public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL) {
         self.root = root
@@ -29,6 +30,7 @@ public actor BrimService: BrimServiceProtocol {
         self.safetyEngine = SafetyEngine(safetyChecker: checker)
         self.planner = Planner()
         self.planStore = PlanStore(directoryURL: planStoreDirectory)
+        self.tokenStore = TokenStore()
     }
     
     public func inspect(identity: Identity) async throws -> Footprint {
@@ -49,12 +51,31 @@ public actor BrimService: BrimServiceProtocol {
         return "Plan \(plan.planId) targets \(plan.steps.count) items taking \(plan.expectedTotalBytes) bytes."
     }
     
-    public func apply(planId: UUID) async throws {
-        // T-1.11 says "Wire inspect/plan/explain/requestApproval/apply/verify/history/capabilities"
-        // But execution is M2. So apply() can just be a stub for now or remove items via FileManager directly for M1 tests.
-        // The acceptance criteria: "A test exercising the protocol only — no direct Core access — can drive a complete uninstall on the fixture tree."
-        
+    public func requestApproval(planId: UUID, requesterIdentity: String) async throws {
         let plan = try await planStore.load(planId: planId)
+        // In a real app, this would post a Notification or callback to the UI,
+        // and the UI would call `TokenStore.mintToken()` upon user approval.
+        // For testing, we just simulate the recording.
+        print("Approval requested for plan \(plan.planId) by \(requesterIdentity)")
+    }
+    
+    // Test helper to allow tests to mint tokens since the TokenStore is private
+    // and no protocol API exposes it.
+    public func mintTokenForTest(planId: UUID, planHash: String, requesterIdentity: String) async -> ApprovalToken {
+        return await tokenStore.mintToken(planId: planId, planHash: planHash, requesterIdentity: requesterIdentity)
+    }
+    
+    public func apply(planId: UUID, token: ApprovalToken) async throws {
+        let plan = try await planStore.load(planId: planId)
+        let hash = try plan.contentHash()
+        
+        try await tokenStore.consumeAndValidate(
+            token: token,
+            expectedPlanId: plan.planId,
+            expectedPlanHash: hash,
+            expectedRequesterIdentity: plan.intent.requesterIdentity
+        )
+        
         let fm = FileManager.default
         
         for step in plan.steps {
