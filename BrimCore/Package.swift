@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "BrimProtocol", targets: ["BrimProtocol"]),
         .library(name: "BrimService", targets: ["BrimService"]),
         .library(name: "BrimHelperCore", targets: ["BrimHelperCore"]),
+        .library(name: "BrimUI", targets: ["BrimUI"]),
         .executable(name: "BrimCLI", targets: ["BrimCLI"]),
         .executable(name: "BrimMCP", targets: ["BrimMCP"]),
     ],
@@ -33,6 +34,7 @@ let package = Package(
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
         .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
         .target(name: "BrimHelperCore", dependencies: ["BrimCore", "BrimOps", "BrimProtocol"]),
+        .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService"]),
         
         .executableTarget(name: "BrimCLI", dependencies: ["BrimProtocol"]),
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol"]),
