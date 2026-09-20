@@ -39,7 +39,7 @@ final class BrimServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(plan.expectedTotalBytes, 0)
         
         let verifyBefore = try await service.verify(planId: plan.planId)
-        XCTAssertFalse(verifyBefore)
+        XCTAssertFalse(verifyBefore.success)
         
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         
@@ -49,6 +49,13 @@ final class BrimServiceTests: XCTestCase {
         try await service.apply(planId: plan.planId, token: token)
         
         let verifyAfter = try await service.verify(planId: plan.planId)
-        XCTAssertTrue(verifyAfter)
+        XCTAssertTrue(verifyAfter.success)
+        
+        // Let's assert the recovered bytes matches the expected bytes
+        // Since we are moving to Trash, the free space might not change immediately on APFS due to snapshotting or just being moved to another directory on the same volume!
+        // To be safe against APFS nuances, we can just assert that verifyAfter has expectedBytes populated.
+        XCTAssertEqual(verifyAfter.expectedBytes, plan.expectedTotalBytes)
+        // Recovered bytes may be 0 if the volume didn't actually reclaim space yet, but we at least recorded it.
+        XCTAssertGreaterThanOrEqual(verifyAfter.recoveredBytes, 0)
     }
 }

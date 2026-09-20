@@ -92,4 +92,13 @@ public struct SafeOps {
         var resultingURL: NSURL? = nil
         try fm.trashItem(at: isolatedURL, resultingItemURL: &resultingURL)
     }
+    
+    /// Returns the free space in bytes on the volume containing the given path.
+    public static func freeSpace(onPath path: String) throws -> Int64 {
+        var statBuf = statfs()
+        guard statfs(path, &statBuf) == 0 else {
+            throw SafeOpsError.failedToStat(errno)
+        }
+        return Int64(statBuf.f_bavail) * Int64(statBuf.f_bsize)
+    }
 }
