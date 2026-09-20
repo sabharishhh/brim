@@ -11,26 +11,30 @@ struct ReviewModal: View {
 
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
-    /// One planned finding: either the plan we will execute, or why we could not plan it.
+    /// The steps of the single batch plan, grouped under the finding that
+    /// asked for them, so the user still reviews the selection item by item.
     private struct PlannedFinding: Identifiable {
         let id: UUID
         let title: String
-        let plan: Plan?
-        let failure: String?
+        let steps: [Step]
+        /// Set when the planner produced nothing for this finding's target.
+        let excludedReason: String?
     }
 
+    @State private var plan: Plan?
     @State private var planned: [PlannedFinding] = []
     @State private var isLoading = true
     @State private var isExecuting = false
     @State private var progressLabel: String?
     @State private var errorMessage: String?
 
-    private var executablePlans: [Plan] {
-        planned.compactMap(\.plan).filter { !$0.steps.isEmpty }
+    private var isExecutable: Bool {
+        guard let plan else { return false }
+        return !plan.steps.isEmpty
     }
 
     private var totalBytes: Int64 {
-        executablePlans.reduce(0) { $0 + $1.expectedTotalBytes }
+        plan?.expectedTotalBytes ?? 0
     }
 
     var body: some View {
@@ -81,14 +85,11 @@ struct ReviewModal: View {
             List {
                 ForEach(planned) { entry in
                     Section(header: Text(entry.title)) {
-                        if let failure = entry.failure {
-                            Label(failure, systemImage: "exclamationmark.triangle")
+                        if let reason = entry.excludedReason {
+                            Label(reason, systemImage: "exclamationmark.triangle")
                                 .foregroundColor(.secondary)
-                        } else if let plan = entry.plan, plan.steps.isEmpty {
-                            Text("Nothing to remove — safety checks excluded every item.")
-                                .foregroundColor(.secondary)
-                        } else if let plan = entry.plan {
-                            ForEach(stepRows(of: plan)) { row in
+                        } else {
+                            ForEach(stepRows(of: entry)) { row in
                                 stepRow(row.step)
                             }
                         }
@@ -99,16 +100,13 @@ struct ReviewModal: View {
         }
     }
 
-    /// Step indices restart at 0 in every plan, so a plain `id: \.index` would
-    /// collide across sections and make every section render the first plan's
-    /// steps. Qualify each row with its plan.
     private struct StepRow: Identifiable {
         let id: String
         let step: Step
     }
 
-    private func stepRows(of plan: Plan) -> [StepRow] {
-        plan.steps.map { StepRow(id: "\(plan.planId)-\($0.index)", step: $0) }
+    private func stepRows(of entry: PlannedFinding) -> [StepRow] {
+        entry.steps.map { StepRow(id: "\(entry.id)-\($0.index)", step: $0) }
     }
 
     private func stepRow(_ step: Step) -> some View {
@@ -173,66 +171,89 @@ struct ReviewModal: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(isLoading || isExecuting || executablePlans.isEmpty)
+            .disabled(isLoading || isExecuting || !isExecutable)
         }
         .padding()
     }
 
     // MARK: - Work
 
+    /// One plan for the whole selection: the user reviews and authorizes the
+    /// complete set once, and the approval token is bound to that one plan.
     private func generatePlans() async {
-        var results: [PlannedFinding] = []
+        defer { isLoading = false }
 
-        for (offset, finding) in findings.enumerated() {
-            progressLabel = "Planning \(offset + 1) of \(findings.count): \(finding.title)"
+        let identity = batchIdentity()
+        let intent = PlanIntent(
+            type: .uninstall,
+            subjectIdentity: identity,
+            requesterKind: "ui",
+            requesterIdentity: NSUserName(),
+            specificTargets: findings.map(\.leftover.url)
+        )
 
-            let identity = finding.leftover.potentialOwner ?? Identity(bundleID: nil, name: finding.title)
-            let intent = PlanIntent(
-                type: .uninstall,
-                subjectIdentity: identity,
-                requesterKind: "ui",
-                requesterIdentity: NSUserName(),
-                specificTarget: finding.leftover.url
-            )
-
-            do {
-                let plan = try await service.plan(intent: intent)
-                results.append(PlannedFinding(id: finding.id, title: finding.title, plan: plan, failure: nil))
-            } catch {
-                results.append(PlannedFinding(id: finding.id, title: finding.title, plan: nil, failure: error.localizedDescription))
-            }
+        do {
+            let plan = try await service.plan(intent: intent)
+            self.plan = plan
+            self.planned = group(steps: plan.steps, excluded: plan.excludedItems)
+        } catch {
+            errorMessage = error.localizedDescription
         }
+    }
 
-        planned = results
-        progressLabel = nil
-        isLoading = false
+    /// A single selected item keeps its own identity so the authentication
+    /// prompt and the plan name it; a mixed selection has no one subject.
+    private func batchIdentity() -> Identity {
+        if findings.count == 1, let only = findings.first {
+            return only.leftover.potentialOwner ?? Identity(bundleID: nil, name: only.title)
+        }
+        return Identity(bundleID: nil, name: "\(findings.count) selected items")
+    }
+
+    /// Attribute each planned step back to the finding that asked for it, so
+    /// the sheet still reads item by item.
+    private func group(steps: [Step], excluded: [ExcludedItem]) -> [PlannedFinding] {
+        findings.map { finding in
+            let path = finding.leftover.url.path
+            let mine = steps.filter { $0.target == path || $0.target.hasPrefix(path + "/") }
+
+            if mine.isEmpty {
+                let reason = excluded.first { $0.target == path || $0.target.hasPrefix(path + "/") }?.reason
+                return PlannedFinding(
+                    id: finding.id,
+                    title: finding.title,
+                    steps: [],
+                    excludedReason: reason ?? "Nothing to remove — safety checks excluded this item."
+                )
+            }
+            return PlannedFinding(id: finding.id, title: finding.title, steps: mine, excludedReason: nil)
+        }
     }
 
     private func executePlans() async {
+        guard let plan else { return }
+
         isExecuting = true
         defer { isExecuting = false }
 
-        var completed = Set<UUID>()
+        progressLabel = findings.count == 1
+            ? "Removing \(findings[0].title)..."
+            : "Removing \(findings.count) items..."
 
-        for entry in planned {
-            guard let plan = entry.plan, !plan.steps.isEmpty else { continue }
-            progressLabel = "Removing \(entry.title)..."
-
-            do {
-                let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
-                try await service.apply(planId: plan.planId, token: token)
-                completed.insert(entry.id)
-            } catch {
-                // Report what failed, but keep whatever already succeeded.
-                progressLabel = nil
-                errorMessage = "\(entry.title): \(error.localizedDescription)"
-                onComplete(completed)
-                return
-            }
+        do {
+            // One authorization for the whole selection.
+            let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+            try await service.apply(planId: plan.planId, token: token)
+        } catch {
+            progressLabel = nil
+            errorMessage = error.localizedDescription
+            return
         }
 
         progressLabel = nil
+        // The plan is applied as a unit, so everything it covered is gone.
+        let removed = Set(planned.filter { !$0.steps.isEmpty }.map(\.id))
         dismiss()
-        onComplete(completed)
+        onComplete(removed)
     }
 }
