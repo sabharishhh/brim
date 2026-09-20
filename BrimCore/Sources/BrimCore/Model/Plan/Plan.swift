@@ -170,4 +170,30 @@ public struct Plan: Codable, Equatable, Sendable {
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
+
+    /// Steps in the order they must be applied: archive first so a copy exists
+    /// before anything is destroyed, then auxiliary files, then launchd jobs
+    /// (unloaded before their plist goes), and the app bundle last. Ties
+    /// within a phase keep the planner's own order.
+    public var executionOrderedSteps: [Step] {
+        steps.sorted { a, b in
+            if a.executionPhase != b.executionPhase {
+                return a.executionPhase < b.executionPhase
+            }
+            return a.index < b.index
+        }
+    }
+
+    /// Steps in the order they must be undone: the exact reverse of
+    /// `executionOrderedSteps`, so the app bundle is put back before the
+    /// auxiliary files that live beneath it and a launchd job is only
+    /// reloaded once its plist has been restored.
+    public var undoOrderedSteps: [Step] {
+        steps.sorted { a, b in
+            if a.executionPhase != b.executionPhase {
+                return a.executionPhase > b.executionPhase
+            }
+            return a.index > b.index
+        }
+    }
 }
