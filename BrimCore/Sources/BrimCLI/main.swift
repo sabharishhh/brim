@@ -49,7 +49,7 @@ struct BrimCLI: AsyncParsableCommand {
         
         // Spin up anonymous XPC listener
         let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService)
+        let delegate = BrimXPCListenerDelegate(service: realService, requireCodeSigning: false)
         listener.delegate = delegate
         listener.resume()
         
@@ -58,7 +58,7 @@ struct BrimCLI: AsyncParsableCommand {
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
         connection.resume()
         
-        let client = BrimXPCClient(connection: connection)
+        let client = BrimXPCClient(connection: connection, requireCodeSigning: false)
         
         sharedListener = listener
         sharedDelegate = delegate
