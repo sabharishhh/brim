@@ -12,16 +12,13 @@ public actor BrimService: BrimServiceProtocol {
     private let planner: Planner
     private let planStore: PlanStore
     private let tokenStore: TokenStore
+    private let journalStore: JournalStore
+    private let executor: Executor
     
-    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL) {
+    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL) {
         self.root = root
         
         self.engine = EvidenceEngine(sources: [
-            // AppBundleSource requires the bundleURL, which we don't have universally inside the engine without passing it.
-            // Wait, we need the bundleURL for AppBundleSource, but EvidenceEngine only takes Identity and FileSystemRoot.
-            // Oh right, Identity doesn't have bundleURL, only name and bundleID.
-            // So we use BundleIdentifierComponentSource for app matching, or we add AppBundleSource using a URL if provided.
-            // I'll leave AppBundleSource out of the static engine sources for now, or use BundleIdentifierComponentSource to find the app.
             SandboxContainerSource(),
             InstallerReceiptSource(),
             BundleIdentifierComponentSource()
@@ -32,6 +29,9 @@ public actor BrimService: BrimServiceProtocol {
         self.planner = Planner()
         self.planStore = PlanStore(directoryURL: planStoreDirectory)
         self.tokenStore = TokenStore()
+        
+        self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
+        self.executor = Executor(journalStore: self.journalStore)
     }
     
     public func inspect(identity: Identity) async throws -> Footprint {
@@ -77,22 +77,7 @@ public actor BrimService: BrimServiceProtocol {
             expectedRequesterIdentity: plan.intent.requesterIdentity
         )
         
-        let fm = FileManager.default
-        
-        for step in plan.steps {
-            if step.kind == .trashPath {
-                let url = URL(fileURLWithPath: step.target)
-                if fm.fileExists(atPath: url.path) {
-                    if let fp = step.targetFingerprint {
-                        try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
-                    } else {
-                        // Fallback only if no fingerprint
-                        var resultingURL: NSURL? = nil
-                        try fm.trashItem(at: url, resultingItemURL: &resultingURL)
-                    }
-                }
-            }
-        }
+        _ = try await executor.execute(plan: plan)
     }
     
     public func verify(planId: UUID) async throws -> Bool {
