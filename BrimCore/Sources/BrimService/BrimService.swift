@@ -52,7 +52,21 @@ public actor BrimService: BrimServiceProtocol {
     
     public func inspect(identity: Identity) async throws -> Footprint {
         let projector = FootprintProjector(engine: engine)
-        return try await projector.project(identity: identity, in: root)
+        var footprint = try await projector.project(identity: identity, in: root)
+        
+        // T-5.3: Storage account (Deferred spike on snapshot accounting)
+        let accountant = StorageAccountant()
+        let (logical, reclaimable, pinned) = await accountant.account(for: footprint.items)
+        
+        footprint = Footprint(
+            identity: footprint.identity,
+            items: footprint.items,
+            logicalSizeBytes: logical,
+            reclaimableSizeBytes: reclaimable,
+            snapshotPinnedBytes: pinned
+        )
+        
+        return footprint
     }
     
     public func plan(intent: PlanIntent) async throws -> Plan {
