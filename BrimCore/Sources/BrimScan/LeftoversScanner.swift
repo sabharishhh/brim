@@ -11,8 +11,13 @@ public actor LeftoversScanner {
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
-        let activeBundleIDs = await gatherActiveAppBundleIDs()
+        let activeIdentities = await gatherActiveAppIdentities()
         let receiptBundleIDs = await gatherInstallerReceipts()
+        
+        let activeBundleIDs = Set(activeIdentities.compactMap { $0.bundleID })
+        let activeNames = Set(activeIdentities.map { $0.name.lowercased() })
+        let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
+        let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
         
         var leftovers: [Leftover] = []
         
@@ -31,22 +36,22 @@ public actor LeftoversScanner {
             let dir = root.url(for: domain)
             let items = scanDirectoryLevel1(dir)
             for item in items {
-                let identifier = extractIdentifier(from: item, in: domain)
-                guard let bundleID = identifier else { continue }
+                let name = item.lastPathComponent
                 
                 // Skip Apple system stuff roughly
-                if bundleID.hasPrefix("com.apple.") && !bundleID.hasPrefix("com.apple.logic") && !bundleID.hasPrefix("com.apple.FinalCut") {
+                if name.hasPrefix("com.apple.") && !name.hasPrefix("com.apple.logic") && !name.hasPrefix("com.apple.FinalCut") {
                     continue
                 }
                 
-                if activeBundleIDs.contains(bundleID) {
-                    // Active app, not a leftover
+                if isItemActive(item: item, in: domain, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
                     continue
                 }
+                
+                let ownerID = extractOwnerIdentifier(from: item, in: domain)
                 
                 // Determine category
                 let category: Leftover.Category
-                if receiptBundleIDs.contains(bundleID) || knownPastBundleIDs.contains(bundleID) {
+                if receiptBundleIDs.contains(ownerID) || knownPastBundleIDs.contains(ownerID) || receiptBundleIDs.contains(name) || knownPastBundleIDs.contains(name) {
                     category = .orphaned
                 } else {
                     category = .unclaimed
@@ -58,7 +63,7 @@ public actor LeftoversScanner {
                     url: item,
                     size: size,
                     category: category,
-                    potentialOwner: Identity(bundleID: bundleID, name: item.deletingPathExtension().lastPathComponent)
+                    potentialOwner: Identity(bundleID: ownerID.contains(".") ? ownerID : nil, name: item.deletingPathExtension().lastPathComponent)
                 )
                 leftovers.append(leftover)
             }
@@ -66,6 +71,59 @@ public actor LeftoversScanner {
         
         // Return sorted by size descending as per Volume I (Unclaimed sorted by size)
         return leftovers.sorted { $0.size > $1.size }
+    }
+    
+    private func isItemActive(
+        item: URL,
+        in domain: FileSystemRoot.Domain,
+        activeBundleIDs: Set<String>,
+        activeNames: Set<String>,
+        activeGroupContainers: Set<String>,
+        activeTeamIDs: Set<String>
+    ) -> Bool {
+        let name = item.lastPathComponent
+        let lowerName = name.lowercased()
+        
+        switch domain {
+        case .userGroupContainers:
+            if activeGroupContainers.contains(name) { return true }
+            for teamID in activeTeamIDs {
+                if name.hasPrefix(teamID + ".") {
+                    let suffix = String(name.dropFirst(teamID.count + 1))
+                    if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
+                        return true
+                    }
+                }
+            }
+            if let dotIndex = name.firstIndex(of: ".") {
+                let suffix = String(name[name.index(after: dotIndex)...])
+                if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
+                    return true
+                }
+            }
+            return false
+            
+        case .userApplicationSupport, .userCaches, .userLogs, .userWebKit, .userContainers:
+            if activeBundleIDs.contains(name) { return true }
+            if activeNames.contains(lowerName) { return true }
+            if domain == .userContainers {
+                if let base = name.split(separator: ".").last, activeNames.contains(base.lowercased()) {
+                    return true
+                }
+            }
+            return false
+            
+        case .userPreferences:
+            let base = name.hasSuffix(".plist") ? String(name.dropLast(6)) : name
+            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
+            
+        case .userSavedApplicationState:
+            let base = name.hasSuffix(".savedState") ? String(name.dropLast(11)) : name
+            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
+            
+        default:
+            return activeBundleIDs.contains(name) || activeNames.contains(lowerName)
+        }
     }
     
     private func scanDirectoryLevel1(_ url: URL) -> [URL] {
@@ -76,25 +134,18 @@ public actor LeftoversScanner {
         return urls
     }
     
-    private func extractIdentifier(from url: URL, in domain: FileSystemRoot.Domain) -> String? {
+    private func extractOwnerIdentifier(from url: URL, in domain: FileSystemRoot.Domain) -> String {
         let name = url.lastPathComponent
-        if domain == .userPreferences {
-            if name.hasSuffix(".plist") {
-                return String(name.dropLast(6))
-            }
-            return nil
+        if domain == .userPreferences && name.hasSuffix(".plist") {
+            return String(name.dropLast(6))
         }
-        if domain == .userSavedApplicationState {
-            if name.hasSuffix(".savedState") {
-                return String(name.dropLast(11))
-            }
-            return nil
+        if domain == .userSavedApplicationState && name.hasSuffix(".savedState") {
+            return String(name.dropLast(11))
         }
         if domain == .userGroupContainers {
-            // Group containers often start with TeamID. We'll just return the part after the dot if it exists, or the whole thing.
-            // Actually, we'll return the whole name and let the active apps set contain it if possible, but group containers are hard to match to bundle IDs directly without entitlements.
-            // For now, if we don't have a perfect match, it'll just be "unclaimed"
-            return name
+            if let dotIndex = name.firstIndex(of: ".") {
+                return String(name[name.index(after: dotIndex)...])
+            }
         }
         return name
     }
@@ -117,8 +168,8 @@ public actor LeftoversScanner {
         return total
     }
     
-    private func gatherActiveAppBundleIDs() async -> Set<String> {
-        var active = Set<String>()
+    private func gatherActiveAppIdentities() async -> [Identity] {
+        var identities = [Identity]()
         let fm = FileManager.default
         
         // 1. Applications
@@ -151,15 +202,13 @@ public actor LeftoversScanner {
                 for fileURL in urls {
                     if fileURL.pathExtension == "app" {
                         let identity = await resolver.resolve(bundleURL: fileURL)
-                        if let bid = identity.bundleID {
-                            active.insert(bid)
-                        }
+                        identities.append(identity)
                     }
                 }
             }
         }
         
-        return active
+        return identities
     }
     
     private func gatherInstallerReceipts() async -> Set<String> {
