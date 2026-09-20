@@ -91,6 +91,8 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
 }
 
 class MCPServer {
+    private var approvedTokens: [UUID: ApprovalToken] = [:]
+
     let service: BrimServiceProtocol
     let decoder = JSONDecoder()
     let encoder = JSONEncoder()
@@ -184,10 +186,9 @@ class MCPServer {
                 .object(["name": .string("apply"), "description": .string("Apply an approved plan"), "inputSchema": .object([
                     "type": .string("object"),
                     "properties": .object([
-                        "planId": .object(["type": .string("string")]),
-                        "token": .object(["type": .string("string")])
+                        "planId": .object(["type": .string("string")])
                     ]),
-                    "required": .array([.string("planId"), .string("token")])
+                    "required": .array([.string("planId")])
                 ])]),
                 .object(["name": .string("verify"), "description": .string("Verify an applied plan"), "inputSchema": .object([
                     "type": .string("object"),
@@ -300,18 +301,18 @@ class MCPServer {
             return try await service.explain(planId: pid)
             
         case "request_approval":
-            guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr), let reqId = args["requesterIdentity"]?.stringValue else { throw MCPError.invalidRequest("Invalid arguments") }
-            let token = try await service.requestApproval(planId: pid, requesterIdentity: reqId)
-            let tokenData = try JSONEncoder().encode(token)
-            let tokenString = String(data: tokenData, encoding: .utf8) ?? ""
-            return "Approval successful. Token: \(tokenString)"
+            guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid arguments") }
+            let token = try await service.requestApproval(planId: pid, requesterIdentity: "agent")
+            approvedTokens[pid] = token
+            return "Approval successful. The token has been secured server-side."
             
         case "apply":
-            guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr), let tokenStr = args["token"]?.stringValue else { throw MCPError.invalidRequest("Invalid arguments") }
-            // Decode token? Wait, the API requires `ApprovalToken`. We need to parse it.
-            let tokenData = tokenStr.data(using: .utf8)!
-            let token = try JSONDecoder().decode(ApprovalToken.self, from: tokenData)
+            guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid arguments") }
+            guard let token = approvedTokens[pid] else {
+                return "Error: No approval token found for this plan. You must call request_approval first."
+            }
             try await service.apply(planId: pid, token: token)
+            approvedTokens.removeValue(forKey: pid)
             return "Plan applied."
             
         case "verify":
