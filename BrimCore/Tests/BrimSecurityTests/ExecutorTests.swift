@@ -5,6 +5,42 @@ import Foundation
 
 final class ExecutorTests: XCTestCase {
 
+    func testXPCValidationFailureGracefulFallback() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let journalStoreDir = tempDir.appendingPathComponent("Journals")
+        let journalStore = JournalStore(directoryURL: journalStoreDir)
+        let executor = Executor(journalStore: journalStore)
+        
+        let rootURL = tempDir.appendingPathComponent("App.app")
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.test", name: "Test"))
+        let plan = Plan(
+            planId: UUID(),
+            createdAt: Date(),
+            engineVersion: "1",
+            osVersion: "15.0",
+            intent: intent,
+            steps: [
+                Step(index: 0, kind: .trashPathPrivileged, target: rootURL.path, targetFingerprint: nil, tier: .A, evidence: "Test", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle)
+            ],
+            excludedItems: [],
+            expectedTotalBytes: 0
+        )
+        
+        // Mock EPERM by making the directory immutable and undeletable
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: rootURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: rootURL.path)
+        }
+        
+        let journal = try await executor.execute(plan: plan)
+        
+        XCTAssertEqual(journal.status, .partial)
+        XCTAssertEqual(journal.stepOutcomes[0], "refusedByOS")
+    }
+
+
     func testExecutorRecordsFreeSpaceAndVerifiesDelta() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let journalStoreDir = tempDir.appendingPathComponent("Journals")
