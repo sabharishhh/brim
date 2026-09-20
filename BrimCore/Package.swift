@@ -21,6 +21,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(name: "BrimCore"),
@@ -36,7 +37,12 @@ let package = Package(
         .target(name: "BrimHelperCore", dependencies: ["BrimCore", "BrimOps", "BrimProtocol"]),
         .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService"]),
         
-        .executableTarget(name: "BrimCLI", dependencies: ["BrimProtocol"]),
+        .executableTarget(name: "BrimCLI", dependencies: [
+            "BrimProtocol",
+            "BrimCore",
+            "BrimService",
+            .product(name: "ArgumentParser", package: "swift-argument-parser")
+        ]),
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol"]),
         
         // Tests

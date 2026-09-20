@@ -25,7 +25,7 @@ public struct FileSystemRoot: Sendable {
     }
     
     /// Resolves the absolute URL for a given domain relative to this root.
-    public func url(for domain: Domain, userName: String = "user") -> URL {
+    public func url(for domain: Domain, userName: String = NSUserName()) -> URL {
         switch domain {
         case .userLibrary:
             return rootURL.appendingPathComponent("Users/\(userName)/Library")
