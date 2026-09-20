@@ -1,0 +1,147 @@
+import Foundation
+import Combine
+import BrimCore
+import BrimProtocol
+
+/// One application's discovered footprint, grouped for display.
+///
+/// The grouping is by *mechanism* rather than by folder, because the point
+/// the UI has to make is not "here are some files" but "here is how Brim
+/// knows each of these belongs to this app".
+public struct FootprintGroup: Identifiable, Equatable, Sendable {
+    public let mechanism: String
+    public let items: [FootprintItem]
+
+    public var id: String { mechanism }
+    public var totalBytes: Int64 { items.reduce(0) { $0 + $1.sizeBytes } }
+    /// The strongest tier in the group — evidence quality, shown per group.
+    public var strongestTier: EvidenceTier {
+        items.map(\.evidence.tier).min(by: { $0.rank < $1.rank }) ?? .C
+    }
+    /// The sentence the evidence engine produced, shared by the group.
+    public var explanation: String { items.first?.evidence.humanSentence ?? "" }
+}
+
+extension EvidenceTier {
+    /// Lower is stronger. S is a cryptographic guarantee, C a heuristic.
+    var rank: Int {
+        switch self {
+        case .S: return 0
+        case .A: return 1
+        case .B: return 2
+        case .C: return 3
+        }
+    }
+
+    public var shortLabel: String {
+        switch self {
+        case .S: return "Guaranteed"
+        case .A: return "Direct"
+        case .B: return "Strong"
+        case .C: return "Heuristic"
+        }
+    }
+}
+
+/// Backs the Applications view: the installed list, and the footprint of
+/// whichever one is selected.
+///
+/// The list and the footprint are loaded separately on purpose. Listing is
+/// cheap; discovering a footprint walks the disk, so it is paid for only
+/// when the user asks about one application.
+@MainActor
+public final class ApplicationsModel: ObservableObject {
+    @Published public private(set) var applications: [InstalledApplication] = []
+    @Published public private(set) var isLoading = false
+    @Published public var searchText = ""
+
+    @Published public private(set) var selected: InstalledApplication?
+    @Published public private(set) var footprint: Footprint?
+    @Published public private(set) var isInspecting = false
+    @Published public private(set) var errorMessage: String?
+
+    private var service: (any BrimServiceProtocol)?
+    private var inspectionTask: Task<Void, Never>?
+
+    public init() {}
+
+    deinit { inspectionTask?.cancel() }
+
+    public var visibleApplications: [InstalledApplication] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return applications }
+        return applications.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || ($0.identity.bundleID?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    /// Groups the selected app's footprint by the mechanism that found each
+    /// item, strongest evidence first.
+    public var footprintGroups: [FootprintGroup] {
+        guard let footprint else { return [] }
+        let byMechanism = Dictionary(grouping: footprint.items, by: \.evidence.mechanism)
+        return byMechanism
+            .map { FootprintGroup(mechanism: $0.key, items: $0.value) }
+            .sorted {
+                if $0.strongestTier.rank != $1.strongestTier.rank {
+                    return $0.strongestTier.rank < $1.strongestTier.rank
+                }
+                return $0.totalBytes > $1.totalBytes
+            }
+    }
+
+    public func load(service: any BrimServiceProtocol) async {
+        self.service = service
+        isLoading = applications.isEmpty
+        defer { isLoading = false }
+
+        do {
+            applications = try await service.installedApplications()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Selects an application and discovers its footprint.
+    ///
+    /// Selecting again while a scan is in flight cancels it, so clicking
+    /// down a list does not queue a scan per row.
+    public func select(_ application: InstalledApplication?) {
+        selected = application
+        footprint = nil
+        errorMessage = nil
+
+        inspectionTask?.cancel()
+        guard let application, let service else {
+            isInspecting = false
+            return
+        }
+
+        isInspecting = true
+        inspectionTask = Task { [service] in
+            let discovered = try? await service.inspect(identity: application.identity)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                // Ignore a result that arrived after the user moved on.
+                guard self.selected?.id == application.id else { return }
+                self.footprint = discovered
+                self.isInspecting = false
+            }
+        }
+    }
+
+    /// Whether an uninstall can be offered for the current selection.
+    public var canUninstallSelection: Bool {
+        guard let selected else { return false }
+        return !selected.isSystemProtected
+    }
+
+    /// Why the selected application cannot be removed, in the user's terms.
+    public var uninstallBlockedReason: String? {
+        guard let selected else { return nil }
+        guard selected.isSystemProtected else { return nil }
+        return "macOS protects this application. It is part of the system and cannot be removed."
+    }
+}
