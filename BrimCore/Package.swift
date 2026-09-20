@@ -61,5 +61,6 @@ let package = Package(
         .testTarget(name: "BrimIndexTests", dependencies: ["BrimIndex", "BrimFixtures"]),
         .testTarget(name: "BrimSecurityTests", dependencies: ["BrimService", "BrimHelperCore", "BrimFixtures"]),
         .testTarget(name: "BrimGoldenTests", dependencies: ["BrimCore", "BrimFixtures"]),
+        .testTarget(name: "BrimUITests", dependencies: ["BrimUI", "BrimCore", "BrimProtocol"]),
     ]
 )
