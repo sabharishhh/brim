@@ -12,6 +12,8 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
         // 1. Bundle Name matches
         let name = identity.name
         let paths = [
+                root.url(for: .applications).appendingPathComponent("\(name).app"),
+                root.url(for: .applications).appendingPathComponent("\(name)"),
                 root.url(for: .userApplicationSupport).appendingPathComponent("\(name).app"),
                 root.url(for: .systemLibrary).appendingPathComponent("Application Support/\(name).app"),
                 root.url(for: .userApplicationSupport).appendingPathComponent(name),

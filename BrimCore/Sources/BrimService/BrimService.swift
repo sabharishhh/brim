@@ -69,6 +69,7 @@ public actor BrimService: BrimServiceProtocol {
     
     public enum ApplyError: Error {
         case planAlreadyApplied
+    case validationFailed(String)
     }
     
     public func apply(planId: UUID, token: ApprovalToken) async throws {
@@ -85,6 +86,29 @@ public actor BrimService: BrimServiceProtocol {
         guard !appliedPlanIds.contains(planId) else {
             throw ApplyError.planAlreadyApplied
         }
+        
+        // --- T-2.4 Independent Re-validation ---
+        // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap)
+        let revalidatedPlan = try await self.plan(intent: plan.intent)
+        
+        // Ensure steps match exactly (count, targets, and fingerprints)
+        guard plan.steps.count == revalidatedPlan.steps.count else {
+            let msg = "Step count mismatch: expected \(plan.steps.count), found \(revalidatedPlan.steps.count)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+        }
+        
+        for i in 0..<plan.steps.count {
+            let originalStep = plan.steps[i]
+            let newStep = revalidatedPlan.steps[i]
+            
+            guard originalStep.target == newStep.target else {
+                let msg = "Target mismatch at step \(i): expected \(originalStep.target), found \(newStep.target)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+            }
+            
+            guard originalStep.targetFingerprint == newStep.targetFingerprint else {
+                let msg = "Fingerprint mismatch at step \(i) for target \(originalStep.target): original \(String(describing: originalStep.targetFingerprint)), new \(String(describing: newStep.targetFingerprint))"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+            }
+        }
+        
         appliedPlanIds.insert(planId)
         
         let journal = try await executor.execute(plan: plan)
