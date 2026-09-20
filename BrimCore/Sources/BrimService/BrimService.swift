@@ -310,9 +310,6 @@ public actor BrimService: BrimServiceProtocol {
     
     public func leftovers() async throws -> [Leftover] {
         let scanner = LeftoversScanner(root: root)
-        // Here we could pass knownPastBundleIDs from our index (history).
-        // Since we don't have a direct "observed" index table in BrimService currently (we have LedgerStore which stores LedgerEntry per plan),
-        // we can extract known bundles from the ledger.
         var knownPastBundleIDs = Set<String>()
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
@@ -324,5 +321,10 @@ public actor BrimService: BrimServiceProtocol {
         }
         
         return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs)
+    }
+    
+    public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
+        let scanner = DuplicateScanner()
+        return try await scanner.scan(directory: directory)
     }
 }
