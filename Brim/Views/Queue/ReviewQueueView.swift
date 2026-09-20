@@ -3,6 +3,7 @@ import BrimUI
 
 struct ReviewQueueView: View {
     @StateObject private var viewModel = ReviewQueueViewModel()
+    @StateObject private var recovery = RecoveryStatusModel()
     @State private var selection = Set<UUID>()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brimService) private var service
@@ -74,7 +75,10 @@ struct ReviewQueueView: View {
             }
             .padding()
             
-            Divider()
+            if !recovery.isEmpty {
+                recoveryBanner
+                Divider()
+            }
             
             BrimTableView(
                 items: viewModel.findings,
@@ -115,6 +119,11 @@ struct ReviewQueueView: View {
                 await viewModel.populateProgressively(service: service)
             }
         }
+        .task {
+            // Watches the Trash for as long as this view is on screen, and is
+            // torn down automatically when the task is cancelled.
+            await recovery.start(service: service)
+        }
         .focusedSceneValue(\.removeSelectedAction, removeSelected)
         .sheet(item: $reviewRequest) { request in
             ReviewModal(
@@ -125,11 +134,38 @@ struct ReviewQueueView: View {
                         viewModel.removeItems(with: completedIDs)
                         selection.subtract(completedIDs)
                     }
+                    // Do not wait for the file-system event to come back.
+                    recovery.refreshNow()
                 }
             )
         }
     }
     
+    private var recoveryBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.uturn.backward.circle")
+                .foregroundColor(.secondary)
+
+            Text("\(recovery.items.count) \(recovery.items.count == 1 ? "removal" : "removals") still recoverable from the Trash")
+                .font(.subheadline)
+
+            Text(ByteCountFormatter.string(fromByteCount: recovery.totalBytes, countStyle: .file))
+                .font(.subheadline)
+                .monospacedDigit()
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Text("Freed when you empty the Trash")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(recovery.items.count) removals still recoverable from the Trash, \(ByteCountFormatter.string(fromByteCount: recovery.totalBytes, countStyle: .file)), freed when you empty the Trash")
+    }
+
     private func removeSelected() {
         let selected = viewModel.findings.filter { selection.contains($0.id) }
         guard !selected.isEmpty else { return }

@@ -89,6 +89,7 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
     func undo(planId: UUID) async throws { }
     func dumpBTM() async throws -> String { return "" }
     func leftovers() async throws -> [Leftover] { return [] }
+    func recoverableItems() async throws -> [RecoverableItem] { return [] }
     func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { return [] }
 }
 

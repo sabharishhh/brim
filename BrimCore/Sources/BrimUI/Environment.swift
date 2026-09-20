@@ -26,5 +26,6 @@ public struct DummyBrimService: BrimServiceProtocol {
     public func undo(planId: UUID) async throws { fatalError() }
     public func dumpBTM() async throws -> String { fatalError() }
     public func leftovers() async throws -> [Leftover] { return [] }
+    public func recoverableItems() async throws -> [RecoverableItem] { return [] }
     public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { return [] }
 }

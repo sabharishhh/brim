@@ -150,6 +150,17 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             }
         }
     }
+    public func recoverableItems(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        Task {
+            do {
+                let items = try await service.recoverableItems()
+                let data = try JSONEncoder().encode(items)
+                reply(data, nil)
+            } catch {
+                reply(nil, error as NSError)
+            }
+        }
+    }
     public func scanDuplicates(directoryURLString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
         let url = URL(fileURLWithPath: directoryURLString)
         Task {
