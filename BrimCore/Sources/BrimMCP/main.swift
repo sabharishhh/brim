@@ -88,6 +88,7 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
     func history() async throws -> [Plan] { return [] }
     func undo(planId: UUID) async throws { }
     func dumpBTM() async throws -> String { return "" }
+    func leftovers() async throws -> [Leftover] { return [] }
 }
 
 class MCPServer {

@@ -293,6 +293,22 @@ public actor BrimService: BrimServiceProtocol {
             throw NSError(domain: "BrimService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to decode dumpbtm output."])
         }
     }
-
-
+    
+    public func leftovers() async throws -> [Leftover] {
+        let scanner = LeftoversScanner(root: root)
+        // Here we could pass knownPastBundleIDs from our index (history).
+        // Since we don't have a direct "observed" index table in BrimService currently (we have LedgerStore which stores LedgerEntry per plan),
+        // we can extract known bundles from the ledger.
+        var knownPastBundleIDs = Set<String>()
+        let entries = try await ledgerStore.allEntries()
+        for entry in entries {
+            if let plan = try? await planStore.load(planId: entry.planId) {
+                if let bid = plan.intent.subjectIdentity.bundleID {
+                    knownPastBundleIDs.insert(bid)
+                }
+            }
+        }
+        
+        return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs)
+    }
 }

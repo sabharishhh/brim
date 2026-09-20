@@ -128,4 +128,15 @@ public actor BrimXPCClient: BrimServiceProtocol {
             }
         }
     }
+
+    public func leftovers() async throws -> [Leftover] {
+        let resultData: Data = try await withProxy { proxy, reply in
+            proxy.leftovers { data, error in
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
+            }
+        }
+        return try decoder.decode([Leftover].self, from: resultData)
+    }
 }

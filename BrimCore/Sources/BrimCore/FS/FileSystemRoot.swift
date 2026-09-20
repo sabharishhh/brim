@@ -15,6 +15,10 @@ public struct FileSystemRoot: Sendable {
         case userLibrary
         case userPreferences
         case userApplicationSupport
+        case userCaches
+        case userSavedApplicationState
+        case userLogs
+        case userWebKit
         case userContainers
         case userGroupContainers
         case userLaunchAgents
@@ -24,6 +28,8 @@ public struct FileSystemRoot: Sendable {
         case applications
         case receipts
         case tempDirs
+        case volumes
+        case users
     }
     
     /// Resolves the absolute URL for a given domain relative to this root.
@@ -35,6 +41,14 @@ public struct FileSystemRoot: Sendable {
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Preferences")
         case .userApplicationSupport:
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Application Support")
+        case .userCaches:
+            return rootURL.appendingPathComponent("Users/\(userName)/Library/Caches")
+        case .userSavedApplicationState:
+            return rootURL.appendingPathComponent("Users/\(userName)/Library/Saved Application State")
+        case .userLogs:
+            return rootURL.appendingPathComponent("Users/\(userName)/Library/Logs")
+        case .userWebKit:
+            return rootURL.appendingPathComponent("Users/\(userName)/Library/WebKit")
         case .userContainers:
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Containers")
         case .userGroupContainers:
@@ -53,6 +67,10 @@ public struct FileSystemRoot: Sendable {
             return rootURL.appendingPathComponent("Library/Receipts")
         case .tempDirs:
             return rootURL.appendingPathComponent("private/tmp")
+        case .volumes:
+            return rootURL.appendingPathComponent("Volumes")
+        case .users:
+            return rootURL.appendingPathComponent("Users")
         }
     }
 }
