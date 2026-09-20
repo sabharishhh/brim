@@ -11,6 +11,7 @@ final class BrimServiceTests: XCTestCase {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         let planStoreDir = tempDir.appendingPathComponent("Plans")
+        let journalStoreDir = tempDir.appendingPathComponent("Journals")
         
         let gen = FixtureTreeGenerator(rootURL: rootURL)
         defer { gen.destroy() }
@@ -18,7 +19,7 @@ final class BrimServiceTests: XCTestCase {
         
         let root = FileSystemRoot(rootURL: rootURL)
         let brimAppURL = rootURL.appendingPathComponent("Brim.app")
-        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir)
+        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
         
         let bundleURL = rootURL.appendingPathComponent("Applications/SandboxedApp.app")
         let resolver = IdentityResolver(root: root)
