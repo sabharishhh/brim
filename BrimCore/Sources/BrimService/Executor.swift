@@ -56,7 +56,10 @@ public actor Executor {
                 }
             }
             
-            if !fm.fileExists(atPath: step.target) {
+            // Steps whose target is an identifier rather than a path are
+            // not subject to the "already gone" check; a bundle id is not a
+            // file, and skipping it here would silently drop the reset.
+            if step.kind != .resetPrivacyGrants, !fm.fileExists(atPath: step.target) {
                 journal.stepOutcomes[step.index] = "already_gone"
                 continue
             }
@@ -80,6 +83,21 @@ public actor Executor {
                         try SafeOps.deleteItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     }
                     journal.stepOutcomes[step.index] = "ok"
+                } else if step.kind == .resetPrivacyGrants {
+                    // Must run while the bundle is still on disk; the plan's
+                    // privacyReset phase sorts ahead of every removal so that
+                    // holds. The target is a bundle identifier, not a path.
+                    //
+                    // Recorded but never fatal: the user asked for the app to
+                    // be removed, and refusing to remove it because a grant
+                    // could not be cleared would be the wrong trade. The
+                    // outcome is journalled so the result can say so.
+                    do {
+                        try PrivacyGrants.resetAll(bundleID: step.target)
+                        journal.stepOutcomes[step.index] = "ok"
+                    } catch {
+                        journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
+                    }
                 } else if step.kind == .unloadLaunchdJob {
                     try SafeOps.unloadLaunchdJob(path: step.target)
                     journal.stepOutcomes[step.index] = "ok"
