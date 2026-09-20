@@ -4,9 +4,11 @@ import Foundation
 /// All domain lookups are resolved relative to this root.
 public struct FileSystemRoot: Sendable {
     public let rootURL: URL
+    public let userName: String
     
-    public init(rootURL: URL = URL(fileURLWithPath: "/")) {
+    public init(rootURL: URL = URL(fileURLWithPath: "/"), userName: String = NSUserName()) {
         self.rootURL = rootURL
+        self.userName = userName
     }
     
     public enum Domain {
@@ -25,7 +27,7 @@ public struct FileSystemRoot: Sendable {
     }
     
     /// Resolves the absolute URL for a given domain relative to this root.
-    public func url(for domain: Domain, userName: String = NSUserName()) -> URL {
+    public func url(for domain: Domain) -> URL {
         switch domain {
         case .userLibrary:
             return rootURL.appendingPathComponent("Users/\(userName)/Library")

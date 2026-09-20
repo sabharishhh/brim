@@ -36,7 +36,7 @@ final class ExecutorTests: XCTestCase {
             osVersion: "1",
             intent: intent,
             steps: [
-                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: nil, tier: .A, evidence: "app", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low),
+                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: nil, tier: .A, evidence: "app", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle),
                 Step(index: 1, kind: .trashPath, target: blockedURL.path, targetFingerprint: nil, tier: .A, evidence: "blocked", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low),
                 Step(index: 2, kind: .trashPath, target: okURL.path, targetFingerprint: nil, tier: .A, evidence: "ok", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low)
             ],

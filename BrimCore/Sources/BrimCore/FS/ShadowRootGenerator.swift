@@ -27,8 +27,20 @@ public struct ShadowRootGenerator: Sendable {
             let parentURL = destURL.deletingLastPathComponent()
             try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
             
-            // Copy item
-            try fm.copyItem(at: sourceURL, to: destURL)
+            // Copy item safely without traversing symlinks
+            var statBuf = stat()
+            if lstat(path, &statBuf) == 0 {
+                let mode = statBuf.st_mode
+                if (mode & S_IFMT) == S_IFLNK {
+                    let destination = try fm.destinationOfSymbolicLink(atPath: path)
+                    try fm.createSymbolicLink(atPath: destURL.path, withDestinationPath: destination)
+                } else if (mode & S_IFMT) == S_IFDIR {
+                    try fm.createDirectory(at: destURL, withIntermediateDirectories: true)
+                } else {
+                    let data = try Data(contentsOf: sourceURL)
+                    try data.write(to: destURL)
+                }
+            }
         }
         
         return FileSystemRoot(rootURL: shadowDir)

@@ -6,13 +6,14 @@ import BrimOps
 
 /// The in-process implementation of the BrimService.
 public actor BrimService: BrimServiceProtocol {
-    private let root: FileSystemRoot
+    public let root: FileSystemRoot
     private let engine: EvidenceEngine
     private let safetyEngine: SafetyEngine
     private let planner: Planner
-    private let planStore: PlanStore
-    private let tokenStore: TokenStore
+    public let planStore: PlanStore
+    public let tokenStore: TokenStore
     private let journalStore: JournalStore
+    private let ledgerStore: LedgerStore
     private let executor: Executor
     
     public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL) {
@@ -28,7 +29,12 @@ public actor BrimService: BrimServiceProtocol {
         self.safetyEngine = SafetyEngine(safetyChecker: checker)
         self.planner = Planner()
         self.planStore = PlanStore(directoryURL: planStoreDirectory)
-        self.tokenStore = TokenStore()
+        let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
+        try? FileManager.default.createDirectory(at: tokensDir, withIntermediateDirectories: true)
+        self.tokenStore = TokenStore(directoryURL: tokensDir)
+        
+        let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
+        self.ledgerStore = LedgerStore(directoryURL: ledgersDir)
         
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
         self.executor = Executor(journalStore: self.journalStore)
@@ -59,11 +65,10 @@ public actor BrimService: BrimServiceProtocol {
         // For testing, we just simulate the recording.
         print("Approval requested for plan \(plan.planId) by \(requesterIdentity)")
     }
+    private var appliedPlanIds: Set<UUID> = []
     
-    // Test helper to allow tests to mint tokens since the TokenStore is private
-    // and no protocol API exposes it.
-    public func mintTokenForTest(planId: UUID, planHash: String, requesterIdentity: String) async -> ApprovalToken {
-        return await tokenStore.mintToken(planId: planId, planHash: planHash, requesterIdentity: requesterIdentity)
+    public enum ApplyError: Error {
+        case planAlreadyApplied
     }
     
     public func apply(planId: UUID, token: ApprovalToken) async throws {
@@ -77,7 +82,27 @@ public actor BrimService: BrimServiceProtocol {
             expectedRequesterIdentity: plan.intent.requesterIdentity
         )
         
-        _ = try await executor.execute(plan: plan)
+        guard !appliedPlanIds.contains(planId) else {
+            throw ApplyError.planAlreadyApplied
+        }
+        appliedPlanIds.insert(planId)
+        
+        let journal = try await executor.execute(plan: plan)
+        
+        // Record ledger entry
+        let outcomes = journal.stepOutcomes.map { (index, resultStr) in
+            let status: StepOutcome = resultStr == "ok" ? .success : .failed
+            return Outcome(stepIndex: index, result: status, errorMessage: resultStr == "ok" ? nil : resultStr)
+        }
+        let recovered = max(0, (journal.freeSpaceAfter ?? 0) - (journal.freeSpaceBefore ?? 0))
+        let ledgerEntry = LedgerEntry(
+            planId: plan.planId,
+            planHash: hash,
+            executedAt: Date(),
+            outcomes: outcomes,
+            recoveredBytes: recovered
+        )
+        try await ledgerStore.write(entry: ledgerEntry)
     }
     
     public func verify(planId: UUID) async throws -> VerificationResult {
@@ -88,11 +113,11 @@ public actor BrimService: BrimServiceProtocol {
         let after = journal?.freeSpaceAfter ?? 0
         let recoveredBytes = max(0, after - before)
         
-        // Re-observe targets
-        let fm = FileManager.default
+        // Re-observe targets using lstat to avoid traversing symlinks
         var targetsRemaining = 0
         for step in plan.steps {
-            if fm.fileExists(atPath: step.target) {
+            var statBuf = stat()
+            if lstat(step.target, &statBuf) == 0 { // 0 means it exists (symlink or real file)
                 // Was it excluded?
                 if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" {
                     continue
@@ -114,15 +139,11 @@ public actor BrimService: BrimServiceProtocol {
     }
     
     public func history() async throws -> [Plan] {
-        // Return all completed or partially completed plans from the journal store
-        let planIds = try await journalStore.allPlanIds()
+        let entries = try await ledgerStore.allEntries()
         var plans: [Plan] = []
-        for id in planIds {
-            if let journal = try? await journalStore.load(planId: id),
-               journal.status == .completed || journal.status == .partial {
-                if let plan = try? await planStore.load(planId: id) {
-                    plans.append(plan)
-                }
+        for entry in entries {
+            if let plan = try? await planStore.load(planId: entry.planId) {
+                plans.append(plan)
             }
         }
         return plans
@@ -137,16 +158,7 @@ public actor BrimService: BrimServiceProtocol {
         
         let fm = FileManager.default
         
-        // 1. Check if ANY path is re-occupied before moving things back
-        for step in plan.steps {
-            if trashedURLs[step.index] != nil {
-                if fm.fileExists(atPath: step.target) {
-                    throw NSError(domain: "BrimService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."])
-                }
-            }
-        }
-        
-        // 2. Restore items from Trash
+        // 1. Restore items from Trash (atomically fails if path is re-occupied)
         for step in plan.steps {
             if let trashedURL = trashedURLs[step.index] {
                 let targetURL = URL(fileURLWithPath: step.target)
@@ -156,7 +168,11 @@ public actor BrimService: BrimServiceProtocol {
                     try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
                 }
                 
-                try fm.moveItem(at: trashedURL, to: targetURL)
+                do {
+                    try SafeOps.restoreItem(from: trashedURL.path, to: step.target)
+                } catch SafeOpsError.pathOccupied {
+                    throw NSError(domain: "BrimOps", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."])
+                }
             }
         }
         

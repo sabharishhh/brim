@@ -8,6 +8,7 @@ public enum SafeOpsError: Error {
     case failedToRename(Int32)
     case failedToUnlink(Int32)
     case crossDeviceLink
+    case pathOccupied
 }
 
 public struct SafeOps {
@@ -87,11 +88,40 @@ public struct SafeOps {
         // 3. Now that it is in our secure isolated temp directory, we can safely delete or trash it recursively
         let isolatedURL = volumeURL.appendingPathComponent(destName)
         
-        // For M1, we can just recursively delete it, or move to the actual Trash.
-        // Let's move to Trash using FileManager since it's now in an isolated space.
+        // Move to Trash using FileManager since the item is now in an isolated temp space.
         var resultingURL: NSURL? = nil
         try fm.trashItem(at: isolatedURL, resultingItemURL: &resultingURL)
         return resultingURL as URL?
+    }
+    
+    /// Securely restores an item from the Trash to its original location.
+    /// Opens the parent directory of the destination with O_NOFOLLOW | O_DIRECTORY
+    /// and uses renameat to prevent symlink attacks.
+    public static func restoreItem(
+        from sourcePath: String,
+        to destPath: String
+    ) throws {
+        let destURL = URL(fileURLWithPath: destPath)
+        let parentURL = destURL.deletingLastPathComponent()
+        
+        let parentFd = open(parentURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard parentFd >= 0 else {
+            throw SafeOpsError.failedToOpenParent(errno)
+        }
+        defer { close(parentFd) }
+        
+        // Ensure source exists and is what we think it is (not strictly necessary to check inode for restore,
+        // but we must use renameatx_np with RENAME_EXCL to place it safely and atomically fail if occupied)
+        if renameatx_np(AT_FDCWD, sourcePath, parentFd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
+            let err = errno
+            if err == EEXIST {
+                throw SafeOpsError.pathOccupied
+            }
+            if err == EXDEV {
+                throw SafeOpsError.crossDeviceLink
+            }
+            throw SafeOpsError.failedToRename(err)
+        }
     }
     
     /// Returns the free space in bytes on the volume containing the given path.

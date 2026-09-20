@@ -18,18 +18,10 @@ public actor Executor {
         var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending, freeSpaceBefore: freeBefore)
         try await journalStore.write(entry: journal)
         
-        // T-1.14: "The app bundle is trashed last so a partially blocked run can be retried."
-        // We separate app bundle from others based on the footprint capability or tier?
-        // Actually, we can check if the target has ".app" or sort by a specific heuristic.
-        // It's safer to sort steps: non-app first, app last.
+        // Sort by executionPhase, breaking ties by index
         let sortedSteps = plan.steps.sorted { a, b in
-            let aIsApp = a.target.hasSuffix(".app") || a.target.hasSuffix(".app/")
-            let bIsApp = b.target.hasSuffix(".app") || b.target.hasSuffix(".app/")
-            
-            if aIsApp && !bIsApp {
-                return false // b comes first
-            } else if !aIsApp && bIsApp {
-                return true // a comes first
+            if a.executionPhase != b.executionPhase {
+                return a.executionPhase < b.executionPhase
             }
             return a.index < b.index
         }
@@ -37,8 +29,7 @@ public actor Executor {
         var hasFailures = false
         
         for step in sortedSteps {
-            let isApp = step.target.hasSuffix(".app") || step.target.hasSuffix(".app/")
-            if hasFailures && isApp {
+            if hasFailures && step.executionPhase == .appBundle {
                 journal.stepOutcomes[step.index] = "skipped_due_to_prior_failures"
                 continue
             }
@@ -73,8 +64,13 @@ public actor Executor {
                 hasFailures = true
             }
             
-            // Record after each step to handle crashes mid-way
-            try await journalStore.write(entry: journal)
+            // Record after each step to handle crashes mid-way. 
+            // AUDIT H-6 FIX: Swallow write errors to avoid aborting execution.
+            do {
+                try await journalStore.write(entry: journal)
+            } catch {
+                print("Warning: Failed to write journal entry for step \(step.index): \(error)")
+            }
         }
         
         let freeAfter = try? SafeOps.freeSpace(onPath: rootPath)
