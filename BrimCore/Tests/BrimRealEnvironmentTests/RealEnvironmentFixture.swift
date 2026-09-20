@@ -84,6 +84,80 @@ struct RealEnvironmentFixture {
         return url
     }
 
+    /// A bundle identifier carrying the harness marker, so every path derived
+    /// from it lands inside the namespace the safety rail will allow.
+    var harnessBundleID: String { "\(runID).deepuninstall" }
+
+    /// Whether this process may create a sandbox container it can later
+    /// remove.
+    ///
+    /// Creating `~/Library/Containers/<id>` makes `containermanagerd` adopt
+    /// the directory and write protected metadata inside it. Removing that
+    /// afterwards needs Full Disk Access, which the app has and a plain
+    /// `swift test` run usually does not — so a harness without it would
+    /// strand a directory in the user's Library on every run. Probed the same
+    /// way the app probes, by attempting the operation that actually fails.
+    static var canManageContainers: Bool {
+        let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
+        let fd = open(trash.path, O_EVTONLY)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
+    }
+
+    /// Lays down the footprint a real application scatters across the user's
+    /// Library — the whole point of a deep uninstall being that every one of
+    /// these is found from the identity alone, with nothing named explicitly.
+    ///
+    /// - Returns: every path created, labelled by the mechanism that should
+    ///   discover it, so a failure names what was missed.
+    mutating func makeAppFootprint() throws -> [(label: String, url: URL)] {
+        let id = harnessBundleID
+        let library = home.appendingPathComponent("Library")
+
+        var directories: [(String, URL)] = [
+            ("Application Support", library.appendingPathComponent("Application Support/\(id)")),
+            ("Caches", library.appendingPathComponent("Caches/\(id)")),
+            ("HTTPStorages", library.appendingPathComponent("HTTPStorages/\(id)")),
+            ("WebKit", library.appendingPathComponent("WebKit/\(id)")),
+            ("Logs", library.appendingPathComponent("Logs/\(id)")),
+            ("Application Scripts", library.appendingPathComponent("Application Scripts/\(id)")),
+            ("Saved Application State", library.appendingPathComponent("Saved Application State/\(id).savedState"))
+        ]
+
+        if Self.canManageContainers {
+            directories.append(("Containers", library.appendingPathComponent("Containers/\(id)")))
+        }
+
+        var made: [(String, URL)] = []
+        for (label, url) in directories {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try "harness\n".write(to: url.appendingPathComponent("data.bin"), atomically: true, encoding: .utf8)
+            created.append(url)
+            made.append((label, url))
+        }
+
+        let files: [(String, URL)] = [
+            ("Preferences", library.appendingPathComponent("Preferences/\(id).plist")),
+            ("LaunchAgents", library.appendingPathComponent("LaunchAgents/\(id).plist"))
+        ]
+        for (label, url) in files {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            let plist = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict><key>Label</key><string>\(id)</string></dict></plist>
+            """
+            try plist.write(to: url, atomically: true, encoding: .utf8)
+            created.append(url)
+            made.append((label, url))
+        }
+
+        return made
+    }
+
     // MARK: - Teardown
 
     /// Removes everything this run created. Call from `tearDown`, and treat
@@ -95,7 +169,19 @@ struct RealEnvironmentFixture {
                 XCTFail("Refusing to remove \(url.path): outside the harness namespace", file: file, line: line)
                 continue
             }
-            try? FileManager.default.removeItem(at: url)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                // Never silent: a harness that cannot clean up after itself
+                // leaves real directories in the user's Library, and a
+                // swallowed error here is how four of them accumulated.
+                XCTFail(
+                    "Harness could not remove \(url.path): \(error.localizedDescription). "
+                    + "Remove it by hand before running again.",
+                    file: file, line: line
+                )
+            }
         }
     }
 
