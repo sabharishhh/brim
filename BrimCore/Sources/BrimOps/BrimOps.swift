@@ -38,6 +38,23 @@ public struct SafeOps {
         }
         defer { close(parentFd) }
         
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(parentFd, F_GETPATH, &buffer) != -1 else {
+            throw SafeOpsError.failedToOpenParent(errno)
+        }
+        let resolvedPath = String(cString: buffer)
+        
+        let expectedParent = parentPath.hasPrefix("/private/") ? parentPath : (parentPath.hasPrefix("/") && !parentPath.hasPrefix("/System/") && !parentPath.hasPrefix("/Library/") && !parentPath.hasPrefix("/Applications/") && !parentPath.hasPrefix("/Users/") ? "/private\(parentPath)" : parentPath)
+        let resolvedNormalized = resolvedPath.hasPrefix("/private/") ? resolvedPath : (resolvedPath.hasPrefix("/") && !resolvedPath.hasPrefix("/System/") && !resolvedPath.hasPrefix("/Library/") && !resolvedPath.hasPrefix("/Applications/") && !resolvedPath.hasPrefix("/Users/") ? "/private\(resolvedPath)" : resolvedPath)
+        
+        // Allow strict prefixing for standard macOS volumes if private is added, but to be robust:
+        let p1 = parentPath.hasPrefix("/private") ? parentPath : "/private" + parentPath
+        let r1 = resolvedPath.hasPrefix("/private") ? resolvedPath : "/private" + resolvedPath
+        
+        guard parentPath == resolvedPath || p1 == r1 else {
+            throw SafeOpsError.failedToOpenParent(ELOOP)
+        }
+        
         // Stat the item relative to parent using AT_SYMLINK_NOFOLLOW
         var statBuf = stat()
         let statResult = fstatat(parentFd, itemName, &statBuf, AT_SYMLINK_NOFOLLOW)

@@ -46,6 +46,8 @@ This is the running scratchpad for the entire Brim development session. It docum
 | `79a0a24` | T-1.18 | CLI v1 implemented with Swift Argument Parser (`apps`, `footprint`, `plan uninstall`, `approve-request`, `apply`, `verify`, `history`) |
 | `b4ba9cc` | T-1.19 | Shadow-root dry run implemented via `ShadowRootGenerator` and `dry-run-uninstall` CLI command |
 | `8f65597` | T-4.1 | `BrimMCP` executable mapping service verbs over stdio JSON-RPC. Verified no network listeners. |
+| `5de10af` | T-4.2 | Untrusted string tagging (`<fs_data>`) in MCP server; `plan` specificTarget validated against footprint before API. |
+| `5de10af` | T-4.3 | T-4.3 was already completed during M1. PlanIntent records requesterKind and requesterIdentity. |
 | `HEAD` | Pre-M2 Audit Fixes | All C, H, M, and L-level findings addressed, tests restored. |
 | `cf41d8e` | T-2.1 | Extracted `BrimService` over `BrimXPCProtocol`. `BrimXPCServer` and `BrimXPCClient` built and wired into CLI and tests. |
 | `c1e8e1d` | T-2.3 | Privileged helper implemented via `SMAppService.daemon`. Wrote `.plist`, `BrimHelper` executable target, and `install` CLI command. |

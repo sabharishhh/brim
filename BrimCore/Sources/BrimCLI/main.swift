@@ -195,7 +195,7 @@ struct ApproveRequest: AsyncParsableCommand {
             throw ValidationError("Invalid UUID")
         }
         
-        try await BrimCLI.getService().requestApproval(planId: uuid, requesterIdentity: NSUserName())
+        let token = try await BrimCLI.getService().requestApproval(planId: uuid, requesterIdentity: NSUserName())
         
         if json {
             outputJSON(["status": "approval_requested", "planId": uuid.uuidString])
@@ -309,9 +309,7 @@ struct DryRunUninstall: AsyncParsableCommand {
         
         // Mock token since CLI can't officially request one in shadow (concrete cast needed)
         // Actually, we can cast to BrimService
-        try await shadowService.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
-        let hash = try plan.contentHash()
-        let token = await shadowService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: NSUserName())
+        let token = try await shadowService.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
         
         try await shadowService.apply(planId: plan.planId, token: token)
         

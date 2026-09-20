@@ -39,6 +39,49 @@ final class SecurityRegressionSuiteTests: XCTestCase {
     // This is already fully covered by XPCAuthenticationTests.testCodeSigningRejectsUnsignedTestRunner
     // which tests that the NSXPCListenerDelegate rejects connections without the correct code signing identity.
     
+
+    func testSymlinkSwapIntermediateComponent() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        // Setup: /tempDir/A/B/File.txt
+        let pathA = tempDir.appendingPathComponent("A")
+        let pathB = pathA.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: pathB, withIntermediateDirectories: true)
+        let targetFile = pathB.appendingPathComponent("File.txt")
+        try "test".write(to: targetFile, atomically: true, encoding: .utf8)
+        
+        var statBuf = stat()
+        stat(targetFile.path, &statBuf)
+        let expectedDev = statBuf.st_dev
+        let expectedIno = statBuf.st_ino
+        
+        // Swap: Replace /tempDir/A with a symlink to /tempDir/Secret
+        let secretDir = tempDir.appendingPathComponent("Secret")
+        try FileManager.default.createDirectory(at: secretDir, withIntermediateDirectories: true)
+        let secretPathB = secretDir.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: secretPathB, withIntermediateDirectories: true)
+        let secretFile = secretPathB.appendingPathComponent("File.txt")
+        try "secret".write(to: secretFile, atomically: true, encoding: .utf8)
+        
+        try FileManager.default.removeItem(at: pathA)
+        try FileManager.default.createSymbolicLink(at: pathA, withDestinationURL: secretDir)
+        
+        // Now try to trash the targetFile (which is actually inside Secret via symlink A)
+        XCTAssertThrowsError(try SafeOps.trashItem(targetPath: targetFile.path, expectedDev: expectedDev, expectedIno: expectedIno)) { error in
+            guard let safeError = error as? SafeOpsError else {
+                XCTFail("Unexpected error type")
+                return
+            }
+            if case .failedToOpenParent(let err) = safeError, err == ELOOP {
+                // Success, caught intermediate symlink!
+            } else {
+                XCTFail("Unexpected SafeOpsError: \(safeError)")
+            }
+        }
+    }
+
     // (c) a symlink swapped between plan and execution
     func testSymlinkSwapBetweenPlanAndExecution() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

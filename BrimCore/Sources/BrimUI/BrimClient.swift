@@ -23,10 +23,7 @@ public class BrimClient: ObservableObject {
     public func execute(plan: Plan, requesterIdentity: String) async throws -> VerificationResult {
         guard let service = service else { throw NSError(domain: "BrimClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Service not connected"]) }
         
-        try await service.requestApproval(planId: plan.planId, requesterIdentity: requesterIdentity)
-        
-        let hash = try plan.contentHash()
-        let token = try await service.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: requesterIdentity)
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         return try await service.verify(planId: plan.planId)
