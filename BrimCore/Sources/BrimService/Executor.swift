@@ -50,14 +50,20 @@ public actor Executor {
             
             do {
                 if step.kind == .trashPath {
+                    let resultingURL: URL?
                     if let fp = step.targetFingerprint {
-                        try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
+                        resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     } else {
                         let url = URL(fileURLWithPath: step.target)
-                        var resultingURL: NSURL? = nil
-                        try fm.trashItem(at: url, resultingItemURL: &resultingURL)
+                        var res: NSURL? = nil
+                        try fm.trashItem(at: url, resultingItemURL: &res)
+                        resultingURL = res as URL?
                     }
                     journal.stepOutcomes[step.index] = "ok"
+                    if let url = resultingURL {
+                        if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
+                        journal.stepTrashedURLs?[step.index] = url
+                    }
                 } else {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
