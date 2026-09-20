@@ -29,7 +29,8 @@ public actor BrimService: BrimServiceProtocol {
             BundleIdentifierStateSource(),
             TeamIDSource(),
             LaunchServicesSource(),
-            SMAppServiceSource()
+            SMAppServiceSource(),
+            LaunchdSource()
         ])
         
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
@@ -157,6 +158,7 @@ public actor BrimService: BrimServiceProtocol {
                 if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" {
                     continue
                 }
+                print("VERIFY FOUND LEFTOVER TARGET: \(step.target) (Step \(step.index) - \(step.kind))")
                 targetsRemaining += 1
             }
         }
@@ -201,6 +203,10 @@ public actor BrimService: BrimServiceProtocol {
             return a.index > b.index
         }
         for step in sortedSteps {
+            if step.kind == .unloadLaunchdJob {
+                try? SafeOps.loadLaunchdJob(path: step.target)
+                continue
+            }
             if let trashedURL = trashedURLs[step.index] {
                 let targetURL = URL(fileURLWithPath: step.target)
                 // We MUST ensure the parent directory exists

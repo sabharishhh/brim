@@ -21,7 +21,6 @@ public struct Planner: Sendable {
             switch item.selection {
             case .selected:
                 // Generate step
-                let kind: StepKind = .trashPath
                 
                 // Capture fingerprint for TOCTOU protection
                 var fingerprint: TargetFingerprint? = nil
@@ -35,24 +34,56 @@ public struct Planner: Sendable {
                 let sizeBytes = item.footprintItem.sizeBytes
                 expectedTotalBytes += sizeBytes
                 
-                let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
-                let step = Step(
-                    index: index,
-                    kind: kind,
-                    target: targetPath,
-                    targetFingerprint: fingerprint,
-                    tier: item.footprintItem.evidence.tier,
-                    evidence: item.footprintItem.evidence.humanSentence,
-                    expectedBytes: sizeBytes,
-                    capability: item.footprintItem.capability,
-                    reversible: true,
-                    costOfError: item.costOfError,
-                    executionPhase: phase
-                )
-                
-                steps.append(step)
-                index += 1
-                
+                if item.footprintItem.evidence.mechanism == "LaunchdSource" {
+                    let unloadStep = Step(
+                        index: index,
+                        kind: .unloadLaunchdJob,
+                        target: targetPath,
+                        targetFingerprint: fingerprint,
+                        tier: item.footprintItem.evidence.tier,
+                        evidence: item.footprintItem.evidence.humanSentence,
+                        expectedBytes: 0,
+                        capability: item.footprintItem.capability,
+                        reversible: true,
+                        costOfError: item.costOfError,
+                        executionPhase: .launchd
+                    )
+                    steps.append(unloadStep)
+                    index += 1
+                    
+                    let removeStep = Step(
+                        index: index,
+                        kind: .removeLaunchdPlist,
+                        target: targetPath,
+                        targetFingerprint: fingerprint,
+                        tier: item.footprintItem.evidence.tier,
+                        evidence: item.footprintItem.evidence.humanSentence,
+                        expectedBytes: sizeBytes,
+                        capability: item.footprintItem.capability,
+                        reversible: true,
+                        costOfError: item.costOfError,
+                        executionPhase: .launchd
+                    )
+                    steps.append(removeStep)
+                    index += 1
+                } else {
+                    let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
+                    let step = Step(
+                        index: index,
+                        kind: .trashPath,
+                        target: targetPath,
+                        targetFingerprint: fingerprint,
+                        tier: item.footprintItem.evidence.tier,
+                        evidence: item.footprintItem.evidence.humanSentence,
+                        expectedBytes: sizeBytes,
+                        capability: item.footprintItem.capability,
+                        reversible: true,
+                        costOfError: item.costOfError,
+                        executionPhase: phase
+                    )
+                    steps.append(step)
+                    index += 1
+                }
             case .unselected:
                 // An unselected item isn't strictly excluded by the safety engine,
                 // but the user/default didn't select it.
