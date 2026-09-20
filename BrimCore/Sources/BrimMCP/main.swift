@@ -82,8 +82,7 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
     }
     func plan(intent: PlanIntent) async throws -> Plan { fatalError() }
     func explain(planId: UUID) async throws -> String { fatalError() }
-    func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken { fatalError() }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws { }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { fatalError() }
     func apply(planId: UUID, token: ApprovalToken) async throws { }
     func verify(planId: UUID) async throws -> VerificationResult { fatalError() }
     func history() async throws -> [Plan] { return [] }

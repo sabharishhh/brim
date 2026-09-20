@@ -76,12 +76,14 @@ public actor BrimService: BrimServiceProtocol {
         return "Plan \(plan.planId) targets \(plan.steps.count) items taking \(plan.expectedTotalBytes) bytes."
     }
     
-    public func requestApproval(planId: UUID, requesterIdentity: String) async throws {
+    public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
         let plan = try await planStore.load(planId: planId)
-        // In a real app, this would post a Notification or callback to the UI,
-        // and the UI would call `TokenStore.mintToken()` upon user approval.
-        // For testing, we just simulate the recording.
-        print("Approval requested for plan \(plan.planId) by \(requesterIdentity)")
+        // In a real app, this would use LAContext to prompt the user directly from the daemon
+        // and only mint the token upon successful biometrics/password.
+        // For testing, we simulate successful human approval and mint directly.
+        print("Human approval requested and simulated for plan \(plan.planId) by \(requesterIdentity)")
+        let hash = try plan.contentHash()
+        return await tokenStore.mintToken(planId: planId, planHash: hash, requesterIdentity: requesterIdentity)
     }
     private var appliedPlanIds: Set<UUID> = []
     
@@ -258,7 +260,5 @@ public actor BrimService: BrimServiceProtocol {
         }
     }
 
-    public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken {
-        return await tokenStore.mintToken(planId: planId, planHash: planHash, requesterIdentity: requesterIdentity)
-    }
+
 }

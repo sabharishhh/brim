@@ -45,16 +45,6 @@ public struct TierSVetoEngine: Sendable {
             return resolved
         }
         
-        if path.contains("SharedVendorFolder") {
-            return Identity(bundleID: "com.other.app", name: "OtherApp")
-        }
-        
-        return nil
-        
-        if path.contains("SharedVendorFolder") {
-            return Identity(bundleID: "com.other.app", name: "OtherApp")
-        }
-        
-        return nil
+return nil
     }
 }

@@ -13,9 +13,24 @@ public actor Executor {
     public func execute(plan: Plan) async throws -> JournalEntry {
         let rootPath = plan.steps.first?.target ?? "/" // fallback
         // M3: Collect unique volume paths and sum their free space
-        let uniqueVolumes = Set(plan.steps.map { URL(fileURLWithPath: $0.target).deletingLastPathComponent().path })
+        var volumeSet = Set<String>()
+        for step in plan.steps {
+            var statBuf = statfs()
+            if statfs(step.target, &statBuf) == 0 {
+                let mntonname = withUnsafePointer(to: statBuf.f_mntonname) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { ptr in String(cString: ptr) }
+                }
+                volumeSet.insert(mntonname)
+            } else if statfs(URL(fileURLWithPath: step.target).deletingLastPathComponent().path, &statBuf) == 0 {
+                let mntonname = withUnsafePointer(to: statBuf.f_mntonname) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { ptr in String(cString: ptr) }
+                }
+                volumeSet.insert(mntonname)
+            }
+        }
+        
         var totalFreeBefore: Int64 = 0
-        for vol in uniqueVolumes {
+        for vol in volumeSet {
             if let free = try? SafeOps.freeSpace(onPath: vol) { totalFreeBefore += free }
         }
         let freeBefore: Int64? = totalFreeBefore > 0 ? totalFreeBefore : (try? SafeOps.freeSpace(onPath: rootPath))
@@ -91,7 +106,7 @@ public actor Executor {
         }
         
         var totalFreeAfter: Int64 = 0
-        for vol in uniqueVolumes {
+        for vol in volumeSet {
             if let free = try? SafeOps.freeSpace(onPath: vol) { totalFreeAfter += free }
         }
         let freeAfter: Int64? = totalFreeAfter > 0 ? totalFreeAfter : (try? SafeOps.freeSpace(onPath: rootPath))

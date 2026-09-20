@@ -10,7 +10,11 @@ final class TierSVetoEngineTests: XCTestCase {
         let identity = Identity(bundleID: "com.test.app", name: "TestApp")
         
         let safeURL = tempRoot.appendingPathComponent("SafeFile")
-        let sharedURL = tempRoot.appendingPathComponent("SharedVendorFolder")
+        let sharedURL = tempRoot.appendingPathComponent("OtherApp.app")
+        try FileManager.default.createDirectory(at: sharedURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        let plist = ["CFBundleIdentifier": "com.other.app"]
+        let plistData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try plistData.write(to: sharedURL.appendingPathComponent("Contents/Info.plist"))
         
         let items = [
             EvaluatedItem(footprintItem: FootprintItem(evidence: Evidence(url: safeURL, tier: .A, mechanism: "Test", humanSentence: "Safe"), sizeBytes: 100, capability: .ok), selection: .selected, costOfError: .low),
