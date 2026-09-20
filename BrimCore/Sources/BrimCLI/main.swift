@@ -26,8 +26,16 @@ struct BrimCLI: AsyncParsableCommand {
     
     
     
+    nonisolated(unsafe) static var sharedListener: NSXPCListener?
+    nonisolated(unsafe) static var sharedDelegate: BrimXPCListenerDelegate?
+    nonisolated(unsafe) static var sharedClient: BrimXPCClient?
+    
     // Shared service accessor
     static func getService() -> BrimServiceProtocol {
+        if let client = sharedClient {
+            return client
+        }
+        
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
         let brimAppURL = URL(fileURLWithPath: "/Applications/Brim.app")
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Brim")
@@ -37,7 +45,26 @@ struct BrimCLI: AsyncParsableCommand {
         try? FileManager.default.createDirectory(at: planDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: journalDir, withIntermediateDirectories: true)
         
-        return BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
+        let realService = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
+        
+        // Spin up anonymous XPC listener
+        let listener = NSXPCListener.anonymous()
+        let delegate = BrimXPCListenerDelegate(service: realService)
+        listener.delegate = delegate
+        listener.resume()
+        
+        // Connect client to anonymous listener
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
+        connection.resume()
+        
+        let client = BrimXPCClient(connection: connection)
+        
+        sharedListener = listener
+        sharedDelegate = delegate
+        sharedClient = client
+        
+        return client
     }
 }
 
@@ -64,8 +91,8 @@ struct Apps: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
     
     mutating func run() async throws {
-        let service = BrimCLI.getService() as! BrimService
-        let appsURL = await service.root.url(for: .applications)
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+        let appsURL = await root.url(for: .applications)
         let contents = (try? FileManager.default.contentsOfDirectory(at: appsURL, includingPropertiesForKeys: nil)) ?? []
         let apps = contents.filter { $0.pathExtension == "app" }.map { $0.lastPathComponent }
         
