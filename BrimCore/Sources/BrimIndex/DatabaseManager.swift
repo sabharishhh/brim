@@ -7,7 +7,7 @@ public struct DatabaseManager: Sendable {
     
     /// Initializes the database pool at the given URL, rebuilding if corrupt.
     public init(databaseURL: URL) throws {
-        var configuration = Configuration()
+        let configuration = Configuration()
         // WAL mode is default for DatabasePool, but we can be explicit.
         
         var pool: DatabasePool?
@@ -119,4 +119,13 @@ public struct DatabaseManager: Sendable {
         
         try migrator.migrate(dbPool)
     }
+    public func checkIntegrity() throws {
+        try dbPool.read { db in
+            let row = try Row.fetchOne(db, sql: "PRAGMA integrity_check")
+            if let result = row?[0] as? String, result.lowercased() != "ok" {
+                throw DatabaseError(resultCode: .SQLITE_CORRUPT, message: "Integrity check failed: \(result)")
+            }
+        }
+    }
+
 }
