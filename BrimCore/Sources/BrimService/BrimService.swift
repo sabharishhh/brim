@@ -70,6 +70,15 @@ public actor BrimService: BrimServiceProtocol {
     }
     
     public func plan(intent: PlanIntent) async throws -> Plan {
+        let plan = try await makePlan(intent: intent)
+        try await planStore.save(plan: plan)
+        return plan
+    }
+
+    /// Projects, evaluates and plans an intent *without* persisting the
+    /// result. `apply` re-plans to revalidate the footprint, and that
+    /// throwaway plan must not land in the store beside the real one.
+    private func makePlan(intent: PlanIntent) async throws -> Plan {
         let projector = FootprintProjector(engine: engine)
         let footprint: Footprint
         let explicitTargets = intent.explicitTargets
@@ -84,11 +93,9 @@ public actor BrimService: BrimServiceProtocol {
         } else {
             footprint = try await projector.project(identity: intent.subjectIdentity, in: root)
         }
-        
+
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: "1.0.0")
-        try await planStore.save(plan: plan)
-        return plan
+        return planner.createPlan(from: evaluated, intent: intent, engineVersion: "1.0.0")
     }
     
     public func explain(planId: UUID) async throws -> String {
@@ -187,8 +194,9 @@ public actor BrimService: BrimServiceProtocol {
         }
         
         // --- T-2.4 Independent Re-validation ---
-        // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap)
-        let revalidatedPlan = try await self.plan(intent: plan.intent)
+        // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
+        // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
+        let revalidatedPlan = try await makePlan(intent: plan.intent)
         
         // Ensure steps match exactly (count, targets, and fingerprints)
         guard plan.steps.count == revalidatedPlan.steps.count else {
