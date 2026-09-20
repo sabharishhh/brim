@@ -37,21 +37,7 @@ final class UndoTests: XCTestCase {
         let resolved = await resolver.resolve(bundleURL: bundleURL)
         let intent = PlanIntent(type: .uninstall, subjectIdentity: resolved)
         
-        let plan = Plan(
-            planId: UUID(),
-            createdAt: Date(),
-            engineVersion: "1",
-            osVersion: "1",
-            intent: intent,
-            steps: [
-                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: nil, tier: .A, evidence: "app", expectedBytes: 1024, capability: .ok, reversible: true, costOfError: .low)
-            ],
-            excludedItems: [],
-            expectedTotalBytes: 1024
-        )
-        
-        let planStore = PlanStore(directoryURL: planStoreDir)
-        try await planStore.save(plan: plan)
+        let plan = try await service.plan(intent: intent)
         
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         let hash = try plan.contentHash()
@@ -83,19 +69,7 @@ final class UndoTests: XCTestCase {
         let history2 = try await service.history()
         XCTAssertEqual(history2.count, 1) // Ledger entry persists
         
-        let plan2 = Plan(
-            planId: UUID(),
-            createdAt: Date(),
-            engineVersion: "1",
-            osVersion: "1",
-            intent: intent,
-            steps: [
-                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: nil, tier: .A, evidence: "app", expectedBytes: 1024, capability: .ok, reversible: true, costOfError: .low)
-            ],
-            excludedItems: [],
-            expectedTotalBytes: 1024
-        )
-        try await planStore.save(plan: plan2)
+        let plan2 = try await service.plan(intent: intent)
         
         try await service.requestApproval(planId: plan2.planId, requesterIdentity: intent.requesterIdentity)
         let hash2 = try plan2.contentHash()

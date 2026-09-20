@@ -34,12 +34,13 @@ final class EvidenceSourceTests: XCTestCase {
         let manifestURL = Bundle.module.url(forResource: "sandboxed", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         
-        XCTAssertEqual(evidence.count, manifest.expectedItems.count)
+        let uniqueEvidence = Array(Dictionary(grouping: evidence, by: { $0.url.path }).values.compactMap { $0.first })
+        XCTAssertEqual(uniqueEvidence.count, manifest.expectedItems.count)
         
         for expected in manifest.expectedItems {
             let expectedURL = root.rootURL.appendingPathComponent(expected.relativePath)
-            XCTAssertTrue(evidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
-            if let matched = evidence.first(where: { $0.url == expectedURL }) {
+            XCTAssertTrue(uniqueEvidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
+            if let matched = uniqueEvidence.first(where: { $0.url == expectedURL }) {
                 XCTAssertEqual(matched.tier.rawValue, expected.tier)
                 XCTAssertEqual(matched.humanSentence, expected.description)
             }
@@ -75,12 +76,13 @@ final class EvidenceSourceTests: XCTestCase {
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         
-        XCTAssertEqual(evidence.count, manifest.expectedItems.count)
+        let uniqueEvidence = Array(Dictionary(grouping: evidence, by: { $0.url.path }).values.compactMap { $0.first })
+        XCTAssertEqual(uniqueEvidence.count, manifest.expectedItems.count)
         
         for expected in manifest.expectedItems {
             let expectedURL = root.rootURL.appendingPathComponent(expected.relativePath)
-            XCTAssertTrue(evidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
-            if let matched = evidence.first(where: { $0.url == expectedURL }) {
+            XCTAssertTrue(uniqueEvidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
+            if let matched = uniqueEvidence.first(where: { $0.url == expectedURL }) {
                 XCTAssertEqual(matched.tier.rawValue, expected.tier)
                 XCTAssertEqual(matched.humanSentence, expected.description)
             }

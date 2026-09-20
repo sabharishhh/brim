@@ -37,6 +37,15 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
         self.ino = ino
         self.mtime = mtime
     }
+    
+    public static func == (lhs: TargetFingerprint, rhs: TargetFingerprint) -> Bool {
+        let timeDiff = abs(lhs.mtime.timeIntervalSince1970 - rhs.mtime.timeIntervalSince1970)
+        if lhs.dev != rhs.dev || lhs.ino != rhs.ino || timeDiff > 0.01 {
+            print("TARGET FINGERPRINT MISMATCH: dev=\(lhs.dev == rhs.dev) ino=\(lhs.ino == rhs.ino) diff=\(timeDiff)")
+            return false
+        }
+        return true
+    }
 }
 
 public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
