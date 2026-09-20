@@ -11,7 +11,8 @@ public actor Executor {
     }
     
     public func execute(plan: Plan) async throws -> JournalEntry {
-        let rootPath = plan.steps.first?.target ?? "/"
+        let firstTarget = plan.steps.first?.target ?? "/"
+        let rootPath = URL(fileURLWithPath: firstTarget).deletingLastPathComponent().path
         let freeBefore = try? SafeOps.freeSpace(onPath: rootPath)
         
         // Create initial journal
