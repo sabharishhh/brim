@@ -103,22 +103,48 @@ public actor DuplicateScanner {
     }
     
     private func calculateRecoverableBytes(urls: [URL], size: Int64) -> Int64 {
-        // T-5.4: Exclude clone-linked pairs from the savings total and label them as already sharing storage.
-        // For the deferred spike, we simulate clone detection by clustering on st_ino (hardlinks) 
-        // and identifying APFS clones. Since exact clone detection without private APIs requires 
-        // heuristics or `clonefile` attempts, we use `st_ino` for exact identity sharing for now.
+        // T-5.4: Exclude clone-linked pairs and hardlinks from the savings total.
+        // Files that are hardlinked (shared st_ino) or APFS clones (ATTR_CMNEXT_CLONE_REFCNT > 1)
+        // already share underlying storage blocks and must not be counted as recoverable savings.
         
         var uniqueInodes = Set<UInt64>()
+        var clonedFileCount = 0
+        
         for url in urls {
             var statBuf = stat()
             if stat(url.path, &statBuf) == 0 {
-                uniqueInodes.insert(statBuf.st_ino)
+                let isNewInode = uniqueInodes.insert(statBuf.st_ino).inserted
+                if isNewInode {
+                    let refCnt = getCloneRefCnt(path: url.path)
+                    if refCnt > 1 {
+                        clonedFileCount += 1
+                    }
+                }
             }
         }
         
-        // If everything is a clone/hardlink of the same inode, recoverable is 0.
-        // Otherwise, if we have N unique inodes, we can recover N-1 copies.
-        let distinctPhysicalCopies = max(1, uniqueInodes.count)
+        // If multiple distinct inodes in this group are APFS clones (refCnt > 1),
+        // they share storage extents via copy-on-write. We collapse the cloned group to 1 copy.
+        let sharedCloneDeduction = clonedFileCount > 1 ? (clonedFileCount - 1) : 0
+        let distinctPhysicalCopies = max(1, uniqueInodes.count - sharedCloneDeduction)
         return size * Int64(distinctPhysicalCopies - 1)
+    }
+    
+    private func getCloneRefCnt(path: String) -> UInt32 {
+        var attrList = attrlist()
+        attrList.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        attrList.forkattr = attrgroup_t(ATTR_CMNEXT_CLONE_REFCNT)
+
+        struct RefCntAttrBuf {
+            var length: UInt32 = 0
+            var refCnt: UInt32 = 0
+        }
+
+        var buf = RefCntAttrBuf()
+        let ret = getattrlist(path, &attrList, &buf, MemoryLayout<RefCntAttrBuf>.size, UInt32(FSOPT_ATTR_CMN_EXTENDED))
+        if ret == 0 {
+            return buf.refCnt
+        }
+        return 1
     }
 }
