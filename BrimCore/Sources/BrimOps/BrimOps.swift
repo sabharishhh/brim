@@ -12,6 +12,32 @@ public enum SafeOpsError: Error {
 }
 
 public struct SafeOps {
+    private static func openDirectoryComponentByComponent(path: String) throws -> Int32 {
+        guard path.hasPrefix("/") else { throw SafeOpsError.failedToOpenParent(EINVAL) }
+        let components = path.split(separator: "/").map { String($0) }.filter { !$0.isEmpty && $0 != "." }
+        
+        var currentFd = open("/", O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard currentFd >= 0 else { throw SafeOpsError.failedToOpenParent(errno) }
+        
+        for component in components {
+            if component == ".." {
+                let nextFd = openat(currentFd, "..", O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+                close(currentFd)
+                guard nextFd >= 0 else { throw SafeOpsError.failedToOpenParent(errno) }
+                currentFd = nextFd
+            } else {
+                let nextFd = openat(currentFd, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+                close(currentFd)
+                guard nextFd >= 0 else {
+                    // Check if the component was a symlink for ELOOP, but we just throw
+                    throw SafeOpsError.failedToOpenParent(errno)
+                }
+                currentFd = nextFd
+            }
+        }
+        return currentFd
+    }
+
     
     /// Securely removes or relocates an item by opening its parent directory and using the `*at` family of syscalls.
     /// - Parameters:
@@ -31,29 +57,9 @@ public struct SafeOps {
         let parentPath = targetURL.deletingLastPathComponent().path
         let itemName = targetURL.lastPathComponent
         
-        // Open parent directory, disallowing symlinks
-        let parentFd = open(parentPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard parentFd >= 0 else {
-            throw SafeOpsError.failedToOpenParent(errno)
-        }
+        // Open parent directory using descriptor-relative component-by-component traversal
+        let parentFd = try openDirectoryComponentByComponent(path: parentPath)
         defer { close(parentFd) }
-        
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        guard fcntl(parentFd, F_GETPATH, &buffer) != -1 else {
-            throw SafeOpsError.failedToOpenParent(errno)
-        }
-        let resolvedPath = String(cString: buffer)
-        
-        let expectedParent = parentPath.hasPrefix("/private/") ? parentPath : (parentPath.hasPrefix("/") && !parentPath.hasPrefix("/System/") && !parentPath.hasPrefix("/Library/") && !parentPath.hasPrefix("/Applications/") && !parentPath.hasPrefix("/Users/") ? "/private\(parentPath)" : parentPath)
-        let resolvedNormalized = resolvedPath.hasPrefix("/private/") ? resolvedPath : (resolvedPath.hasPrefix("/") && !resolvedPath.hasPrefix("/System/") && !resolvedPath.hasPrefix("/Library/") && !resolvedPath.hasPrefix("/Applications/") && !resolvedPath.hasPrefix("/Users/") ? "/private\(resolvedPath)" : resolvedPath)
-        
-        // Allow strict prefixing for standard macOS volumes if private is added, but to be robust:
-        let p1 = parentPath.hasPrefix("/private") ? parentPath : "/private" + parentPath
-        let r1 = resolvedPath.hasPrefix("/private") ? resolvedPath : "/private" + resolvedPath
-        
-        guard parentPath == resolvedPath || p1 == r1 else {
-            throw SafeOpsError.failedToOpenParent(ELOOP)
-        }
         
         // Stat the item relative to parent using AT_SYMLINK_NOFOLLOW
         var statBuf = stat()
@@ -121,10 +127,7 @@ public struct SafeOps {
         let destURL = URL(fileURLWithPath: destPath)
         let parentURL = destURL.deletingLastPathComponent()
         
-        let parentFd = open(parentURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard parentFd >= 0 else {
-            throw SafeOpsError.failedToOpenParent(errno)
-        }
+        let parentFd = try openDirectoryComponentByComponent(path: parentURL.path)
         defer { close(parentFd) }
         
         // Ensure source exists and is what we think it is
