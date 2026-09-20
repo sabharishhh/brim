@@ -72,10 +72,15 @@ public actor BrimService: BrimServiceProtocol {
     public func plan(intent: PlanIntent) async throws -> Plan {
         let projector = FootprintProjector(engine: engine)
         let footprint: Footprint
-        if let specificTarget = intent.specificTarget {
-            // Bypass evidence engine, project just this target
-            let evidence = Evidence(url: specificTarget, tier: .A, mechanism: "DirectTarget", humanSentence: "Specific target requested by intent")
-            footprint = try await projector.project(identity: intent.subjectIdentity, in: root, explicitEvidence: [evidence])
+        let explicitTargets = intent.explicitTargets
+        if !explicitTargets.isEmpty {
+            // Bypass evidence engine, project exactly the requested targets.
+            // Several targets become one plan, so the user approves the whole
+            // selection once rather than once per item.
+            let evidence = explicitTargets.map {
+                Evidence(url: $0, tier: .A, mechanism: "DirectTarget", humanSentence: "Specific target requested by intent")
+            }
+            footprint = try await projector.project(identity: intent.subjectIdentity, in: root, explicitEvidence: evidence)
         } else {
             footprint = try await projector.project(identity: intent.subjectIdentity, in: root)
         }
@@ -91,11 +96,37 @@ public actor BrimService: BrimServiceProtocol {
         return "Plan \(plan.planId) targets \(plan.steps.count) items taking \(plan.expectedTotalBytes) bytes."
     }
     
+    #if DEBUG
+    /// True when this process is a test run rather than the real app.
+    ///
+    /// Detected by the XCTest framework being loaded, not by an environment
+    /// variable: `XCTestConfigurationFilePath` is set by Xcode's runner but
+    /// not by SwiftPM's, so `swift test` would otherwise demand a fingerprint
+    /// for every plan it applies on a Mac with working Touch ID.
+    static let isAutomatedRun: Bool = {
+        if NSClassFromString("XCTestCase") != nil { return true }
+        return ProcessInfo.processInfo.environment["BRIM_MCP_TEST"] != nil
+    }()
+    #endif
+
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
         let plan = try await planStore.load(planId: planId)
         
         let hash = try plan.contentHash()
-        
+
+        // A test run must never block on a human. The fallbacks below only
+        // cover machines where LAContext is unavailable; on a Mac with working
+        // Touch ID the suite raises a real prompt for every plan it applies.
+        //
+        // Debug-only on purpose: a release build must have no way to reach
+        // mintToken without a human, least of all one an environment variable
+        // can switch on.
+        #if DEBUG
+        if Self.isAutomatedRun {
+            return await tokenStore.mintToken(planId: planId, planHash: hash, requesterIdentity: requesterIdentity)
+        }
+        #endif
+
         // Use LAContext for real human approval
         let context = LAContext()
         let reason = "Approve \(requesterIdentity) deletion of \(plan.intent.subjectIdentity.name) (\(plan.steps.count) items)."

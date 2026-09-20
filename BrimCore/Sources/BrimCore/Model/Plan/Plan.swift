@@ -112,15 +112,28 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let requesterKind: String
     public let requesterIdentity: String
     public let specificTarget: URL?
+    /// Several explicitly chosen targets planned as one unit, so a multi-item
+    /// selection produces a single plan the user approves once. Absent in
+    /// plans written before batching existed, hence optional.
+    public let specificTargets: [URL]?
     public let destinationTarget: URL?
     public let archiveAndUninstall: Bool
-    
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false) {
+
+    /// The explicit targets this intent asks for, however they were supplied.
+    /// Empty means "discover the footprint from the identity".
+    public var explicitTargets: [URL] {
+        if let many = specificTargets, !many.isEmpty { return many }
+        if let one = specificTarget { return [one] }
+        return []
+    }
+
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
         self.specificTarget = specificTarget
+        self.specificTargets = specificTargets
         self.destinationTarget = destinationTarget
         self.archiveAndUninstall = archiveAndUninstall
     }
