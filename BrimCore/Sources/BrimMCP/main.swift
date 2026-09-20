@@ -301,8 +301,10 @@ class MCPServer {
             
         case "request_approval":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr), let reqId = args["requesterIdentity"]?.stringValue else { throw MCPError.invalidRequest("Invalid arguments") }
-            try await service.requestApproval(planId: pid, requesterIdentity: reqId)
-            return "Approval requested."
+            let token = try await service.requestApproval(planId: pid, requesterIdentity: reqId)
+            let tokenData = try JSONEncoder().encode(token)
+            let tokenString = String(data: tokenData, encoding: .utf8) ?? ""
+            return "Approval successful. Token: \(tokenString)"
             
         case "apply":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr), let tokenStr = args["token"]?.stringValue else { throw MCPError.invalidRequest("Invalid arguments") }
