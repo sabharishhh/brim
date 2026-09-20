@@ -14,5 +14,7 @@ public protocol BrimServiceProtocol: Sendable {
     func undo(planId: UUID) async throws
     func dumpBTM() async throws -> String
     func leftovers() async throws -> [Leftover]
+    /// Past removals whose contents are still in the Trash, so still restorable.
+    func recoverableItems() async throws -> [RecoverableItem]
     func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup]
 }

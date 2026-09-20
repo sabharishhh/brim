@@ -11,6 +11,7 @@ private struct StubService: BrimServiceProtocol {
     init(error: Error) { self.leftoversResult = .failure(error) }
 
     func leftovers() async throws -> [Leftover] { try leftoversResult.get() }
+    func recoverableItems() async throws -> [RecoverableItem] { [] }
 
     func inspect(identity: Identity) async throws -> Footprint { throw StubError.unimplemented }
     func plan(intent: PlanIntent) async throws -> Plan { throw StubError.unimplemented }

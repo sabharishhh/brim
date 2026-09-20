@@ -140,6 +140,17 @@ public actor BrimXPCClient: BrimServiceProtocol {
         return try decoder.decode([Leftover].self, from: resultData)
     }
 
+    public func recoverableItems() async throws -> [RecoverableItem] {
+        let resultData: Data = try await withProxy { proxy, reply in
+            proxy.recoverableItems { data, error in
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
+            }
+        }
+        return try decoder.decode([RecoverableItem].self, from: resultData)
+    }
+
     public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
         let resultData: Data = try await withProxy { proxy, reply in
             proxy.scanDuplicates(directoryURLString: directory.path) { data, error in
