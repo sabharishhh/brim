@@ -13,7 +13,8 @@ public struct BTMParser: Sendable {
         var currentType: String?
         var currentDisposition: String?
         var currentIdentifier: String?
-        var currentURL: URL?
+        var currentURLPath: String?
+        var currentParentIdentifier: String?
         var currentBundleIdentifier: String?
         
         func commitRecord() {
@@ -25,7 +26,8 @@ public struct BTMParser: Sendable {
                     type: currentType,
                     disposition: currentDisposition,
                     identifier: currentIdentifier,
-                    url: currentURL,
+                    rawURLPath: currentURLPath,
+                    parentIdentifier: currentParentIdentifier,
                     bundleIdentifier: currentBundleIdentifier
                 )
                 records.append(record)
@@ -36,7 +38,8 @@ public struct BTMParser: Sendable {
             currentType = nil
             currentDisposition = nil
             currentIdentifier = nil
-            currentURL = nil
+            currentURLPath = nil
+            currentParentIdentifier = nil
             currentBundleIdentifier = nil
         }
         
@@ -65,9 +68,17 @@ public struct BTMParser: Sendable {
                 currentIdentifier = trimmed.replacingOccurrences(of: "Identifier:", with: "").trimmingCharacters(in: .whitespaces)
             } else if trimmed.starts(with: "URL:") {
                 let path = trimmed.replacingOccurrences(of: "URL:", with: "").trimmingCharacters(in: .whitespaces)
-                if !path.isEmpty {
-                    currentURL = URL(fileURLWithPath: path)
+                // sfltool prints the literal "(null)" when an item has no
+                // URL at all — a background-tasks record, for instance.
+                // Treating that as a path invents a file that never existed
+                // and reports a healthy item as stale.
+                if !path.isEmpty && path != "(null)" {
+                    currentURLPath = path
                 }
+            } else if trimmed.starts(with: "Parent Identifier:") {
+                currentParentIdentifier = trimmed
+                    .replacingOccurrences(of: "Parent Identifier:", with: "")
+                    .trimmingCharacters(in: .whitespaces)
             } else if trimmed.starts(with: "Bundle Identifier:") {
                 currentBundleIdentifier = trimmed.replacingOccurrences(of: "Bundle Identifier:", with: "").trimmingCharacters(in: .whitespaces)
             }
