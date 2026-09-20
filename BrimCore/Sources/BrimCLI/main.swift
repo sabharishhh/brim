@@ -38,6 +38,7 @@ struct BrimCLI: AsyncParsableCommand {
             History.self,
             LeftoversCmd.self,
             DuplicatesCmd.self,
+            EnergyCmd.self,
             DryRunUninstall.self,
             Install.self
         ]
