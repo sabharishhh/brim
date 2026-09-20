@@ -11,7 +11,9 @@ struct ContentView: View {
             if let selection = selection {
                 switch selection {
                 case .review:
-                    ReviewQueueView()
+                    ReviewQueueView(selection: $selection)
+                case .history:
+                    RemovalHistoryView()
                 default:
                     Text("\(selection.rawValue) View")
                         .foregroundColor(.secondary)
