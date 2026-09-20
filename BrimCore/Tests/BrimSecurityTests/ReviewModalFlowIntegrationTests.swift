@@ -104,6 +104,51 @@ final class ReviewModalFlowIntegrationTests: XCTestCase {
         )
     }
 
+    func testRecoverableItemsTracksTheTrashRatherThanTheJournal() async throws {
+        // What the UI shows must follow the Trash as it is now, so emptying it
+        // in Finder changes the answer without the app restarting.
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let rootURL = tempDir.appendingPathComponent("Root")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let settings = rootURL
+            .appendingPathComponent("Users/\(NSUserName())/Library/Application Support")
+            .appendingPathComponent("recoverable-settings")
+        let cache = rootURL
+            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
+            .appendingPathComponent("gone-forever-cache")
+        try makeLeftover(at: settings, bytes: 512)
+        try makeLeftover(at: cache, bytes: 512)
+
+        let service = makeService(root: rootURL, support: tempDir)
+
+        for (title, target) in [("recoverable-settings", settings), ("gone-forever-cache", cache)] {
+            let plan = try await service.plan(intent: modalIntent(title: title, targets: [target]))
+            let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+            try await service.apply(planId: plan.planId, token: token)
+        }
+
+        // The permanently deleted cache is never recoverable; the trashed
+        // settings data is.
+        let afterApply = try await service.recoverableItems()
+        XCTAssertEqual(afterApply.map(\.name), ["recoverable-settings"])
+        XCTAssertGreaterThan(afterApply.first?.bytes ?? 0, 0)
+
+        // Stand in for the user emptying the Trash in Finder.
+        let journalStore = JournalStore(directoryURL: tempDir.appendingPathComponent("Journals"))
+        let recoverablePlanId = try XCTUnwrap(afterApply.first?.planId)
+        let journal = try await journalStore.load(planId: recoverablePlanId)
+        for url in (journal?.stepTrashedURLs ?? [:]).values {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        let afterEmptying = try await service.recoverableItems()
+        XCTAssertTrue(
+            afterEmptying.isEmpty,
+            "Emptying the Trash must be reflected immediately, not cached from the journal"
+        )
+    }
+
     private func makeLeftover(at url: URL, bytes: Int) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         try Data(repeating: 0x41, count: bytes).write(to: url.appendingPathComponent("payload.bin"))

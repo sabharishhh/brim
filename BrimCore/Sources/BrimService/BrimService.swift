@@ -394,6 +394,40 @@ public actor BrimService: BrimServiceProtocol {
         return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs)
     }
     
+    /// Past removals that could still be undone, judged by what is actually
+    /// in the Trash right now rather than by what the journal once recorded.
+    /// Emptying the Trash therefore changes this immediately.
+    public func recoverableItems() async throws -> [RecoverableItem] {
+        let fm = FileManager.default
+        var items: [RecoverableItem] = []
+
+        for entry in try await ledgerStore.allEntries() {
+            guard let plan = try? await planStore.load(planId: entry.planId),
+                  plan.isReversible,
+                  let journal = try? await journalStore.load(planId: entry.planId),
+                  let trashedURLs = journal.stepTrashedURLs, !trashedURLs.isEmpty
+            else { continue }
+
+            // Only count steps whose trashed copy survives; a partially
+            // emptied Trash makes the plan unrestorable, not half-restorable.
+            let survivors = trashedURLs.filter { fm.fileExists(atPath: $0.value.path) }
+            guard survivors.count == trashedURLs.count else { continue }
+
+            let bytes = plan.steps
+                .filter { $0.effectiveDisposition == .trash && trashedURLs[$0.index] != nil }
+                .reduce(0) { $0 + $1.expectedBytes }
+
+            items.append(RecoverableItem(
+                planId: plan.planId,
+                name: plan.intent.subjectIdentity.name,
+                bytes: bytes,
+                removedAt: entry.executedAt
+            ))
+        }
+
+        return items.sorted { $0.removedAt > $1.removedAt }
+    }
+
     public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
         let scanner = DuplicateScanner()
         return try await scanner.scan(directory: directory)
