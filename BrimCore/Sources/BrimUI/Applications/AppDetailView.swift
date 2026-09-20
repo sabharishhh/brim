@@ -9,6 +9,7 @@ public struct AppDetailView: View {
     let icon: NSImage
     
     @SwiftUI.Environment(\.brimService) var service
+    @StateObject private var client = BrimClient.shared
     
     @State private var footprint: Footprint?
     @State private var isLoading = false
@@ -141,7 +142,7 @@ public struct AppDetailView: View {
             guard let footprint = footprint else { return }
             do {
                 let intent = PlanIntent(type: .uninstall, subjectIdentity: footprint.identity)
-                self.generatedPlan = try await service.plan(intent: intent)
+                self.generatedPlan = try await BrimClient.shared.plan(intent: intent)
                 self.showingPlanSheet = true
             } catch {
                 self.error = "Failed to generate plan: \(error.localizedDescription)"
