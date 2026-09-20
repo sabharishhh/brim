@@ -7,7 +7,7 @@ public struct FileSystemRoot: Sendable {
     public let userName: String
     
     public init(rootURL: URL = URL(fileURLWithPath: "/"), userName: String = NSUserName()) {
-        self.rootURL = rootURL
+        self.rootURL = rootURL.resolvingSymlinksInPath()
         self.userName = userName
     }
     
