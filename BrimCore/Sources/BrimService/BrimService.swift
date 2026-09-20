@@ -226,4 +226,25 @@ public actor BrimService: BrimServiceProtocol {
         // 3. Update journal to mark undone? Or just delete journal?
         try await journalStore.delete(planId: planId)
     }
+
+    public func dumpBTM() async throws -> String {
+        let task = Process()
+        task.launchPath = "/usr/bin/sfltool"
+        task.arguments = ["dumpbtm"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        try task.run()
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        
+        if let string = String(data: data, encoding: .utf8) {
+            return string
+        } else {
+            throw NSError(domain: "BrimService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to decode dumpbtm output."])
+        }
+    }
 }

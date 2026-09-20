@@ -24,4 +24,5 @@ public struct DummyBrimService: BrimServiceProtocol {
     public func verify(planId: UUID) async throws -> VerificationResult { fatalError() }
     public func history() async throws -> [Plan] { return [] }
     public func undo(planId: UUID) async throws { fatalError() }
+    public func dumpBTM() async throws -> String { fatalError() }
 }
