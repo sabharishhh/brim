@@ -75,9 +75,14 @@ public struct BTMListView: View {
     }
     
     private func removeBackingFile(url: URL) {
-        _ = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: nil, name: "Orphaned File"))
-        // Bypassing BrimScanner to directly plan and remove
-        // In a real flow, this would call BrimClient.shared.plan(intent) with an injected footprint.
-        print("Requested remove for: \(url.path)")
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: nil, name: "Orphaned File"))
+        Task {
+            do {
+                _ = try await BrimClient.shared.plan(intent: intent)
+                print("Requested remove for: \(url.path) - Plan generated.")
+            } catch {
+                print("Failed to plan removal: \(error)")
+            }
+        }
     }
 }
