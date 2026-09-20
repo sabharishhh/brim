@@ -14,7 +14,37 @@ public struct Planner: Sendable {
         
         let fm = FileManager.default
         
-        for item in evaluatedFootprint.items {
+        var evaluatedItems = evaluatedFootprint.items
+        
+        // Handle reset specific filtering
+        if intent.type == .reset {
+            let footprint = Footprint(identity: intent.subjectIdentity, items: evaluatedFootprint.items.map { $0.footprintItem })
+            let (toDelete, toExclude) = ResetFilter.filter(footprint: footprint)
+            
+            // Re-evaluate selections based on ResetFilter
+            var newEvaluatedItems = [EvaluatedItem]()
+            for item in evaluatedFootprint.items {
+                if let excluded = toExclude.first(where: { $0.target == item.footprintItem.evidence.url.path }) {
+                    newEvaluatedItems.append(EvaluatedItem(footprintItem: item.footprintItem, selection: .excluded(reason: excluded.reason), costOfError: item.costOfError))
+                } else if toDelete.contains(where: { $0.evidence.url.path == item.footprintItem.evidence.url.path }) {
+                    // Only select if it was previously selected (or at least not excluded for a harder reason like Safety)
+                    if case .selected = item.selection {
+                        newEvaluatedItems.append(item)
+                    } else if case .unselected = item.selection {
+                         // Reset implies we want to trash state, so if it was merely unselected by default, select it
+                         newEvaluatedItems.append(EvaluatedItem(footprintItem: item.footprintItem, selection: .selected, costOfError: item.costOfError))
+                    } else {
+                         // Preserve safety exclusions
+                         newEvaluatedItems.append(item)
+                    }
+                } else {
+                    newEvaluatedItems.append(item)
+                }
+            }
+            evaluatedItems = newEvaluatedItems
+        }
+        
+        for item in evaluatedItems {
             let targetURL = item.footprintItem.evidence.url
             let targetPath = targetURL.path
             
@@ -33,6 +63,33 @@ public struct Planner: Sendable {
                 
                 let sizeBytes = item.footprintItem.sizeBytes
                 expectedTotalBytes += sizeBytes
+                
+                let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
+                
+                if intent.type == .archive, let dest = intent.destinationTarget {
+                    let archiveStep = Step(
+                        index: index,
+                        kind: .archivePath,
+                        target: targetPath,
+                        targetFingerprint: fingerprint,
+                        tier: item.footprintItem.evidence.tier,
+                        evidence: item.footprintItem.evidence.humanSentence,
+                        expectedBytes: sizeBytes,
+                        capability: item.footprintItem.capability,
+                        reversible: true,
+                        costOfError: item.costOfError,
+                        executionPhase: phase,
+                        archiveDestination: dest.path
+                    )
+                    steps.append(archiveStep)
+                    index += 1
+                }
+                
+                // For archive, we also want to trash it afterwards? Wait, "then optionally proceed to uninstall."
+                // The intent is either .archive (which means JUST archive or both). If both, it should be an explicit step.
+                // For now, let's say .archive means archive THEN trash, since the user usually wants an archived reset or uninstall.
+                // Actually, the requirements say "Archive: export bundle + data + a manifest, then optionally proceed to uninstall."
+                // We'll generate trash steps as well, but `archivePath` step happens first.
                 
                 if item.footprintItem.evidence.mechanism == "LaunchdSource" {
                     let unloadStep = Step(
@@ -67,7 +124,6 @@ public struct Planner: Sendable {
                     steps.append(removeStep)
                     index += 1
                 } else {
-                    let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
                     let step = Step(
                         index: index,
                         kind: .trashPath,
@@ -85,8 +141,6 @@ public struct Planner: Sendable {
                     index += 1
                 }
             case .unselected:
-                // An unselected item isn't strictly excluded by the safety engine,
-                // but the user/default didn't select it.
                 excludedItems.append(ExcludedItem(target: targetPath, reason: "Unselected by tier defaults or user choice."))
                 
             case .excluded(let reason):
