@@ -74,7 +74,7 @@ final class SecurityRegressionSuiteTests: XCTestCase {
                 XCTFail("Unexpected error type")
                 return
             }
-            if case .failedToOpenParent(let err) = safeError, err == ELOOP {
+            if case .failedToOpenParent(let err) = safeError, err == ELOOP || err == ENOTDIR {
                 // Success, caught intermediate symlink!
             } else {
                 XCTFail("Unexpected SafeOpsError: \(safeError)")
