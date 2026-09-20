@@ -61,13 +61,27 @@ else
     echo "Imported into the login keychain."
 fi
 
-# Note: `security find-identity -v -p codesigning` lists only *trusted*
-# identities and will show this one as absent. That does not matter. codesign
-# accepts it by hash, and TCC keys on the certificate hash embedded in the
-# designated requirement, not on whether the certificate is trusted. Marking
-# it trusted would only affect Gatekeeper, and would need your password.
-HASH="$(security find-certificate -c "$NAME" -Z "$KEYCHAIN" 2>/dev/null \
-        | awk '/SHA-1 hash:/ { print $3; exit }')"
+# Trust is required, not optional.
+#
+# codesign will happily sign with an untrusted self-signed certificate, and
+# the designated requirement it produces is stable across rebuilds — so it
+# looks like it works. It does not last: TCC re-validates the signature and
+# revokes the grant when the certificate chains to no trusted anchor. The
+# symptom is Full Disk Access switching itself off some minutes after being
+# granted, with the app otherwise unchanged.
+#
+# Marking it trusted for code signing only affects this machine and this
+# certificate. It does not make it a general-purpose root.
+echo
+echo "Marking the certificate trusted for code signing…"
+echo "(macOS may ask for your password.)"
+security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" \
+    <(security find-certificate -c "$NAME" -p "$KEYCHAIN") 2>&1 | head -3 || true
+
+echo
+echo "Valid code-signing identities:"
+security find-identity -v -p codesigning || true
+
 echo "Certificate SHA-1: ${HASH:-not found}"
 
 cat <<'NEXT'
