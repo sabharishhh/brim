@@ -63,6 +63,35 @@ public struct SafeOps {
         }
     }
     
+    /// Securely verifies that a target path matches expectedDev and expectedIno using parent-fd fstatat without following symlinks.
+    public static func verifyTargetFingerprint(
+        targetPath: String,
+        expectedDev: Int32,
+        expectedIno: UInt64
+    ) throws {
+        let targetURL = URL(fileURLWithPath: targetPath)
+        let parentPath = targetURL.deletingLastPathComponent().path
+        let itemName = targetURL.lastPathComponent
+        
+        let parentFd = open(parentPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard parentFd >= 0 else {
+            throw SafeOpsError.failedToOpenParent(errno)
+        }
+        defer { close(parentFd) }
+        
+        try verifyParentDescriptor(parentFd, expectedPath: parentPath)
+        
+        var statBuf = stat()
+        let statResult = fstatat(parentFd, itemName, &statBuf, AT_SYMLINK_NOFOLLOW)
+        guard statResult == 0 else {
+            throw SafeOpsError.failedToStat(errno)
+        }
+        
+        guard statBuf.st_dev == expectedDev && statBuf.st_ino == expectedIno else {
+            throw SafeOpsError.fingerprintMismatch
+        }
+    }
+    
     /// Securely trashes an item.
     /// It attempts to rename the item securely into a temporary directory on the same volume,
     /// then uses NSWorkspace or FileManager to trash it or remove it safely.

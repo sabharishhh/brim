@@ -50,9 +50,16 @@ public actor Executor {
         var hasFailures = false
         
         for step in sortedSteps {
-            if hasFailures && step.executionPhase == .appBundle {
-                journal.stepOutcomes[step.index] = "skipped_due_to_prior_failures"
-                continue
+            if hasFailures {
+                let hadArchiveFailure = sortedSteps.contains { s in s.kind == .archivePath && journal.stepOutcomes[s.index] != nil && journal.stepOutcomes[s.index] != "ok" }
+                if hadArchiveFailure {
+                    journal.stepOutcomes[step.index] = "skipped_due_to_prior_failures"
+                    continue
+                }
+                if step.executionPhase == .appBundle {
+                    journal.stepOutcomes[step.index] = "skipped_due_to_prior_failures"
+                    continue
+                }
             }
             
             if !fm.fileExists(atPath: step.target) {
@@ -77,12 +84,19 @@ public actor Executor {
                     try SafeOps.unloadLaunchdJob(path: step.target)
                     journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .archivePath, let dest = step.archiveDestination {
-                    let destURL = URL(fileURLWithPath: dest)
-                    try fm.createDirectory(at: destURL, withIntermediateDirectories: true, attributes: nil)
-                    let targetFileName = URL(fileURLWithPath: step.target).lastPathComponent
-                    let itemDestURL = destURL.appendingPathComponent(targetFileName)
+                    guard let fp = step.targetFingerprint else {
+                        throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure archive"])
+                    }
+                    // Validate planned target identity before copying (TOCTOU protection)
+                    try SafeOps.verifyTargetFingerprint(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     
-                    // Simple fallback for copy (could be hardened)
+                    let destURL = URL(fileURLWithPath: dest)
+                    // Preserve relative directory hierarchy (e.g. "/Applications/App.app" -> "destURL/Applications/App.app")
+                    let relPath = step.target.hasPrefix("/") ? String(step.target.dropFirst()) : step.target
+                    let itemDestURL = destURL.appendingPathComponent(relPath)
+                    
+                    try fm.createDirectory(at: itemDestURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
+                    
                     if fm.fileExists(atPath: itemDestURL.path) {
                         try fm.removeItem(at: itemDestURL)
                     }
