@@ -147,4 +147,104 @@ final class ExecutorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundleURL.path))
         XCTAssertEqual(journal.stepOutcomes[0], "skipped_due_to_prior_failures")
     }
+
+    func testArchiveTOCTOUValidationFailure() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let journalStoreDir = tempDir.appendingPathComponent("Journals")
+        let journalStore = JournalStore(directoryURL: journalStoreDir)
+        let executor = Executor(journalStore: journalStore)
+        
+        let fileURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("data.bin")
+        let destDir = tempDir.resolvingSymlinksInPath().appendingPathComponent("archive")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try "original".write(to: fileURL, atomically: true, encoding: .utf8)
+        
+        let originalFP = getFP(for: fileURL.path)
+        
+        // Attacker swaps the file (different inode)
+        try FileManager.default.removeItem(at: fileURL)
+        try "swapped".write(to: fileURL, atomically: true, encoding: .utf8)
+        
+        let plan = Plan(
+            planId: UUID(),
+            createdAt: Date(),
+            engineVersion: "1",
+            osVersion: "15.0",
+            intent: PlanIntent(type: .archive, subjectIdentity: Identity(bundleID: "test", name: "test"), destinationTarget: destDir),
+            steps: [
+                Step(index: 0, kind: .archivePath, target: fileURL.path, targetFingerprint: originalFP, tier: .A, evidence: "test", expectedBytes: 10, capability: .ok, reversible: true, costOfError: .low, executionPhase: .archive, archiveDestination: destDir.path),
+                Step(index: 1, kind: .trashPath, target: fileURL.path, targetFingerprint: originalFP, tier: .A, evidence: "test", expectedBytes: 10, capability: .ok, reversible: true, costOfError: .low, executionPhase: .auxiliary)
+            ],
+            excludedItems: [],
+            expectedTotalBytes: 10
+        )
+        
+        let journal = try await executor.execute(plan: plan)
+        
+        // Archive must fail due to TOCTOU fingerprint mismatch
+        XCTAssertEqual(journal.status, .partial)
+        XCTAssertNotEqual(journal.stepOutcomes[0], "ok")
+        // Destructive trash step must be skipped due to prior archive failure!
+        XCTAssertEqual(journal.stepOutcomes[1], "skipped_due_to_prior_failures")
+        // The live file must NOT be deleted!
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    func testArchivePreservesRelativeHierarchyAndAvoidsCollisions() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let journalStoreDir = tempDir.appendingPathComponent("Journals")
+        let journalStore = JournalStore(directoryURL: journalStoreDir)
+        let executor = Executor(journalStore: journalStore)
+        
+        let dirA = tempDir.resolvingSymlinksInPath().appendingPathComponent("subA")
+        let dirB = tempDir.resolvingSymlinksInPath().appendingPathComponent("subB")
+        let destDir = tempDir.resolvingSymlinksInPath().appendingPathComponent("archive")
+        
+        try FileManager.default.createDirectory(at: dirA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dirB, withIntermediateDirectories: true)
+        
+        let fileA = dirA.appendingPathComponent("Preferences.plist")
+        let fileB = dirB.appendingPathComponent("Preferences.plist")
+        
+        try "Content A".write(to: fileA, atomically: true, encoding: .utf8)
+        try "Content B".write(to: fileB, atomically: true, encoding: .utf8)
+        
+        let plan = Plan(
+            planId: UUID(),
+            createdAt: Date(),
+            engineVersion: "1",
+            osVersion: "15.0",
+            intent: PlanIntent(type: .archive, subjectIdentity: Identity(bundleID: "test", name: "test"), destinationTarget: destDir),
+            steps: [
+                Step(index: 0, kind: .archivePath, target: fileA.path, targetFingerprint: getFP(for: fileA.path), tier: .A, evidence: "A", expectedBytes: 9, capability: .ok, reversible: true, costOfError: .low, executionPhase: .archive, archiveDestination: destDir.path),
+                Step(index: 1, kind: .archivePath, target: fileB.path, targetFingerprint: getFP(for: fileB.path), tier: .A, evidence: "B", expectedBytes: 9, capability: .ok, reversible: true, costOfError: .low, executionPhase: .archive, archiveDestination: destDir.path)
+            ],
+            excludedItems: [],
+            expectedTotalBytes: 18
+        )
+        
+        let journal = try await executor.execute(plan: plan)
+        XCTAssertEqual(journal.status, .completed)
+        XCTAssertEqual(journal.stepOutcomes[0], "ok")
+        XCTAssertEqual(journal.stepOutcomes[1], "ok")
+        
+        // Verify relative paths in archive
+        let relA = fileA.path.hasPrefix("/") ? String(fileA.path.dropFirst()) : fileA.path
+        let relB = fileB.path.hasPrefix("/") ? String(fileB.path.dropFirst()) : fileB.path
+        
+        let archivedA = destDir.appendingPathComponent(relA)
+        let archivedB = destDir.appendingPathComponent(relB)
+        
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archivedA.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archivedB.path))
+        
+        let contentA = try String(contentsOf: archivedA)
+        let contentB = try String(contentsOf: archivedB)
+        XCTAssertEqual(contentA, "Content A")
+        XCTAssertEqual(contentB, "Content B")
+        
+        // Live files must still exist (archive only)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileA.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileB.path))
+    }
 }
