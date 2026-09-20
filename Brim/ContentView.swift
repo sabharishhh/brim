@@ -12,6 +12,8 @@ struct ContentView: View {
                 switch selection {
                 case .review:
                     ReviewQueueView(selection: $selection)
+                case .applications:
+                    ApplicationsView()
                 case .history:
                     RemovalHistoryView()
                 default:
