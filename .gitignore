@@ -3,4 +3,4 @@ skills/
 .agent/
 .build/
 .swiftpm/
-Brim.xcodeproj/
+Brim.xcodeproj/build/
