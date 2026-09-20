@@ -50,7 +50,8 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
 
 public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     case auxiliary = 0
-    case appBundle = 1
+    case launchd = 1
+    case appBundle = 2
     
     public static func < (lhs: ExecutionPhase, rhs: ExecutionPhase) -> Bool {
         return lhs.rawValue < rhs.rawValue

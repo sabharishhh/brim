@@ -171,3 +171,6 @@ All findings (C, H, M, and L) have been completely resolved:
 
 - **`BrimGoldenTests` must not stay at 0 tests** — Needs to be wired when T-3.9 is reached.
 - **M2 Xcode project modification** was avoided by using a pure SwiftPM + `build_release.sh` approach to structure the `.app` bundle natively.
+
+### Milestone 3 — Features
+- [x] T-3.1 · Remaining Tier A and B sources (Implemented GroupContainer, BundleIDState, TeamID, LaunchServices, SMAppService sources. Fixed reverse undo restoration order bug).
