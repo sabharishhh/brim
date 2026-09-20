@@ -105,12 +105,14 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let subjectIdentity: Identity
     public let requesterKind: String
     public let requesterIdentity: String
+    public let specificTarget: URL?
     
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user") {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
+        self.specificTarget = specificTarget
     }
 }
 

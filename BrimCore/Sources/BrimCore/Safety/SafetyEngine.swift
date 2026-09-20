@@ -56,8 +56,7 @@ public struct SafetyEngine: Sendable {
             let selection: SelectionState
             switch item.evidence.tier {
             case .S:
-                // S arrives in M3, for now it is explicitly excluded.
-                selection = .excluded(reason: "Shared/System tier evidence is excluded until M3.")
+                selection = .selected
             case .A, .B:
                 selection = .selected
             case .C:

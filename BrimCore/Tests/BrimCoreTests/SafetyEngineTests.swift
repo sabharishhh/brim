@@ -47,12 +47,8 @@ final class SafetyEngineTests: XCTestCase {
         XCTAssertTrue(reasonSystem.contains("strictly protected"))
         XCTAssertEqual(evaluated.items[0].costOfError, .high)
         
-        // 1: Tier S -> Excluded by engine default
-        guard case .excluded(let reasonS) = evaluated.items[1].selection else {
-            XCTFail("Expected excluded")
-            return
-        }
-        XCTAssertTrue(reasonS.contains("Shared/System tier evidence is excluded until M3"))
+        // 1: Tier S -> Selected in M3, as veto engine will handle exclusions
+        XCTAssertEqual(evaluated.items[1].selection, .selected)
         
         // 2: Tier B -> Selected
         XCTAssertEqual(evaluated.items[2].selection, .selected)
