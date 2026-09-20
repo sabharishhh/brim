@@ -2,8 +2,15 @@ import SwiftUI
 import BrimUI
 
 struct ReviewQueueView: View {
+    @Binding var navigationSelection: NavigationItem?
+
     @StateObject private var viewModel = ReviewQueueViewModel()
     @StateObject private var recovery = RecoveryStatusModel()
+    @StateObject private var fullDiskAccess = FullDiskAccessModel()
+
+    init(selection: Binding<NavigationItem?>) {
+        self._navigationSelection = selection
+    }
     @State private var selection = Set<UUID>()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brimService) private var service
@@ -75,6 +82,11 @@ struct ReviewQueueView: View {
             }
             .padding()
             
+            if !fullDiskAccess.isGranted {
+                fullDiskAccessBanner
+                Divider()
+            }
+
             if !recovery.isEmpty {
                 recoveryBanner
                 Divider()
@@ -124,6 +136,8 @@ struct ReviewQueueView: View {
             // torn down automatically when the task is cancelled.
             await recovery.start(service: service)
         }
+        .onAppear { fullDiskAccess.startObserving() }
+        .onDisappear { fullDiskAccess.stopObserving() }
         .focusedSceneValue(\.removeSelectedAction, removeSelected)
         .sheet(item: $reviewRequest) { request in
             ReviewModal(
@@ -159,11 +173,53 @@ struct ReviewQueueView: View {
             Text("Freed when you empty the Trash")
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            Button("Review in History") {
+                navigationSelection = .history
+            }
+            .buttonStyle(.link)
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(recovery.items.count) removals still recoverable from the Trash, \(ByteCountFormatter.string(fromByteCount: recovery.totalBytes, countStyle: .file)), freed when you empty the Trash")
+    }
+
+    /// Full Disk Access is a precondition, not a refinement: without it Brim
+    /// cannot see most of an application's footprint, so its findings are
+    /// incomplete rather than merely delayed. Stated plainly and once, at the
+    /// top of the queue, rather than nagged.
+    private var fullDiskAccessBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.lock")
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Full Disk Access required")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                if fullDiskAccess.hasRequested {
+                    Text("Switch on Brim in the list, then reopen it — macOS applies the change when the app restarts.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Brim cannot see most of an app's footprint without it, so these results are incomplete. Trash changes are also noticed on a delay.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button("Open Settings") {
+                fullDiskAccess.requestAccess()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Full Disk Access required. Brim cannot see most of an app's footprint without it, so these results are incomplete.")
     }
 
     private func removeSelected() {
