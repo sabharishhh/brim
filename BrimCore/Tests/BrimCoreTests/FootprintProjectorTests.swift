@@ -49,4 +49,38 @@ final class FootprintProjectorTests: XCTestCase {
         XCTAssertEqual(updatedFootprint.items.count, 2)
         XCTAssertFalse(updatedFootprint.items.contains(where: { $0.evidence.url == groupContainerURL }))
     }
+
+    func testCapabilityPreChecks() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let gen = FixtureTreeGenerator(rootURL: tempRoot)
+        defer { gen.destroy() }
+        try gen.generate()
+        
+        let root = FileSystemRoot(rootURL: tempRoot)
+        let resolver = IdentityResolver(root: root)
+        
+        let bundleURL = tempRoot.appendingPathComponent("Applications/SandboxedApp.app")
+        let identity = await resolver.resolve(bundleURL: bundleURL)
+        
+        let engine = EvidenceEngine(sources: [
+            AppBundleSource(bundleURL: bundleURL),
+            SandboxContainerSource(),
+            BundleIdentifierComponentSource()
+        ])
+        
+        // Make the app bundle read-only to simulate EACCES
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: bundleURL.path)
+        
+        let projector = FootprintProjector(engine: engine)
+        let footprint = try await projector.project(identity: identity, in: root)
+        
+        if let appItem = footprint.items.first(where: { $0.evidence.url == bundleURL }) {
+            XCTAssertEqual(appItem.capability, .needsHelper)
+        } else {
+            XCTFail("App bundle not found in footprint")
+        }
+        
+        // Restore permissions for cleanup
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bundleURL.path)
+    }
 }

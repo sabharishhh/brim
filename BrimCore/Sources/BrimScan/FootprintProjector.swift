@@ -22,10 +22,7 @@ public struct FootprintProjector: Sendable {
                 
                 let size = Self.calculateSize(at: evidence.url, fm: fm)
                 
-                var capability: Capability = .ok
-                if !fm.isWritableFile(atPath: evidence.url.path) {
-                    capability = .needsHelper
-                }
+                let capability = Self.determineCapability(for: evidence.url.path)
                 
                 localItems.append(FootprintItem(
                     evidence: evidence,
@@ -37,6 +34,35 @@ public struct FootprintProjector: Sendable {
         }.value
         
         return Footprint(identity: identity, items: items)
+    }
+    
+    
+    nonisolated private static func determineCapability(for path: String) -> Capability {
+        if access(path, W_OK) == 0 {
+            return .ok
+        }
+        
+        let err = errno
+        
+        var statInfo = stat()
+        if stat(path, &statInfo) == 0 {
+            let SF_RESTRICTED: UInt32 = 0x00080000
+            if (statInfo.st_flags & SF_RESTRICTED) != 0 {
+                return .refusedByOS
+            }
+        } else {
+            if errno == EPERM {
+                return .needsFullDiskAccess
+            }
+        }
+        
+        if err == EPERM {
+            return .needsFullDiskAccess
+        } else if err == EACCES {
+            return .needsHelper
+        }
+        
+        return .needsHelper
     }
     
     nonisolated private static func calculateSize(at url: URL, fm: FileManager) -> Int64 {

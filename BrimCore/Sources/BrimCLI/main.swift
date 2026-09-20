@@ -121,7 +121,8 @@ struct FootprintCmd: AsyncParsableCommand {
         } else {
             print("Footprint for \(bundleID): \(footprint.totalSizeBytes) bytes across \(footprint.items.count) items.")
             for item in footprint.items {
-                print(" - \(item.evidence.url.path) (\(item.sizeBytes) bytes)")
+                let capStr = item.capability == .ok ? "" : " [\(item.capability.rawValue)]"
+                print(" - \(item.evidence.url.path) (\(item.sizeBytes) bytes)\(capStr)")
             }
         }
     }
