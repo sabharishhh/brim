@@ -34,7 +34,8 @@ public actor BrimService: BrimServiceProtocol {
         ])
         
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
-        self.safetyEngine = SafetyEngine(safetyChecker: checker)
+        let vetoEngine = TierSVetoEngine(root: root)
+        self.safetyEngine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
         self.planner = Planner()
         self.planStore = PlanStore(directoryURL: planStoreDirectory)
         let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
@@ -55,7 +56,7 @@ public actor BrimService: BrimServiceProtocol {
     
     public func plan(intent: PlanIntent) async throws -> Plan {
         let footprint = try await inspect(identity: intent.subjectIdentity)
-        let evaluated = safetyEngine.evaluate(footprint: footprint)
+        let evaluated = await safetyEngine.evaluate(footprint: footprint)
         let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
         try await planStore.save(plan: plan)
         return plan
