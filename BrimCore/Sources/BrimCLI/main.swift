@@ -36,6 +36,7 @@ struct BrimCLI: AsyncParsableCommand {
             Apply.self,
             Verify.self,
             History.self,
+            LeftoversCmd.self,
             DryRunUninstall.self,
             Install.self
         ]
@@ -265,6 +266,33 @@ struct History: AsyncParsableCommand {
         } else {
             for plan in history {
                 print("Plan \(plan.planId) - \(plan.createdAt)")
+            }
+        }
+    }
+}
+
+struct LeftoversCmd: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "leftovers", abstract: "Scan for leftovers and orphans")
+    @OptionGroup var globalOptions: BrimOptions
+    @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+    
+    mutating func run() async throws {
+        let leftovers = try await BrimCLI.getService().leftovers()
+        if json {
+            outputJSON(leftovers)
+        } else {
+            let orphaned = leftovers.filter { $0.category == .orphaned }
+            let unclaimed = leftovers.filter { $0.category == .unclaimed }
+            
+            print("Found \(leftovers.count) potential leftovers.")
+            print("\nOrphaned (\(orphaned.count)):")
+            for item in orphaned {
+                print(" - \(item.url.path) (\(item.size) bytes)")
+            }
+            
+            print("\nUnclaimed (\(unclaimed.count)):")
+            for item in unclaimed {
+                print(" - \(item.url.path) (\(item.size) bytes)")
             }
         }
     }

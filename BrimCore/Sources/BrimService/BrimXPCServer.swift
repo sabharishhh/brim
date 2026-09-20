@@ -138,4 +138,16 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             }
         }
     }
+
+    public func leftovers(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        Task {
+            do {
+                let leftovers = try await service.leftovers()
+                let data = try JSONEncoder().encode(leftovers)
+                reply(data, nil)
+            } catch {
+                reply(nil, error as NSError)
+            }
+        }
+    }
 }
