@@ -12,4 +12,5 @@ import BrimCore
     func undo(planIdString: String, withReply reply: @escaping @Sendable (Error?) -> Void)
     func dumpBTM(withReply reply: @escaping @Sendable (String?, Error?) -> Void)
     func leftovers(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
+    func scanDuplicates(directoryURLString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
 }

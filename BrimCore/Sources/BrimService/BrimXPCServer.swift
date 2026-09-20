@@ -150,4 +150,16 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             }
         }
     }
+    public func scanDuplicates(directoryURLString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        let url = URL(fileURLWithPath: directoryURLString)
+        Task {
+            do {
+                let duplicates = try await service.scanDuplicates(in: url)
+                let data = try JSONEncoder().encode(duplicates)
+                reply(data, nil)
+            } catch {
+                reply(nil, error as NSError)
+            }
+        }
+    }
 }

@@ -37,6 +37,7 @@ struct BrimCLI: AsyncParsableCommand {
             Verify.self,
             History.self,
             LeftoversCmd.self,
+            DuplicatesCmd.self,
             DryRunUninstall.self,
             Install.self
         ]
@@ -318,6 +319,42 @@ struct LeftoversCmd: AsyncParsableCommand {
             print("\nUnclaimed (\(unclaimed.count)):")
             for item in unclaimed {
                 print(" - \(item.url.path) (\(item.size) bytes)")
+            }
+        }
+    }
+}
+
+struct DuplicatesCmd: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "duplicates", abstract: "Scan for duplicate files in a directory")
+    @Argument(help: "Directory to scan") var path: String
+    @OptionGroup var globalOptions: BrimOptions
+    @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+    
+    mutating func run() async throws {
+        let directoryURL = URL(fileURLWithPath: path)
+        let duplicates = try await BrimCLI.getService().scanDuplicates(in: directoryURL)
+        
+        if json {
+            outputJSON(duplicates)
+        } else {
+            var totalLogical: Int64 = 0
+            var totalRecoverable: Int64 = 0
+            
+            for group in duplicates {
+                totalLogical += group.logicalSize
+                totalRecoverable += group.recoverableBytes
+            }
+            
+            print("Found \(duplicates.count) duplicate groups.")
+            print("Total Logical Size: \(totalLogical) bytes")
+            print("Total Recoverable Space: \(totalRecoverable) bytes")
+            print("----------------------------------------")
+            
+            for group in duplicates {
+                print("Group (Hash: \(group.hash.prefix(8))..., Size per file: \(group.size) bytes, Recoverable: \(group.recoverableBytes) bytes):")
+                for p in group.paths {
+                    print("  - \(p)")
+                }
             }
         }
     }

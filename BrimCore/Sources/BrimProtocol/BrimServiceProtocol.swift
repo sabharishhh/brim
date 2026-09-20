@@ -14,4 +14,5 @@ public protocol BrimServiceProtocol: Sendable {
     func undo(planId: UUID) async throws
     func dumpBTM() async throws -> String
     func leftovers() async throws -> [Leftover]
+    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup]
 }
