@@ -78,67 +78,66 @@ public struct Planner: Sendable {
                         capability: item.footprintItem.capability,
                         reversible: true,
                         costOfError: item.costOfError,
-                        executionPhase: phase,
+                        executionPhase: .archive,
                         archiveDestination: dest.path
                     )
                     steps.append(archiveStep)
                     index += 1
                 }
                 
-                // For archive, we also want to trash it afterwards? Wait, "then optionally proceed to uninstall."
-                // The intent is either .archive (which means JUST archive or both). If both, it should be an explicit step.
-                // For now, let's say .archive means archive THEN trash, since the user usually wants an archived reset or uninstall.
-                // Actually, the requirements say "Archive: export bundle + data + a manifest, then optionally proceed to uninstall."
-                // We'll generate trash steps as well, but `archivePath` step happens first.
+                // Only generate destructive steps if intent is NOT archive, OR if archive explicitly requested uninstall
+                let shouldDelete = (intent.type != .archive) || (intent.type == .archive && intent.archiveAndUninstall)
                 
-                if item.footprintItem.evidence.mechanism == "LaunchdSource" {
-                    let unloadStep = Step(
-                        index: index,
-                        kind: .unloadLaunchdJob,
-                        target: targetPath,
-                        targetFingerprint: fingerprint,
-                        tier: item.footprintItem.evidence.tier,
-                        evidence: item.footprintItem.evidence.humanSentence,
-                        expectedBytes: 0,
-                        capability: item.footprintItem.capability,
-                        reversible: true,
-                        costOfError: item.costOfError,
-                        executionPhase: .launchd
-                    )
-                    steps.append(unloadStep)
-                    index += 1
-                    
-                    let removeStep = Step(
-                        index: index,
-                        kind: .removeLaunchdPlist,
-                        target: targetPath,
-                        targetFingerprint: fingerprint,
-                        tier: item.footprintItem.evidence.tier,
-                        evidence: item.footprintItem.evidence.humanSentence,
-                        expectedBytes: sizeBytes,
-                        capability: item.footprintItem.capability,
-                        reversible: true,
-                        costOfError: item.costOfError,
-                        executionPhase: .launchd
-                    )
-                    steps.append(removeStep)
-                    index += 1
-                } else {
-                    let step = Step(
-                        index: index,
-                        kind: .trashPath,
-                        target: targetPath,
-                        targetFingerprint: fingerprint,
-                        tier: item.footprintItem.evidence.tier,
-                        evidence: item.footprintItem.evidence.humanSentence,
-                        expectedBytes: sizeBytes,
-                        capability: item.footprintItem.capability,
-                        reversible: true,
-                        costOfError: item.costOfError,
-                        executionPhase: phase
-                    )
-                    steps.append(step)
-                    index += 1
+                if shouldDelete {
+                    if item.footprintItem.evidence.mechanism == "LaunchdSource" {
+                        let unloadStep = Step(
+                            index: index,
+                            kind: .unloadLaunchdJob,
+                            target: targetPath,
+                            targetFingerprint: fingerprint,
+                            tier: item.footprintItem.evidence.tier,
+                            evidence: item.footprintItem.evidence.humanSentence,
+                            expectedBytes: 0,
+                            capability: item.footprintItem.capability,
+                            reversible: true,
+                            costOfError: item.costOfError,
+                            executionPhase: .launchd
+                        )
+                        steps.append(unloadStep)
+                        index += 1
+                        
+                        let removeStep = Step(
+                            index: index,
+                            kind: .removeLaunchdPlist,
+                            target: targetPath,
+                            targetFingerprint: fingerprint,
+                            tier: item.footprintItem.evidence.tier,
+                            evidence: item.footprintItem.evidence.humanSentence,
+                            expectedBytes: sizeBytes,
+                            capability: item.footprintItem.capability,
+                            reversible: true,
+                            costOfError: item.costOfError,
+                            executionPhase: .launchd
+                        )
+                        steps.append(removeStep)
+                        index += 1
+                    } else {
+                        let step = Step(
+                            index: index,
+                            kind: .trashPath,
+                            target: targetPath,
+                            targetFingerprint: fingerprint,
+                            tier: item.footprintItem.evidence.tier,
+                            evidence: item.footprintItem.evidence.humanSentence,
+                            expectedBytes: sizeBytes,
+                            capability: item.footprintItem.capability,
+                            reversible: true,
+                            costOfError: item.costOfError,
+                            executionPhase: phase
+                        )
+                        steps.append(step)
+                        index += 1
+                    }
                 }
             case .unselected:
                 excludedItems.append(ExcludedItem(target: targetPath, reason: "Unselected by tier defaults or user choice."))

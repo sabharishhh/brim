@@ -50,6 +50,7 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
 }
 
 public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
+    case archive = -1
     case auxiliary = 0
     case launchd = 1
     case appBundle = 2
@@ -112,14 +113,16 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let requesterIdentity: String
     public let specificTarget: URL?
     public let destinationTarget: URL?
+    public let archiveAndUninstall: Bool
     
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, destinationTarget: URL? = nil) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
         self.specificTarget = specificTarget
         self.destinationTarget = destinationTarget
+        self.archiveAndUninstall = archiveAndUninstall
     }
 }
 
