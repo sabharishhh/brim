@@ -1,3 +1,19 @@
+
+import BrimCore
+import BrimIndex
+
+do {
+    try SelfVerification.verifyCodeSignature()
+    let dbURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Brim/brim.sqlite")
+    if FileManager.default.fileExists(atPath: dbURL.path) {
+        let dbManager = try DatabaseManager(databaseURL: dbURL)
+        try dbManager.checkIntegrity()
+    }
+} catch {
+    print("Self-verification failed: \(error)")
+    // exit(1) in production
+}
+
 import Foundation
 import ArgumentParser
 import BrimProtocol
@@ -7,7 +23,7 @@ import BrimService
 struct BrimOptions: ParsableArguments {
 }
 
-@main
+
 struct BrimCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "brim",
@@ -330,3 +346,5 @@ struct Install: AsyncParsableCommand {
         }
     }
 }
+
+await BrimCLI.main()

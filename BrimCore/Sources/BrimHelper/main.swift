@@ -1,9 +1,24 @@
 import Foundation
 import BrimService
 import BrimCore
+import BrimIndex
 
 
 func runHelper() {
+    
+    do {
+        try SelfVerification.verifyCodeSignature()
+        let dbURL = URL(fileURLWithPath: "/Library/Application Support/com.google.Brim/brim.sqlite")
+        if FileManager.default.fileExists(atPath: dbURL.path) {
+            let dbManager = try DatabaseManager(databaseURL: dbURL)
+            try dbManager.checkIntegrity()
+        }
+    } catch {
+        print("BrimHelper tampered! Aborting. \(error)")
+        exit(1)
+    }
+
+
     // 1. Setup Data Stores
     let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
     let brimAppURL = URL(fileURLWithPath: "/Applications/Brim.app") // TODO: detect
