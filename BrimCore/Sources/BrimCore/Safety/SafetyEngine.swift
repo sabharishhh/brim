@@ -26,12 +26,14 @@ public struct EvaluatedFootprint: Equatable, Sendable {
 /// The only component that may decide what gets selected for removal.
 public struct SafetyEngine: Sendable {
     public let safetyChecker: SafetyChecker
+    public let vetoEngine: TierSVetoEngine
     
-    public init(safetyChecker: SafetyChecker) {
+    public init(safetyChecker: SafetyChecker, vetoEngine: TierSVetoEngine) {
         self.safetyChecker = safetyChecker
+        self.vetoEngine = vetoEngine
     }
     
-    public func evaluate(footprint: Footprint) -> EvaluatedFootprint {
+    public func evaluate(footprint: Footprint) async -> EvaluatedFootprint {
         let evaluatedItems = footprint.items.map { item -> EvaluatedItem in
             let url = item.evidence.url
             
@@ -69,7 +71,8 @@ public struct SafetyEngine: Sendable {
             )
         }
         
-        return EvaluatedFootprint(identity: footprint.identity, items: evaluatedItems)
+        let preVeto = EvaluatedFootprint(identity: footprint.identity, items: evaluatedItems)
+        return await vetoEngine.applyVeto(to: preVeto)
     }
     
     private func evaluateCostOfError(url: URL) -> CostOfError {

@@ -3,11 +3,12 @@ import XCTest
 import Foundation
 
 final class SafetyEngineTests: XCTestCase {
-    func testSafetyEngineEvaluation() {
+    func testSafetyEngineEvaluation() async {
         let rootURL = URL(fileURLWithPath: "/var/folders/xyz/root")
         let root = FileSystemRoot(rootURL: rootURL)
         let checker = SafetyChecker(root: root, brimAppURL: rootURL.appendingPathComponent("Brim.app"))
-        let engine = SafetyEngine(safetyChecker: checker)
+        let vetoEngine = TierSVetoEngine(root: root)
+        let engine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
         
         let identity = Identity(name: "Test")
         let items: [FootprintItem] = [
@@ -34,7 +35,7 @@ final class SafetyEngineTests: XCTestCase {
         ]
         
         let footprint = Footprint(identity: identity, items: items)
-        let evaluated = engine.evaluate(footprint: footprint)
+        let evaluated = await engine.evaluate(footprint: footprint)
         
         XCTAssertEqual(evaluated.items.count, 4)
         
