@@ -136,7 +136,10 @@ struct FootprintCmd: AsyncParsableCommand {
         if json {
             outputJSON(footprint)
         } else {
-            print("Footprint for \(bundleID): \(footprint.totalSizeBytes) bytes across \(footprint.items.count) items.")
+            print("Footprint for \(bundleID): \(footprint.totalSizeBytes) bytes logically across \(footprint.items.count) items.")
+            print(" - Reclaimable: \(footprint.reclaimableSizeBytes) bytes")
+            print(" - Snapshot-Pinned: \(footprint.snapshotPinnedBytes) bytes")
+            
             for item in footprint.items {
                 let capStr = item.capability == .ok ? "" : " [\(item.capability.rawValue)]"
                 print(" - \(item.evidence.url.path) (\(item.sizeBytes) bytes)\(capStr)")
