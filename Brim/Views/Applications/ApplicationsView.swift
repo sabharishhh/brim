@@ -12,6 +12,7 @@ import BrimUI
 struct ApplicationsView: View {
     @StateObject private var model = ApplicationsModel()
     @SwiftUI.Environment(\.brimService) private var service
+    @State private var uninstalling: InstalledApplication?
 
     var body: some View {
         HSplitView {
@@ -22,6 +23,14 @@ struct ApplicationsView: View {
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.load(service: service) }
+        .sheet(item: $uninstalling) { application in
+            UninstallSheet(application: application, service: service) {
+                // The app is gone: drop the selection and refresh the list
+                // rather than leaving a row pointing at nothing.
+                model.select(nil)
+                Task { await model.load(service: service) }
+            }
+        }
     }
 
     // MARK: - List
@@ -145,8 +154,7 @@ struct ApplicationsView: View {
                         .help(reason)
                 } else {
                     Button("Uninstall…") {
-                        // Wired in the next step, together with the
-                        // identity-driven review sheet.
+                        uninstalling = application
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(model.isInspecting || model.footprint == nil)
