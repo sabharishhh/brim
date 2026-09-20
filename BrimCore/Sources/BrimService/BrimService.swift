@@ -84,7 +84,7 @@ public actor BrimService: BrimServiceProtocol {
         
         // Use LAContext for real human approval
         let context = LAContext()
-        let reason = "Approve execution of Brim plan \(plan.planId.uuidString.prefix(8)) to remove \(plan.steps.count) items."
+        let reason = "Approve \(requesterIdentity) deletion of \(plan.intent.subjectIdentity.name) (\(plan.steps.count) items)."
         
         var authError: NSError?
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) {
