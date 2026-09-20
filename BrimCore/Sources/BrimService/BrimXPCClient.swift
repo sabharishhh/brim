@@ -114,4 +114,14 @@ public actor BrimXPCClient: BrimServiceProtocol {
             }
         }
     }
+
+    public func dumpBTM() async throws -> String {
+        return try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<String, Error>) -> Void) in
+            proxy.dumpBTM { result, error in
+                if let error = error { reply(.failure(error)) }
+                else if let result = result { reply(.success(result)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
+            }
+        }
+    }
 }
