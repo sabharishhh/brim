@@ -9,6 +9,6 @@ public protocol BrimServiceProtocol: Sendable {
     func explain(planId: UUID) async throws -> String
     func requestApproval(planId: UUID, requesterIdentity: String) async throws
     func apply(planId: UUID, token: ApprovalToken) async throws
-    func verify(planId: UUID) async throws -> Bool
+    func verify(planId: UUID) async throws -> VerificationResult
     func history() async throws -> [Plan]
 }

@@ -11,8 +11,11 @@ public actor Executor {
     }
     
     public func execute(plan: Plan) async throws -> JournalEntry {
+        let rootPath = plan.steps.first?.target ?? "/"
+        let freeBefore = try? SafeOps.freeSpace(onPath: rootPath)
+        
         // Create initial journal
-        var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending)
+        var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending, freeSpaceBefore: freeBefore)
         try await journalStore.write(entry: journal)
         
         // T-1.14: "The app bundle is trashed last so a partially blocked run can be retried."
@@ -68,6 +71,8 @@ public actor Executor {
             try await journalStore.write(entry: journal)
         }
         
+        let freeAfter = try? SafeOps.freeSpace(onPath: rootPath)
+        journal.freeSpaceAfter = freeAfter
         journal.status = hasFailures ? .partial : .completed
         try await journalStore.write(entry: journal)
         
