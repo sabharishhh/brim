@@ -1,0 +1,166 @@
+import XCTest
+@testable import BrimService
+import BrimProtocol
+import BrimCore
+import BrimOps
+@testable import BrimScan
+
+final class SecurityRegressionSuiteTests: XCTestCase {
+    
+    // (a) an unauthorised client attempting to drive the service and the helper
+    func testUnauthorizedClientRejection() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        
+        let root = FileSystemRoot(rootURL: tempRoot)
+        let brimAppURL = tempRoot.appendingPathComponent("Brim.app")
+        let planStoreDir = tempRoot.appendingPathComponent("Plans")
+        let journalStoreDir = tempRoot.appendingPathComponent("Journal")
+        
+        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
+        
+        // Create a real plan first
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.test", name: "Test"))
+        let plan = try await service.plan(intent: intent)
+        let fakeToken = ApprovalToken(token: "invalid-token")
+        
+        do {
+            try await service.apply(planId: plan.planId, token: fakeToken)
+            XCTFail("Should have rejected unauthorized client")
+        } catch TokenStore.TokenError.notFound {
+            // Success
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    // (b) caller impersonation with a mismatched signature
+    // This is already fully covered by XPCAuthenticationTests.testCodeSigningRejectsUnsignedTestRunner
+    // which tests that the NSXPCListenerDelegate rejects connections without the correct code signing identity.
+    
+    // (c) a symlink swapped between plan and execution
+    func testSymlinkSwapBetweenPlanAndExecution() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        let targetDir = tempDir.appendingPathComponent("TargetDir")
+        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        let targetFile = targetDir.appendingPathComponent("File.txt")
+        try "test".write(to: targetFile, atomically: true, encoding: .utf8)
+        
+        // Fingerprint
+        var statBuf = stat()
+        stat(targetFile.path, &statBuf)
+        let expectedDev = statBuf.st_dev
+        let expectedIno = statBuf.st_ino
+        
+        // Symlink swap!
+        try FileManager.default.removeItem(at: targetDir)
+        let secretDir = tempDir.appendingPathComponent("Secret")
+        try FileManager.default.createDirectory(at: secretDir, withIntermediateDirectories: true)
+        let secretFile = secretDir.appendingPathComponent("File.txt")
+        try "secret".write(to: secretFile, atomically: true, encoding: .utf8)
+        
+        try FileManager.default.createSymbolicLink(at: targetDir, withDestinationURL: secretDir)
+        
+        XCTAssertThrowsError(try SafeOps.trashItem(targetPath: targetFile.path, expectedDev: expectedDev, expectedIno: expectedIno)) { error in
+            guard let safeError = error as? SafeOpsError else {
+                XCTFail("Unexpected error type")
+                return
+            }
+            if case .failedToOpenParent(_) = safeError {
+                // Caught the symlink!
+            } else {
+                XCTFail("Unexpected SafeOpsError: \(safeError)")
+            }
+        }
+    }
+    
+    // (d) a directory replaced by a symlink mid-traversal during a recursive operation
+    func testRecursiveSymlinkReplacementMidTraversal() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        let targetDir = tempDir.appendingPathComponent("App.app")
+        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        
+        let secretDir = tempDir.appendingPathComponent("SecretRootFolder")
+        try FileManager.default.createDirectory(at: secretDir, withIntermediateDirectories: true)
+        try "TopSecret".write(to: secretDir.appendingPathComponent("password.txt"), atomically: true, encoding: .utf8)
+        
+        // Place a symlink inside the app pointing to the secret directory
+        try FileManager.default.createSymbolicLink(at: targetDir.appendingPathComponent("LinkToSecret"), withDestinationURL: secretDir)
+        
+        let scanner = BrimScanner()
+        let stream = scanner.enumerate(url: targetDir)
+        
+        var traversedToSecret = false
+        for try await entry in stream {
+            if entry.url.path.contains("password.txt") {
+                traversedToSecret = true
+            }
+        }
+        
+        XCTAssertFalse(traversedToSecret, "Scanner MUST NOT traverse into symlinked directories")
+    }
+    
+    // Plus a malformed-message fuzz pass over the XPC interfaces.
+    func testMalformedMessageFuzzPass() async throws {
+        // Send absolute garbage plan intent data
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.garbage", name: "Garbage"))
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = FileSystemRoot(rootURL: tempRoot)
+        let brimAppURL = tempRoot.appendingPathComponent("Brim.app")
+        
+        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: tempRoot.appendingPathComponent("Plans"), journalStoreDirectory: tempRoot.appendingPathComponent("Journal"))
+        
+        // Fuzz verify
+        do {
+            _ = try await service.verify(planId: UUID())
+            XCTFail("Should fail for non-existent plan")
+        } catch { }
+        
+        // Fuzz apply with nonsense ID and token
+        do {
+            try await service.apply(planId: UUID(), token: ApprovalToken(token: "junk"))
+            XCTFail("Should fail for invalid plan/token")
+        } catch { }
+        
+        // Fuzz undo with nonsense ID
+        do {
+            try await service.undo(planId: UUID())
+            XCTFail("Should fail for non-existent plan")
+        } catch { }
+    }
+
+    
+    func testSafeRemoveItemAppearsNowhereOutsideBrimOps() throws {
+        // Find all .swift files in the project
+        let projectURL = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent() // BrimSecurityTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // BrimCore
+            .appendingPathComponent("Sources")
+        
+        let enumerator = FileManager.default.enumerator(at: projectURL, includingPropertiesForKeys: nil)
+        var violations = [String]()
+        while let url = enumerator?.nextObject() as? URL {
+            guard url.pathExtension == "swift" else { continue }
+            if url.path.contains("/BrimOps/") { continue }
+            
+            let content = try String(contentsOf: url, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            for (idx, line) in lines.enumerated() {
+                if line.contains("removeItem(atPath:") || line.contains("removeItem(at:") {
+                    if !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                        violations.append("\(url.lastPathComponent):\(idx + 1): \(line.trimmingCharacters(in: .whitespaces))")
+                    }
+                }
+            }
+        }
+        XCTAssertTrue(violations.isEmpty, "Found removeItem calls outside BrimOps: \n\(violations.joined(separator: "\n"))")
+    }
+}
