@@ -15,7 +15,9 @@ func runHelper() {
         }
     } catch {
         print("BrimHelper tampered! Aborting. \(error)")
+        #if !DEBUG
         exit(1)
+        #endif
     }
 
 

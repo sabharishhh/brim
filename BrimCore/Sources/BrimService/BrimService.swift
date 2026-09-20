@@ -105,6 +105,10 @@ public actor BrimService: BrimServiceProtocol {
             }
             
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
+                let msg = "Fingerprint mismatch at step \(i) for \(originalStep.target)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+            }
+            
+            guard originalStep.targetFingerprint == newStep.targetFingerprint else {
                 let msg = "Fingerprint mismatch at step \(i) for target \(originalStep.target): original \(String(describing: originalStep.targetFingerprint)), new \(String(describing: newStep.targetFingerprint))"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
             }
         }
