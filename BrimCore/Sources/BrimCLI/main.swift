@@ -5,8 +5,6 @@ import BrimCore
 import BrimService
 
 struct BrimOptions: ParsableArguments {
-    @Flag(name: .long, help: "Run against a shadow root (dry run)")
-    var dryRun = false
 }
 
 @main
@@ -28,8 +26,8 @@ struct BrimCLI: AsyncParsableCommand {
     
     
     
-    // Shared service accessor that handles dry-run
-    static func getService(dryRun: Bool = false) -> BrimServiceProtocol {
+    // Shared service accessor
+    static func getService() -> BrimServiceProtocol {
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
         let brimAppURL = URL(fileURLWithPath: "/Applications/Brim.app")
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Brim")
@@ -39,11 +37,6 @@ struct BrimCLI: AsyncParsableCommand {
         try? FileManager.default.createDirectory(at: planDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: journalDir, withIntermediateDirectories: true)
         
-        if dryRun {
-            // T-1.19: Create shadow root and pass to BrimService
-            // For now just return standard service, we'll implement T-1.19 next
-            return BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
-        }
         return BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
     }
 }
@@ -71,9 +64,9 @@ struct Apps: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
     
     mutating func run() async throws {
-        // Just a dumb scan of /Applications
-        let appsURL = URL(fileURLWithPath: "/Applications")
-        let contents = try FileManager.default.contentsOfDirectory(at: appsURL, includingPropertiesForKeys: nil)
+        let service = BrimCLI.getService() as! BrimService
+        let appsURL = await service.root.url(for: .applications)
+        let contents = (try? FileManager.default.contentsOfDirectory(at: appsURL, includingPropertiesForKeys: nil)) ?? []
         let apps = contents.filter { $0.pathExtension == "app" }.map { $0.lastPathComponent }
         
         if json {
@@ -94,7 +87,7 @@ struct FootprintCmd: AsyncParsableCommand {
     
     mutating func run() async throws {
         let identity = Identity(bundleID: bundleID, name: bundleID)
-        let footprint = try await BrimCLI.getService(dryRun: globalOptions.dryRun).inspect(identity: identity)
+        let footprint = try await BrimCLI.getService().inspect(identity: identity)
         if json {
             outputJSON(footprint)
         } else {
@@ -120,7 +113,7 @@ extension PlanCmd {
         mutating func run() async throws {
             let identity = Identity(bundleID: bundleID, name: bundleID)
             let intent = PlanIntent(type: .uninstall, subjectIdentity: identity, requesterKind: "cli", requesterIdentity: NSUserName())
-            let plan = try await BrimCLI.getService(dryRun: globalOptions.dryRun).plan(intent: intent)
+            let plan = try await BrimCLI.getService().plan(intent: intent)
             if json {
                 outputJSON(plan)
             } else {
@@ -141,7 +134,7 @@ struct ApproveRequest: AsyncParsableCommand {
             throw ValidationError("Invalid UUID")
         }
         
-        try await BrimCLI.getService(dryRun: globalOptions.dryRun).requestApproval(planId: uuid, requesterIdentity: NSUserName())
+        try await BrimCLI.getService().requestApproval(planId: uuid, requesterIdentity: NSUserName())
         
         if json {
             outputJSON(["status": "approval_requested", "planId": uuid.uuidString])
@@ -169,7 +162,7 @@ struct Apply: AsyncParsableCommand {
             throw ValidationError("Invalid or unparseable token")
         }
         
-        try await BrimCLI.getService(dryRun: globalOptions.dryRun).apply(planId: uuid, token: approvalToken)
+        try await BrimCLI.getService().apply(planId: uuid, token: approvalToken)
         
         if json {
             outputJSON(["status": "applied", "planId": uuid.uuidString])
@@ -190,7 +183,7 @@ struct Verify: AsyncParsableCommand {
             throw ValidationError("Invalid UUID")
         }
         
-        let result = try await BrimCLI.getService(dryRun: globalOptions.dryRun).verify(planId: uuid)
+        let result = try await BrimCLI.getService().verify(planId: uuid)
         if json {
             outputJSON(result)
         } else {
@@ -205,7 +198,7 @@ struct History: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
     
     mutating func run() async throws {
-        let history = try await BrimCLI.getService(dryRun: globalOptions.dryRun).history()
+        let history = try await BrimCLI.getService().history()
         if json {
             outputJSON(history)
         } else {
@@ -223,7 +216,7 @@ struct DryRunUninstall: AsyncParsableCommand {
     
     mutating func run() async throws {
         // 1. Get real footprint
-        let realService = BrimCLI.getService(dryRun: false)
+        let realService = BrimCLI.getService()
         let identity = Identity(bundleID: bundleID, name: bundleID)
         let footprint = try await realService.inspect(identity: identity)
         
@@ -235,11 +228,18 @@ struct DryRunUninstall: AsyncParsableCommand {
         let generator = ShadowRootGenerator(sourceRoot: realRoot)
         let shadowRoot = try generator.createShadowRoot(copying: paths)
         
-        // 3. Create shadow service
+        // 3. Create shadow service with ephemeral storage
         let brimAppURL = URL(fileURLWithPath: "/Applications/Brim.app")
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Brim")
-        let planDir = appSupport.appendingPathComponent("Plans")
-        let journalDir = appSupport.appendingPathComponent("Journals")
+        let ephemeralBase = shadowRoot.rootURL.appendingPathComponent(".brim_ephemeral")
+        let planDir = ephemeralBase.appendingPathComponent("Plans")
+        let journalDir = ephemeralBase.appendingPathComponent("Journals")
+        try FileManager.default.createDirectory(at: planDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: journalDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: shadowRoot.rootURL)
+        }
+        
         let shadowService = BrimService(root: shadowRoot, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
         
         // 4. Run pipeline
@@ -250,7 +250,7 @@ struct DryRunUninstall: AsyncParsableCommand {
         // Actually, we can cast to BrimService
         try await shadowService.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
         let hash = try plan.contentHash()
-        let token = await shadowService.mintTokenForTest(planId: plan.planId, planHash: hash, requesterIdentity: NSUserName())
+        let token = await shadowService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: NSUserName())
         
         try await shadowService.apply(planId: plan.planId, token: token)
         

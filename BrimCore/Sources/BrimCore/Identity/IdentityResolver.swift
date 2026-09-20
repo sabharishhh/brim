@@ -4,36 +4,41 @@ import Security
 /// Resolves various artifacts (bundles, plists, receipts) into a canonical `Identity`.
 public actor IdentityResolver {
     public let root: FileSystemRoot
-    private var cache: [URL: Identity] = [:]
+    private struct CacheEntry {
+        let identity: Identity
+        let timestamp: Date
+    }
+    private var cache: [URL: CacheEntry] = [:]
+    private let cacheTTL: TimeInterval = 300 // 5 minutes
     
     public init(root: FileSystemRoot) {
         self.root = root
     }
     
     public func resolve(bundleURL: URL) async -> Identity {
-        if let cached = cache[bundleURL] { return cached }
+        if let entry = cache[bundleURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL { return entry.identity }
         let identity = await Task.detached {
             self.parseBundle(bundleURL)
         }.value
-        cache[bundleURL] = identity
+        cache[bundleURL] = CacheEntry(identity: identity, timestamp: Date())
         return identity
     }
     
     public func resolve(launchdPlistURL: URL) async -> Identity {
-        if let cached = cache[launchdPlistURL] { return cached }
+        if let entry = cache[launchdPlistURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL { return entry.identity }
         let identity = await Task.detached {
             self.parseLaunchd(launchdPlistURL)
         }.value
-        cache[launchdPlistURL] = identity
+        cache[launchdPlistURL] = CacheEntry(identity: identity, timestamp: Date())
         return identity
     }
     
     public func resolve(receiptURL: URL) async -> Identity {
-        if let cached = cache[receiptURL] { return cached }
+        if let entry = cache[receiptURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL { return entry.identity }
         let identity = await Task.detached {
             self.parseReceipt(receiptURL)
         }.value
-        cache[receiptURL] = identity
+        cache[receiptURL] = CacheEntry(identity: identity, timestamp: Date())
         return identity
     }
     

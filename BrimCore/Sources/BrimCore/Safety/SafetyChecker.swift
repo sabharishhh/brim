@@ -16,8 +16,8 @@ public struct SafetyChecker: Sendable {
     /// Evaluates if a given URL is safe to remove.
     public func isSafeToRemove(url: URL) -> Bool {
         // 1. Cannot remove outside the FileSystemRoot (for synthetic tree testing)
-        let rootComponents = root.rootURL.standardized.pathComponents
-        let urlComponents = url.standardized.pathComponents
+        let rootComponents = root.rootURL.resolvingSymlinksInPath().pathComponents
+        let urlComponents = url.resolvingSymlinksInPath().pathComponents
         
         guard urlComponents.count >= rootComponents.count,
               Array(urlComponents.prefix(rootComponents.count)) == rootComponents else {
@@ -40,7 +40,7 @@ public struct SafetyChecker: Sendable {
         }
         
         // 4. Protect the Brim App itself
-        let brimComponents = brimAppURL.standardized.pathComponents
+        let brimComponents = brimAppURL.resolvingSymlinksInPath().pathComponents
         let isBrimSubdir = urlComponents.count >= brimComponents.count && Array(urlComponents.prefix(brimComponents.count)) == brimComponents
         let isBrimParent = brimComponents.count >= urlComponents.count && Array(brimComponents.prefix(urlComponents.count)) == urlComponents
         

@@ -54,7 +54,7 @@ final class VerifierTests: XCTestCase {
         try await planStore.save(plan: manualPlan)
         
         let hash = try manualPlan.contentHash()
-        let token = await service.mintTokenForTest(planId: manualPlan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
+        let token = await service.tokenStore.mintToken(planId: manualPlan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
         // Apply will fail to delete Pinned.app because it's immutable
         try await service.apply(planId: manualPlan.planId, token: token)

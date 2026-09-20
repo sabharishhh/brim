@@ -35,6 +35,7 @@ public struct Planner: Sendable {
                 let sizeBytes = item.footprintItem.sizeBytes
                 expectedTotalBytes += sizeBytes
                 
+                let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
                 let step = Step(
                     index: index,
                     kind: kind,
@@ -45,7 +46,8 @@ public struct Planner: Sendable {
                     expectedBytes: sizeBytes,
                     capability: item.footprintItem.capability,
                     reversible: true,
-                    costOfError: item.costOfError
+                    costOfError: item.costOfError,
+                    executionPhase: phase
                 )
                 
                 steps.append(step)

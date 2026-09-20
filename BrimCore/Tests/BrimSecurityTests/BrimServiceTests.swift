@@ -44,7 +44,7 @@ final class BrimServiceTests: XCTestCase {
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         
         let hash = try plan.contentHash()
-        let token = await service.mintTokenForTest(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
+        let token = await service.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         

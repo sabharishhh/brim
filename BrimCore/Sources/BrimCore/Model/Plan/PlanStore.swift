@@ -12,11 +12,23 @@ public actor PlanStore {
         try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
     
+    public enum PlanStoreError: Error {
+        case planAlreadyExists
+    }
+
     public func save(plan: Plan) throws {
         try ensureDirectory()
         
         let fileURL = directoryURL.appendingPathComponent("\(plan.planId.uuidString).json")
         let data = try plan.canonicalData()
+        
+        if fm.fileExists(atPath: fileURL.path) {
+            let existingData = try Data(contentsOf: fileURL)
+            if existingData != data {
+                throw PlanStoreError.planAlreadyExists
+            }
+            return // Same plan, skip write
+        }
         
         // Write atomically
         try data.write(to: fileURL, options: .atomic)

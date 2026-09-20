@@ -138,14 +138,17 @@ public struct PlanSheetView: View {
                 // A real app would prompt with Touch ID here or local authentication.
                 try await service.requestApproval(planId: plan.planId, requesterIdentity: identity.bundleID ?? "unknown")
                 
-                // For test UI, we must cast back to concrete service to mint token, since it's not in the protocol.
-                // In M2 this will be proper.
+                // KNOWN: mintTokenForTest is a placeholder for the human-approval minting path.
+                // This bypasses the protocol boundary and is flagged as C-1 in the pre-M2 gate audit.
+                // M2 (T-2.1) will replace this with proper TokenStore injection into the UI layer,
+                // so the UI can call tokenStore.mintToken() directly upon user confirmation, without
+                // going through BrimServiceProtocol at all.
                 guard let concreteService = service as? BrimService else {
                     throw NSError(domain: "UI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot mint token without concrete service"])
                 }
                 
                 let hash = try plan.contentHash()
-                let token = await concreteService.mintTokenForTest(planId: plan.planId, planHash: hash, requesterIdentity: identity.bundleID ?? "unknown")
+                let token = await concreteService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: identity.bundleID ?? "unknown")
                 
                 // 2. Apply
                 try await service.apply(planId: plan.planId, token: token)
