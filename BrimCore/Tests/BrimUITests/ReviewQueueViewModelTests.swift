@@ -10,6 +10,7 @@ private struct StubService: BrimServiceProtocol {
     init(leftovers: [Leftover]) { self.leftoversResult = .success(leftovers) }
     init(error: Error) { self.leftoversResult = .failure(error) }
 
+    func installedApplications() async throws -> [InstalledApplication] { [] }
     func leftovers() async throws -> [Leftover] { try leftoversResult.get() }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
 

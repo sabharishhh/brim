@@ -26,6 +26,8 @@ public struct FileSystemRoot: Sendable {
         case systemLaunchDaemons
         case systemLaunchAgents
         case applications
+        /// `~/Applications` — apps installed for this user alone.
+        case userApplications
         case receipts
         case tempDirs
         case volumes
@@ -63,6 +65,8 @@ public struct FileSystemRoot: Sendable {
             return rootURL.appendingPathComponent("Library/LaunchAgents")
         case .applications:
             return rootURL.appendingPathComponent("Applications")
+        case .userApplications:
+            return rootURL.appendingPathComponent("Users/\(userName)/Applications")
         case .receipts:
             return rootURL.appendingPathComponent("Library/Receipts")
         case .tempDirs:

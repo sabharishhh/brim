@@ -13,6 +13,8 @@ public protocol BrimServiceProtocol: Sendable {
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
     func dumpBTM() async throws -> String
+    /// Applications installed on this machine, for the Applications view.
+    func installedApplications() async throws -> [InstalledApplication]
     func leftovers() async throws -> [Leftover]
     /// Past removals whose contents are still in the Trash, so still restorable.
     func recoverableItems() async throws -> [RecoverableItem]

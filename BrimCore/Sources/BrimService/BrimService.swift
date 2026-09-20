@@ -379,6 +379,10 @@ public actor BrimService: BrimServiceProtocol {
         }
     }
     
+    public func installedApplications() async throws -> [InstalledApplication] {
+        await ApplicationInventory(root: root).installedApplications()
+    }
+
     public func leftovers() async throws -> [Leftover] {
         let scanner = LeftoversScanner(root: root)
         var knownPastBundleIDs = Set<String>()

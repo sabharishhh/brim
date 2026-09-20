@@ -150,6 +150,17 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             }
         }
     }
+    public func installedApplications(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        Task {
+            do {
+                let apps = try await service.installedApplications()
+                reply(try JSONEncoder().encode(apps), nil)
+            } catch {
+                reply(nil, error as NSError)
+            }
+        }
+    }
+
     public func recoverableItems(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
         Task {
             do {
