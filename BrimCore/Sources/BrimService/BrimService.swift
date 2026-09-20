@@ -80,19 +80,37 @@ public actor BrimService: BrimServiceProtocol {
         _ = try await executor.execute(plan: plan)
     }
     
-    public func verify(planId: UUID) async throws -> Bool {
+    public func verify(planId: UUID) async throws -> VerificationResult {
         let plan = try await planStore.load(planId: planId)
-        let fm = FileManager.default
         
+        let journal = try? await journalStore.load(planId: planId)
+        let before = journal?.freeSpaceBefore ?? 0
+        let after = journal?.freeSpaceAfter ?? 0
+        let recoveredBytes = max(0, after - before)
+        
+        // Re-observe targets
+        let fm = FileManager.default
+        var targetsRemaining = 0
         for step in plan.steps {
-            if step.kind == .trashPath {
-                let url = URL(fileURLWithPath: step.target)
-                if fm.fileExists(atPath: url.path) {
-                    return false // Still exists!
+            if fm.fileExists(atPath: step.target) {
+                // Was it excluded?
+                if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" {
+                    continue
                 }
+                targetsRemaining += 1
             }
         }
-        return true
+        
+        let success = targetsRemaining == 0
+        let reason = success ? nil : "\(targetsRemaining) targets still remain."
+        
+        return VerificationResult(
+            planId: planId,
+            expectedBytes: plan.expectedTotalBytes,
+            recoveredBytes: recoveredBytes,
+            success: success,
+            reason: reason
+        )
     }
     
     public func history() async throws -> [Plan] {

@@ -14,12 +14,16 @@ public struct JournalEntry: Codable, Sendable {
     public let startedAt: Date
     public var status: PlanStatus
     public var stepOutcomes: [Int: String] // Step index -> Error reason or "ok"
+    public var freeSpaceBefore: Int64?
+    public var freeSpaceAfter: Int64?
     
-    public init(planId: UUID, startedAt: Date, status: PlanStatus, stepOutcomes: [Int : String] = [:]) {
+    public init(planId: UUID, startedAt: Date, status: PlanStatus, stepOutcomes: [Int : String] = [:], freeSpaceBefore: Int64? = nil, freeSpaceAfter: Int64? = nil) {
         self.planId = planId
         self.startedAt = startedAt
         self.status = status
         self.stepOutcomes = stepOutcomes
+        self.freeSpaceBefore = freeSpaceBefore
+        self.freeSpaceAfter = freeSpaceAfter
     }
 }
 
