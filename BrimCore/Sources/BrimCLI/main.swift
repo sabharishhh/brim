@@ -20,7 +20,8 @@ struct BrimCLI: AsyncParsableCommand {
             Apply.self,
             Verify.self,
             History.self,
-            DryRunUninstall.self
+            DryRunUninstall.self,
+            Install.self
         ]
     )
     
@@ -289,6 +290,26 @@ struct DryRunUninstall: AsyncParsableCommand {
             print("Shadow run complete for \(bundleID).")
             print("Target paths successfully mirrored and trashed in \(shadowRoot.rootURL.path)")
             print("Verification result: \(verification.success ? "Success" : "Failure") - \(verification.recoveredBytes) bytes recovered.")
+        }
+    }
+}
+
+import ServiceManagement
+
+struct Install: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "install", abstract: "Install the Brim privileged helper daemon")
+    
+    mutating func run() async throws {
+        if #available(macOS 13.0, *) {
+            let service = SMAppService.daemon(plistName: "com.google.Brim.daemon.plist")
+            do {
+                try service.register()
+                print("Successfully registered daemon. You may be prompted for authentication.")
+            } catch {
+                print("Failed to register daemon: \(error)")
+            }
+        } else {
+            print("SMAppService requires macOS 13.0 or newer.")
         }
     }
 }

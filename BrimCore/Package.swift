@@ -18,6 +18,7 @@ let package = Package(
         .library(name: "BrimUI", targets: ["BrimUI"]),
         .executable(name: "BrimCLI", targets: ["BrimCLI"]),
         .executable(name: "BrimMCP", targets: ["BrimMCP"]),
+        .executable(name: "BrimHelper", targets: ["BrimHelper"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -44,6 +45,7 @@ let package = Package(
             .product(name: "ArgumentParser", package: "swift-argument-parser")
         ]),
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol"]),
+        .executableTarget(name: "BrimHelper", dependencies: ["BrimHelperCore", "BrimService"]),
         
         // Tests
         .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures", resources: [
