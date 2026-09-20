@@ -39,6 +39,15 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
     }
 }
 
+public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
+    case auxiliary = 0
+    case appBundle = 1
+    
+    public static func < (lhs: ExecutionPhase, rhs: ExecutionPhase) -> Bool {
+        return lhs.rawValue < rhs.rawValue
+    }
+}
+
 public struct Step: Codable, Equatable, Sendable {
     public let index: Int
     public let kind: StepKind
@@ -50,8 +59,9 @@ public struct Step: Codable, Equatable, Sendable {
     public let capability: Capability
     public let reversible: Bool
     public let costOfError: CostOfError
+    public let executionPhase: ExecutionPhase
     
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -62,6 +72,7 @@ public struct Step: Codable, Equatable, Sendable {
         self.capability = capability
         self.reversible = reversible
         self.costOfError = costOfError
+        self.executionPhase = executionPhase
     }
 }
 

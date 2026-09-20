@@ -43,7 +43,7 @@ final class UndoTests: XCTestCase {
         
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         let hash = try plan.contentHash()
-        let token = await service.mintTokenForTest(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
+        let token = await service.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         
@@ -67,9 +67,9 @@ final class UndoTests: XCTestCase {
         try await service.undo(planId: plan.planId)
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundleURL.path))
         
-        // Wait, history should be empty after undo?
+        // Wait, history should NOT be empty after undo since ledger is immutable
         let history2 = try await service.history()
-        XCTAssertEqual(history2.count, 0) // because we deleted the journal
+        XCTAssertEqual(history2.count, 1) // Ledger entry persists
         
         let plan2 = Plan(
             planId: UUID(),
@@ -87,7 +87,7 @@ final class UndoTests: XCTestCase {
         
         try await service.requestApproval(planId: plan2.planId, requesterIdentity: intent.requesterIdentity)
         let hash2 = try plan2.contentHash()
-        let token2 = await service.mintTokenForTest(planId: plan2.planId, planHash: hash2, requesterIdentity: intent.requesterIdentity)
+        let token2 = await service.tokenStore.mintToken(planId: plan2.planId, planHash: hash2, requesterIdentity: intent.requesterIdentity)
         try await service.apply(planId: plan2.planId, token: token2)
         XCTAssertFalse(FileManager.default.fileExists(atPath: bundleURL.path))
         
@@ -100,7 +100,7 @@ final class UndoTests: XCTestCase {
             XCTFail("Should have thrown error")
         } catch {
             let nsError = error as NSError
-            XCTAssertEqual(nsError.domain, "BrimService")
+            XCTAssertEqual(nsError.domain, "BrimOps")
             XCTAssertEqual(nsError.code, 2)
         }
     }
