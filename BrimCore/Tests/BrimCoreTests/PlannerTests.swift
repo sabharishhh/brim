@@ -22,9 +22,24 @@ final class PlannerTests: XCTestCase {
         
         let plan = planner.createPlan(from: evaluatedFootprint, intent: intent, engineVersion: "1.0")
         
-        XCTAssertEqual(plan.steps.count, 1)
-        XCTAssertEqual(plan.steps[0].target, rootURL.appendingPathComponent("Test.app").path)
-        XCTAssertEqual(plan.steps[0].expectedBytes, 1024)
+        // A whole-app uninstall clears the app's privacy grants first, so
+        // there is one more step than there are files.
+        XCTAssertEqual(plan.steps.count, 2)
+
+        let privacy = try XCTUnwrap(plan.steps.first { $0.kind == .resetPrivacyGrants })
+        XCTAssertEqual(privacy.target, "test", "The reset is scoped to the bundle identifier")
+        XCTAssertEqual(privacy.executionPhase, .privacyReset)
+        XCTAssertFalse(privacy.reversible)
+
+        let removal = try XCTUnwrap(plan.steps.first { $0.kind == .trashPath })
+        XCTAssertEqual(removal.target, rootURL.appendingPathComponent("Test.app").path)
+        XCTAssertEqual(removal.expectedBytes, 1024)
+
+        // The ordering that matters: tccutil cannot resolve a bundle that has
+        // already been deleted, so the reset must come first.
+        let order = plan.executionOrderedSteps.map(\.kind)
+        XCTAssertEqual(order.firstIndex(of: .resetPrivacyGrants), 0,
+                       "Privacy grants must be cleared before anything is removed")
         
         XCTAssertEqual(plan.excludedItems.count, 2)
         XCTAssertEqual(plan.excludedItems[0].reason, "Brim refused to modify this item to ensure system stability.")
