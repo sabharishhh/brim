@@ -47,6 +47,63 @@ final class ReviewModalFlowIntegrationTests: XCTestCase {
         )
     }
 
+    /// The plan records actually on disk, by file name.
+    private func storedPlanFiles(in support: URL) -> [String] {
+        let plansDir = support.appendingPathComponent("Plans")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: plansDir.path)) ?? []
+        return names.filter { $0.hasSuffix(".json") }.sorted()
+    }
+
+    func testApplyDoesNotPersistItsRevalidationPlan() async throws {
+        // apply() re-plans to check the footprint has not mutated. That
+        // throwaway plan used to go through the saving path, leaving a second
+        // record with identical steps and no ledger entry.
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let rootURL = tempDir.appendingPathComponent("Root")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let target = rootURL
+            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
+            .appendingPathComponent("throwaway-one-record")
+        try makeLeftover(at: target, bytes: 256)
+
+        let service = makeService(root: rootURL, support: tempDir)
+
+        let plan = try await service.plan(intent: modalIntent(title: "throwaway-one-record", targets: [target]))
+        XCTAssertEqual(storedPlanFiles(in: tempDir), ["\(plan.planId.uuidString).json"])
+
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        try await service.apply(planId: plan.planId, token: token)
+
+        XCTAssertEqual(
+            storedPlanFiles(in: tempDir),
+            ["\(plan.planId.uuidString).json"],
+            "apply() must leave only the plan it applied"
+        )
+    }
+
+    func testApplyingABatchLeavesOneRecordNotOnePerTarget() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let rootURL = tempDir.appendingPathComponent("Root")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let caches = rootURL.appendingPathComponent("Users/\(NSUserName())/Library/Caches")
+        let targets = ["one", "two", "three"].map { caches.appendingPathComponent("batch-record-\($0)") }
+        for url in targets { try makeLeftover(at: url, bytes: 128) }
+
+        let service = makeService(root: rootURL, support: tempDir)
+
+        let plan = try await service.plan(intent: modalIntent(title: "3 selected items", targets: targets))
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        try await service.apply(planId: plan.planId, token: token)
+
+        XCTAssertEqual(
+            storedPlanFiles(in: tempDir),
+            ["\(plan.planId.uuidString).json"],
+            "Three targets removed together should leave one plan record"
+        )
+    }
+
     private func makeLeftover(at url: URL, bytes: Int) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         try Data(repeating: 0x41, count: bytes).write(to: url.appendingPathComponent("payload.bin"))
