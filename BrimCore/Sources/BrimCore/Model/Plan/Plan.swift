@@ -25,6 +25,7 @@ public enum StepKind: String, Codable, Equatable, Sendable {
     case delegateToolCleanup
     case revealVendorUninstaller
     case btmReset
+    case archivePath
 }
 
 public struct TargetFingerprint: Codable, Equatable, Sendable {
@@ -70,8 +71,9 @@ public struct Step: Codable, Equatable, Sendable {
     public let reversible: Bool
     public let costOfError: CostOfError
     public let executionPhase: ExecutionPhase
+    public let archiveDestination: String?
     
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, archiveDestination: String? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -83,6 +85,7 @@ public struct Step: Codable, Equatable, Sendable {
         self.reversible = reversible
         self.costOfError = costOfError
         self.executionPhase = executionPhase
+        self.archiveDestination = archiveDestination
     }
 }
 
@@ -98,6 +101,8 @@ public struct ExcludedItem: Codable, Equatable, Sendable {
 
 public enum IntentType: String, Codable, Equatable, Sendable {
     case uninstall
+    case reset
+    case archive
 }
 
 public struct PlanIntent: Codable, Equatable, Sendable {
@@ -106,13 +111,15 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let requesterKind: String
     public let requesterIdentity: String
     public let specificTarget: URL?
+    public let destinationTarget: URL?
     
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, destinationTarget: URL? = nil) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
         self.specificTarget = specificTarget
+        self.destinationTarget = destinationTarget
     }
 }
 

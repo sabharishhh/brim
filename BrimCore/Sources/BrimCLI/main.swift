@@ -146,7 +146,7 @@ struct FootprintCmd: AsyncParsableCommand {
 }
 
 struct PlanCmd: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "plan", abstract: "Plan operations", subcommands: [Uninstall.self])
+    static let configuration = CommandConfiguration(commandName: "plan", abstract: "Plan operations", subcommands: [Uninstall.self, Reset.self, Archive.self])
 }
 
 extension PlanCmd {
@@ -154,7 +154,7 @@ extension PlanCmd {
         static let configuration = CommandConfiguration(commandName: "uninstall", abstract: "Create an uninstall plan")
         @Argument(help: "Bundle ID of the app") var bundleID: String
         @OptionGroup var globalOptions: BrimOptions
-    @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+        @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
         
         mutating func run() async throws {
             let identity = Identity(bundleID: bundleID, name: bundleID)
@@ -164,22 +164,44 @@ extension PlanCmd {
                 outputJSON(plan)
             } else {
                 print("Created uninstall plan \(plan.planId) with \(plan.steps.count) steps.")
-                
-                let advisor = PermissionAdvisor()
-                let advice = advisor.advise(on: plan)
-                
-                if advice.hasBlockers {
-                    print("\nPermission Findings:")
-                    if advice.needsHelper {
-                        print(" - Needs Helper: Requires root privileges to remove system-owned files.")
-                    }
-                    if advice.needsFullDiskAccess {
-                        print(" - Needs Full Disk Access: Privacy-protected containers were found but cannot be inspected or removed without FDA.")
-                    }
-                    if advice.refusedByOSCount > 0 {
-                        print(" - Refused by OS: \(advice.refusedByOSCount) items are protected by SIP and cannot be removed.")
-                    }
-                }
+            }
+        }
+    }
+    
+    struct Reset: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "reset", abstract: "Create a reset plan")
+        @Argument(help: "Bundle ID of the app") var bundleID: String
+        @OptionGroup var globalOptions: BrimOptions
+        @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+        
+        mutating func run() async throws {
+            let identity = Identity(bundleID: bundleID, name: bundleID)
+            let intent = PlanIntent(type: .reset, subjectIdentity: identity, requesterKind: "cli", requesterIdentity: NSUserName())
+            let plan = try await BrimCLI.getService().plan(intent: intent)
+            if json {
+                outputJSON(plan)
+            } else {
+                print("Created reset plan \(plan.planId) with \(plan.steps.count) steps.")
+            }
+        }
+    }
+    
+    struct Archive: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "archive", abstract: "Create an archive plan")
+        @Argument(help: "Bundle ID of the app") var bundleID: String
+        @Argument(help: "Destination directory for the archive") var destination: String
+        @OptionGroup var globalOptions: BrimOptions
+        @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+        
+        mutating func run() async throws {
+            let identity = Identity(bundleID: bundleID, name: bundleID)
+            let destURL = URL(fileURLWithPath: destination)
+            let intent = PlanIntent(type: .archive, subjectIdentity: identity, requesterKind: "cli", requesterIdentity: NSUserName(), destinationTarget: destURL)
+            let plan = try await BrimCLI.getService().plan(intent: intent)
+            if json {
+                outputJSON(plan)
+            } else {
+                print("Created archive plan \(plan.planId) with \(plan.steps.count) steps. Destination: \(destination)")
             }
         }
     }
