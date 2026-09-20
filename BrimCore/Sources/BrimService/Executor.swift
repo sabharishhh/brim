@@ -41,7 +41,7 @@ public actor Executor {
             }
             
             do {
-                if step.kind == .trashPath || step.kind == .removeLaunchdPlist {
+                if step.kind == .trashPath || step.kind == .trashPathPrivileged || step.kind == .removeLaunchdPlist {
                     let resultingURL: URL?
                     if let fp = step.targetFingerprint {
                         resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
@@ -63,7 +63,12 @@ public actor Executor {
                     hasFailures = true
                 }
             } catch {
-                journal.stepOutcomes[step.index] = error.localizedDescription
+                let nsErr = error as NSError
+                if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr.code == EPERM || nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM {
+                    journal.stepOutcomes[step.index] = "refusedByOS"
+                } else {
+                    journal.stepOutcomes[step.index] = error.localizedDescription
+                }
                 hasFailures = true
             }
             
