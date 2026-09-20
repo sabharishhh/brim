@@ -147,6 +147,22 @@ extension PlanCmd {
                 outputJSON(plan)
             } else {
                 print("Created uninstall plan \(plan.planId) with \(plan.steps.count) steps.")
+                
+                let advisor = PermissionAdvisor()
+                let advice = advisor.advise(on: plan)
+                
+                if advice.hasBlockers {
+                    print("\nPermission Findings:")
+                    if advice.needsHelper {
+                        print(" - Needs Helper: Requires root privileges to remove system-owned files.")
+                    }
+                    if advice.needsFullDiskAccess {
+                        print(" - Needs Full Disk Access: Privacy-protected containers were found but cannot be inspected or removed without FDA.")
+                    }
+                    if advice.refusedByOSCount > 0 {
+                        print(" - Refused by OS: \(advice.refusedByOSCount) items are protected by SIP and cannot be removed.")
+                    }
+                }
             }
         }
     }
