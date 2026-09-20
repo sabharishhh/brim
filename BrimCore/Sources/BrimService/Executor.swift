@@ -39,13 +39,7 @@ public actor Executor {
         var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending, freeSpaceBefore: freeBefore)
         try await journalStore.write(entry: journal)
         
-        // Sort by executionPhase, breaking ties by index
-        let sortedSteps = plan.steps.sorted { a, b in
-            if a.executionPhase != b.executionPhase {
-                return a.executionPhase < b.executionPhase
-            }
-            return a.index < b.index
-        }
+        let sortedSteps = plan.executionOrderedSteps
         
         var hasFailures = false
         

@@ -256,12 +256,7 @@ public actor BrimService: BrimServiceProtocol {
         let fm = FileManager.default
         
         // 1. Restore items from Trash (atomically fails if path is re-occupied)
-        let sortedSteps = plan.steps.sorted { a, b in
-            if a.executionPhase != b.executionPhase {
-                return a.executionPhase > b.executionPhase
-            }
-            return a.index > b.index
-        }
+        let sortedSteps = plan.undoOrderedSteps
         for step in sortedSteps {
             if step.kind == .unloadLaunchdJob {
                 try? SafeOps.loadLaunchdJob(path: step.target)
