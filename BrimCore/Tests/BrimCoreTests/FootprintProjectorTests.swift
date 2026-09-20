@@ -18,7 +18,7 @@ final class FootprintProjectorTests: XCTestCase {
         let identity = await resolver.resolve(bundleURL: bundleURL)
         
         let engine = EvidenceEngine(sources: [
-            AppBundleSource(bundleURL: bundleURL),
+            AppBundleSource(),
             SandboxContainerSource(),
             BundleIdentifierComponentSource(),
             InstallerReceiptSource()
@@ -63,7 +63,7 @@ final class FootprintProjectorTests: XCTestCase {
         let identity = await resolver.resolve(bundleURL: bundleURL)
         
         let engine = EvidenceEngine(sources: [
-            AppBundleSource(bundleURL: bundleURL),
+            AppBundleSource(),
             SandboxContainerSource(),
             BundleIdentifierComponentSource()
         ])
@@ -75,7 +75,7 @@ final class FootprintProjectorTests: XCTestCase {
         let footprint = try await projector.project(identity: identity, in: root)
         
         if let appItem = footprint.items.first(where: { $0.evidence.url == bundleURL }) {
-            XCTAssertEqual(appItem.capability, .needsHelper)
+            XCTAssertEqual(appItem.capability, Capability.needsHelper)
         } else {
             XCTFail("App bundle not found in footprint")
         }

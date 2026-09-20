@@ -15,6 +15,16 @@
       "relativePath": "Library/Group Containers/group.com.brim.sandboxed",
       "tier": "A",
       "description": "Group container declared in application entitlements"
+    },
+    {
+      "relativePath": "Library/HTTPStorages/com.brim.sandboxed",
+      "tier": "B",
+      "description": "HTTP storage cache"
+    },
+    {
+      "relativePath": "Applications/SandboxedApp.app/Contents/Library/LaunchServices/com.brim.helper",
+      "tier": "A",
+      "description": "Privileged helper tool bundled within the application"
     }
   ]
 }

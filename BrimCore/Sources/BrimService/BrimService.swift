@@ -20,9 +20,16 @@ public actor BrimService: BrimServiceProtocol {
         self.root = root
         
         self.engine = EvidenceEngine(sources: [
+            
+            AppBundleSource(),
             SandboxContainerSource(),
             InstallerReceiptSource(),
-            BundleIdentifierComponentSource()
+            BundleIdentifierComponentSource(),
+            GroupContainerSource(),
+            BundleIdentifierStateSource(),
+            TeamIDSource(),
+            LaunchServicesSource(),
+            SMAppServiceSource()
         ])
         
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
@@ -187,7 +194,13 @@ public actor BrimService: BrimServiceProtocol {
         let fm = FileManager.default
         
         // 1. Restore items from Trash (atomically fails if path is re-occupied)
-        for step in plan.steps {
+        let sortedSteps = plan.steps.sorted { a, b in
+            if a.executionPhase != b.executionPhase {
+                return a.executionPhase > b.executionPhase
+            }
+            return a.index > b.index
+        }
+        for step in sortedSteps {
             if let trashedURL = trashedURLs[step.index] {
                 let targetURL = URL(fileURLWithPath: step.target)
                 // We MUST ensure the parent directory exists
