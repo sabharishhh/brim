@@ -130,6 +130,13 @@ public struct SafeOps {
     
     /// Returns the free space in bytes on the volume containing the given path.
     public static func freeSpace(onPath path: String) throws -> Int64 {
+        let url = URL(fileURLWithPath: path)
+        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let capacity = values.volumeAvailableCapacityForImportantUsage {
+            return capacity
+        }
+        
+        // Fallback to statfs
         var statBuf = statfs()
         guard statfs(path, &statBuf) == 0 else {
             throw SafeOpsError.failedToStat(errno)
