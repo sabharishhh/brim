@@ -11,12 +11,17 @@ public struct EnergySample: Codable, Sendable {
     public let diskWriteBytes: UInt64
     public let wakeups: UInt64
     
-    // A pseudo-energy score combining CPU time and IO/wakeups.
-    // In a real implementation this would map precisely to joules or coalition metrics.
-    public var energyScore: UInt64 {
+    // A synthetic impact score combining CPU time, disk IO, and wakeups.
+    // Explicitly not physical Joules.
+    public var impactScore: UInt64 {
         // CPU time in ns (1e9 ns = 1s). Wakeups and IO also cost energy.
-        // Simplified metric for spike.
+        // Synthetic metric for spike.
         return userTime + systemTime + (wakeups * 1000_000) + (diskReadBytes + diskWriteBytes) * 10
+    }
+    
+    @available(*, deprecated, message: "Use impactScore instead; this metric is a synthetic score, not physical energy.")
+    public var energyScore: UInt64 {
+        return impactScore
     }
 }
 
@@ -46,7 +51,15 @@ public actor EnergySampler {
             
             var pathBuffer = [CChar](repeating: 0, count: 4096)
             let pathRet = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-            let path = pathRet > 0 ? String(cString: pathBuffer) : "unknown"
+            let path: String
+            if pathRet > 0 {
+                path = pathBuffer.withUnsafeBufferPointer { ptr in
+                    let u8ptr = ptr.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: Int(pathRet)) { $0 }
+                    return String(decoding: UnsafeBufferPointer(start: u8ptr, count: Int(pathRet)), as: UTF8.self)
+                }
+            } else {
+                path = "unknown"
+            }
             
             var ru = rusage_info_v6()
             let ret = withUnsafeMutablePointer(to: &ru) { ptr in

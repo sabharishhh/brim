@@ -39,7 +39,9 @@ let package = Package(
         .target(name: "BrimHelperCore", dependencies: ["BrimCore", "BrimOps", "BrimProtocol"]),
         .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService"]),
         
-        .executableTarget(name: "BrimApp", dependencies: ["BrimUI"]),
+        .executableTarget(name: "BrimApp", dependencies: ["BrimUI"], resources: [
+            .copy("LaunchAgents")
+        ]),
         .executableTarget(name: "BrimCLI", dependencies: [
             "BrimProtocol",
             "BrimCore",
@@ -47,7 +49,9 @@ let package = Package(
             .product(name: "ArgumentParser", package: "swift-argument-parser")
         ]),
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol", "BrimService"]),
-        .executableTarget(name: "BrimHelper", dependencies: ["BrimHelperCore", "BrimService"]),
+        .executableTarget(name: "BrimHelper", dependencies: ["BrimHelperCore", "BrimService"], resources: [
+            .copy("com.google.Brim.daemon.plist")
+        ]),
         
         // Tests
         .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures", resources: [
