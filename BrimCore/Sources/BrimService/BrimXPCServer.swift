@@ -51,30 +51,20 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         }
     }
 
-    public func mintToken(planIdString: String, planHash: String, requesterIdentity: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
-        guard let id = UUID(uuidString: planIdString) else { reply(nil, NSError(domain: "BrimXPC", code: 4)); return }
-        Task {
-            do {
-                let token = try await service.mintToken(planId: id, planHash: planHash, requesterIdentity: requesterIdentity)
-                let data = try JSONEncoder().encode(token)
-                reply(data, nil)
-            } catch {
-                reply(nil, error)
-            }
-        }
-    }
 
-    public func requestApproval(planIdString: String, requesterIdentity: String, withReply reply: @escaping @Sendable (Error?) -> Void) {
+
+    public func requestApproval(planIdString: String, requesterIdentity: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
         guard let planId = UUID(uuidString: planIdString) else {
-            reply(NSError(domain: "BrimXPC", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UUID string"]))
+            reply(nil, NSError(domain: "BrimXPC", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UUID string"]))
             return
         }
         Task {
             do {
-                try await service.requestApproval(planId: planId, requesterIdentity: requesterIdentity)
-                reply(nil)
+                let token = try await service.requestApproval(planId: planId, requesterIdentity: requesterIdentity)
+                let data = try JSONEncoder().encode(token)
+                reply(data, nil)
             } catch {
-                reply(error as NSError)
+                reply(nil, error as NSError)
             }
         }
     }
