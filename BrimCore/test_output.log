@@ -1,144 +1,158 @@
 Building for debugging...
 [Computing dependencies]
-[2 / 7] BrimSecurityTests-product
-[4 / 11]
-[5 / 11]
-[6 / 11] BrimSecurityTests-product
-[10 / 12] BrimSecurityTests-product
-Build complete! (1.49 secs)
-Test Suite 'All tests' started at 2026-09-20 08:11:38.705.
-Test Suite 'BrimSecurityTests.xctest' started at 2026-09-20 08:11:38.711.
-Test Suite 'BrimServiceTests' started at 2026-09-20 08:11:38.711.
+[1 / 1]
+warning: /Users/sabharishhh/Developer/brim/BrimCore/Sources/BrimService/BrimXPCListenerDelegate.swift:3:8 file 'BrimXPCListenerDelegate.swift' is part of module 'BrimService'; ignoring import
+[2 / 17] BrimService
+/Users/sabharishhh/Developer/brim/BrimCore/Sources/BrimService/BrimXPCListenerDelegate.swift:3:8: [1;33mwarning: [1;39mfile 'BrimXPCListenerDelegate.swift' is part of module 'BrimService'; ignoring import[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/module-self-import\ModuleSelfImport]8;;\]
+ [0;36m1 |[0;0m import Foundation
+ [0;36m2 |[0;0m import BrimProtocol
+ [0;36m3 |[0;0m import BrimService
+   [0;36m|[0;0m        `- [1;33mwarning: [1;39mfile 'BrimXPCListenerDelegate.swift' is part of module 'BrimService'; ignoring import[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/module-self-import\ModuleSelfImport]8;;\]
+ [0;36m4 |[0;0m import BrimCore
+ [0;36m5 |[0;0m 
+
+[#ModuleSelfImport]: <https://docs.swift.org/compiler/documentation/diagnostics/module-self-import>
+[5 / 20] BrimService
+[15 / 25] BrimService-product
+[17 / 25] BrimUI
+[21 / 26] BrimCLI-product
+[22 / 28] BrimCLI-product
+[31 / 36] BrimCLI-product
+[33 / 38]
+[34 / 38] BrimSecurityTests-product
+Build complete! (2.26 secs)
+Test Suite 'All tests' started at 2026-09-20 08:50:00.251.
+Test Suite 'BrimSecurityTests.xctest' started at 2026-09-20 08:50:00.256.
+Test Suite 'BrimServiceTests' started at 2026-09-20 08:50:00.256.
 Test Case '-[BrimSecurityTests.BrimServiceTests testServiceDrivesCompleteUninstall]' started.
-Test Case '-[BrimSecurityTests.BrimServiceTests testServiceDrivesCompleteUninstall]' passed (0.037 seconds).
-Test Suite 'BrimServiceTests' passed at 2026-09-20 08:11:38.748.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.037 (0.037) seconds
-Test Suite 'ExecutorTests' started at 2026-09-20 08:11:38.748.
+Test Case '-[BrimSecurityTests.BrimServiceTests testServiceDrivesCompleteUninstall]' passed (0.032 seconds).
+Test Suite 'BrimServiceTests' passed at 2026-09-20 08:50:00.288.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.032 (0.032) seconds
+Test Suite 'ExecutorTests' started at 2026-09-20 08:50:00.288.
 Test Case '-[BrimSecurityTests.ExecutorTests testExecutorPartialFailureLeavesBundle]' started.
-Test Case '-[BrimSecurityTests.ExecutorTests testExecutorPartialFailureLeavesBundle]' passed (0.005 seconds).
-Test Suite 'ExecutorTests' passed at 2026-09-20 08:11:38.753.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
-Test Suite 'SafeOpsTests' started at 2026-09-20 08:11:38.753.
+Test Case '-[BrimSecurityTests.ExecutorTests testExecutorPartialFailureLeavesBundle]' passed (0.004 seconds).
+Test Suite 'ExecutorTests' passed at 2026-09-20 08:50:00.292.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'SafeOpsTests' started at 2026-09-20 08:50:00.293.
 Test Case '-[BrimSecurityTests.SafeOpsTests testSafeRemoveItemAppearsNowhereOutsideBrimOps]' started.
 Test Case '-[BrimSecurityTests.SafeOpsTests testSafeRemoveItemAppearsNowhereOutsideBrimOps]' passed (0.000 seconds).
 Test Case '-[BrimSecurityTests.SafeOpsTests testSymlinkSwapFails]' started.
-Test Case '-[BrimSecurityTests.SafeOpsTests testSymlinkSwapFails]' passed (0.002 seconds).
-Test Suite 'SafeOpsTests' passed at 2026-09-20 08:11:38.755.
-	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
-Test Suite 'TokenStoreTests' started at 2026-09-20 08:11:38.755.
+Test Case '-[BrimSecurityTests.SafeOpsTests testSymlinkSwapFails]' passed (0.001 seconds).
+Test Suite 'SafeOpsTests' passed at 2026-09-20 08:50:00.294.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'TokenStoreTests' started at 2026-09-20 08:50:00.294.
 Test Case '-[BrimSecurityTests.TokenStoreTests testTokenValidationScenarios]' started.
 Test Case '-[BrimSecurityTests.TokenStoreTests testTokenValidationScenarios]' passed (0.003 seconds).
-Test Suite 'TokenStoreTests' passed at 2026-09-20 08:11:38.758.
+Test Suite 'TokenStoreTests' passed at 2026-09-20 08:50:00.297.
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
-Test Suite 'UndoTests' started at 2026-09-20 08:11:38.758.
+Test Suite 'UndoTests' started at 2026-09-20 08:50:00.297.
 Test Case '-[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied]' started.
-/Users/sabharishhh/Developer/brim/BrimCore/Tests/BrimSecurityTests/UndoTests.swift:72: error: -[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied] : XCTAssertEqual failed: ("1") is not equal to ("0")
-Test Case '-[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied]' failed (0.092 seconds).
-Test Suite 'UndoTests' failed at 2026-09-20 08:11:38.850.
-	 Executed 1 test, with 1 failure (0 unexpected) in 0.092 (0.092) seconds
-Test Suite 'VerifierTests' started at 2026-09-20 08:11:38.850.
+Test Case '-[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied]' passed (0.031 seconds).
+Test Suite 'UndoTests' passed at 2026-09-20 08:50:00.328.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.031 (0.031) seconds
+Test Suite 'VerifierTests' started at 2026-09-20 08:50:00.328.
 Test Case '-[BrimSecurityTests.VerifierTests testVerifierPinnedBytes]' started.
-Test Case '-[BrimSecurityTests.VerifierTests testVerifierPinnedBytes]' passed (0.015 seconds).
-Test Suite 'VerifierTests' passed at 2026-09-20 08:11:38.866.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.015 (0.015) seconds
-Test Suite 'BrimSecurityTests.xctest' failed at 2026-09-20 08:11:38.866.
-	 Executed 7 tests, with 1 failure (0 unexpected) in 0.154 (0.155) seconds
-Test Suite 'All tests' failed at 2026-09-20 08:11:38.866.
-	 Executed 7 tests, with 1 failure (0 unexpected) in 0.154 (0.161) seconds
-PLAN STEPS: [BrimCore.Step(index: 0, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/1181DCF5-43AF-4558-875F-5A0FC424BEEE/Root/Library/Containers/com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777234, ino: 49125008, mtime: 2026-09-20 02:41:38 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Sandbox container keyed to this bundle identifier", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary), BrimCore.Step(index: 1, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/1181DCF5-43AF-4558-875F-5A0FC424BEEE/Root/Library/Group Containers/group.com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777234, ino: 49125010, mtime: 2026-09-20 02:41:38 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Group container declared in application entitlements", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary)]
+Test Case '-[BrimSecurityTests.VerifierTests testVerifierPinnedBytes]' passed (0.013 seconds).
+Test Suite 'VerifierTests' passed at 2026-09-20 08:50:00.341.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
+Test Suite 'BrimSecurityTests.xctest' passed at 2026-09-20 08:50:00.341.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.084 (0.085) seconds
+Test Suite 'All tests' passed at 2026-09-20 08:50:00.341.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.084 (0.090) seconds
+PLAN STEPS: [BrimCore.Step(index: 0, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/DF1F70BE-BD46-433C-B5E6-DB4D33A6CF8E/Root/Library/Containers/com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777234, ino: 49132441, mtime: 2026-09-20 03:20:00 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Sandbox container keyed to this bundle identifier", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary), BrimCore.Step(index: 1, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/DF1F70BE-BD46-433C-B5E6-DB4D33A6CF8E/Root/Library/Group Containers/group.com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777234, ino: 49132443, mtime: 2026-09-20 03:20:00 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Group container declared in application entitlements", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary)]
 PLAN EXCLUDED: []
-Approval requested for plan B9A7EF83-E279-4EF0-B635-A42EF901AB9D by user
-Approval requested for plan 46E05006-92A0-49DA-B18F-5CE810B6B430 by user
+Approval requested for plan 7417D0B6-D399-42B3-AF05-B7C07C7082D8 by user
+Approval requested for plan E42F8BCA-92BB-40E0-B5D9-24C266A92686 by user
 Plan targets:
-- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/AE981719-EA7A-41F2-98CB-D7115407395C/Root/Applications/SandboxedApp.app
+- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/9E0FE0C2-D6A0-4344-8655-27B73DB2C888/Root/Applications/SandboxedApp.app
 Journal after apply: [0: "ok"]
-Approval requested for plan 29E74BD6-33DC-43A0-B067-85F6E73E542F by user
-Test Suite 'All tests' started at 2026-09-20 08:11:38.953.
-Test Suite 'BrimIndexTests.xctest' started at 2026-09-20 08:11:38.959.
-Test Suite 'DatabaseManagerTests' started at 2026-09-20 08:11:38.959.
+Approval requested for plan 4755303E-01E4-4A55-BC67-4E4BE95D0336 by user
+Test Suite 'All tests' started at 2026-09-20 08:50:00.413.
+Test Suite 'BrimIndexTests.xctest' started at 2026-09-20 08:50:00.418.
+Test Suite 'DatabaseManagerTests' started at 2026-09-20 08:50:00.418.
 Test Case '-[BrimIndexTests.DatabaseManagerTests testIndexActorConcurrency]' started.
 Test Case '-[BrimIndexTests.DatabaseManagerTests testIndexActorConcurrency]' passed (0.017 seconds).
 Test Case '-[BrimIndexTests.DatabaseManagerTests testMigrationAndRebuildOnCorruption]' started.
 Test Case '-[BrimIndexTests.DatabaseManagerTests testMigrationAndRebuildOnCorruption]' passed (0.006 seconds).
-Test Suite 'DatabaseManagerTests' passed at 2026-09-20 08:11:38.982.
+Test Suite 'DatabaseManagerTests' passed at 2026-09-20 08:50:00.441.
 	 Executed 2 tests, with 0 failures (0 unexpected) in 0.023 (0.023) seconds
-Test Suite 'BrimIndexTests.xctest' passed at 2026-09-20 08:11:38.982.
+Test Suite 'BrimIndexTests.xctest' passed at 2026-09-20 08:50:00.441.
 	 Executed 2 tests, with 0 failures (0 unexpected) in 0.023 (0.023) seconds
-Test Suite 'All tests' passed at 2026-09-20 08:11:38.982.
-	 Executed 2 tests, with 0 failures (0 unexpected) in 0.023 (0.029) seconds
-Test Suite 'All tests' started at 2026-09-20 08:11:39.067.
-Test Suite 'All tests' passed at 2026-09-20 08:11:39.073.
-	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.006) seconds
-Test Suite 'All tests' started at 2026-09-20 08:11:39.169.
-Test Suite 'BrimCoreTests.xctest' started at 2026-09-20 08:11:39.175.
-Test Suite 'BrimScannerTests' started at 2026-09-20 08:11:39.175.
+Test Suite 'All tests' passed at 2026-09-20 08:50:00.441.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.023 (0.028) seconds
+Test Suite 'All tests' started at 2026-09-20 08:50:00.512.
+Test Suite 'All tests' passed at 2026-09-20 08:50:00.517.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+Test Suite 'All tests' started at 2026-09-20 08:50:00.588.
+Test Suite 'BrimCoreTests.xctest' started at 2026-09-20 08:50:00.594.
+Test Suite 'BrimScannerTests' started at 2026-09-20 08:50:00.594.
 Test Case '-[BrimCoreTests.BrimScannerTests testScannerOnFixtureTree]' started.
-Test Case '-[BrimCoreTests.BrimScannerTests testScannerOnFixtureTree]' passed (0.013 seconds).
-Test Suite 'BrimScannerTests' passed at 2026-09-20 08:11:39.189.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.014) seconds
-Test Suite 'EvidenceEngineTests' started at 2026-09-20 08:11:39.189.
+Test Case '-[BrimCoreTests.BrimScannerTests testScannerOnFixtureTree]' passed (0.011 seconds).
+Test Suite 'BrimScannerTests' passed at 2026-09-20 08:50:00.605.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.011 (0.012) seconds
+Test Suite 'EvidenceEngineTests' started at 2026-09-20 08:50:00.605.
 Test Case '-[BrimCoreTests.EvidenceEngineTests testEngineAggregationAndDeduplication]' started.
 Test Case '-[BrimCoreTests.EvidenceEngineTests testEngineAggregationAndDeduplication]' passed (0.000 seconds).
-Test Suite 'EvidenceEngineTests' passed at 2026-09-20 08:11:39.189.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
-Test Suite 'EvidenceSourceTests' started at 2026-09-20 08:11:39.189.
+Test Suite 'EvidenceEngineTests' passed at 2026-09-20 08:50:00.606.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'EvidenceSourceTests' started at 2026-09-20 08:50:00.606.
 Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstClassicManifest]' started.
-Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstClassicManifest]' passed (0.011 seconds).
+Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstClassicManifest]' passed (0.009 seconds).
 Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstSandboxedManifest]' started.
-Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstSandboxedManifest]' passed (0.011 seconds).
-Test Suite 'EvidenceSourceTests' passed at 2026-09-20 08:11:39.212.
-	 Executed 2 tests, with 0 failures (0 unexpected) in 0.023 (0.023) seconds
-Test Suite 'FileSystemRootTests' started at 2026-09-20 08:11:39.212.
+Test Case '-[BrimCoreTests.EvidenceSourceTests testSourcesAgainstSandboxedManifest]' passed (0.008 seconds).
+Test Suite 'EvidenceSourceTests' passed at 2026-09-20 08:50:00.624.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.018 (0.018) seconds
+Test Suite 'FileSystemRootTests' started at 2026-09-20 08:50:00.624.
 Test Case '-[BrimCoreTests.FileSystemRootTests testDomainResolution]' started.
 Test Case '-[BrimCoreTests.FileSystemRootTests testDomainResolution]' passed (0.000 seconds).
-Test Suite 'FileSystemRootTests' passed at 2026-09-20 08:11:39.212.
+Test Suite 'FileSystemRootTests' passed at 2026-09-20 08:50:00.624.
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
-Test Suite 'FixtureTests' started at 2026-09-20 08:11:39.212.
+Test Suite 'FixtureTests' started at 2026-09-20 08:50:00.624.
 Test Case '-[BrimCoreTests.FixtureTests testManifestRoundTrips]' started.
 Test Case '-[BrimCoreTests.FixtureTests testManifestRoundTrips]' passed (0.000 seconds).
 Test Case '-[BrimCoreTests.FixtureTests testTreeGenerationIsDeterministic]' started.
-Test Case '-[BrimCoreTests.FixtureTests testTreeGenerationIsDeterministic]' passed (0.284 seconds).
-Test Suite 'FixtureTests' passed at 2026-09-20 08:11:39.496.
-	 Executed 2 tests, with 0 failures (0 unexpected) in 0.284 (0.284) seconds
-Test Suite 'FootprintProjectorTests' started at 2026-09-20 08:11:39.497.
+Test Case '-[BrimCoreTests.FixtureTests testTreeGenerationIsDeterministic]' passed (0.300 seconds).
+Test Suite 'FixtureTests' passed at 2026-09-20 08:50:00.925.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.301 (0.301) seconds
+Test Suite 'FootprintProjectorTests' started at 2026-09-20 08:50:00.925.
 Test Case '-[BrimCoreTests.FootprintProjectorTests testProjectorCalculatesSizeAndFiltersDeletedItems]' started.
-Test Case '-[BrimCoreTests.FootprintProjectorTests testProjectorCalculatesSizeAndFiltersDeletedItems]' passed (0.013 seconds).
-Test Suite 'FootprintProjectorTests' passed at 2026-09-20 08:11:39.510.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
-Test Suite 'IdentityResolverTests' started at 2026-09-20 08:11:39.510.
+Test Case '-[BrimCoreTests.FootprintProjectorTests testProjectorCalculatesSizeAndFiltersDeletedItems]' passed (0.015 seconds).
+Test Suite 'FootprintProjectorTests' passed at 2026-09-20 08:50:00.940.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.015 (0.015) seconds
+Test Suite 'IdentityResolverTests' started at 2026-09-20 08:50:00.940.
 Test Case '-[BrimCoreTests.IdentityResolverTests testResolveFromFixtureTree]' started.
-Test Case '-[BrimCoreTests.IdentityResolverTests testResolveFromFixtureTree]' passed (0.010 seconds).
-Test Suite 'IdentityResolverTests' passed at 2026-09-20 08:11:39.520.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.010) seconds
-Test Suite 'ModelTests' started at 2026-09-20 08:11:39.520.
+Test Case '-[BrimCoreTests.IdentityResolverTests testResolveFromFixtureTree]' passed (0.011 seconds).
+Test Suite 'IdentityResolverTests' passed at 2026-09-20 08:50:00.951.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'ModelTests' started at 2026-09-20 08:50:00.951.
 Test Case '-[BrimCoreTests.ModelTests testPlanCanonicalEncoding]' started.
-Test Case '-[BrimCoreTests.ModelTests testPlanCanonicalEncoding]' passed (0.005 seconds).
-Test Suite 'ModelTests' passed at 2026-09-20 08:11:39.525.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
-Test Suite 'PlanStoreTests' started at 2026-09-20 08:11:39.525.
+Test Case '-[BrimCoreTests.ModelTests testPlanCanonicalEncoding]' passed (0.004 seconds).
+Test Suite 'ModelTests' passed at 2026-09-20 08:50:00.955.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'PlanStoreTests' started at 2026-09-20 08:50:00.955.
 Test Case '-[BrimCoreTests.PlanStoreTests testPlanRoundTripsThroughDiskUnchanged]' started.
 Test Case '-[BrimCoreTests.PlanStoreTests testPlanRoundTripsThroughDiskUnchanged]' passed (0.002 seconds).
-Test Suite 'PlanStoreTests' passed at 2026-09-20 08:11:39.527.
+Test Suite 'PlanStoreTests' passed at 2026-09-20 08:50:00.957.
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
-Test Suite 'PlannerTests' started at 2026-09-20 08:11:39.527.
+Test Suite 'PlannerTests' started at 2026-09-20 08:50:00.957.
 Test Case '-[BrimCoreTests.PlannerTests testPlannerCreatesValidPlan]' started.
-Test Case '-[BrimCoreTests.PlannerTests testPlannerCreatesValidPlan]' passed (0.001 seconds).
-Test Suite 'PlannerTests' passed at 2026-09-20 08:11:39.528.
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
-Test Suite 'SafetyCheckerTests' started at 2026-09-20 08:11:39.528.
+Test Case '-[BrimCoreTests.PlannerTests testPlannerCreatesValidPlan]' passed (0.000 seconds).
+Test Suite 'PlannerTests' passed at 2026-09-20 08:50:00.958.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'SafetyCheckerTests' started at 2026-09-20 08:50:00.958.
 Test Case '-[BrimCoreTests.SafetyCheckerTests testSafetyCheckerRejectsForbiddenPaths]' started.
 Test Case '-[BrimCoreTests.SafetyCheckerTests testSafetyCheckerRejectsForbiddenPaths]' passed (0.000 seconds).
-Test Suite 'SafetyCheckerTests' passed at 2026-09-20 08:11:39.528.
+Test Suite 'SafetyCheckerTests' passed at 2026-09-20 08:50:00.958.
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
-Test Suite 'SafetyEngineTests' started at 2026-09-20 08:11:39.528.
+Test Suite 'SafetyEngineTests' started at 2026-09-20 08:50:00.958.
 Test Case '-[BrimCoreTests.SafetyEngineTests testSafetyEngineEvaluation]' started.
 Test Case '-[BrimCoreTests.SafetyEngineTests testSafetyEngineEvaluation]' passed (0.000 seconds).
-Test Suite 'SafetyEngineTests' passed at 2026-09-20 08:11:39.528.
+Test Suite 'SafetyEngineTests' passed at 2026-09-20 08:50:00.959.
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
-Test Suite 'BrimCoreTests.xctest' passed at 2026-09-20 08:11:39.529.
-	 Executed 14 tests, with 0 failures (0 unexpected) in 0.352 (0.353) seconds
-Test Suite 'All tests' passed at 2026-09-20 08:11:39.529.
-	 Executed 14 tests, with 0 failures (0 unexpected) in 0.352 (0.360) seconds
+Test Suite 'BrimCoreTests.xctest' passed at 2026-09-20 08:50:00.959.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.363 (0.365) seconds
+Test Suite 'All tests' passed at 2026-09-20 08:50:00.959.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.363 (0.371) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 2084
 ↳ Target Platform: arm64e-apple-macos14.0
@@ -155,5 +169,3 @@ Test Suite 'All tests' passed at 2026-09-20 08:11:39.529.
 ↳ Testing Library Version: 2084
 ↳ Target Platform: arm64e-apple-macos14.0
 ✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
-Note: Some test targets reported failures:
-  - BrimSecurityTests (XCTest)

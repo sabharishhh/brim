@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 @testable import BrimCore
+@testable import BrimProtocol
 @testable import BrimService
 @testable import BrimFixtures
 
@@ -18,7 +19,18 @@ final class UndoTests: XCTestCase {
         
         let root = FileSystemRoot(rootURL: rootURL)
         let brimAppURL = rootURL.appendingPathComponent("Brim.app")
-        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
+        let realService = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
+        
+        let listener = NSXPCListener.anonymous()
+        let delegate = BrimXPCListenerDelegate(service: realService)
+        listener.delegate = delegate
+        listener.resume()
+        
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
+        connection.resume()
+        
+        let service: BrimServiceProtocol = BrimXPCClient(connection: connection)
         
         let bundleURL = rootURL.appendingPathComponent("Applications/SandboxedApp.app")
         let resolver = IdentityResolver(root: root)
@@ -43,7 +55,7 @@ final class UndoTests: XCTestCase {
         
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         let hash = try plan.contentHash()
-        let token = await service.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
+        let token = await realService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         
@@ -87,7 +99,7 @@ final class UndoTests: XCTestCase {
         
         try await service.requestApproval(planId: plan2.planId, requesterIdentity: intent.requesterIdentity)
         let hash2 = try plan2.contentHash()
-        let token2 = await service.tokenStore.mintToken(planId: plan2.planId, planHash: hash2, requesterIdentity: intent.requesterIdentity)
+        let token2 = await realService.tokenStore.mintToken(planId: plan2.planId, planHash: hash2, requesterIdentity: intent.requesterIdentity)
         try await service.apply(planId: plan2.planId, token: token2)
         XCTAssertFalse(FileManager.default.fileExists(atPath: bundleURL.path))
         

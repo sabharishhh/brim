@@ -19,7 +19,19 @@ final class BrimServiceTests: XCTestCase {
         
         let root = FileSystemRoot(rootURL: rootURL)
         let brimAppURL = rootURL.appendingPathComponent("Brim.app")
-        let service = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
+        let realService = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
+        
+        // Spin up XPC listener for boundary testing
+        let listener = NSXPCListener.anonymous()
+        let delegate = BrimXPCListenerDelegate(service: realService)
+        listener.delegate = delegate
+        listener.resume()
+        
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
+        connection.resume()
+        
+        let service: BrimServiceProtocol = BrimXPCClient(connection: connection)
         
         let bundleURL = rootURL.appendingPathComponent("Applications/SandboxedApp.app")
         let resolver = IdentityResolver(root: root)
@@ -44,7 +56,7 @@ final class BrimServiceTests: XCTestCase {
         try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         
         let hash = try plan.contentHash()
-        let token = await service.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
+        let token = await realService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         
