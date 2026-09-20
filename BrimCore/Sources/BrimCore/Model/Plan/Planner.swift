@@ -44,6 +44,35 @@ public struct Planner: Sendable {
             evaluatedItems = newEvaluatedItems
         }
         
+        // One reset for the whole plan, before anything is removed. Placed
+        // first because tccutil needs the bundle to still exist; an uninstall
+        // that deletes first leaves the grants stranded for good, which is
+        // how stale accessibility entries accumulate.
+        // Only when uninstalling the whole application. A plan for specific
+        // targets — one leftover picked out of the queue — must not clear an
+        // app's accessibility or screen-recording permissions as a side
+        // effect of tidying a cache directory.
+        if intent.type == .uninstall,
+           intent.explicitTargets.isEmpty,
+           let bundleID = intent.subjectIdentity.bundleID {
+            steps.append(Step(
+                index: index,
+                kind: .resetPrivacyGrants,
+                target: bundleID,
+                targetFingerprint: nil,
+                tier: .A,
+                evidence: "Clears the privacy permissions macOS holds for this application, such as "
+                        + "accessibility, screen recording and full disk access.",
+                expectedBytes: 0,
+                capability: .ok,
+                reversible: false,
+                costOfError: .medium,
+                executionPhase: .privacyReset,
+                disposition: .delete
+            ))
+            index += 1
+        }
+
         for item in evaluatedItems {
             let targetURL = item.footprintItem.evidence.url
             let targetPath = targetURL.path

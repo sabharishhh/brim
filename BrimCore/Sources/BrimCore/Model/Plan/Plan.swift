@@ -50,6 +50,10 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
 }
 
 public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
+    /// Clearing privacy grants, which must happen while the application
+    /// bundle is still present: tccutil resolves the bundle through Launch
+    /// Services, so after removal the grants can never be cleared again.
+    case privacyReset = -2
     case archive = -1
     case auxiliary = 0
     case launchd = 1
