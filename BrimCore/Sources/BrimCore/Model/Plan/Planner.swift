@@ -73,7 +73,7 @@ public struct Planner: Sendable {
                         target: targetPath,
                         targetFingerprint: fingerprint,
                         tier: item.footprintItem.evidence.tier,
-                        evidence: item.footprintItem.evidence.humanSentence,
+                        evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                         expectedBytes: sizeBytes,
                         capability: item.footprintItem.capability,
                         reversible: true,
@@ -96,7 +96,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: item.footprintItem.evidence.humanSentence,
+                            evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                             expectedBytes: 0,
                             capability: item.footprintItem.capability,
                             reversible: true,
@@ -112,7 +112,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: item.footprintItem.evidence.humanSentence,
+                            evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
                             reversible: true,
@@ -128,7 +128,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: item.footprintItem.evidence.humanSentence,
+                            evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
                             reversible: true,
@@ -140,10 +140,10 @@ public struct Planner: Sendable {
                     }
                 }
             case .unselected:
-                excludedItems.append(ExcludedItem(target: targetPath, reason: "Unselected by tier defaults or user choice."))
+                excludedItems.append(ExcludedItem(target: targetPath, reason: "You opted to keep this item, or it was unselected by default due to low confidence."))
                 
             case .excluded(let reason):
-                excludedItems.append(ExcludedItem(target: targetPath, reason: reason))
+                excludedItems.append(ExcludedItem(target: targetPath, reason: ExplanationRenderer().renderRefusal(reason: reason)))
             }
         }
         

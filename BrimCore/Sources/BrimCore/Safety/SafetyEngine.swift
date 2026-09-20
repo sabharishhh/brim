@@ -38,7 +38,8 @@ public struct SafetyEngine: Sendable {
             let url = item.evidence.url
             
             // 1. Absolute Deny List (via SafetyChecker)
-            if !safetyChecker.isSafeToRemove(url: url) {
+            let isSelfRemoval = footprint.identity.bundleID == "devplaceholder.PJ52YXEB.brim" || footprint.identity.bundleID == "com.google.Brim"
+            if !safetyChecker.isSafeToRemove(url: url, isSelfRemoval: isSelfRemoval) {
                 return EvaluatedItem(
                     footprintItem: item,
                     selection: .excluded(reason: "Path is strictly protected by OS boundaries or is the Brim app itself."),
