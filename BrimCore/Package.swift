@@ -46,7 +46,7 @@ let package = Package(
             "BrimService",
             .product(name: "ArgumentParser", package: "swift-argument-parser")
         ]),
-        .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol"]),
+        .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol", "BrimService"]),
         .executableTarget(name: "BrimHelper", dependencies: ["BrimHelperCore", "BrimService"]),
         
         // Tests
