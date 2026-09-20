@@ -65,6 +65,12 @@ public struct Planner: Sendable {
                 expectedTotalBytes += sizeBytes
                 
                 let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ? .appBundle : .auxiliary
+
+                // A recreatable cache is deleted outright so the space really
+                // comes back; anything holding settings or user data goes to
+                // the Trash so undo can reach it.
+                let disposition = StepDisposition.default(for: item.costOfError)
+                let isReversible = disposition == .trash
                 
                 if intent.type == .archive, let dest = intent.destinationTarget {
                     let archiveStep = Step(
@@ -115,9 +121,10 @@ public struct Planner: Sendable {
                             evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
-                            reversible: true,
+                            reversible: isReversible,
                             costOfError: item.costOfError,
-                            executionPhase: .launchd
+                            executionPhase: .launchd,
+                            disposition: disposition
                         )
                         steps.append(removeStep)
                         index += 1
@@ -131,9 +138,10 @@ public struct Planner: Sendable {
                             evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
-                            reversible: true,
+                            reversible: isReversible,
                             costOfError: item.costOfError,
-                            executionPhase: phase
+                            executionPhase: phase,
+                            disposition: disposition
                         )
                         steps.append(step)
                         index += 1
