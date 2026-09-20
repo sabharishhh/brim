@@ -15,6 +15,21 @@
       "relativePath": "Library/Preferences/com.brim.classic.plist",
       "tier": "B",
       "description": "Preferences keyed to the bundle identifier"
+    },
+    {
+      "relativePath": "Library/Saved Application State/com.brim.classic.savedState",
+      "tier": "B",
+      "description": "Saved application state"
+    },
+    {
+      "relativePath": "Library/Caches/com.brim.classic",
+      "tier": "B",
+      "description": "Application cache"
+    },
+    {
+      "relativePath": "Library/Group Containers/TEAMID1234.com.brim.classic",
+      "tier": "B",
+      "description": "Container keyed to the developer's Team ID"
     }
   ]
 }

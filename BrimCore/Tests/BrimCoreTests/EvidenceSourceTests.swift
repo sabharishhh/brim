@@ -15,15 +15,22 @@ final class EvidenceSourceTests: XCTestCase {
         let resolver = IdentityResolver(root: root)
         
         let bundleURL = tempRoot.appendingPathComponent("Applications/SandboxedApp.app")
-        let identity = await resolver.resolve(bundleURL: bundleURL)
+        let resolved = await resolver.resolve(bundleURL: bundleURL)
+        let identity = Identity(bundleID: resolved.bundleID, teamID: "SANDBOXID", name: resolved.name, version: resolved.version, isSandboxed: true, groupContainers: ["group.com.brim.sandboxed"], cdHash: resolved.cdHash)
         
         var evidence = [Evidence]()
         
         let sources: [EvidenceSource] = [
-            AppBundleSource(bundleURL: bundleURL),
+            
+            AppBundleSource(),
             SandboxContainerSource(),
             BundleIdentifierComponentSource(),
-            InstallerReceiptSource()
+            InstallerReceiptSource(),
+            GroupContainerSource(),
+            BundleIdentifierStateSource(),
+            TeamIDSource(),
+            LaunchServicesSource(),
+            SMAppServiceSource()
         ]
         
         for source in sources {
@@ -39,8 +46,8 @@ final class EvidenceSourceTests: XCTestCase {
         
         for expected in manifest.expectedItems {
             let expectedURL = root.rootURL.appendingPathComponent(expected.relativePath)
-            XCTAssertTrue(uniqueEvidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
-            if let matched = uniqueEvidence.first(where: { $0.url == expectedURL }) {
+            XCTAssertTrue(uniqueEvidence.contains { $0.url.standardizedFileURL == expectedURL.standardizedFileURL }, "Missing \(expected.relativePath)")
+            if let matched = uniqueEvidence.first(where: { $0.url.standardizedFileURL == expectedURL.standardizedFileURL }) {
                 XCTAssertEqual(matched.tier.rawValue, expected.tier)
                 XCTAssertEqual(matched.humanSentence, expected.description)
             }
@@ -57,15 +64,22 @@ final class EvidenceSourceTests: XCTestCase {
         let resolver = IdentityResolver(root: root)
         
         let bundleURL = tempRoot.appendingPathComponent("Applications/ClassicApp.app")
-        let identity = await resolver.resolve(bundleURL: bundleURL)
+        let resolved = await resolver.resolve(bundleURL: bundleURL)
+        let identity = Identity(bundleID: resolved.bundleID, teamID: "TEAMID1234", name: resolved.name, version: resolved.version, isSandboxed: false, groupContainers: [], cdHash: resolved.cdHash)
         
         var evidence = [Evidence]()
         
         let sources: [EvidenceSource] = [
-            AppBundleSource(bundleURL: bundleURL),
+            
+            AppBundleSource(),
             SandboxContainerSource(),
             BundleIdentifierComponentSource(),
-            InstallerReceiptSource()
+            InstallerReceiptSource(),
+            GroupContainerSource(),
+            BundleIdentifierStateSource(),
+            TeamIDSource(),
+            LaunchServicesSource(),
+            SMAppServiceSource()
         ]
         
         for source in sources {
@@ -81,8 +95,8 @@ final class EvidenceSourceTests: XCTestCase {
         
         for expected in manifest.expectedItems {
             let expectedURL = root.rootURL.appendingPathComponent(expected.relativePath)
-            XCTAssertTrue(uniqueEvidence.contains { $0.url == expectedURL }, "Missing \(expected.relativePath)")
-            if let matched = uniqueEvidence.first(where: { $0.url == expectedURL }) {
+            XCTAssertTrue(uniqueEvidence.contains { $0.url.standardizedFileURL == expectedURL.standardizedFileURL }, "Missing \(expected.relativePath)")
+            if let matched = uniqueEvidence.first(where: { $0.url.standardizedFileURL == expectedURL.standardizedFileURL }) {
                 XCTAssertEqual(matched.tier.rawValue, expected.tier)
                 XCTAssertEqual(matched.humanSentence, expected.description)
             }

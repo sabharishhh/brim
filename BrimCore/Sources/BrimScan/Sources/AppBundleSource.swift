@@ -1,22 +1,30 @@
 import Foundation
 import BrimCore
 
-/// Resolves the application bundle itself (Tier A).
+/// Resolves the application bundle itself by searching standard locations (Tier A).
 public struct AppBundleSource: EvidenceSource {
-    public let bundleURL: URL
-    
-    public init(bundleURL: URL) {
-        self.bundleURL = bundleURL
-    }
+    public init() {}
     
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
-        return [
-            Evidence(
-                url: bundleURL,
-                tier: .A,
-                mechanism: "AppBundleSource",
-                humanSentence: "The application bundle itself"
-            )
+        var results = [Evidence]()
+        let fm = FileManager.default
+        let name = identity.name
+        
+        let paths = [
+            root.url(for: .applications).appendingPathComponent("\(name).app"),
+            root.url(for: .userLibrary).deletingLastPathComponent().appendingPathComponent("Applications/\(name).app")
         ]
+        
+        for url in paths {
+            if fm.fileExists(atPath: url.path) {
+                results.append(Evidence(
+                    url: url,
+                    tier: .A,
+                    mechanism: "AppBundleSource",
+                    humanSentence: "The application bundle itself"
+                ))
+            }
+        }
+        return results
     }
 }

@@ -110,11 +110,15 @@ public struct SafeOps {
         }
         defer { close(parentFd) }
         
-        // Ensure source exists and is what we think it is (not strictly necessary to check inode for restore,
-        // but we must use renameatx_np with RENAME_EXCL to place it safely and atomically fail if occupied)
+        // Ensure source exists and is what we think it is
         if renameatx_np(AT_FDCWD, sourcePath, parentFd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
             let err = errno
             if err == EEXIST {
+                // DEBUG
+                print("EEXIST for \(destPath). Let's see what's in there:")
+                if let enumerator = FileManager.default.enumerator(atPath: parentURL.path) {
+                    for item in enumerator { print(item) }
+                }
                 throw SafeOpsError.pathOccupied
             }
             if err == EXDEV {
