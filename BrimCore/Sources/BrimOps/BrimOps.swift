@@ -126,6 +126,44 @@ public struct SafeOps {
         return resultingURL as URL?
     }
     
+    /// Securely and permanently removes an item.
+    ///
+    /// Same discipline as `trashItem`: verify the fingerprint, rename into an
+    /// isolated directory on the same volume, and only then destroy it — so a
+    /// path swapped between the check and the removal cannot redirect this at
+    /// something else. There is no Trash copy afterwards, which is exactly why
+    /// the isolation matters more here than it does for trashing.
+    public static func deleteItem(
+        targetPath: String,
+        expectedDev: Int32,
+        expectedIno: UInt64
+    ) throws {
+        let targetURL = URL(fileURLWithPath: targetPath)
+        let fm = FileManager.default
+
+        let isolationURL = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: targetURL, create: true)
+        defer { try? fm.removeItem(at: isolationURL) }
+
+        let destFd = open(isolationURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard destFd >= 0 else {
+            throw SafeOpsError.failedToOpenParent(errno)
+        }
+        defer { close(destFd) }
+        try verifyParentDescriptor(destFd, expectedPath: isolationURL.path)
+
+        let destName = UUID().uuidString
+        try renameSecurely(targetPath: targetPath, expectedDev: expectedDev, expectedIno: expectedIno, destFd: destFd, destName: destName)
+
+        // Now isolated and unreachable by its original path, so removing it
+        // cannot follow a symlink planted at the target.
+        let isolatedURL = isolationURL.appendingPathComponent(destName)
+        do {
+            try fm.removeItem(at: isolatedURL)
+        } catch {
+            throw SafeOpsError.failedToUnlink(errno)
+        }
+    }
+
     /// Securely restores an item from the Trash to its original location.
     /// Opens the parent directory of the destination with O_NOFOLLOW | O_DIRECTORY
     /// and uses renameat to prevent symlink attacks.

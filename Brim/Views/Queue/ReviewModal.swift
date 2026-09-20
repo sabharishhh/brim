@@ -33,9 +33,11 @@ struct ReviewModal: View {
         return !plan.steps.isEmpty
     }
 
-    private var totalBytes: Int64 {
-        plan?.expectedTotalBytes ?? 0
-    }
+    /// Space that actually comes back the moment the plan runs.
+    private var freedNowBytes: Int64 { plan?.immediatelyFreedBytes ?? 0 }
+
+    /// Space that only returns once the user empties the Trash.
+    private var trashedBytes: Int64 { plan?.trashedBytes ?? 0 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,9 +63,16 @@ struct ReviewModal: View {
                 Text("Review & Execute")
                     .font(.title2)
                     .fontWeight(.bold)
-                Text("\(findings.count) selected \(findings.count == 1 ? "item" : "items")")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                let permanentCount = plan?.steps.filter { $0.effectiveDisposition == .delete }.count ?? 0
+                if permanentCount > 0 {
+                    Text("\(findings.count) selected \(findings.count == 1 ? "item" : "items") — \(permanentCount) deleted permanently")
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
+                } else {
+                    Text("\(findings.count) selected \(findings.count == 1 ? "item" : "items")")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
             Spacer()
             Button("Cancel") { dismiss() }
@@ -110,15 +119,23 @@ struct ReviewModal: View {
     }
 
     private func stepRow(_ step: Step) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let permanent = step.effectiveDisposition == .delete
+        return VStack(alignment: .leading, spacing: 4) {
             Text(step.evidence)
                 .font(.body)
-            HStack {
+            HStack(spacing: 6) {
                 Text(step.target)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .truncationMode(.middle)
                     .lineLimit(1)
+
+                Label(permanent ? "Deleted permanently" : "To Trash",
+                      systemImage: permanent ? "trash.slash" : "arrow.uturn.backward")
+                    .font(.caption2)
+                    .foregroundColor(permanent ? .orange : .secondary)
+                    .labelStyle(.titleAndIcon)
+
                 Spacer()
                 Text(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))
                     .font(.caption)
@@ -128,6 +145,11 @@ struct ReviewModal: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(step.evidence) \(step.target). "
+            + (permanent ? "Deleted permanently, cannot be undone." : "Moved to Trash, can be undone.")
+            + " \(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))"
+        )
     }
 
     private func message(title: String, detail: String, isError: Bool) -> some View {
@@ -145,11 +167,20 @@ struct ReviewModal: View {
     private var footer: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Total to reclaim: ")
+                // Trashed bytes are not reclaimed until the user empties the
+                // Trash, so they are reported separately rather than folded
+                // into one reassuring total.
+                Text("Frees now: ")
                     .foregroundColor(.secondary)
-                + Text(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))
+                + Text(ByteCountFormatter.string(fromByteCount: freedNowBytes, countStyle: .file))
                     .fontWeight(.bold)
                     .monospacedDigit()
+
+                if trashedBytes > 0 {
+                    Text("\(ByteCountFormatter.string(fromByteCount: trashedBytes, countStyle: .file)) moves to the Trash — recoverable, and freed when you empty it")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
 
                 if isExecuting, let progressLabel {
                     Text(progressLabel)

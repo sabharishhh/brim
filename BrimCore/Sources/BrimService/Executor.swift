@@ -63,15 +63,21 @@ public actor Executor {
             
             do {
                 if step.kind == .trashPath || step.kind == .trashPathPrivileged || step.kind == .removeLaunchdPlist {
-                    let resultingURL: URL?
-                    if let fp = step.targetFingerprint {
-                        resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
-                    } else {
+                    guard let fp = step.targetFingerprint else {
                         throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"])
                     }
-                    if let url = resultingURL {
-                        if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
-                        journal.stepTrashedURLs?[step.index] = url
+
+                    switch step.effectiveDisposition {
+                    case .trash:
+                        let resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
+                        if let url = resultingURL {
+                            if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
+                            journal.stepTrashedURLs?[step.index] = url
+                        }
+                    case .delete:
+                        // Permanent: no trashed URL is recorded, so undo knows
+                        // there is nothing to put back for this step.
+                        try SafeOps.deleteItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     }
                     journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .unloadLaunchdJob {
