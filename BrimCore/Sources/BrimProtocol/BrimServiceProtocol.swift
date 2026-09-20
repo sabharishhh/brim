@@ -13,4 +13,5 @@ public protocol BrimServiceProtocol: Sendable {
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
     func dumpBTM() async throws -> String
+    func leftovers() async throws -> [Leftover]
 }
