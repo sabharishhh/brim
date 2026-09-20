@@ -10,4 +10,5 @@ import BrimCore
     func verify(planIdString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func history(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func undo(planIdString: String, withReply reply: @escaping @Sendable (Error?) -> Void)
+    func dumpBTM(withReply reply: @escaping @Sendable (String?, Error?) -> Void)
 }

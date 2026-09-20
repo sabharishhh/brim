@@ -124,4 +124,15 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             }
         }
     }
+
+    public func dumpBTM(withReply reply: @escaping @Sendable (String?, Error?) -> Void) {
+        Task {
+            do {
+                let dump = try await service.dumpBTM()
+                reply(dump, nil)
+            } catch {
+                reply(nil, error as NSError)
+            }
+        }
+    }
 }
