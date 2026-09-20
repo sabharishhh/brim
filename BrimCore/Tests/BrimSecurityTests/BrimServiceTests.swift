@@ -23,7 +23,7 @@ final class BrimServiceTests: XCTestCase {
         
         // Spin up XPC listener for boundary testing
         let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService)
+        let delegate = BrimXPCListenerDelegate(service: realService, requireCodeSigning: false)
         listener.delegate = delegate
         listener.resume()
         
@@ -31,7 +31,7 @@ final class BrimServiceTests: XCTestCase {
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
         connection.resume()
         
-        let service: BrimServiceProtocol = BrimXPCClient(connection: connection)
+        let service: BrimServiceProtocol = BrimXPCClient(connection: connection, requireCodeSigning: false)
         
         let bundleURL = rootURL.appendingPathComponent("Applications/SandboxedApp.app")
         let resolver = IdentityResolver(root: root)
