@@ -38,22 +38,7 @@ public struct SafeOps {
         }
         defer { close(parentFd) }
         
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        guard fcntl(parentFd, F_GETPATH, &buffer) != -1 else {
-            throw SafeOpsError.failedToOpenParent(errno)
-        }
-        let resolvedPath = String(cString: buffer)
-        
-        let expectedParent = parentPath.hasPrefix("/private/") ? parentPath : (parentPath.hasPrefix("/") && !parentPath.hasPrefix("/System/") && !parentPath.hasPrefix("/Library/") && !parentPath.hasPrefix("/Applications/") && !parentPath.hasPrefix("/Users/") ? "/private\(parentPath)" : parentPath)
-        let resolvedNormalized = resolvedPath.hasPrefix("/private/") ? resolvedPath : (resolvedPath.hasPrefix("/") && !resolvedPath.hasPrefix("/System/") && !resolvedPath.hasPrefix("/Library/") && !resolvedPath.hasPrefix("/Applications/") && !resolvedPath.hasPrefix("/Users/") ? "/private\(resolvedPath)" : resolvedPath)
-        
-        // Allow strict prefixing for standard macOS volumes if private is added, but to be robust:
-        let p1 = parentPath.hasPrefix("/private") ? parentPath : "/private" + parentPath
-        let r1 = resolvedPath.hasPrefix("/private") ? resolvedPath : "/private" + resolvedPath
-        
-        guard parentPath == resolvedPath || p1 == r1 else {
-            throw SafeOpsError.failedToOpenParent(ELOOP)
-        }
+        try verifyParentDescriptor(parentFd, expectedPath: parentPath)
         
         // Stat the item relative to parent using AT_SYMLINK_NOFOLLOW
         var statBuf = stat()
@@ -97,6 +82,7 @@ public struct SafeOps {
             throw SafeOpsError.failedToOpenParent(errno)
         }
         defer { close(destFd) }
+        try verifyParentDescriptor(destFd, expectedPath: volumeURL.path)
         
         // 2. Perform the secure rename
         let destName = UUID().uuidString
@@ -126,6 +112,7 @@ public struct SafeOps {
             throw SafeOpsError.failedToOpenParent(errno)
         }
         defer { close(parentFd) }
+        try verifyParentDescriptor(parentFd, expectedPath: parentURL.path)
         
         // Ensure source exists and is what we think it is
         if renameatx_np(AT_FDCWD, sourcePath, parentFd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
@@ -159,5 +146,40 @@ public struct SafeOps {
             throw SafeOpsError.failedToStat(errno)
         }
         return Int64(statBuf.f_bavail) * Int64(statBuf.f_bsize)
+    }
+
+    /// Verifies that an opened directory descriptor matches the expected parent path,
+    /// accounting strictly for standard macOS root symlinks (/var, /tmp, /etc -> /private/...)
+    /// and rejecting any unexpected intermediate symlink diversions.
+    private static func verifyParentDescriptor(_ fd: Int32, expectedPath: String) throws {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(fd, F_GETPATH, &buffer) != -1 else {
+            throw SafeOpsError.failedToOpenParent(errno)
+        }
+        let resolvedPath = String(cString: buffer)
+        
+        if expectedPath == resolvedPath {
+            return
+        }
+        
+        // On macOS, /var, /tmp, and /etc are system-level symlinks to /private/var, /private/tmp, /private/etc.
+        // We only allow /private prefixing if the expected path specifically targets these known system roots.
+        let isSystemPrivateSymlink = expectedPath.hasPrefix("/var/") || expectedPath == "/var" ||
+                                     expectedPath.hasPrefix("/tmp/") || expectedPath == "/tmp" ||
+                                     expectedPath.hasPrefix("/etc/") || expectedPath == "/etc"
+        
+        if isSystemPrivateSymlink {
+            let prefixed = "/private" + expectedPath
+            if prefixed == resolvedPath {
+                return
+            }
+        } else if expectedPath.hasPrefix("/private/") {
+            let stripped = String(expectedPath.dropFirst("/private".count))
+            if stripped == resolvedPath {
+                return
+            }
+        }
+        
+        throw SafeOpsError.failedToOpenParent(ELOOP)
     }
 }

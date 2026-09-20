@@ -82,6 +82,43 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         }
     }
 
+    func testRestoreItemRejectsIntermediateSymlink() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        let sourceFile = tempDir.appendingPathComponent("TrashedFile.txt")
+        try "payload".write(to: sourceFile, atomically: true, encoding: .utf8)
+        
+        // Setup original target: /tempDir/A/B/Restored.txt
+        let pathA = tempDir.appendingPathComponent("A")
+        let pathB = pathA.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: pathB, withIntermediateDirectories: true)
+        let destFile = pathB.appendingPathComponent("Restored.txt")
+        
+        // Swap: Replace /tempDir/A with a symlink to /tempDir/Secret
+        let secretDir = tempDir.appendingPathComponent("Secret")
+        try FileManager.default.createDirectory(at: secretDir, withIntermediateDirectories: true)
+        let secretPathB = secretDir.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: secretPathB, withIntermediateDirectories: true)
+        
+        try FileManager.default.removeItem(at: pathA)
+        try FileManager.default.createSymbolicLink(at: pathA, withDestinationURL: secretDir)
+        
+        // Attempt to restore through intermediate symlink
+        XCTAssertThrowsError(try SafeOps.restoreItem(from: sourceFile.path, to: destFile.path)) { error in
+            guard let safeError = error as? SafeOpsError else {
+                XCTFail("Unexpected error type: \(error)")
+                return
+            }
+            if case .failedToOpenParent(let err) = safeError, err == ELOOP || err == ENOTDIR {
+                // Success, caught intermediate symlink in restoreItem!
+            } else {
+                XCTFail("Unexpected SafeOpsError: \(safeError)")
+            }
+        }
+    }
+
     // (c) a symlink swapped between plan and execution
     func testSymlinkSwapBetweenPlanAndExecution() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
