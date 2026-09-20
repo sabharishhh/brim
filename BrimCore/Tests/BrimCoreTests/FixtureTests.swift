@@ -47,7 +47,7 @@ final class FixtureTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: data)
         XCTAssertEqual(manifest.bundleID, "com.brim.sandboxed")
-        XCTAssertEqual(manifest.expectedItems.count, 3)
+        XCTAssertEqual(manifest.expectedItems.count, 5)
         
         let encoded = try JSONEncoder().encode(manifest)
         let decoded = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: encoded)

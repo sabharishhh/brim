@@ -78,6 +78,14 @@ public struct FixtureTreeGenerator {
         
         let groupContainerURL = rootURL.appendingPathComponent("Library/Group Containers/group.\(bundleID)")
         try fm.createDirectory(at: groupContainerURL, withIntermediateDirectories: true)
+        
+        // T-3.1 Additions
+        let httpStorage = rootURL.appendingPathComponent("Library/HTTPStorages/\(bundleID)")
+        try fm.createDirectory(at: httpStorage, withIntermediateDirectories: true)
+        
+        let lsDir = appURL.appendingPathComponent("Contents/Library/LaunchServices")
+        try fm.createDirectory(at: lsDir, withIntermediateDirectories: true)
+        fm.createFile(atPath: lsDir.appendingPathComponent("com.brim.helper").path, contents: Data("helper".utf8))
     }
     
     private func createNonSandboxedApp(name: String, bundleID: String) throws {
@@ -103,6 +111,16 @@ public struct FixtureTreeGenerator {
         let prefs = rootURL.appendingPathComponent("Library/Preferences/\(bundleID).plist")
         try fm.createDirectory(at: prefs.deletingLastPathComponent(), withIntermediateDirectories: true)
         fm.createFile(atPath: prefs.path, contents: Data("dummy plist".utf8))
+        
+        // T-3.1 Additions
+        let savedState = rootURL.appendingPathComponent("Library/Saved Application State/\(bundleID).savedState")
+        try fm.createDirectory(at: savedState, withIntermediateDirectories: true)
+        
+        let caches = rootURL.appendingPathComponent("Library/Caches/\(bundleID)")
+        try fm.createDirectory(at: caches, withIntermediateDirectories: true)
+        
+        let teamIDGroup = rootURL.appendingPathComponent("Library/Group Containers/TEAMID1234.com.brim.classic")
+        try fm.createDirectory(at: teamIDGroup, withIntermediateDirectories: true)
     }
     
     private func createPkgInstalledProduct(receiptID: String) throws {

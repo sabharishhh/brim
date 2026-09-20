@@ -9,10 +9,9 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
         var results = [Evidence]()
         let fm = FileManager.default
         
-        // 1. Bundle Name matches
+        // 1. Bundle Name matches (excluding the main .app which is Tier A)
         let name = identity.name
         let paths = [
-                root.url(for: .applications).appendingPathComponent("\(name).app"),
                 root.url(for: .applications).appendingPathComponent("\(name)"),
                 root.url(for: .userApplicationSupport).appendingPathComponent("\(name).app"),
                 root.url(for: .systemLibrary).appendingPathComponent("Application Support/\(name).app"),
