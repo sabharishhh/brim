@@ -209,28 +209,116 @@ final class ReviewModalFlowIntegrationTests: XCTestCase {
         XCTAssertEqual(plan.steps.map(\.target), [target.path])
     }
 
-    func testRemovedTargetIsRecoverableFromTheTrash() async throws {
+    func testSettingsDataIsTrashedAndRecoverable() async throws {
+        // Application Support is medium cost: it holds settings and profile
+        // data, which is the case where undo actually matters.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let target = rootURL
-            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
+            .appendingPathComponent("Users/\(NSUserName())/Library/Application Support")
             .appendingPathComponent("throwaway-recoverable")
         try makeLeftover(at: target, bytes: 512)
 
         let service = makeService(root: rootURL, support: tempDir)
 
         let plan = try await service.plan(intent: modalIntent(title: "throwaway-recoverable", targets: [target]))
+        XCTAssertEqual(plan.steps.map(\.effectiveDisposition), [.trash])
+        XCTAssertTrue(plan.isReversible)
+        XCTAssertEqual(plan.immediatelyFreedBytes, 0, "Trashing frees nothing until the Trash is emptied")
+        XCTAssertGreaterThan(plan.trashedBytes, 0)
+
         let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
         try await service.apply(planId: plan.planId, token: token)
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
 
-        // "Authorize & Remove" trashes rather than unlinks, so undo can put it back.
         try await service.undo(planId: plan.planId)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: target.appendingPathComponent("payload.bin").path),
             "Undo did not restore the trashed target"
+        )
+    }
+
+    func testCacheIsDeletedOutrightAndReportsFreedSpace() async throws {
+        // Nobody restores a rebuilt cache, and trashing it would mean the
+        // space the sheet promised never actually comes back.
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let rootURL = tempDir.appendingPathComponent("Root")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let target = rootURL
+            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
+            .appendingPathComponent("throwaway-cache")
+        try makeLeftover(at: target, bytes: 4096)
+
+        let service = makeService(root: rootURL, support: tempDir)
+
+        let plan = try await service.plan(intent: modalIntent(title: "throwaway-cache", targets: [target]))
+        XCTAssertEqual(plan.steps.map(\.effectiveDisposition), [.delete])
+        XCTAssertFalse(plan.isReversible)
+        XCTAssertGreaterThan(plan.immediatelyFreedBytes, 0)
+        XCTAssertEqual(plan.trashedBytes, 0)
+
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        try await service.apply(planId: plan.planId, token: token)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+
+        // Nothing was trashed, so the journal records no restore path...
+        let journal = try await JournalStore(directoryURL: tempDir.appendingPathComponent("Journals")).load(planId: plan.planId)
+        XCTAssertTrue((journal?.stepTrashedURLs ?? [:]).isEmpty)
+
+        // ...and undo says so plainly instead of failing on a missing file.
+        do {
+            try await service.undo(planId: plan.planId)
+            XCTFail("Undo should refuse a permanent removal")
+        } catch let error as BrimService.UndoError {
+            guard case .planWasPermanent = error else {
+                return XCTFail("Wrong case: \(error)")
+            }
+            XCTAssertEqual(error.errorDescription, "This removal was permanent, so there is nothing to restore.")
+        }
+    }
+
+    func testUndoRefusesCleanlyOnceTheTrashHasBeenEmptied() async throws {
+        // The ordinary case: the user empties the Trash, then tries to undo.
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let rootURL = tempDir.appendingPathComponent("Root")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let target = rootURL
+            .appendingPathComponent("Users/\(NSUserName())/Library/Application Support")
+            .appendingPathComponent("throwaway-emptied")
+        try makeLeftover(at: target, bytes: 256)
+
+        let service = makeService(root: rootURL, support: tempDir)
+        let plan = try await service.plan(intent: modalIntent(title: "throwaway-emptied", targets: [target]))
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        try await service.apply(planId: plan.planId, token: token)
+
+        // Stand in for the user emptying the Trash.
+        let journalStore = JournalStore(directoryURL: tempDir.appendingPathComponent("Journals"))
+        let journal = try await journalStore.load(planId: plan.planId)
+        let trashed = try XCTUnwrap(journal?.stepTrashedURLs?.values.first)
+        try FileManager.default.removeItem(at: trashed)
+
+        do {
+            try await service.undo(planId: plan.planId)
+            XCTFail("Undo should refuse when the Trash no longer holds the item")
+        } catch let error as BrimService.UndoError {
+            guard case .noLongerInTrash(let targets) = error else {
+                return XCTFail("Wrong case: \(error)")
+            }
+            XCTAssertEqual(targets, [target.path])
+            XCTAssertEqual(
+                error.errorDescription,
+                "No longer in the Trash, so it cannot be restored: throwaway-emptied."
+            )
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: target.path),
+            "A refused undo must not half-restore anything"
         )
     }
 

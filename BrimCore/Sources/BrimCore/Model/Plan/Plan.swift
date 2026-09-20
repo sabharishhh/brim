@@ -60,6 +60,25 @@ public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     }
 }
 
+/// What happens to a target when a step runs.
+public enum StepDisposition: String, Codable, Equatable, Sendable {
+    /// Moved to the Trash. Reversible by `undo` until the Trash is emptied,
+    /// and it frees no disk space until then.
+    case trash
+    /// Removed outright. Frees the space immediately and cannot be undone.
+    case delete
+
+    /// Nobody restores a rebuilt cache, and leaving it in the Trash means the
+    /// space the user was promised is not actually returned. Anything that
+    /// carries settings or user data stays reversible.
+    public static func `default`(for costOfError: CostOfError) -> StepDisposition {
+        switch costOfError {
+        case .low: return .delete
+        case .medium, .high: return .trash
+        }
+    }
+}
+
 public struct Step: Codable, Equatable, Sendable {
     public let index: Int
     public let kind: StepKind
@@ -73,8 +92,14 @@ public struct Step: Codable, Equatable, Sendable {
     public let costOfError: CostOfError
     public let executionPhase: ExecutionPhase
     public let archiveDestination: String?
-    
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, archiveDestination: String? = nil) {
+    /// Absent in plans written before dispositions existed; those were all
+    /// trashed, which `effectiveDisposition` preserves.
+    public let disposition: StepDisposition?
+
+    /// The disposition to act on, including for plans that predate the field.
+    public var effectiveDisposition: StepDisposition { disposition ?? .trash }
+
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, archiveDestination: String? = nil, disposition: StepDisposition? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -87,6 +112,7 @@ public struct Step: Codable, Equatable, Sendable {
         self.costOfError = costOfError
         self.executionPhase = executionPhase
         self.archiveDestination = archiveDestination
+        self.disposition = disposition
     }
 }
 
@@ -182,6 +208,24 @@ public struct Plan: Codable, Equatable, Sendable {
         let data = try canonicalData()
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Bytes this plan frees the moment it runs, because those targets are
+    /// deleted outright rather than moved to the Trash.
+    public var immediatelyFreedBytes: Int64 {
+        steps.filter { $0.effectiveDisposition == .delete }.reduce(0) { $0 + $1.expectedBytes }
+    }
+
+    /// Bytes that only come back once the user empties the Trash. Reporting
+    /// these as reclaimed is what made the headline figure misleading.
+    public var trashedBytes: Int64 {
+        steps.filter { $0.effectiveDisposition == .trash }.reduce(0) { $0 + $1.expectedBytes }
+    }
+
+    /// Whether `undo` can put anything back. False once every step in the plan
+    /// was a permanent delete.
+    public var isReversible: Bool {
+        steps.contains { $0.effectiveDisposition == .trash }
     }
 
     /// Steps in the order they must be applied: archive first so a copy exists

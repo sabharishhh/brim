@@ -177,6 +177,26 @@ public actor BrimService: BrimServiceProtocol {
         case planAlreadyApplied
     case validationFailed(String)
     }
+
+    public enum UndoError: LocalizedError {
+        /// Every step deleted its target outright, so there is nothing to restore.
+        case planWasPermanent
+        /// The targets were trashed, but the Trash no longer holds them.
+        case noLongerInTrash(targets: [String])
+
+        public var errorDescription: String? {
+            switch self {
+            case .planWasPermanent:
+                return "This removal was permanent, so there is nothing to restore."
+            case .noLongerInTrash(let targets):
+                let names = targets.map { ($0 as NSString).lastPathComponent }
+                let list = names.count <= 3
+                    ? names.joined(separator: ", ")
+                    : "\(names.prefix(3).joined(separator: ", ")) and \(names.count - 3) more"
+                return "No longer in the Trash, so it cannot be restored: \(list)."
+            }
+        }
+    }
     
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         let plan = try await planStore.load(planId: planId)
@@ -291,9 +311,26 @@ public actor BrimService: BrimServiceProtocol {
             throw NSError(domain: "BrimService", code: 1, userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."])
         }
         let trashedURLs = journal.stepTrashedURLs ?? [:]
-        
+
         let fm = FileManager.default
-        
+
+        // Refuse up front rather than restoring some steps and failing on the
+        // rest. Two ways a plan cannot be undone: nothing was trashed to begin
+        // with, or the Trash has since been emptied.
+        guard plan.isReversible else {
+            throw UndoError.planWasPermanent
+        }
+
+        let missing = plan.steps
+            .filter { $0.effectiveDisposition == .trash && $0.kind != .unloadLaunchdJob }
+            .compactMap { step -> String? in
+                guard let trashed = trashedURLs[step.index] else { return nil }
+                return fm.fileExists(atPath: trashed.path) ? nil : step.target
+            }
+        guard missing.isEmpty else {
+            throw UndoError.noLongerInTrash(targets: missing)
+        }
+
         // 1. Restore items from Trash (atomically fails if path is re-occupied)
         let sortedSteps = plan.undoOrderedSteps
         for step in sortedSteps {
