@@ -67,7 +67,7 @@ public struct SafeOps {
         targetPath: String,
         expectedDev: Int32,
         expectedIno: UInt64
-    ) throws {
+    ) throws -> URL? {
         let targetURL = URL(fileURLWithPath: targetPath)
         // 1. Create a secure temp directory on the same volume (for renameat to work without EXDEV)
         let fm = FileManager.default
@@ -91,6 +91,7 @@ public struct SafeOps {
         // Let's move to Trash using FileManager since it's now in an isolated space.
         var resultingURL: NSURL? = nil
         try fm.trashItem(at: isolatedURL, resultingItemURL: &resultingURL)
+        return resultingURL as URL?
     }
     
     /// Returns the free space in bytes on the volume containing the given path.

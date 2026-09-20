@@ -114,7 +114,53 @@ public actor BrimService: BrimServiceProtocol {
     }
     
     public func history() async throws -> [Plan] {
-        // Just a stub for M1
-        return []
+        // Return all completed or partially completed plans from the journal store
+        let planIds = try await journalStore.allPlanIds()
+        var plans: [Plan] = []
+        for id in planIds {
+            if let journal = try? await journalStore.load(planId: id),
+               journal.status == .completed || journal.status == .partial {
+                if let plan = try? await planStore.load(planId: id) {
+                    plans.append(plan)
+                }
+            }
+        }
+        return plans
+    }
+    
+    public func undo(planId: UUID) async throws {
+        let plan = try await planStore.load(planId: planId)
+        guard let journal = try await journalStore.load(planId: planId) else {
+            throw NSError(domain: "BrimService", code: 1, userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."])
+        }
+        let trashedURLs = journal.stepTrashedURLs ?? [:]
+        
+        let fm = FileManager.default
+        
+        // 1. Check if ANY path is re-occupied before moving things back
+        for step in plan.steps {
+            if trashedURLs[step.index] != nil {
+                if fm.fileExists(atPath: step.target) {
+                    throw NSError(domain: "BrimService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."])
+                }
+            }
+        }
+        
+        // 2. Restore items from Trash
+        for step in plan.steps {
+            if let trashedURL = trashedURLs[step.index] {
+                let targetURL = URL(fileURLWithPath: step.target)
+                // We MUST ensure the parent directory exists
+                let parentURL = targetURL.deletingLastPathComponent()
+                if !fm.fileExists(atPath: parentURL.path) {
+                    try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
+                }
+                
+                try fm.moveItem(at: trashedURL, to: targetURL)
+            }
+        }
+        
+        // 3. Update journal to mark undone? Or just delete journal?
+        try await journalStore.delete(planId: planId)
     }
 }
