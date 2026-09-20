@@ -7,31 +7,37 @@ public actor BrimXPCClient: BrimServiceProtocol {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(connection: NSXPCConnection) {
+    public init(connection: NSXPCConnection, requireCodeSigning: Bool = true) {
+        if requireCodeSigning {
+            MutualAuthentication.secure(connection)
+        }
         self.connection = connection
     }
 
-    private func getProxy() throws -> BrimXPCProtocol {
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            print("XPC Connection Error: \(error)")
-        }) as? BrimXPCProtocol else {
-            throw NSError(domain: "BrimXPC", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to get remote object proxy"])
+    private func withProxy<T: Sendable>(_ perform: @escaping @Sendable (BrimXPCProtocol, @escaping @Sendable (Result<T, Error>) -> Void) -> Void) async throws -> T {
+        return try await withCheckedThrowingContinuation { continuation in
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(throwing: error)
+            } as? BrimXPCProtocol
+            
+            guard let proxy = proxy else {
+                continuation.resume(throwing: NSError(domain: "BrimXPC", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to get proxy"]))
+                return
+            }
+            
+            perform(proxy) { result in
+                continuation.resume(with: result)
+            }
         }
-        return proxy
     }
 
     public func inspect(identity: Identity) async throws -> Footprint {
         let data = try encoder.encode(identity)
-        let proxy = try getProxy()
-        let resultData: Data = try await withCheckedThrowingContinuation { continuation in
+        let resultData: Data = try await withProxy { proxy, reply in
             proxy.inspect(identityData: data) { data, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "BrimXPC", code: 3, userInfo: [NSLocalizedDescriptionKey: "No data and no error returned"]))
-                }
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
         return try decoder.decode(Footprint.self, from: resultData)
@@ -39,104 +45,72 @@ public actor BrimXPCClient: BrimServiceProtocol {
 
     public func plan(intent: PlanIntent) async throws -> Plan {
         let data = try encoder.encode(intent)
-        let proxy = try getProxy()
-        let resultData: Data = try await withCheckedThrowingContinuation { continuation in
+        let resultData: Data = try await withProxy { proxy, reply in
             proxy.plan(intentData: data) { data, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "BrimXPC", code: 3, userInfo: [NSLocalizedDescriptionKey: "No data and no error returned"]))
-                }
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
         return try decoder.decode(Plan.self, from: resultData)
     }
 
     public func explain(planId: UUID) async throws -> String {
-        let proxy = try getProxy()
-        return try await withCheckedThrowingContinuation { continuation in
+        return try await withProxy { proxy, reply in
             proxy.explain(planIdString: planId.uuidString) { string, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let string = string {
-                    continuation.resume(returning: string)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "BrimXPC", code: 3, userInfo: [NSLocalizedDescriptionKey: "No string and no error returned"]))
-                }
+                if let error = error { reply(.failure(error)) }
+                else if let string = string { reply(.success(string)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
     }
 
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws {
-        let proxy = try getProxy()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<Void, Error>) -> Void) in
             proxy.requestApproval(planIdString: planId.uuidString, requesterIdentity: requesterIdentity) { error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
+                if let error = error { reply(.failure(error)) }
+                else { reply(.success(())) }
             }
         }
     }
 
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         let data = try encoder.encode(token)
-        let proxy = try getProxy()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<Void, Error>) -> Void) in
             proxy.apply(planIdString: planId.uuidString, tokenData: data) { error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
+                if let error = error { reply(.failure(error)) }
+                else { reply(.success(())) }
             }
         }
     }
 
     public func verify(planId: UUID) async throws -> VerificationResult {
-        let proxy = try getProxy()
-        let resultData: Data = try await withCheckedThrowingContinuation { continuation in
+        let resultData: Data = try await withProxy { proxy, reply in
             proxy.verify(planIdString: planId.uuidString) { data, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "BrimXPC", code: 3, userInfo: [NSLocalizedDescriptionKey: "No data and no error returned"]))
-                }
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
         return try decoder.decode(VerificationResult.self, from: resultData)
     }
 
     public func history() async throws -> [Plan] {
-        let proxy = try getProxy()
-        let resultData: Data = try await withCheckedThrowingContinuation { continuation in
+        let resultData: Data = try await withProxy { proxy, reply in
             proxy.history { data, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "BrimXPC", code: 3, userInfo: [NSLocalizedDescriptionKey: "No data and no error returned"]))
-                }
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
         return try decoder.decode([Plan].self, from: resultData)
     }
 
     public func undo(planId: UUID) async throws {
-        let proxy = try getProxy()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<Void, Error>) -> Void) in
             proxy.undo(planIdString: planId.uuidString) { error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
+                if let error = error { reply(.failure(error)) }
+                else { reply(.success(())) }
             }
         }
     }
