@@ -24,6 +24,7 @@ struct BrimOptions: ParsableArguments {
 }
 
 
+@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
 struct BrimCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "brim",
@@ -436,4 +437,13 @@ struct Install: AsyncParsableCommand {
     }
 }
 
-await BrimCLI.main()
+do {
+    var command = try BrimCLI.parseAsRoot()
+    if var asyncCommand = command as? AsyncParsableCommand {
+        try await asyncCommand.run()
+    } else {
+        try command.run()
+    }
+} catch {
+    BrimCLI.exit(withError: error)
+}
