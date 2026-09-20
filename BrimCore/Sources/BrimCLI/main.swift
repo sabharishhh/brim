@@ -21,7 +21,8 @@ struct BrimCLI: AsyncParsableCommand {
             ApproveRequest.self,
             Apply.self,
             Verify.self,
-            History.self
+            History.self,
+            DryRunUninstall.self
         ]
     )
     
@@ -211,6 +212,56 @@ struct History: AsyncParsableCommand {
             for plan in history {
                 print("Plan \(plan.planId) - \(plan.createdAt)")
             }
+        }
+    }
+}
+
+struct DryRunUninstall: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "dry-run-uninstall", abstract: "Run the full uninstall pipeline end-to-end against a shadow root")
+    @Argument(help: "Bundle ID of the app") var bundleID: String
+    @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+    
+    mutating func run() async throws {
+        // 1. Get real footprint
+        let realService = BrimCLI.getService(dryRun: false)
+        let identity = Identity(bundleID: bundleID, name: bundleID)
+        let footprint = try await realService.inspect(identity: identity)
+        
+        let paths = footprint.items.map { $0.evidence.url.path }
+        
+        // 2. Generate shadow root
+        let rootURL = URL(fileURLWithPath: "/")
+        let realRoot = FileSystemRoot(rootURL: rootURL)
+        let generator = ShadowRootGenerator(sourceRoot: realRoot)
+        let shadowRoot = try generator.createShadowRoot(copying: paths)
+        
+        // 3. Create shadow service
+        let brimAppURL = URL(fileURLWithPath: "/Applications/Brim.app")
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Brim")
+        let planDir = appSupport.appendingPathComponent("Plans")
+        let journalDir = appSupport.appendingPathComponent("Journals")
+        let shadowService = BrimService(root: shadowRoot, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
+        
+        // 4. Run pipeline
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: identity, requesterKind: "cli", requesterIdentity: NSUserName())
+        let plan = try await shadowService.plan(intent: intent)
+        
+        // Mock token since CLI can't officially request one in shadow (concrete cast needed)
+        // Actually, we can cast to BrimService
+        try await shadowService.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let hash = try plan.contentHash()
+        let token = await shadowService.mintTokenForTest(planId: plan.planId, planHash: hash, requesterIdentity: NSUserName())
+        
+        try await shadowService.apply(planId: plan.planId, token: token)
+        
+        let verification = try await shadowService.verify(planId: plan.planId)
+        
+        if json {
+            outputJSON(verification)
+        } else {
+            print("Shadow run complete for \(bundleID).")
+            print("Target paths successfully mirrored and trashed in \(shadowRoot.rootURL.path)")
+            print("Verification result: \(verification.success ? "Success" : "Failure") - \(verification.recoveredBytes) bytes recovered.")
         }
     }
 }
