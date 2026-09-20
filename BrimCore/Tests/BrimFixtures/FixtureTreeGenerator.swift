@@ -86,6 +86,22 @@ public struct FixtureTreeGenerator {
         let lsDir = appURL.appendingPathComponent("Contents/Library/LaunchServices")
         try fm.createDirectory(at: lsDir, withIntermediateDirectories: true)
         fm.createFile(atPath: lsDir.appendingPathComponent("com.brim.helper").path, contents: Data("helper".utf8))
+        
+        let globalLD = rootURL.appendingPathComponent("Library/LaunchDaemons")
+        try fm.createDirectory(at: globalLD, withIntermediateDirectories: true)
+        let ldPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>\(bundleID).daemon</string>
+            <key>Program</key>
+            <string>\(appURL.path)/Contents/MacOS/\(name)</string>
+        </dict>
+        </plist>
+        """
+        fm.createFile(atPath: globalLD.appendingPathComponent("\(bundleID).daemon.plist").path, contents: Data(ldPlist.utf8))
     }
     
     private func createNonSandboxedApp(name: String, bundleID: String) throws {

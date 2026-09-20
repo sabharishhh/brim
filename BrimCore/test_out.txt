@@ -1,0 +1,104 @@
+warning: 'brimcore': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/sabharishhh/Developer/brim/BrimCore/Sources/BrimHelper/com.google.Brim.daemon.plist
+Building for debugging...
+[Computing dependencies]
+[1 / 1]
+Build complete! (0.46 secs)
+Test Suite 'Selected tests' started at 2026-09-20 12:51:59.047.
+Test Suite 'BrimSecurityTests.xctest' started at 2026-09-20 12:51:59.052.
+Test Suite 'BrimServiceTests' started at 2026-09-20 12:51:59.052.
+Test Case '-[BrimSecurityTests.BrimServiceTests testServiceDrivesCompleteUninstall]' started.
+Test Case '-[BrimSecurityTests.BrimServiceTests testServiceDrivesCompleteUninstall]' passed (0.050 seconds).
+Test Suite 'BrimServiceTests' passed at 2026-09-20 12:51:59.103.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.050 (0.051) seconds
+Test Suite 'ExecutorTests' started at 2026-09-20 12:51:59.103.
+Test Case '-[BrimSecurityTests.ExecutorTests testExecutorPartialFailureLeavesBundle]' started.
+Test Case '-[BrimSecurityTests.ExecutorTests testExecutorPartialFailureLeavesBundle]' passed (0.004 seconds).
+Test Suite 'ExecutorTests' passed at 2026-09-20 12:51:59.107.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'SecurityRegressionSuiteTests' started at 2026-09-20 12:51:59.107.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testMalformedMessageFuzzPass]' started.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testMalformedMessageFuzzPass]' passed (0.000 seconds).
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testRecursiveSymlinkReplacementMidTraversal]' started.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testRecursiveSymlinkReplacementMidTraversal]' passed (0.001 seconds).
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testSafeRemoveItemAppearsNowhereOutsideBrimOps]' started.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testSafeRemoveItemAppearsNowhereOutsideBrimOps]' passed (0.000 seconds).
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testSymlinkSwapBetweenPlanAndExecution]' started.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testSymlinkSwapBetweenPlanAndExecution]' passed (0.001 seconds).
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testUnauthorizedClientRejection]' started.
+Test Case '-[BrimSecurityTests.SecurityRegressionSuiteTests testUnauthorizedClientRejection]' passed (0.002 seconds).
+Test Suite 'SecurityRegressionSuiteTests' passed at 2026-09-20 12:51:59.112.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'TokenStoreTests' started at 2026-09-20 12:51:59.112.
+Test Case '-[BrimSecurityTests.TokenStoreTests testTokenValidationScenarios]' started.
+Test Case '-[BrimSecurityTests.TokenStoreTests testTokenValidationScenarios]' passed (0.003 seconds).
+Test Suite 'TokenStoreTests' passed at 2026-09-20 12:51:59.114.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'UndoTests' started at 2026-09-20 12:51:59.114.
+Test Case '-[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied]' started.
+Test Case '-[BrimSecurityTests.UndoTests testUndoRestoresAppAndRefusesIfOccupied]' passed (0.071 seconds).
+Test Suite 'UndoTests' passed at 2026-09-20 12:51:59.185.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.071 (0.071) seconds
+Test Suite 'VerifierTests' started at 2026-09-20 12:51:59.185.
+Test Case '-[BrimSecurityTests.VerifierTests testVerifierPinnedBytes]' started.
+Test Case '-[BrimSecurityTests.VerifierTests testVerifierPinnedBytes]' passed (0.006 seconds).
+Test Suite 'VerifierTests' passed at 2026-09-20 12:51:59.191.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'XPCAuthenticationTests' started at 2026-09-20 12:51:59.191.
+Test Case '-[BrimSecurityTests.XPCAuthenticationTests testCodeSigningRejectsUnsignedTestRunner]' started.
+Test Case '-[BrimSecurityTests.XPCAuthenticationTests testCodeSigningRejectsUnsignedTestRunner]' passed (0.007 seconds).
+Test Case '-[BrimSecurityTests.XPCAuthenticationTests testNoProcessIdentifierUsage]' started.
+Test Case '-[BrimSecurityTests.XPCAuthenticationTests testNoProcessIdentifierUsage]' passed (0.000 seconds).
+Test Suite 'XPCAuthenticationTests' passed at 2026-09-20 12:51:59.199.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'BrimSecurityTests.xctest' passed at 2026-09-20 12:51:59.199.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.146 (0.147) seconds
+Test Suite 'Selected tests' passed at 2026-09-20 12:51:59.199.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.146 (0.152) seconds
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+PLAN STEPS: [BrimCore.Step(index: 0, kind: BrimCore.StepKind.trashPath, target: "/private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices/com.brim.helper", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201664, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Privileged helper tool bundled within the application", expectedBytes: 6, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary), BrimCore.Step(index: 1, kind: BrimCore.StepKind.unloadLaunchdJob, target: "/private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Library/LaunchDaemons/com.brim.sandboxed.daemon.plist", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201666, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Background service registration", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.launchd), BrimCore.Step(index: 2, kind: BrimCore.StepKind.removeLaunchdPlist, target: "/private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Library/LaunchDaemons/com.brim.sandboxed.daemon.plist", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201666, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Background service registration", expectedBytes: 452, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.launchd), BrimCore.Step(index: 3, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Applications/SandboxedApp.app", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201652, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "The application bundle itself", expectedBytes: 267, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.appBundle), BrimCore.Step(index: 4, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Library/Containers/com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201657, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Sandbox container keyed to this bundle identifier", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary), BrimCore.Step(index: 5, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Library/Group Containers/group.com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201659, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.A, evidence: "Group container declared in application entitlements", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary), BrimCore.Step(index: 6, kind: BrimCore.StepKind.trashPath, target: "/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Library/HTTPStorages/com.brim.sandboxed", targetFingerprint: Optional(BrimCore.TargetFingerprint(dev: 16777231, ino: 49201661, mtime: 2026-09-20 07:21:59 +0000)), tier: BrimCore.EvidenceTier.B, evidence: "HTTP storage cache", expectedBytes: 0, capability: BrimCore.Capability.ok, reversible: true, costOfError: BrimCore.CostOfError.medium, executionPhase: BrimCore.ExecutionPhase.auxiliary)]
+PLAN EXCLUDED: []
+Approval requested for plan C406194B-FB94-4E94-A20A-432C846CC914 by user
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/3EFFF5DB-4A32-4631-A1D6-9645632EE972/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+Approval requested for plan 5FCA2901-AC8F-41E3-A3C5-8E9978C9C9E7 by user
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+Plan targets:
+- /private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices/com.brim.helper
+- /private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Library/LaunchDaemons/com.brim.sandboxed.daemon.plist
+- /private/var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Library/LaunchDaemons/com.brim.sandboxed.daemon.plist
+- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app
+- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Library/Containers/com.brim.sandboxed
+- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Library/Group Containers/group.com.brim.sandboxed
+- /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Library/HTTPStorages/com.brim.sandboxed
+Journal after apply: [4: "ok", 5: "ok", 0: "ok", 3: "ok", 1: "ok", 2: "ok", 6: "ok"]
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+Approval requested for plan 9860B571-5F29-4B40-9C25-C2B3EFD7A937 by user
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app/Contents/Library/LaunchServices
+EEXIST for /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/12EA81FF-71EC-4BD3-BF82-6E2923AAAE58/Root/Applications/SandboxedApp.app. Let's see what's in there:
+ClassicApp.app
+ClassicApp.app/Contents
+ClassicApp.app/Contents/Info.plist
+SandboxedApp.app
+SandboxedApp.app/fake.txt
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/83BE5EF5-9EE3-4F72-9DD9-76945D5E9498/Root/Applications/Pinned.app/Contents/Library/LaunchServices
+SMAppServiceSource checking /var/folders/s6/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/83BE5EF5-9EE3-4F72-9DD9-76945D5E9498/Root/Applications/Pinned.app/Contents/Library/LaunchServices
+VALIDATION FAILED: Step count mismatch: expected 1, found 0
+Test Suite 'Selected tests' started at 2026-09-20 12:51:59.270.
+Test Suite 'BrimIndexTests.xctest' started at 2026-09-20 12:51:59.275.
+Test Suite 'BrimIndexTests.xctest' passed at 2026-09-20 12:51:59.275.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-20 12:51:59.275.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+Test Suite 'Selected tests' started at 2026-09-20 12:51:59.344.
+Test Suite 'BrimGoldenTests.xctest' started at 2026-09-20 12:51:59.349.
+Test Suite 'BrimGoldenTests.xctest' passed at 2026-09-20 12:51:59.349.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-20 12:51:59.349.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+Test Suite 'Selected tests' started at 2026-09-20 12:51:59.417.
+Test Suite 'BrimCoreTests.xctest' started at 2026-09-20 12:51:59.422.
+Test Suite 'BrimCoreTests.xctest' passed at 2026-09-20 12:51:59.422.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-20 12:51:59.422.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds

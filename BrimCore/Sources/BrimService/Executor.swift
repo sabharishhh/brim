@@ -40,21 +40,23 @@ public actor Executor {
             }
             
             do {
-                if step.kind == .trashPath {
+                if step.kind == .trashPath || step.kind == .removeLaunchdPlist {
                     let resultingURL: URL?
                     if let fp = step.targetFingerprint {
                         resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     } else {
                         let url = URL(fileURLWithPath: step.target)
-                        var res: NSURL? = nil
-                        try fm.trashItem(at: url, resultingItemURL: &res)
-                        resultingURL = res as URL?
+                        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                        resultingURL = nil
                     }
-                    journal.stepOutcomes[step.index] = "ok"
                     if let url = resultingURL {
                         if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
                         journal.stepTrashedURLs?[step.index] = url
                     }
+                    journal.stepOutcomes[step.index] = "ok"
+                } else if step.kind == .unloadLaunchdJob {
+                    try SafeOps.unloadLaunchdJob(path: step.target)
+                    journal.stepOutcomes[step.index] = "ok"
                 } else {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
