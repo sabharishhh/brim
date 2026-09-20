@@ -7,6 +7,7 @@ public protocol BrimServiceProtocol: Sendable {
     func inspect(identity: Identity) async throws -> Footprint
     func plan(intent: PlanIntent) async throws -> Plan
     func explain(planId: UUID) async throws -> String
+    func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken
     func requestApproval(planId: UUID, requesterIdentity: String) async throws
     func apply(planId: UUID, token: ApprovalToken) async throws
     func verify(planId: UUID) async throws -> VerificationResult

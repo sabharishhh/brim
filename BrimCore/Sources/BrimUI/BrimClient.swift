@@ -26,14 +26,7 @@ public class BrimClient: ObservableObject {
         try await service.requestApproval(planId: plan.planId, requesterIdentity: requesterIdentity)
         
         let hash = try plan.contentHash()
-        let token: ApprovalToken
-        if let store = localTokenStore {
-            token = await store.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: requesterIdentity)
-        } else if let concrete = service as? BrimService {
-            token = await concrete.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: requesterIdentity)
-        } else {
-            throw NSError(domain: "BrimClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cannot mint token without local token store access"])
-        }
+        let token = try await service.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: requesterIdentity)
         
         try await service.apply(planId: plan.planId, token: token)
         return try await service.verify(planId: plan.planId)

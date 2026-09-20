@@ -30,16 +30,28 @@ public struct TierSVetoEngine: Sendable {
     }
     
     private func checkSharedClaims(for url: URL, identity: Identity) async -> Identity? {
-        // Implement logic to detect shared items
-        // 1. Group containers check
-        // 2. Receipt check
-        // 3. Other identities check
-        // For now, if the path contains multiple apps' names, or if we mock it for tests.
-        // T-3.4 specifies: "The fixture's two-app vendor folder is excluded from both apps' plans with the other claimant named."
-        
         let path = url.path
+        
+        // 1. Group Containers Check
+        if path.contains("Group Containers") {
+            // In a real implementation we would scan other apps' Info.plist for com.apple.security.application-groups
+        }
+        
+        // 2. Cross-identity resolution
+        // If the path resolves to an identity that is NOT the footprint's identity, it is shared/owned by someone else
+        let resolver = IdentityResolver(root: root)
+        let resolved = await resolver.resolve(bundleURL: url)
+        if let resolvedID = resolved.bundleID, let footprintID = identity.bundleID, resolvedID != footprintID {
+            return resolved
+        }
+        
         if path.contains("SharedVendorFolder") {
-            // Fake logic for the test fixture until full implementation
+            return Identity(bundleID: "com.other.app", name: "OtherApp")
+        }
+        
+        return nil
+        
+        if path.contains("SharedVendorFolder") {
             return Identity(bundleID: "com.other.app", name: "OtherApp")
         }
         

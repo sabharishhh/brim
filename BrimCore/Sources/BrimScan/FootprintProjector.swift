@@ -11,13 +11,19 @@ public struct FootprintProjector: Sendable {
     
     /// Generates the footprint for an identity.
     /// Re-evaluates sizes and presence dynamically, fulfilling the "query, never a stored object" invariant.
-    public func project(identity: Identity, in root: FileSystemRoot) async throws -> Footprint {
-        let app = try await engine.discover(identity: identity, in: root)
+    public func project(identity: Identity, in root: FileSystemRoot, explicitEvidence: [Evidence]? = nil) async throws -> Footprint {
+        let evidenceList: [Evidence]
+        if let explicit = explicitEvidence {
+            evidenceList = explicit
+        } else {
+            let app = try await engine.discover(identity: identity, in: root)
+            evidenceList = app.evidence
+        }
         
         let fm = FileManager.default
         let items = await Task.detached {
             var localItems = [FootprintItem]()
-            for evidence in app.evidence {
+            for evidence in evidenceList {
                 guard fm.fileExists(atPath: evidence.url.path) else { continue }
                 
                 let size = Self.calculateSize(at: evidence.url, fm: fm)

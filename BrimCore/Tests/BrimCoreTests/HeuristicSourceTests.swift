@@ -15,8 +15,8 @@ final class HeuristicSourceTests: XCTestCase {
         // Exact match (should be skipped by heuristic, handled by Tier B source)
         try fm.createDirectory(at: cachesURL.appendingPathComponent("com.vendor.app"), withIntermediateDirectories: true)
         
-        // Correlated by name
-        let correlatedURL = cachesURL.appendingPathComponent("UniqueVendorAppCacheDir")
+        // Correlated by name (using word boundary format like -CacheDir)
+        let correlatedURL = cachesURL.appendingPathComponent("UniqueVendorApp-CacheDir")
         try fm.createDirectory(at: correlatedURL, withIntermediateDirectories: true)
         
         // Unrelated

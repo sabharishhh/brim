@@ -4,6 +4,11 @@ import Foundation
 @testable import BrimService
 
 final class ExecutorTests: XCTestCase {
+    func getFP(for path: String) -> TargetFingerprint {
+        let attrs = try! FileManager.default.attributesOfItem(atPath: path)
+        return TargetFingerprint(dev: attrs[.systemNumber] as! Int32, ino: attrs[.systemFileNumber] as! UInt64, mtime: attrs[.modificationDate] as! Date)
+    }
+
 
     func testXPCValidationFailureGracefulFallback() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -11,7 +16,7 @@ final class ExecutorTests: XCTestCase {
         let journalStore = JournalStore(directoryURL: journalStoreDir)
         let executor = Executor(journalStore: journalStore)
         
-        let rootURL = tempDir.appendingPathComponent("App.app")
+        let rootURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("App.app")
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
         
         let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.test", name: "Test"))
@@ -22,7 +27,7 @@ final class ExecutorTests: XCTestCase {
             osVersion: "15.0",
             intent: intent,
             steps: [
-                Step(index: 0, kind: .trashPathPrivileged, target: rootURL.path, targetFingerprint: nil, tier: .A, evidence: "Test", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle)
+                Step(index: 0, kind: .trashPathPrivileged, target: rootURL.path, targetFingerprint: getFP(for: rootURL.path), tier: .A, evidence: "Test", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle)
             ],
             excludedItems: [],
             expectedTotalBytes: 0
@@ -47,7 +52,7 @@ final class ExecutorTests: XCTestCase {
         let journalStore = JournalStore(directoryURL: journalStoreDir)
         let executor = Executor(journalStore: journalStore)
         
-        let dummyURL = tempDir.appendingPathComponent("dummy_50mb.data")
+        let dummyURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("dummy_50mb.data")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         
         // Create 50MB dummy file
@@ -65,7 +70,7 @@ final class ExecutorTests: XCTestCase {
             osVersion: "15.0",
             intent: intent,
             steps: [
-                Step(index: 0, kind: .trashPath, target: dummyURL.path, targetFingerprint: nil, tier: .A, evidence: "Test", expectedBytes: 50 * 1024 * 1024, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle)
+                Step(index: 0, kind: .trashPath, target: dummyURL.path, targetFingerprint: getFP(for: dummyURL.path), tier: .A, evidence: "Test", expectedBytes: 50 * 1024 * 1024, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle)
             ],
             excludedItems: [],
             expectedTotalBytes: 50 * 1024 * 1024
@@ -96,9 +101,9 @@ final class ExecutorTests: XCTestCase {
         let journalStore = JournalStore(directoryURL: journalStoreDir)
         let executor = Executor(journalStore: journalStore)
         
-        let bundleURL = tempDir.appendingPathComponent("App.app")
-        let blockedURL = tempDir.appendingPathComponent("Blocked.txt")
-        let okURL = tempDir.appendingPathComponent("Ok.txt")
+        let bundleURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("App.app")
+        let blockedURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("Blocked.txt")
+        let okURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("Ok.txt")
         
         try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
         try "blocked".write(to: blockedURL, atomically: true, encoding: .utf8)
@@ -121,9 +126,9 @@ final class ExecutorTests: XCTestCase {
             osVersion: "1",
             intent: intent,
             steps: [
-                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: nil, tier: .A, evidence: "app", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle),
-                Step(index: 1, kind: .trashPath, target: blockedURL.path, targetFingerprint: nil, tier: .A, evidence: "blocked", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low),
-                Step(index: 2, kind: .trashPath, target: okURL.path, targetFingerprint: nil, tier: .A, evidence: "ok", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low)
+                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: getFP(for: bundleURL.path), tier: .A, evidence: "app", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low, executionPhase: .appBundle),
+                Step(index: 1, kind: .trashPath, target: blockedURL.path, targetFingerprint: getFP(for: blockedURL.path), tier: .A, evidence: "blocked", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low),
+                Step(index: 2, kind: .trashPath, target: okURL.path, targetFingerprint: getFP(for: okURL.path), tier: .A, evidence: "ok", expectedBytes: 0, capability: .ok, reversible: true, costOfError: .low)
             ],
             excludedItems: [],
             expectedTotalBytes: 0

@@ -11,9 +11,14 @@ public actor Executor {
     }
     
     public func execute(plan: Plan) async throws -> JournalEntry {
-        let firstTarget = plan.steps.first?.target ?? "/"
-        let rootPath = URL(fileURLWithPath: firstTarget).deletingLastPathComponent().path
-        let freeBefore = try? SafeOps.freeSpace(onPath: rootPath)
+        let rootPath = plan.steps.first?.target ?? "/" // fallback
+        // M3: Collect unique volume paths and sum their free space
+        let uniqueVolumes = Set(plan.steps.map { URL(fileURLWithPath: $0.target).deletingLastPathComponent().path })
+        var totalFreeBefore: Int64 = 0
+        for vol in uniqueVolumes {
+            if let free = try? SafeOps.freeSpace(onPath: vol) { totalFreeBefore += free }
+        }
+        let freeBefore: Int64? = totalFreeBefore > 0 ? totalFreeBefore : (try? SafeOps.freeSpace(onPath: rootPath))
         
         // Create initial journal
         var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending, freeSpaceBefore: freeBefore)
@@ -46,9 +51,7 @@ public actor Executor {
                     if let fp = step.targetFingerprint {
                         resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     } else {
-                        let url = URL(fileURLWithPath: step.target)
-                        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                        resultingURL = nil
+                        throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"])
                     }
                     if let url = resultingURL {
                         if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
@@ -62,9 +65,15 @@ public actor Executor {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
                 }
+            } catch let SafeOpsError.failedToRename(err) where err == EPERM {
+                journal.stepOutcomes[step.index] = "refusedByOS"
+                hasFailures = true
+            } catch let SafeOpsError.failedToUnlink(err) where err == EPERM {
+                journal.stepOutcomes[step.index] = "refusedByOS"
+                hasFailures = true
             } catch {
                 let nsErr = error as NSError
-                if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr.code == EPERM || nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM {
+                if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr.code == EPERM || (nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM) {
                     journal.stepOutcomes[step.index] = "refusedByOS"
                 } else {
                     journal.stepOutcomes[step.index] = error.localizedDescription
@@ -81,7 +90,11 @@ public actor Executor {
             }
         }
         
-        let freeAfter = try? SafeOps.freeSpace(onPath: rootPath)
+        var totalFreeAfter: Int64 = 0
+        for vol in uniqueVolumes {
+            if let free = try? SafeOps.freeSpace(onPath: vol) { totalFreeAfter += free }
+        }
+        let freeAfter: Int64? = totalFreeAfter > 0 ? totalFreeAfter : (try? SafeOps.freeSpace(onPath: rootPath))
         journal.freeSpaceAfter = freeAfter
         journal.status = hasFailures ? .partial : .completed
         try await journalStore.write(entry: journal)

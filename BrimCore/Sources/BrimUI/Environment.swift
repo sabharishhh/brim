@@ -19,6 +19,7 @@ public struct DummyBrimService: BrimServiceProtocol {
     public func inspect(identity: Identity) async throws -> Footprint { fatalError() }
     public func plan(intent: PlanIntent) async throws -> Plan { fatalError() }
     public func explain(planId: UUID) async throws -> String { fatalError() }
+    public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken { fatalError() }
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws { fatalError() }
     public func apply(planId: UUID, token: ApprovalToken) async throws { fatalError() }
     public func verify(planId: UUID) async throws -> VerificationResult { fatalError() }
