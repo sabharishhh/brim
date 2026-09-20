@@ -75,7 +75,7 @@ public struct BTMListView: View {
     }
     
     private func removeBackingFile(url: URL) {
-        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: nil, name: "Orphaned File"))
+        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: nil, name: "Orphaned File"), specificTarget: url)
         Task {
             do {
                 _ = try await BrimClient.shared.plan(intent: intent)

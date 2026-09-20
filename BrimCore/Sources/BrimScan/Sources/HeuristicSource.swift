@@ -30,15 +30,17 @@ public struct HeuristicSource: EvidenceSource {
                 
                 var matches = false
                 
-                // Heuristic 1: Folder contains the exact app name
-                if itemName.contains(identity.name.lowercased().replacingOccurrences(of: " ", with: "")) {
+                let identityNameKey = identity.name.lowercased().replacingOccurrences(of: " ", with: "")
+                
+                // Heuristic 1: Folder exactly matches the app name or contains it as a distinct word prefix
+                if itemName == identityNameKey || itemName.hasPrefix(identityNameKey + ".") || itemName.hasPrefix(identityNameKey + "-") {
                     matches = true
                 }
                 
                 // Heuristic 2: Folder contains a significant segment of the bundle ID (like vendor name)
                 if !matches, bundleSegments.count >= 2 {
                     let vendor = bundleSegments[1] // com.vendor.app
-                    if vendor.count > 3 && itemName.contains(vendor) {
+                    if vendor.count > 3 && (itemName == vendor || itemName.hasPrefix(vendor + ".") || itemName.hasPrefix(vendor + "-")) {
                         matches = true
                     }
                 }

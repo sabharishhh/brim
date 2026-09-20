@@ -65,6 +65,17 @@ public actor BrimXPCClient: BrimServiceProtocol {
         }
     }
 
+    public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken {
+        let resultData: Data = try await withProxy { proxy, reply in
+            proxy.mintToken(planIdString: planId.uuidString, planHash: planHash, requesterIdentity: requesterIdentity) { data, error in
+                if let error = error { reply(.failure(error)) }
+                else if let data = data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
+            }
+        }
+        return try decoder.decode(ApprovalToken.self, from: resultData)
+    }
+
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws {
         try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<Void, Error>) -> Void) in
             proxy.requestApproval(planIdString: planId.uuidString, requesterIdentity: requesterIdentity) { error in

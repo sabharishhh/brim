@@ -113,7 +113,7 @@ BrimMCP ← BrimProtocol                              (stub, empty main.swift)
 | Undo works | ✅ UndoTests pass |
 | History records runs with requester | ✅ history() + LedgerStore |
 
-### Milestone 2 — The trust boundary 🟡 IN PROGRESS
+### Milestone 2 — The trust boundary ✅ COMPLETE
 - [x] T-2.1 · Extract the service over XPC (Anonymous listener & client complete)
 - [x] T-2.2 · Mutual code-signing requirements
 - [x] T-2.3 · Privileged helper
@@ -172,5 +172,35 @@ All findings (C, H, M, and L) have been completely resolved:
 - **`BrimGoldenTests` must not stay at 0 tests** — Needs to be wired when T-3.9 is reached.
 - **M2 Xcode project modification** was avoided by using a pure SwiftPM + `build_release.sh` approach to structure the `.app` bundle natively.
 
-### Milestone 3 — Features
-- [x] T-3.1 · Remaining Tier A and B sources (Implemented GroupContainer, BundleIDState, TeamID, LaunchServices, SMAppService sources. Fixed reverse undo restoration order bug).
+### Milestone 3 — Features ✅ COMPLETE
+- [x] T-3.1 · Pre-flight simulation for the UI
+- [x] T-3.2 · Live footprint projection
+- [x] T-3.3 · Intelligent UI selection
+- [x] T-3.4 · Tier S veto engine
+- [x] T-3.5 · Advanced evidence aggregation
+- [x] T-3.6 · Safe file deletion and uninstaller delegation
+- [x] T-3.7 · Background job / Login item tracking
+- [x] T-3.8 · BTM scan results UI
+- [x] T-3.9 · XPC Plumbing & UI Integration
+
+---
+
+## 5. Security Audits
+
+### 5.3 M3 Exit Adversarial Audit (`m3_audit_report.md` artifact) - ✅ RESOLVED
+A final M3 audit was performed. The verdict was initially FAIL with 8 findings. All findings have been completely resolved:
+1. **Tier S Mock (T-3.4)**: Replaced hardcoded string matches with exact IdentityResolver bundle ID checks.
+2. **TOCTOU Bypass (T-3.1)**: Removed unsafe `FileManager.default.trashItem` fallback. Deletions strictly require `TargetFingerprint`.
+3. **Tier C Heuristic Massive False Positives (T-3.5)**: Replaced substring `.contains` with strict boundary checks.
+4. **Broken UI XPC Flow (T-3.9)**: Implemented `mintToken` properly through `BrimXPCProtocol`.
+5. **Intermediate Symlink TOCTOU (T-2)**: Added `fcntl(F_GETPATH)` verification to `SafeOps`.
+6. **BTMListView Empty Intent (T-3.8)**: Added `specificTarget` to bypass massive footprint projection for single items.
+7. **SafetyEngine Hardcode**: Removed `.excluded` override for Tier S.
+8. **Multi-Volume Free Space**: `Executor.swift` correctly computes delta across all unique volumes.
+
+---
+
+## 6. Next Steps
+
+### Next Task in M4
+1. **T-4.1 · Finalize App UI and Settings** — (Starting M4).

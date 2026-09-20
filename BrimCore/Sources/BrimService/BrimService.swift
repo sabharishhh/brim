@@ -55,9 +55,18 @@ public actor BrimService: BrimServiceProtocol {
     }
     
     public func plan(intent: PlanIntent) async throws -> Plan {
-        let footprint = try await inspect(identity: intent.subjectIdentity)
+        let projector = FootprintProjector(engine: engine)
+        let footprint: Footprint
+        if let specificTarget = intent.specificTarget {
+            // Bypass evidence engine, project just this target
+            let evidence = Evidence(url: specificTarget, tier: .A, mechanism: "DirectTarget", humanSentence: "Specific target requested by intent")
+            footprint = try await projector.project(identity: intent.subjectIdentity, in: root, explicitEvidence: [evidence])
+        } else {
+            footprint = try await projector.project(identity: intent.subjectIdentity, in: root)
+        }
+        
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
+        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: "1.0.0")
         try await planStore.save(plan: plan)
         return plan
     }
@@ -247,5 +256,9 @@ public actor BrimService: BrimServiceProtocol {
         } else {
             throw NSError(domain: "BrimService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to decode dumpbtm output."])
         }
+    }
+
+    public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken {
+        return await tokenStore.mintToken(planId: planId, planHash: planHash, requesterIdentity: requesterIdentity)
     }
 }
