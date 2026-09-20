@@ -178,10 +178,9 @@ class MCPServer {
                 .object(["name": .string("request_approval"), "description": .string("Request user approval for a plan"), "inputSchema": .object([
                     "type": .string("object"),
                     "properties": .object([
-                        "planId": .object(["type": .string("string")]),
-                        "requesterIdentity": .object(["type": .string("string")])
+                        "planId": .object(["type": .string("string")])
                     ]),
-                    "required": .array([.string("planId"), .string("requesterIdentity")])
+                    "required": .array([.string("planId")])
                 ])]),
                 .object(["name": .string("apply"), "description": .string("Apply an approved plan"), "inputSchema": .object([
                     "type": .string("object"),
