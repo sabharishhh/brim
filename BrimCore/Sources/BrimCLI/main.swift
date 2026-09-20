@@ -437,10 +437,16 @@ struct Install: AsyncParsableCommand {
     }
 }
 
+extension AsyncParsableCommand {
+    mutating func runAsync() async throws {
+        try await self.run()
+    }
+}
+
 do {
     var command = try BrimCLI.parseAsRoot()
     if var asyncCommand = command as? AsyncParsableCommand {
-        try await asyncCommand.run()
+        try await asyncCommand.runAsync()
     } else {
         try command.run()
     }
