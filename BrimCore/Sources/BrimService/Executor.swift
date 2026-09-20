@@ -76,6 +76,19 @@ public actor Executor {
                 } else if step.kind == .unloadLaunchdJob {
                     try SafeOps.unloadLaunchdJob(path: step.target)
                     journal.stepOutcomes[step.index] = "ok"
+                } else if step.kind == .archivePath, let dest = step.archiveDestination {
+                    let destURL = URL(fileURLWithPath: dest)
+                    try fm.createDirectory(at: destURL, withIntermediateDirectories: true, attributes: nil)
+                    let targetFileName = URL(fileURLWithPath: step.target).lastPathComponent
+                    let itemDestURL = destURL.appendingPathComponent(targetFileName)
+                    
+                    // Simple fallback for copy (could be hardened)
+                    if fm.fileExists(atPath: itemDestURL.path) {
+                        try fm.removeItem(at: itemDestURL)
+                    }
+                    try fm.copyItem(atPath: step.target, toPath: itemDestURL.path)
+                    
+                    journal.stepOutcomes[step.index] = "ok"
                 } else {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
