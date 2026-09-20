@@ -75,17 +75,39 @@ func log(_ message: String) {
     fputs(message + "\n", stderr)
 }
 
+
+final class MockService: BrimServiceProtocol, @unchecked Sendable {
+    func inspect(identity: Identity) async throws -> Footprint {
+        return Footprint(identity: identity, items: []) // Empty footprint
+    }
+    func plan(intent: PlanIntent) async throws -> Plan { fatalError() }
+    func explain(planId: UUID) async throws -> String { fatalError() }
+    func mintToken(planId: UUID, planHash: String, requesterIdentity: String) async throws -> ApprovalToken { fatalError() }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws { }
+    func apply(planId: UUID, token: ApprovalToken) async throws { }
+    func verify(planId: UUID) async throws -> VerificationResult { fatalError() }
+    func history() async throws -> [Plan] { return [] }
+    func undo(planId: UUID) async throws { }
+    func dumpBTM() async throws -> String { return "" }
+}
+
 class MCPServer {
     let service: BrimServiceProtocol
     let decoder = JSONDecoder()
     let encoder = JSONEncoder()
     
+
     init() {
-        let connection = NSXPCConnection(machServiceName: "com.google.Brim.daemon", options: .privileged)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        self.service = BrimXPCClient(connection: connection, requireCodeSigning: false)
+        if ProcessInfo.processInfo.environment["BRIM_MCP_TEST"] == "1" {
+            self.service = MockService()
+        } else {
+            let connection = NSXPCConnection(machServiceName: "com.google.Brim.daemon", options: .privileged)
+            connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
+            connection.resume()
+            self.service = BrimXPCClient(connection: connection, requireCodeSigning: false)
+        }
     }
+
     
     func send(response: JSONRPCResponse) {
         let data = try! encoder.encode(response)
@@ -224,18 +246,55 @@ class MCPServer {
             guard let bundleID = args["bundleID"]?.stringValue else { throw MCPError.invalidRequest("Missing bundleID") }
             let id = Identity(bundleID: bundleID, teamID: args["teamID"]?.stringValue, name: bundleID)
             let fp = try await service.inspect(identity: id)
-            let data = try JSONEncoder().encode(fp)
+            
+            var jsonFP = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(fp)) as! [String: Any]
+            if var items = jsonFP["items"] as? [[String: Any]] {
+                for i in 0..<items.count {
+                    if var evidence = items[i]["evidence"] as? [String: Any], let urlStr = evidence["url"] as? String {
+                        let path = URL(string: urlStr)?.path ?? urlStr
+                        evidence["url"] = "<fs_data>\(path)</fs_data>"
+                        if let hs = evidence["humanSentence"] as? String {
+                            evidence["humanSentence"] = "<fs_data>\(hs)</fs_data>"
+                        }
+                        items[i]["evidence"] = evidence
+                    }
+                }
+                jsonFP["items"] = items
+            }
+            let data = try JSONSerialization.data(withJSONObject: jsonFP, options: [.prettyPrinted])
             return String(data: data, encoding: .utf8) ?? ""
+
             
         case "plan":
             guard let bundleID = args["bundleID"]?.stringValue else { throw MCPError.invalidRequest("Missing bundleID") }
             let id = Identity(bundleID: bundleID, teamID: args["teamID"]?.stringValue, name: bundleID)
+            
+            if let specificTarget = args["specificTarget"]?.stringValue {
+                let fp = try await service.inspect(identity: id)
+                guard fp.items.contains(where: { $0.evidence.url.path == specificTarget }) else {
+                    return "Error: target path \(specificTarget) is not in the footprint. Request rejected."
+                }
+            }
+            
             let specificTarget = args["specificTarget"]?.stringValue
+
             let targetURL = specificTarget != nil ? URL(fileURLWithPath: specificTarget!) : nil
             let intent = PlanIntent(type: .uninstall, subjectIdentity: id, requesterKind: "mcp", requesterIdentity: "agent", specificTarget: targetURL)
             let plan = try await service.plan(intent: intent)
-            let data = try JSONEncoder().encode(plan)
+            
+            var jsonPlan = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(plan)) as! [String: Any]
+            if var steps = jsonPlan["steps"] as? [[String: Any]] {
+                for i in 0..<steps.count {
+                    if let urlStr = steps[i]["target"] as? String {
+                        let path = URL(string: urlStr)?.path ?? urlStr
+                        steps[i]["target"] = "<fs_data>\(path)</fs_data>"
+                    }
+                }
+                jsonPlan["steps"] = steps
+            }
+            let data = try JSONSerialization.data(withJSONObject: jsonPlan, options: [.prettyPrinted])
             return String(data: data, encoding: .utf8) ?? ""
+
             
         case "explain":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid planId") }
