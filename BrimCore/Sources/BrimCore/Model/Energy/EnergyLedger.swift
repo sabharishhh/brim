@@ -144,3 +144,38 @@ public struct EnergyLedgerStore: Sendable {
         try JSONEncoder().encode(ledger).write(to: url, options: .atomic)
     }
 }
+
+/// Energy per application, accumulated, with what could not be read.
+public struct EnergyTotals: Equatable, Sendable, Codable {
+    public struct Entry: Equatable, Sendable, Codable {
+        public let key: String
+        public let milliwattHours: Double
+
+        public init(key: String, milliwattHours: Double) {
+            self.key = key
+            self.milliwattHours = milliwattHours
+        }
+
+        /// The application's name where the path is a bundle, and the
+        /// executable's name otherwise.
+        public var name: String {
+            let url = URL(fileURLWithPath: key)
+            return key.hasSuffix(".app")
+                ? url.deletingPathExtension().lastPathComponent
+                : url.lastPathComponent
+        }
+
+        public var isApplication: Bool { key.hasSuffix(".app") }
+    }
+
+    public let accumulated: [Entry]
+    /// When counting started.
+    public let since: Date
+    public let coverageGaps: Int
+
+    public init(accumulated: [Entry], since: Date, coverageGaps: Int) {
+        self.accumulated = accumulated
+        self.since = since
+        self.coverageGaps = coverageGaps
+    }
+}
