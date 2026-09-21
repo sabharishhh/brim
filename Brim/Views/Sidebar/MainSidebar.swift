@@ -28,6 +28,22 @@ enum NavigationItem: String, Hashable, CaseIterable {
     }
 }
 
+/// Lets a section offer "Remove Selected" to the Action menu.
+///
+/// Defined here rather than in the view that provides it, because the
+/// provider changes: this began in the Review queue and moved to Leftovers
+/// when that queue was removed, and the command should not break each time.
+struct RemoveSelectedActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var removeSelectedAction: (() -> Void)? {
+        get { self[RemoveSelectedActionKey.self] }
+        set { self[RemoveSelectedActionKey.self] = newValue }
+    }
+}
+
 /// Lets the View menu drive sidebar selection, so every section is
 /// reachable from the keyboard as a Mac app is expected to be.
 struct NavigateActionKey: FocusedValueKey {
