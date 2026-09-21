@@ -75,6 +75,41 @@ public struct LocationInventory: Sendable {
         }
     }
 
+    /// The domains a sweep for leftovers should walk.
+    ///
+    /// Derived from the same table the uninstall path uses, so the two
+    /// questions cannot drift apart again. They already had: removing an
+    /// application by name looked in sixty places while sweeping for what
+    /// software had left behind looked in eight, so the whole system
+    /// domain, every installer receipt and every command line tool was
+    /// invisible to the question they were most relevant to.
+    ///
+    /// Leaves out what a sweep cannot reason about: the folders
+    /// applications themselves live in, other volumes, other accounts,
+    /// and the system's own temporary directory.
+    public static var sweepDomains: [FileSystemRoot.Domain] {
+        var seen: Set<FileSystemRoot.Domain> = []
+        var result: [FileSystemRoot.Domain] = []
+        for location in standard.locations where !notWorthSweeping.contains(location.domain) {
+            if seen.insert(location.domain).inserted { result.append(location.domain) }
+        }
+        return result
+    }
+
+    static let notWorthSweeping: Set<FileSystemRoot.Domain> = [
+        .applications, .userApplications, .volumes, .users, .tempDirs,
+        // Fonts have no owning application, and a sweep of them is a list
+        // of every typeface somebody has ever installed.
+        .userFonts, .systemFonts,
+        // Per-boot scratch space. Every running process writes here and
+        // macOS empties it, so a sweep of it is a thousand rows of
+        // transient files that will be gone by morning. It stays in the
+        // inventory because a folder there named after a bundle is a
+        // genuine part of that application's footprint; it is only
+        // useless as an answer to "what has been left behind".
+        .darwinUserTemp,
+    ]
+
     public let locations: [Location]
 
     public init(locations: [Location]) {

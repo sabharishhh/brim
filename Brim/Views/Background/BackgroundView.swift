@@ -21,6 +21,10 @@ struct BackgroundView: View {
 
     @State private var removalRequest: PlanIntent?
     @ObservedObject private var helper: PrivilegedHelperClient
+    /// The table's own selection. Separate from the card list's, because
+    /// the table is a different way of looking at the same rows and
+    /// carrying a selection across the two would be surprising.
+    @State private var tableSelection: Set<String> = []
 
     init(model: BackgroundModel) {
         self.model = model
@@ -132,12 +136,19 @@ struct BackgroundView: View {
                         ""
                     )
                 }
-                section(
-                    "Still in use",
-                    "Installed software running in the background.",
-                    model.live,
-                    model.searchText.isEmpty ? "" : "Nothing matches."
-                )
+                if model.needsTable {
+                    // Hundreds of rows. Cards stop being readable at that
+                    // size and a table starts: sortable, searchable, and
+                    // reusing a handful of views however long the list is.
+                    stillInUseTable
+                } else {
+                    section(
+                        "Still in use",
+                        "Installed software running in the background.",
+                        model.live,
+                        model.searchText.isEmpty ? "" : "Nothing matches."
+                    )
+                }
             }
             .listStyle(.inset)
         }
@@ -223,6 +234,80 @@ struct BackgroundView: View {
         }
     }
 
+    /// The large list, as a table.
+    @ViewBuilder
+    private var stillInUseTable: some View {
+        Section {
+            BrimTableView(
+                items: model.live,
+                columns: [
+                    BrimTableColumn(
+                        id: "name", title: "Name", width: 220, minWidth: 140,
+                        compare: {
+                            $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+                                == .orderedAscending
+                        },
+                        typeSelectText: { $0.displayName }
+                    ) { group in
+                        Text(group.displayName).lineLimit(1)
+                    },
+                    BrimTableColumn(
+                        id: "kind", title: "Kind", width: 130, minWidth: 90,
+                        compare: { $0.composition < $1.composition }
+                    ) { group in
+                        Text(group.composition).foregroundColor(.secondary).lineLimit(1)
+                    },
+                    BrimTableColumn(
+                        id: "signer", title: "Signed by", width: 130, minWidth: 90,
+                        compare: { ($0.signedBy ?? "") < ($1.signedBy ?? "") }
+                    ) { group in
+                        Text(group.signedBy ?? "—").foregroundColor(.secondary).lineLimit(1)
+                    },
+                    BrimTableColumn(
+                        id: "path", title: "Location", minWidth: 200,
+                        compare: { ($0.location ?? "") < ($1.location ?? "") }
+                    ) { group in
+                        Text(group.location ?? "—")
+                            .foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
+                    },
+                ],
+                selection: $tableSelection,
+                autosaveName: "background.stillInUse",
+                contextMenu: { ids in
+                    let menu = NSMenu()
+                    guard ids.count == 1, let id = ids.first,
+                          let group = model.live.first(where: { $0.id == id }),
+                          let location = group.location
+                    else { return nil }
+                    let item = NSMenuItem(
+                        title: "Show in Finder",
+                        action: #selector(RevealTarget.reveal(_:)),
+                        keyEquivalent: ""
+                    )
+                    item.target = RevealTarget.shared
+                    item.representedObject = location
+                    menu.addItem(item)
+                    return menu
+                },
+                onDoubleClick: { group in
+                    guard let location = group.location else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting(
+                        [URL(fileURLWithPath: location)]
+                    )
+                }
+            )
+            .frame(minHeight: 420)
+        } header: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Still in use (\(model.live.count))").font(.headline)
+                Text("Installed software running in the background. Click a heading to sort, "
+                     + "or start typing a name.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     /// An empty section is not drawn. A heading, a caption and a row
     /// saying "None" is three lines about nothing, and the emptyNote is
     /// kept only for the one case where a search matched nothing and the
@@ -263,6 +348,19 @@ struct BackgroundView: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+}
+
+/// Carries a "Show in Finder" click from an AppKit menu item.
+///
+/// An `NSMenuItem` needs an Objective-C target and selector, which a
+/// SwiftUI view cannot be.
+final class RevealTarget: NSObject {
+    static let shared = RevealTarget()
+
+    @objc func reveal(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 }
 

@@ -67,6 +67,14 @@ public protocol BrimServiceProtocol: Sendable {
     func updateReport() async -> UpdateReport
     /// Energy per application, accumulated across restarts.
     func energyTotals() async -> EnergyTotals
+    /// Checks for newer versions. Reaches the network, so only ever on a
+    /// press.
+    func checkForUpdates() async -> [AvailableUpdate]
+    /// Installs one update by delegation.
+    func installUpdate(_ update: AvailableUpdate) async -> String?
+    /// Casks Homebrew still tracks whose application is gone.
+    func orphanedCasks() async -> [OrphanedCask]
+    func forgetCask(_ name: String) async -> String?
 }
 
 public extension BrimServiceProtocol {
@@ -119,4 +127,10 @@ public extension BrimServiceProtocol {
     func energyTotals() async -> EnergyTotals {
         EnergyTotals(accumulated: [], since: Date(), coverageGaps: 0)
     }
+    func checkForUpdates() async -> [AvailableUpdate] { [] }
+    func installUpdate(_ update: AvailableUpdate) async -> String? {
+        "Not supported here."
+    }
+    func orphanedCasks() async -> [OrphanedCask] { [] }
+    func forgetCask(_ name: String) async -> String? { "Not supported here." }
 }

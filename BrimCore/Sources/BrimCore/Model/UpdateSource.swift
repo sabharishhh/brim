@@ -147,3 +147,51 @@ public struct UpdateReport: Equatable, Sendable, Codable {
         return parts.joined(separator: ", and ") + "."
     }
 }
+
+/// A newer version that exists, and where it comes from.
+public struct AvailableUpdate: Equatable, Sendable, Codable, Identifiable {
+    public let bundleID: String
+    public let name: String
+    public let installed: String?
+    public let latest: String
+    public let source: UpdateSource
+
+    public var id: String { bundleID }
+
+    /// Whether this one can be installed from here, or whether the
+    /// application has to do it itself.
+    public var canInstall: Bool {
+        if case .homebrewCask = source { return true }
+        return false
+    }
+
+    public init(
+        bundleID: String, name: String, installed: String?,
+        latest: String, source: UpdateSource
+    ) {
+        self.bundleID = bundleID
+        self.name = name
+        self.installed = installed
+        self.latest = latest
+        self.source = source
+    }
+}
+
+/// A cask Homebrew is tracking whose application is not on the disk.
+///
+/// Homebrew keeps its own record of what it installed. Remove the
+/// application by dragging it to the Trash and the record stays, so
+/// `brew upgrade` keeps offering to update software that is not there
+/// and `brew list` keeps claiming it. Exactly the leftover this product
+/// exists to find, in a place nothing else looks.
+public struct OrphanedCask: Equatable, Sendable, Codable, Identifiable {
+    public let name: String
+    public let installedVersion: String?
+
+    public var id: String { name }
+
+    public init(name: String, installedVersion: String?) {
+        self.name = name
+        self.installedVersion = installedVersion
+    }
+}
