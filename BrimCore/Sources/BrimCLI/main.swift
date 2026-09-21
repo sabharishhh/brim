@@ -68,18 +68,22 @@ struct BrimCLI: AsyncParsableCommand {
         
         let realService = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
         
-        // Spin up anonymous XPC listener
+        // An anonymous listener over its own endpoint, inside this
+        // process. Two reasons it is here rather than handing back
+        // `realService` directly. It exercises the transport the app uses,
+        // so the CLI cannot pass on a path the app would fail. And it
+        // strips `ApprovalGranting`: a `BrimXPCClient` has no method that
+        // mints a token, which is what keeps the CLI unable to approve its
+        // own work. Returning the service itself would hand that back.
         let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService, requireCodeSigning: false)
+        let delegate = BrimXPCListenerDelegate(service: realService, accepting: .sameProcessAnonymous)
         listener.delegate = delegate
         listener.resume()
         
         // Connect client to anonymous listener
         let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        
-        let client = BrimXPCClient(connection: connection, requireCodeSigning: false)
+        let client = try! BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
         
         sharedListener = listener
         sharedDelegate = delegate
