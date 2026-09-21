@@ -202,7 +202,7 @@ struct ReviewQueueView: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                 if fullDiskAccess.hasRequested {
-                    Text("Switch on Brim in the list, then reopen it — macOS applies the change when the app restarts.")
+                    Text("Switch on Brim in the list, then quit and open it again. macOS only picks the change up on a fresh start.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {

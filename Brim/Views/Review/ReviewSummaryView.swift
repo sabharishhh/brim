@@ -73,13 +73,13 @@ struct ReviewSummaryView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("This Mac").font(.largeTitle).fontWeight(.bold)
                 Text(leftovers.isScanning
-                     ? "Looking…"
-                     : "What software has left behind, and what Brim can still not see.")
+                     ? "Having a look…"
+                     : "What software left behind, and what Brim still cannot see.")
                     .foregroundColor(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(ByteCountFormatter.string(fromByteCount: unclaimedBytes, countStyle: .file))
+                Text(ByteText.short(unclaimedBytes))
                     .font(.title).fontWeight(.semibold).monospacedDigit()
                 Text("unattributed").font(.caption).foregroundColor(.secondary)
             }
@@ -97,8 +97,8 @@ struct ReviewSummaryView: View {
             symbol: "lock",
             tint: .orange,
             title: "Full Disk Access required",
-            detail: "Brim cannot see most of an app's footprint without it, so everything below "
-                  + "is incomplete.",
+            detail: "Without it Brim misses most of what an app leaves behind, so the numbers "
+                  + "below are undercounts.",
             action: ("Open Settings", { FullDiskAccess.openSettings() })
         )
     }
@@ -109,8 +109,8 @@ struct ReviewSummaryView: View {
             tint: .accentColor,
             title: "\(recovery.items.count) "
                  + "\(recovery.items.count == 1 ? "removal is" : "removals are") still recoverable",
-            detail: ByteCountFormatter.string(fromByteCount: recovery.totalBytes, countStyle: .file)
-                  + " is in the Trash and can be put back until you empty it.",
+            detail: ByteText.inSentence(recovery.totalBytes)
+                  + " is sitting in the Trash. You can put it back until you empty it.",
             action: ("Review in History", { navigationSelection = .history })
         )
     }
@@ -148,8 +148,8 @@ struct ReviewSummaryView: View {
                         "\(leftovers.orphaned.count) orphaned · \(leftovers.unclaimed.count) unclaimed",
                         unclaimedBytes
                       ),
-                "Files no installed application claims. Orphans name the record that "
-                + "orphaned them; unclaimed items are shown but never pre-selected."
+                "Files that no installed app claims. For an orphan, Brim can point at the "
+                + "record that named its owner. The rest are shown, and left for you to judge."
             )
 
             card(
@@ -158,17 +158,17 @@ struct ReviewSummaryView: View {
                 applications.isLoading
                     ? .working
                     : .counted("\(applications.applications.count) installed", nil),
-                "Pick an app to see everything it has put on this Mac, then remove it "
-                + "and have Brim prove it is gone."
+                "Pick an app to see everywhere it has written on this Mac, then remove it "
+                + "and watch Brim check its own work."
             )
 
             card(
                 .background, "gearshape.2",
                 "Background items",
-                .notChecked("macOS requires administrator access to list these, and Brim "
-                            + "does not ask for that during a scan."),
-                "Login items and background services — including ones left registered by "
-                + "software that is no longer installed."
+                .notChecked("macOS wants an administrator password to list these, so Brim "
+                            + "leaves them alone until you ask."),
+                "Login items and background services. Some of them were registered by "
+                + "software you no longer have, and go on running anyway."
             )
 
             ForEach(pending, id: \.0) { item, symbol, title, detail in
@@ -180,13 +180,13 @@ struct ReviewSummaryView: View {
     private var pending: [(NavigationItem, String, String, String)] {
         [
             (.storage, "internaldrive", "Storage",
-             "Logical size, what is actually reclaimable, and what local snapshots are pinning."),
+             "How much space is really yours to take back, and how much local snapshots are holding."),
             (.energy, "bolt", "Energy",
-             "What has been costing power, sampled rather than guessed."),
+             "What has been draining the battery, measured rather than guessed at."),
             (.developer, "hammer", "Developer",
-             "Caches, simulators and derived data that build tools accumulate."),
+             "Caches, simulators and derived data that build tools pile up over time."),
             (.updates, "arrow.triangle.2.circlepath", "Updates",
-             "Updater agents and helpers left running by software you have removed.")
+             "Updater agents and helpers that outlived the software they came with.")
         ]
     }
 
@@ -251,7 +251,7 @@ struct ReviewSummaryView: View {
                 Text(summary).fontWeight(.medium)
                 if let bytes {
                     Text("·").foregroundColor(.secondary)
-                    Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                    Text(ByteText.short(bytes))
                         .monospacedDigit()
                 }
             }
@@ -264,7 +264,7 @@ struct ReviewSummaryView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 1)
         case .notBuilt:
-            Text("Not built yet")
+            Text("Still to come")
                 .font(.caption).foregroundColor(.secondary)
                 .padding(.top, 1)
         }

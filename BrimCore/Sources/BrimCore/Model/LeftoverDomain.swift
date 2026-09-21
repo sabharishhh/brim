@@ -63,30 +63,30 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     public var whatItHolds: String {
         switch self {
         case .cache:
-            return "Temporary files the app rebuilds by itself. Removing them frees space and "
-                 + "costs nothing but a slower first launch."
+            return "Scratch files the app makes again whenever it needs them. Clearing them frees "
+                 + "space and costs you nothing but a slower first launch."
         case .applicationSupport:
-            return "The app's own data — settings, licences, saved work, databases. This is the "
-                 + "one to look at before removing: if the app comes back, this is what it "
+            return "The app's own data: settings, licences, saved work, databases. Worth a look "
+                 + "before you clear it. If you ever install the app again, this is what it "
                  + "would have remembered."
         case .preferences:
-            return "Settings only. The app starts with its defaults again if this goes."
+            return "Settings, and nothing else. The app goes back to its defaults without them."
         case .logs:
-            return "Diagnostic output the app wrote for its own developers. Nothing depends on it."
+            return "Notes the app wrote for its own developers. Nothing depends on them."
         case .savedState:
-            return "Which windows were open and where. Rebuilt the next time the app runs."
+            return "Which windows were open and where they sat. Written again next time the app runs."
         case .webData:
-            return "Cookies, local storage and cached pages from web content inside the app. "
-                 + "Removing it signs you out of anything it was keeping you signed in to."
+            return "Cookies and cached pages from web content inside the app. Clear it and you "
+                 + "will be signed out of whatever it was keeping you signed in to."
         case .container:
-            return "A sandboxed app's private folder — everything it was allowed to keep, in "
-                 + "one place."
+            return "A sandboxed app's private folder, holding everything it was allowed to keep."
         case .groupContainer:
-            return "Data shared between an app and its extensions, or between apps from the "
-                 + "same developer. Something else may still be using it."
+            return "Shared between an app and its extensions, or between apps from the same "
+                 + "maker. Something else may still be reading it."
         case .launchAgent:
-            return "An instruction to macOS to run something in the background. Left behind, it "
-                 + "either fails silently at every login or keeps running software you removed."
+            return "A standing instruction for macOS to run something in the background. Left "
+                 + "behind, it either fails quietly at every login or keeps running software "
+                 + "you thought was gone."
         case .other:
             return "Brim has no specific knowledge of this location."
         }
@@ -105,6 +105,6 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     /// A short verdict for the row. Deliberately about consequence rather
     /// than a recommendation: Brim says what is lost, the user decides.
     public var consequence: String {
-        isRegenerated ? "Rebuilt automatically" : "Not recoverable once the Trash is emptied"
+        isRegenerated ? "Comes back on its own" : "Gone once you empty the Trash"
     }
 }
