@@ -104,6 +104,18 @@ public actor Executor {
                     } catch {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
                     }
+                } else if step.kind == .delegateToolCleanup {
+                    // The target names which cleanup to run, never the
+                    // command. The vocabulary forbids a caller-supplied
+                    // command string, and this is the step most tempted by
+                    // one.
+                    do {
+                        try ToolCleanup.run(id: step.target)
+                        journal.stepOutcomes[step.index] = "ok"
+                    } catch {
+                        journal.stepOutcomes[step.index] =
+                            "cleanup_did_not_run: \(error.localizedDescription)"
+                    }
                 } else if step.kind == .unregisterLaunchServices {
                     // Only the path the app was installed at. A bundle that
                     // went to the Trash keeps its name, so Launch Services

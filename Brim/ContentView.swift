@@ -28,6 +28,8 @@ struct ContentView: View {
                     BackgroundView(model: models.background)
                 case .storage:
                     StorageView(model: models.storage)
+                case .duplicates:
+                    DuplicatesView(model: models.duplicates)
                 case .energy:
                     EnergyView(model: models.energy)
                 case .developer:
