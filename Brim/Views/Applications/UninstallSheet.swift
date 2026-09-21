@@ -106,6 +106,21 @@ struct UninstallSheet: View {
                 }
             }
 
+            if model.clearsRegistrations {
+                Section {
+                    Label(
+                        "The app's Launch Services registration is retracted after the bundle is "
+                        + "removed, so it stops appearing in \"Open With\" and no longer claims its "
+                        + "document types. Deleting an app does not do this on its own.",
+                        systemImage: "app.badge.checkmark"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                } header: {
+                    Text("System registrations")
+                }
+            }
+
             Section {
                 ForEach(model.removalSteps, id: \.index) { step in
                     VStack(alignment: .leading, spacing: 3) {

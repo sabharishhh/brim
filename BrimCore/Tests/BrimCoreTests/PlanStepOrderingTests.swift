@@ -110,4 +110,32 @@ final class PlanStepOrderingTests: XCTestCase {
         XCTAssertEqual(single.executionOrderedSteps.map(\.index), [0])
         XCTAssertEqual(single.undoOrderedSteps.map(\.index), [0])
     }
+
+    func testRegistrationIsRetractedAfterTheBundleIsRemoved() {
+        // The mirror image of the privacy reset. tccutil needs the bundle
+        // present; lsregister needs it gone, because Launch Services
+        // re-registers a bundle it can still see.
+        let p = plan([
+            step(0, .registration, target: "/Applications/App.app", kind: .unregisterLaunchServices),
+            step(1, .appBundle, target: "/Applications/App.app"),
+            step(2, .privacyReset, target: "com.test.app", kind: .resetPrivacyGrants),
+            step(3, .auxiliary, target: "/tmp/cache")
+        ])
+
+        XCTAssertEqual(
+            p.executionOrderedSteps.map(\.kind),
+            [.resetPrivacyGrants, .trashPath, .trashPath, .unregisterLaunchServices],
+            "Grants first while the bundle exists, registration last once it does not"
+        )
+    }
+
+    func testABundleIdentifierIsNotTreatedAsAPath() {
+        // Anything that lstats or stats a target has to ask first: a bundle
+        // id resolved as a relative path silently points at the working
+        // directory.
+        XCTAssertFalse(StepKind.resetPrivacyGrants.targetIsPath)
+        XCTAssertFalse(StepKind.btmReset.targetIsPath)
+        XCTAssertTrue(StepKind.trashPath.targetIsPath)
+        XCTAssertTrue(StepKind.unregisterLaunchServices.targetIsPath)
+    }
 }

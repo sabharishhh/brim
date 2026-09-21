@@ -26,6 +26,27 @@ public enum StepKind: String, Codable, Equatable, Sendable {
     case revealVendorUninstaller
     case btmReset
     case archivePath
+    /// Removes the bundle's Launch Services registration, after the bundle
+    /// itself is gone. Deleting an app does not retract its registration:
+    /// the record survives, so the app keeps appearing in "Open With" and
+    /// keeps claiming its document types and URL schemes.
+    case unregisterLaunchServices
+}
+
+extension StepKind {
+    /// Whether this step's `target` names a file, rather than an identifier
+    /// such as a bundle id or a launchd label. Anything reading a target as
+    /// a path — the "already gone" check, verification — has to ask first.
+    public var targetIsPath: Bool {
+        switch self {
+        case .resetPrivacyGrants, .btmReset, .forgetReceipt:
+            return false
+        case .trashPath, .trashPathPrivileged, .unloadLaunchdJob, .removeLaunchdPlist,
+             .clearImmutableFlag, .delegateToolCleanup, .revealVendorUninstaller,
+             .archivePath, .unregisterLaunchServices:
+            return true
+        }
+    }
 }
 
 public struct TargetFingerprint: Codable, Equatable, Sendable {
@@ -58,6 +79,11 @@ public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     case auxiliary = 0
     case launchd = 1
     case appBundle = 2
+    /// Retracting registrations that name the bundle. This runs *after* the
+    /// bundle is removed — the mirror image of `privacyReset`. Unregistering
+    /// a bundle that is still on disk achieves nothing, because Launch
+    /// Services re-registers it the moment anything looks at it again.
+    case registration = 3
     
     public static func < (lhs: ExecutionPhase, rhs: ExecutionPhase) -> Bool {
         return lhs.rawValue < rhs.rawValue

@@ -96,6 +96,7 @@ The complete set of things Brim can do. Adding a step kind is a deliberate act r
 | `delegateToolCleanup` | user | no | runs a named tool's own cleanup; exact command shown pre-approval |
 | `revealVendorUninstaller` | none | n/a | opens Finder. Brim never runs it |
 | `btmReset` | root | partially | guided reset, requires a captured restore list |
+| `unregisterLaunchServices` | user | yes | `lsregister -u` on one bundle path, after the bundle is gone. Never `-kill -r` |
 
 No `deleteRecursive`. No `runShellCommand`. No step takes a caller-supplied command string.
 
