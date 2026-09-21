@@ -919,6 +919,84 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
     }
 
+    /// Checks every application that has a route to a new version.
+    ///
+    /// On a press, never during a scan: this is the only thing in the
+    /// product that reaches the network, and it contacts nothing the
+    /// installed software would not contact itself.
+    public func checkForUpdates() async -> [AvailableUpdate] {
+        let report = await updateReport()
+        let checker = UpdateChecker()
+        let outdated = await checker.outdatedCasks()
+        var available: [AvailableUpdate] = []
+
+        for entry in report.coverage {
+            guard let bundleID = entry.application.identity.bundleID else { continue }
+
+            if let cask = entry.homebrewCask, let newer = outdated[cask] {
+                available.append(AvailableUpdate(
+                    bundleID: bundleID, name: entry.application.name,
+                    installed: newer.installed ?? entry.application.version,
+                    latest: newer.latest, source: .homebrewCask(name: cask)
+                ))
+                continue
+            }
+
+            for source in entry.sources {
+                guard case .sparkle(let feed) = source else { continue }
+                guard let latest = await checker.latestVersion(fromFeed: feed),
+                      UpdateChecker.isNewer(latest, than: entry.application.version)
+                else { continue }
+                available.append(AvailableUpdate(
+                    bundleID: bundleID, name: entry.application.name,
+                    installed: entry.application.version, latest: latest, source: source
+                ))
+            }
+        }
+
+        return available.sorted { $0.name < $1.name }
+    }
+
+    /// Casks Homebrew still tracks whose application is gone.
+    ///
+    /// Found by subtracting what is installed from what Homebrew lists.
+    /// Nothing else looks here: the application is in the Trash, so every
+    /// scan of the disk says it is gone, while Homebrew goes on offering
+    /// to upgrade it.
+    public func orphanedCasks() async -> [OrphanedCask] {
+        let scanner = UpdateSourceScanner()
+        let casks = scanner.installedCasks()
+        guard !casks.isEmpty else { return [] }
+
+        let applications = await ApplicationInventory(root: root).installedApplications()
+        let claimed = Set(applications.compactMap {
+            UpdateSourceScanner.matchingCask(for: $0, among: casks)
+        })
+
+        return casks.subtracting(claimed).sorted().map { name in
+            let versions = (try? FileManager.default.contentsOfDirectory(
+                atPath: "/opt/homebrew/Caskroom/\(name)"
+            )) ?? []
+            return OrphanedCask(
+                name: name,
+                installedVersion: versions.first { !$0.hasPrefix(".") }
+            )
+        }
+    }
+
+    /// Clears a cask record whose application is gone.
+    public func forgetCask(_ name: String) async -> String? {
+        await UpdateChecker().uninstallCask(name)
+    }
+
+    /// Installs one update by delegation. Homebrew does the work.
+    public func installUpdate(_ update: AvailableUpdate) async -> String? {
+        guard case .homebrewCask(let cask) = update.source else {
+            return "\(update.name) updates itself; open it to take the new version."
+        }
+        return await UpdateChecker().upgradeCask(cask)
+    }
+
     /// What is different since the last time Brim looked.
     ///
     /// Empty on a first run, which is the honest answer: there is
@@ -951,10 +1029,17 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // questions at once: a record whose bundle is still there names an
         // owner the directory walk missed, and a record whose bundle has
         // gone *is* the orphan evidence.
+        // A package manager's record of something it installed, whose
+        // application is gone, is evidence of an owner. Nothing was
+        // reading it, so a folder Homebrew could have named sat under
+        // "nobody claims this" instead.
+        let orphanedCaskNames = Set(await orphanedCasks().map(\.name))
+
         let scanner = LeftoversScanner(
             root: root,
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
-            staleRegistrationOwners: staleRegistrationOwners
+            staleRegistrationOwners: staleRegistrationOwners,
+            homebrewOrphans: orphanedCaskNames
         )
         var knownPastBundleIDs = Set<String>()
         let entries = try await ledgerStore.allEntries()

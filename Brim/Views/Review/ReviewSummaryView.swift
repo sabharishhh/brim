@@ -150,81 +150,132 @@ struct ReviewSummaryView: View {
     private var areas: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Areas").font(.headline)
+            ForEach(rankedAreas, id: \.item) { entry in
+                entry.view
+            }
+        }
+    }
 
-            card(
-                .leftovers, "tray.full",
-                "Leftovers",
-                leftovers.isScanning
-                    ? .working
-                    : .counted(
-                        "\(leftovers.orphaned.count) orphaned · \(leftovers.unclaimed.count) unclaimed",
-                        unclaimedBytes
-                      ),
-                "Files no installed application claims. An orphan names the "
-                + "record that named its owner. The rest are shown, and left for you to judge."
-            )
+    /// Every area, ordered by how much there is to act on here.
+    ///
+    /// Nothing about the ranking is shown: no score, no percentage, no
+    /// colour. The order is the whole of it, so the first card is the one
+    /// worth reading first on this Mac rather than whichever happened to
+    /// be declared first.
+    private var rankedAreas: [(item: NavigationItem, view: AnyView)] {
+        let built: [(NavigationItem, ReviewRanking.Finding, AnyView)] = [
+            (
+                .leftovers,
+                ReviewRanking.Finding(
+                    area: "leftovers", bytes: unclaimedBytes,
+                    count: leftovers.orphaned.count,
+                    confidence: leftovers.orphaned.isEmpty ? .possible : .named,
+                    isWorking: leftovers.isScanning
+                ),
+                AnyView(card(
+                    .leftovers, "tray.full", "Leftovers",
+                    leftovers.isScanning
+                        ? .working
+                        : .counted(
+                            "\(leftovers.orphaned.count) orphaned · "
+                            + "\(leftovers.unclaimed.count) unclaimed",
+                            unclaimedBytes
+                          ),
+                    "Files no installed application claims."
+                ))
+            ),
+            (
+                .developer,
+                ReviewRanking.Finding(
+                    area: "developer", bytes: developer.totalBytes,
+                    count: developer.caches.count, confidence: .certain,
+                    isWorking: developer.isScanning
+                ),
+                AnyView(card(
+                    .developer, "hammer", "Developer",
+                    developer.isScanning
+                        ? .working
+                        : .counted("\(developer.caches.count) build caches", developer.totalBytes),
+                    "Caches, simulators and derived data that build tools pile up over time."
+                ))
+            ),
+            (
+                .background,
+                ReviewRanking.Finding(
+                    area: "background", count: background.stale.count,
+                    confidence: background.stale.isEmpty ? .informational : .named,
+                    isWorking: background.isLoading
+                ),
+                AnyView(card(
+                    .background, "gearshape.2", "Background",
+                    background.isLoading
+                        ? .working
+                        : .counted(background.stale.isEmpty
+                            ? "\(background.live.count) running, nothing left over"
+                            : "\(background.stale.count) left over, "
+                              + "\(background.live.count) running",
+                            nil),
+                    "Background jobs and login items, including ones left by software "
+                    + "that is gone."
+                ))
+            ),
+            (
+                .updates,
+                ReviewRanking.Finding(
+                    area: "updates",
+                    count: updates.stranded.count + updates.report.orphanedAgents.count,
+                    confidence: .likely, isWorking: updates.isLoading
+                ),
+                AnyView(card(
+                    .updates, "arrow.triangle.2.circlepath", "Updates",
+                    updates.isLoading ? .working : .counted(updates.report.summary, nil),
+                    "How each application gets its next version."
+                ))
+            ),
+            (
+                .applications,
+                ReviewRanking.Finding(
+                    area: "applications", count: applications.applications.count,
+                    confidence: .informational, isWorking: applications.isLoading
+                ),
+                AnyView(card(
+                    .applications, "square.grid.2x2", "Applications",
+                    applications.isLoading
+                        ? .working
+                        : .counted("\(applications.applications.count) installed", nil),
+                    "Everywhere each application has written, and what removing it takes back."
+                ))
+            ),
+            (
+                .storage,
+                ReviewRanking.Finding(
+                    area: "storage", confidence: .informational, isWorking: storage.isLoading
+                ),
+                AnyView(card(
+                    .storage, "internaldrive", "Storage",
+                    storage.isLoading
+                        ? .working
+                        : storage.startupVolume.map {
+                            .counted(ByteText.short($0.freeRightNow) + " free right now", nil)
+                          } ?? .notChecked("Could not read the volumes."),
+                    "How much space can be taken back, and how much local snapshots are holding."
+                ))
+            ),
+            (
+                .energy,
+                ReviewRanking.Finding(area: "energy", confidence: .informational),
+                AnyView(card(
+                    .energy, "bolt", "Energy",
+                    .notChecked("Measured over a couple of seconds when you open it."),
+                    "What has been using the battery."
+                ))
+            ),
+        ]
 
-            card(
-                .applications, "square.grid.2x2",
-                "Applications",
-                applications.isLoading
-                    ? .working
-                    : .counted("\(applications.applications.count) installed", nil),
-                "Everywhere each application has written, and what removing it takes back."
-            )
-
-            card(
-                .background, "gearshape.2",
-                "Background",
-                background.isLoading
-                    ? .working
-                    : .counted(background.stale.isEmpty
-                        ? "\(background.live.count) running, nothing left over"
-                        : "\(background.stale.count) left over, \(background.live.count) running",
-                        nil),
-                "Background jobs and login items. Some get registered by software you no "
-                + "longer have, and go on running anyway."
-            )
-
-            card(
-                .storage, "internaldrive",
-                "Storage",
-                storage.isLoading
-                    ? .working
-                    : storage.startupVolume.map {
-                        .counted(ByteText.short($0.freeRightNow) + " free right now", nil)
-                      } ?? .notChecked("Could not read the volumes."),
-                "How much space can be taken back, and how much local snapshots "
-                + "are holding."
-            )
-
-            card(
-                .developer, "hammer",
-                "Developer",
-                developer.isScanning
-                    ? .working
-                    : .counted("\(developer.caches.count) build caches", developer.totalBytes),
-                "Caches, simulators and derived data that build tools pile up over time."
-            )
-
-            card(
-                .updates, "arrow.triangle.2.circlepath",
-                "Updates",
-                updates.isLoading
-                    ? .working
-                    : .counted(updates.orphaned.isEmpty
-                        ? "\(updates.working.count) checking, none stranded"
-                        : "\(updates.orphaned.count) checking for software that has gone",
-                        nil),
-                "Updater agents and helpers that outlived the software they came with."
-            )
-
-            card(
-                .energy, "bolt",
-                "Energy",
-                .notChecked("Measured over a couple of seconds when you open it."),
-                "What has been draining the battery, measured rather than guessed at."
-            )
+        let ranked = ReviewRanking.rank(built.map(\.1))
+        return ranked.compactMap { finding in
+            guard let match = built.first(where: { $0.1.area == finding.area }) else { return nil }
+            return (item: match.0, view: match.2)
         }
     }
 
