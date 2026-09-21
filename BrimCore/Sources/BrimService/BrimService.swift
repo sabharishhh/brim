@@ -511,6 +511,44 @@ public actor BrimService: BrimServiceProtocol {
         )
     }
 
+    /// A one step plan that runs a tool's own cleanup.
+    ///
+    /// Built here rather than by the planner, which works from a discovered
+    /// footprint. There is no footprint to discover: the step names a
+    /// cleanup and the command behind it never leaves BrimOps.
+    public func planToolCleanup(id: String, displayed: String) async throws -> Plan {
+        let plan = Plan(
+            planId: UUID(),
+            createdAt: Date(),
+            engineVersion: "1.0.0",
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            intent: PlanIntent(
+                type: .uninstall,
+                subjectIdentity: Identity(bundleID: nil, name: displayed),
+                requesterKind: "ui",
+                requesterIdentity: NSUserName()
+            ),
+            steps: [Step(
+                index: 0,
+                kind: .delegateToolCleanup,
+                target: id,
+                targetFingerprint: nil,
+                tier: .A,
+                evidence: "Runs the tool's own cleanup: \(displayed)",
+                expectedBytes: 0,
+                capability: .ok,
+                reversible: false,
+                costOfError: .low,
+                executionPhase: .auxiliary,
+                disposition: .delete
+            )],
+            excludedItems: [],
+            expectedTotalBytes: 0
+        )
+        try await planStore.save(plan: plan)
+        return plan
+    }
+
     public func developerCaches() async -> [DeveloperCache] {
         await DeveloperCacheScanner().scan()
     }
