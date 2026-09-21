@@ -14,18 +14,27 @@ import BrimProtocol
 @MainActor
 public final class EnergyModel: ObservableObject {
 
-    /// One process, measured across the gap between two samples.
+    /// One application, measured across the gap between two samples.
+    ///
+    /// An application, not a process. A modern Mac app is a crowd of them:
+    /// ChatGPT runs thirteen, Claude runs seven, each a renderer, a GPU
+    /// helper, a crash reporter or a network service with its own pid.
+    /// Listing them separately filled the view with the same three names
+    /// over and over and left nobody able to answer "what is using my
+    /// battery", which is a question about an app.
     public struct Reading: Identifiable, Sendable, Equatable {
-        public let pid: Int32
         public let name: String
         public let bundlePath: String?
+        /// One executable from the group, for the rows with no bundle.
         public let executablePath: String
+        /// How many processes were rolled up here.
+        public let processCount: Int
         public let cpuNanoseconds: UInt64
         public let wakeups: UInt64
         public let bytesMoved: UInt64
         public let impact: UInt64
 
-        public var id: Int32 { pid }
+        public var id: String { bundlePath ?? executablePath }
     }
 
     @Published public private(set) var readings: [Reading] = []
@@ -60,7 +69,7 @@ public final class EnergyModel: ObservableObject {
         let before = Dictionary(first.samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         coverageGaps = second.coverageGaps
 
-        readings = second.samples.compactMap { now -> Reading? in
+        readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so
             // its total would be mistaken for its rate. Left out rather
             // than guessed at.
@@ -74,9 +83,7 @@ public final class EnergyModel: ObservableObject {
                 ? now.impactScore - then.impactScore : 0
             guard impact > 0 else { return nil }
 
-            return Reading(
-                pid: now.pid,
-                name: Self.name(for: now),
+            return Measured(
                 bundlePath: now.bundlePath,
                 executablePath: now.executablePath,
                 cpuNanoseconds: cpu,
@@ -84,17 +91,60 @@ public final class EnergyModel: ObservableObject {
                 bytesMoved: io,
                 impact: impact
             )
+        })
+    }
+
+    /// One process, before the processes belonging to the same application
+    /// are added together.
+    struct Measured: Sendable {
+        let bundlePath: String?
+        let executablePath: String
+        let cpuNanoseconds: UInt64
+        let wakeups: UInt64
+        let bytesMoved: UInt64
+        let impact: UInt64
+    }
+
+    /// Adds up the processes belonging to one application.
+    ///
+    /// Keyed on the bundle when there is one, and the executable otherwise,
+    /// so a daemon running several copies of itself also collapses to a
+    /// single line. `EnergySampler` already walks out to the outermost
+    /// bundle, so a renderer nested three frameworks deep inside ChatGPT
+    /// arrives here pointing at `/Applications/ChatGPT.app`.
+    static func group(_ measured: [Measured]) -> [Reading] {
+        var order: [String] = []
+        var buckets: [String: [Measured]] = [:]
+
+        for item in measured {
+            let key = item.bundlePath ?? item.executablePath
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(item)
+        }
+
+        return order.compactMap { key -> Reading? in
+            guard let group = buckets[key], let first = group.first else { return nil }
+            return Reading(
+                name: Self.name(bundlePath: first.bundlePath, executablePath: first.executablePath),
+                bundlePath: first.bundlePath,
+                executablePath: first.executablePath,
+                processCount: group.count,
+                cpuNanoseconds: group.reduce(0) { $0 &+ $1.cpuNanoseconds },
+                wakeups: group.reduce(0) { $0 &+ $1.wakeups },
+                bytesMoved: group.reduce(0) { $0 &+ $1.bytesMoved },
+                impact: group.reduce(0) { $0 &+ $1.impact }
+            )
         }
         .sorted { $0.impact > $1.impact }
     }
 
     /// The app's name where the process belongs to one, and the executable
     /// name otherwise. A bare executable name is right for a daemon and
-    /// wrong for an app the user recognises by its bundle.
-    static func name(for sample: EnergySample) -> String {
-        if let bundlePath = sample.bundlePath {
+    /// wrong for an app somebody recognises by its icon.
+    static func name(bundlePath: String?, executablePath: String) -> String {
+        if let bundlePath {
             return URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent
         }
-        return URL(fileURLWithPath: sample.executablePath).lastPathComponent
+        return URL(fileURLWithPath: executablePath).lastPathComponent
     }
 }
