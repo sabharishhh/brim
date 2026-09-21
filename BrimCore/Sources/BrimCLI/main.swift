@@ -89,6 +89,16 @@ struct BrimCLI: AsyncParsableCommand {
     }
 }
 
+/// An error with nothing around it.
+///
+/// Anything crossing the XPC boundary arrives as an `NSError`, and printing
+/// one gives the reader a domain, a code and the same sentence twice. What
+/// a person needs from a refusal is the sentence.
+struct Refusal: Error, CustomStringConvertible {
+    let description: String
+    init(_ error: Error) { self.description = error.localizedDescription }
+}
+
 // MARK: - Formatters
 
 func outputJSON<T: Encodable>(_ value: T) {
@@ -224,12 +234,17 @@ struct ApproveRequest: AsyncParsableCommand {
             throw ValidationError("Invalid UUID")
         }
         
-        let token = try await BrimCLI.getService().requestApproval(planId: uuid, requesterIdentity: NSUserName())
-        
+        let receipt = try await BrimCLI.getService().requestApproval(
+            planId: uuid, requesterIdentity: NSUserName()
+        )
+
         if json {
-            outputJSON(["status": "approval_requested", "planId": uuid.uuidString])
+            outputJSON(receipt)
         } else {
             print("Approval requested for \(uuid.uuidString).")
+            print(receipt.summary)
+            print("")
+            print("This did not approve anything. Open Brim and confirm the removal there.")
         }
     }
 }
@@ -252,7 +267,11 @@ struct Apply: AsyncParsableCommand {
             throw ValidationError("Invalid or unparseable token")
         }
         
-        try await BrimCLI.getService().apply(planId: uuid, token: approvalToken)
+        do {
+            try await BrimCLI.getService().apply(planId: uuid, token: approvalToken)
+        } catch {
+            throw Refusal(error)
+        }
         
         if json {
             outputJSON(["status": "applied", "planId": uuid.uuidString])
@@ -393,17 +412,24 @@ struct DryRunUninstall: AsyncParsableCommand {
             try? FileManager.default.removeItem(at: shadowRoot.rootURL)
         }
         
-        let shadowService = BrimService(root: shadowRoot, brimAppURL: brimAppURL, planStoreDirectory: planDir, journalStoreDirectory: journalDir)
+        let shadowService = BrimService(
+            root: shadowRoot, brimAppURL: brimAppURL,
+            planStoreDirectory: planDir, journalStoreDirectory: journalDir,
+            consent: ConsentSource { _ in true }
+        )
         
         // 4. Run pipeline
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity, requesterKind: "cli", requesterIdentity: NSUserName())
         let plan = try await shadowService.plan(intent: intent)
         
-        // Mock token since CLI can't officially request one in shadow (concrete cast needed)
-        // Actually, we can cast to BrimService
-        let token = try await shadowService.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
-        
-        try await shadowService.apply(planId: plan.planId, token: token)
+        // The dry run works on a copy of the tree in a temporary directory,
+        // so there is nothing here worth interrupting a person for. It still
+        // goes through the same gate as everything else, with a consent
+        // source that only exists for the shadow tree and is discarded with
+        // it.
+        try await shadowService.approveAndApply(
+            planId: plan.planId, requesterIdentity: NSUserName()
+        )
         
         let verification = try await shadowService.verify(planId: plan.planId)
         

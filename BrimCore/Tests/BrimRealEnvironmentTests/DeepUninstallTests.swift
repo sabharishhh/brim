@@ -84,7 +84,7 @@ final class DeepUninstallTests: XCTestCase {
         )
 
         let plan = try await service.plan(intent: intent)
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         let survivors = footprint.filter { FileManager.default.fileExists(atPath: $0.url.path) }
@@ -152,7 +152,7 @@ final class DeepUninstallTests: XCTestCase {
             "An uninstall of an installed .app must plan to retract its registration"
         )
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertFalse(
@@ -189,7 +189,7 @@ final class DeepUninstallTests: XCTestCase {
             requesterKind: "harness",
             requesterIdentity: NSUserName()
         ))
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         // Clean first, so the failure below can only come from the
@@ -246,7 +246,7 @@ final class DeepUninstallTests: XCTestCase {
             requesterKind: "harness",
             requesterIdentity: NSUserName()
         ))
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         let other = try fixture.makeRegisteredAppBundle(suffix: "-othercopy")
@@ -285,7 +285,7 @@ final class DeepUninstallTests: XCTestCase {
         try XCTSkipUnless(bundleStep.effectiveDisposition == .trash,
                           "This test is about the Trash path specifically")
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         let stillAtInstalledPath = LaunchServicesRegistration
@@ -314,7 +314,7 @@ final class DeepUninstallTests: XCTestCase {
         ))
         try XCTSkipUnless(plan.isReversible, "Nothing to undo if the plan was permanent")
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
         XCTAssertEqual(
             LaunchServicesRegistration.registeredApplicationURLs(forBundleID: fixture.harnessBundleID),
@@ -358,7 +358,7 @@ final class DeepUninstallTests: XCTestCase {
         ))
         let bundleStep = try XCTUnwrap(plan.steps.first { $0.executionPhase == .appBundle })
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         // Stand a registered bundle where the journal will say the trashed

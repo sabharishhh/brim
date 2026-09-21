@@ -103,10 +103,9 @@ public final class UninstallExecutionModel: ObservableObject {
 
         phase = .executing
         do {
-            let token = try await service.requestApproval(
+            try await service.approveAndApply(
                 planId: plan.planId, requesterIdentity: requesterIdentity
             )
-            try await service.apply(planId: plan.planId, token: token)
         } catch {
             phase = .failed(error.localizedDescription)
             return

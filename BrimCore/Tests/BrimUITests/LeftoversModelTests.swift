@@ -11,7 +11,7 @@ private actor LeftoversStub: BrimServiceProtocol {
     func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
     func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
     func explain(planId: UUID) async throws -> String { throw Nope.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Nope.no }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Nope.no }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
     func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
     func history() async throws -> [Plan] { [] }

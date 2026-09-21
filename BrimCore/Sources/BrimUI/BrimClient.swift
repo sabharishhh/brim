@@ -9,10 +9,6 @@ public class BrimClient: ObservableObject {
     
     public var service: (any BrimServiceProtocol)?
     
-    // For direct token minting in the same process during development, we'll keep a reference to the concrete store if available.
-    // In production, the UI would sign a request with a private key, or XPC would mint it after LAContext.
-    public var localTokenStore: TokenStore?
-    
     public init() {}
     
     public func plan(intent: PlanIntent) async throws -> Plan {
@@ -23,9 +19,9 @@ public class BrimClient: ObservableObject {
     public func execute(plan: Plan, requesterIdentity: String) async throws -> VerificationResult {
         guard let service = service else { throw NSError(domain: "BrimClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Service not connected"]) }
         
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: requesterIdentity)
-        
-        try await service.apply(planId: plan.planId, token: token)
+        try await service.approveAndApply(
+            planId: plan.planId, requesterIdentity: requesterIdentity
+        )
         return try await service.verify(planId: plan.planId)
     }
 }
