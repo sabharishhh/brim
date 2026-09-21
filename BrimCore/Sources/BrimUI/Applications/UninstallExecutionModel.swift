@@ -76,6 +76,27 @@ public final class UninstallExecutionModel: ObservableObject {
         }
     }
 
+    /// Why the disk did not give back what was deleted.
+    ///
+    /// Deleting a file whose blocks are still referenced by a local
+    /// snapshot frees nothing until that snapshot expires. Reporting the
+    /// removal as a success and leaving the user to notice that their free
+    /// space never moved is how a cleaning tool loses trust, so this says
+    /// it plainly instead.
+    public var spaceExplanation: String? {
+        guard case .verified(let result) = phase, let plan else { return nil }
+        let promised = plan.immediatelyFreedBytes
+        guard promised > 0 else { return nil }
+
+        // A tenth is slack for other activity on the disk during the
+        // removal, not a threshold worth tuning.
+        guard result.recoveredBytes < promised / 10 else { return nil }
+
+        return "The files are gone, but the disk has not given the space back yet. That "
+             + "happens when a local snapshot still refers to the same blocks. macOS "
+             + "releases them when the snapshot expires or when it needs the room."
+    }
+
     /// One authorization for the whole plan, then apply, then verify.
     public func authorize(requesterIdentity: String) async {
         guard let service, let plan, case .ready = phase else { return }
