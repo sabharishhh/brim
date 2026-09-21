@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sabharishhh.brim.jobhelper</string>
+    <!-- Relative to the app bundle. SMAppService resolves it there, which
+         is what keeps the daemon and the app one signed unit: replacing
+         the binary invalidates the signature and macOS refuses to run it. -->
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/BrimJobHelper</string>
+    <key>MachServices</key>
+    <dict>
+        <key>com.sabharishhh.brim.jobhelper</key>
+        <true/>
+    </dict>
+    <!-- Started when Brim asks for it and not before. Nothing runs at
+         login for a job the user may never need. -->
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.sabharishhh.brim</string>
+    </array>
+</dict>
+</plist>
