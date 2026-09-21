@@ -16,6 +16,9 @@ struct DeveloperView: View {
     @ObservedObject var model: DeveloperModel
     @SwiftUI.Environment(\.brimService) private var service
 
+    @State private var reviewRequest: PlanIntent?
+    @State private var pendingCleanup: DeveloperCache?
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -23,6 +26,36 @@ struct DeveloperView: View {
             content
         }
         .task { await model.loadIfNeeded(service: service) }
+        .sheet(item: $reviewRequest) { intent in
+            LeftoverRemovalSheet(intent: intent, service: service) {
+                Task { await model.load(service: service) }
+            }
+        }
+        // The exact command, shown before anything is approved. T-5.7 is
+        // explicit that delegation is not a silent handoff.
+        .alert(item: $pendingCleanup) { cache in
+            Alert(
+                title: Text("Let \(cache.tool) clean up after itself?"),
+                message: Text("Brim will not delete this folder. It will run the tool's own "
+                              + "command, which leaves \(cache.tool) in a state it understands:"
+                              + "\n\n\(commandText(cache))"),
+                primaryButton: .default(Text("Run it")) { runCleanup(cache) },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+
+    private func commandText(_ cache: DeveloperCache) -> String {
+        cache.cleanupCommand ?? "unknown"
+    }
+
+    private func runCleanup(_ cache: DeveloperCache) {
+        guard let id = cache.cleanupID, let displayed = cache.cleanupCommand else { return }
+        Task {
+            if let plan = try? await service.planToolCleanup(id: id, displayed: displayed) {
+                reviewRequest = plan.intent
+            }
+        }
     }
 
     private var header: some View {
@@ -32,6 +65,17 @@ struct DeveloperView: View {
                 Text(summary).font(.caption).foregroundColor(.secondary)
             }
             Spacer()
+            if model.canRemove {
+                Text(ByteText.short(model.selectedBytes))
+                    .fontWeight(.bold).monospacedDigit()
+                Button("Remove selected…") {
+                    reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Select regenerable") { model.selectRegenerable() }
+                    .disabled(model.caches.allSatisfy { !$0.cost.isBrimRemovable })
+            }
             Button("Rescan") { Task { await model.load(service: service) } }
                 .disabled(model.isScanning)
         }
@@ -97,6 +141,25 @@ struct DeveloperView: View {
     }
 
     private func row(_ cache: DeveloperCache) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            // Only the regenerable class gets a checkbox. The others are
+            // not things Brim removes.
+            if cache.cost.isBrimRemovable {
+                Toggle("", isOn: Binding(
+                    get: { model.isSelected(cache) },
+                    set: { _ in model.toggle(cache) }
+                ))
+                .labelsHidden()
+            } else {
+                Image(systemName: cache.cost == .configured ? "hand.raised" : "terminal")
+                    .font(.caption).foregroundColor(.secondary).frame(width: 16)
+            }
+            detail(cache)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func detail(_ cache: DeveloperCache) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(cache.tool).fontWeight(.medium)
@@ -111,7 +174,19 @@ struct DeveloperView: View {
             Text(cache.url.path)
                 .font(.caption2).foregroundColor(.secondary)
                 .truncationMode(.middle).lineLimit(1).textSelection(.enabled)
+
+            HStack(spacing: 8) {
+                if cache.cleanupID != nil {
+                    Button("Let \(cache.tool) clean it") { pendingCleanup = cache }
+                        .buttonStyle(.link).font(.caption)
+                }
+                if cache.cost == .configured {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([cache.url])
+                    }
+                    .buttonStyle(.link).font(.caption)
+                }
+            }
         }
-        .padding(.vertical, 2)
     }
 }

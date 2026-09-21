@@ -39,10 +39,12 @@ extension StepKind {
     /// a path — the "already gone" check, verification — has to ask first.
     public var targetIsPath: Bool {
         switch self {
-        case .resetPrivacyGrants, .btmReset, .forgetReceipt:
+        case .resetPrivacyGrants, .btmReset, .forgetReceipt, .delegateToolCleanup:
+            // Each of these names an identifier: a bundle id, a package id,
+            // or which cleanup to run. None is a file.
             return false
         case .trashPath, .trashPathPrivileged, .unloadLaunchdJob, .removeLaunchdPlist,
-             .clearImmutableFlag, .delegateToolCleanup, .revealVendorUninstaller,
+             .clearImmutableFlag, .revealVendorUninstaller,
              .archivePath, .unregisterLaunchServices:
             return true
         }

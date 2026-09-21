@@ -28,7 +28,7 @@ let package = Package(
     targets: [
         .target(name: "BrimCore"),
         .target(name: "BrimScanShim"),
-        .target(name: "BrimScan", dependencies: ["BrimScanShim", "BrimCore"]),
+        .target(name: "BrimScan", dependencies: ["BrimScanShim", "BrimCore", "BrimOps"]),
         .target(name: "BrimIndex", dependencies: [
             "BrimCore",
             .product(name: "GRDB", package: "GRDB.swift")

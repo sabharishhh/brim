@@ -43,6 +43,9 @@ public protocol BrimServiceProtocol: Sendable {
     func sampleEnergy() async -> EnergySampleResult
     /// Build caches this Mac has accumulated, with what clearing each costs.
     func developerCaches() async -> [DeveloperCache]
+    /// Plans a tool's own cleanup, named rather than described. The command
+    /// is resolved inside the service from a fixed table.
+    func planToolCleanup(id: String, displayed: String) async throws -> Plan
 }
 
 public extension BrimServiceProtocol {
@@ -61,4 +64,8 @@ public extension BrimServiceProtocol {
         EnergySampleResult(samples: [], coverageGaps: 0)
     }
     func developerCaches() async -> [DeveloperCache] { [] }
+    func planToolCleanup(id: String, displayed: String) async throws -> Plan {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
 }
