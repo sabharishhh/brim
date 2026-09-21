@@ -212,6 +212,18 @@ final class DeepUninstallTests: XCTestCase {
         }
 
         let verification = try await service.verify(planId: plan.planId)
+        if verification.success {
+            // Launch Services is a live database that prunes records for
+            // files that have gone. If it dropped this one between planting
+            // it and the check, the premise no longer holds and there is
+            // nothing to assert — that is a skip, not a pass and not a
+            // failure.
+            try XCTSkipIf(
+                LaunchServicesRegistration
+                    .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty,
+                "Launch Services pruned the planted record before verification ran"
+            )
+        }
         XCTAssertFalse(verification.success, "A surviving registration is not 'nothing remains'")
         XCTAssertEqual(verification.reason?.contains("still has this app registered"), true,
                        "The reason should name what survived, got: \(verification.reason ?? "nil")")
@@ -248,6 +260,75 @@ final class DeepUninstallTests: XCTestCase {
             verification.success,
             "A copy at \(other.path) that Brim never removed is not this uninstall's leftover: "
             + (verification.reason ?? "")
+        )
+    }
+
+    /// Where the bundle went is not a leftover. A trashed app keeps its
+    /// name, so Launch Services registers it in the Trash — exactly as it
+    /// does for any app dragged there by hand. The app is recoverable and
+    /// the record says so; calling that a leftover would mean fighting the
+    /// OS and racing its daemon. What must be gone is the record for the
+    /// path the app was *installed* at.
+    func testTheInstalledPathIsUnregisteredEvenWhenTheBundleIsOnlyTrashed() async throws {
+        let bundle = try fixture.makeRegisteredAppBundle()
+        _ = try fixture.makeAppFootprint()
+        let identity = Identity(bundleID: fixture.harnessBundleID, name: fixture.runID)
+
+        let service = makeService()
+        let plan = try await service.plan(intent: PlanIntent(
+            type: .uninstall,
+            subjectIdentity: identity,
+            requesterKind: "harness",
+            requesterIdentity: NSUserName()
+        ))
+        let bundleStep = try XCTUnwrap(plan.steps.first { $0.executionPhase == .appBundle })
+        try XCTSkipUnless(bundleStep.effectiveDisposition == .trash,
+                          "This test is about the Trash path specifically")
+
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        try await service.apply(planId: plan.planId, token: token)
+
+        let stillAtInstalledPath = LaunchServicesRegistration
+            .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
+            .filter { $0.standardizedFileURL.path == bundle.standardizedFileURL.path }
+        XCTAssertEqual(stillAtInstalledPath, [], "The installed path must not stay registered")
+
+        let verification = try await service.verify(planId: plan.planId)
+        XCTAssertTrue(verification.success, verification.reason ?? "")
+    }
+
+    /// Undo has to put the registration back with the files. Restoring a
+    /// working application that macOS no longer knows about is its own kind
+    /// of broken.
+    func testUndoRestoresTheRegistration() async throws {
+        let bundle = try fixture.makeRegisteredAppBundle()
+        _ = try fixture.makeAppFootprint()
+        let identity = Identity(bundleID: fixture.harnessBundleID, name: fixture.runID)
+
+        let service = makeService()
+        let plan = try await service.plan(intent: PlanIntent(
+            type: .uninstall,
+            subjectIdentity: identity,
+            requesterKind: "harness",
+            requesterIdentity: NSUserName()
+        ))
+        try XCTSkipUnless(plan.isReversible, "Nothing to undo if the plan was permanent")
+
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        try await service.apply(planId: plan.planId, token: token)
+        XCTAssertEqual(
+            LaunchServicesRegistration.registeredApplicationURLs(forBundleID: fixture.harnessBundleID),
+            []
+        )
+
+        try await service.undo(planId: plan.planId)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.path), "The bundle should be back")
+        XCTAssertTrue(
+            LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
+                .contains { $0.standardizedFileURL.path == bundle.standardizedFileURL.path },
+            "A restored application macOS does not know about has no document types and no Open With"
         )
     }
 }

@@ -51,6 +51,19 @@ public enum LaunchServicesRegistration {
         }
     }
 
+    /// Registers a bundle, used to put back a registration an uninstall
+    /// retracted when that uninstall is undone.
+    public static func register(
+        bundlePath: String,
+        runner: ((String, [String]) throws -> Int32)? = nil
+    ) throws {
+        let invoke = runner ?? Self.run
+        let status = try invoke(lsregisterPath, ["-f", bundlePath])
+        guard status == 0 else {
+            throw UnregisterError.failed(path: bundlePath, code: status)
+        }
+    }
+
     /// Every location Launch Services still associates with a bundle
     /// identifier. Empty means the registration is genuinely gone.
     ///
