@@ -113,6 +113,15 @@ figure is how cleaning utilities end up lying.
 `unsupported_kind`. `StepVocabularyTests` reads the planner and the
 executor and fails when a kind has no producer or no branch.
 
+**History is snapshots and subtraction, never a watcher.** Each
+enumeration appends one observation per application and nothing is ever
+overwritten, so "what changed" is the last two snapshots differenced. A
+resident process noticing installations is what every competitor ships
+and what nobody wants: battery, permissions, and one more daemon on a
+Mac whose complaint is that it has too many. One snapshot means there is
+nothing to compare against, which is not the same as nothing changing,
+and the copy says which it is.
+
 **A location needs a rule, not just a path.** `LocationInventory` pairs
 every place software hides with how a match there is proved, and the
 rule decides the tier: an identifier match is Tier B, a name match is
@@ -230,6 +239,18 @@ conversation. Split unrelated changes rather than staging everything.
   though it silently failed. `apply` refuses before the token is spent,
   so quitting and asking again is the whole remedy. Helpers inside the
   bundle count: they have their own identifiers and write just as much.
+- **Order snapshots by rowid, not by timestamp.** Two scans a second
+  apart share a stored `observed_at` at SQLite's resolution, and ordering
+  on it picks between them arbitrarily: growth came back inverted and the
+  comparison ran against the wrong snapshot. Both tests passed when run
+  filtered and failed in the full suite, which is what a timing-dependent
+  bug looks like.
+- **`kMDItemLastUsedDate` earlier than `kMDItemDateAdded` is the
+  migration signature.** It can only happen when the usage record
+  travelled with the bundle and nobody has opened it since. Sharper than
+  comparing against the system install date, which catches almost nothing
+  on a restored Mac. Real example here: IINA arrived 14 September, last
+  opened 7 August.
 - **`~/Library/Preferences/ByHost` is a second copy of the settings.**
   A scan of `Preferences` walks straight past it. Real examples on this
   Mac: Claude and VS Code both keep a `ShipIt` domain there.

@@ -57,6 +57,10 @@ struct ApplicationsView: View {
             .padding(.top)
             .accessibilityElement(children: .combine)
 
+            if !model.history.changes.isEmpty || !model.history.migrated.isEmpty {
+                changesNote
+            }
+
             TextField("Search", text: $model.searchText)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
@@ -75,6 +79,42 @@ struct ApplicationsView: View {
             }
             .listStyle(.inset)
         }
+    }
+
+    /// What is different since last time, and what never ran here.
+    ///
+    /// Derived by subtracting one snapshot from the one before it. There
+    /// is no watcher: a resident process noticing installations is what
+    /// every competitor ships and what nobody wants, and two snapshots
+    /// answer the same question for nothing.
+    private var changesNote: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !model.history.changes.isEmpty {
+                Text("Since Brim last looked").font(.caption).fontWeight(.semibold)
+                ForEach(Array(model.history.changes.prefix(5).enumerated()), id: \.offset) {
+                    _, change in
+                    Text(change.sentence)
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if !model.history.migrated.isEmpty {
+                let count = model.history.migrated.count
+                Text("\(count) came across from another Mac and have not run here")
+                    .font(.caption).fontWeight(.semibold)
+                Text("\(ByteText.short(model.history.migratedBytes)) between them. Migration "
+                     + "Assistant copies everything, and a good part of it is never opened "
+                     + "again. Select one to see what it would take back.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal)
+        .accessibilityElement(children: .combine)
     }
 
     private func row(_ application: InstalledApplication) -> some View {
