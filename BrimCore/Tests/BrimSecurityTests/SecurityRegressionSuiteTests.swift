@@ -244,3 +244,52 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         XCTAssertTrue(violations.isEmpty, "Found removeItem calls outside BrimOps: \n\(violations.joined(separator: "\n"))")
     }
 }
+
+/// What the Trash actually shows after Brim puts something there.
+///
+/// `trashItem` renames the target into an isolated directory before trashing
+/// it, which is what makes the operation TOCTOU-safe. Done naively that
+/// rename is what reaches the Trash, so the user opens the bin and finds a
+/// list of UUIDs. "Recoverable" then means nothing in practice.
+final class TrashNamingTests: XCTestCase {
+
+    func testATrashedItemKeepsItsOwnName() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BrimTrashNaming-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let target = dir.appendingPathComponent("BrimTestApp-DELETE-ME.app")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try "x".write(to: target.appendingPathComponent("marker"), atomically: true, encoding: .utf8)
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: target.path)
+        let dev = attrs[.systemNumber] as! Int32
+        let ino = attrs[.systemFileNumber] as! UInt64
+
+        guard let trashed = try SafeOps.trashItem(targetPath: target.path, expectedDev: dev, expectedIno: ino) else {
+            throw XCTSkip("Trashing is unavailable in this environment")
+        }
+        defer { try? FileManager.default.removeItem(at: trashed) }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+        XCTAssertTrue(
+            trashed.lastPathComponent.hasPrefix("BrimTestApp-DELETE-ME"),
+            "Trash shows \"\(trashed.lastPathComponent)\" — a name nobody can recognise or restore"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: trashed.appendingPathComponent("marker").path),
+            "The contents must survive the round trip"
+        )
+    }
+
+    func testANameThatWouldEscapeTheIsolationDirectoryIsRejected() {
+        // The rename back to the original name happens inside a directory we
+        // control, so a basename that is not a plain name must not be used.
+        XCTAssertFalse(SafeOps.isUsableTrashName(""))
+        XCTAssertFalse(SafeOps.isUsableTrashName("."))
+        XCTAssertFalse(SafeOps.isUsableTrashName(".."))
+        XCTAssertFalse(SafeOps.isUsableTrashName("../../etc/passwd"))
+        XCTAssertTrue(SafeOps.isUsableTrashName("Photoshop.app"))
+    }
+}
