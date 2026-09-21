@@ -16,6 +16,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
+    /// What was registered before a background reset, written down so the
+    /// person can put it back. The reset is refused without one.
+    public let restoreLists: RestoreListStore
     
     public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true) {
         self.root = root
@@ -54,7 +57,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.ledgerStore = LedgerStore(directoryURL: ledgersDir)
         
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
-        self.executor = Executor(journalStore: self.journalStore)
+        // Restore lists sit beside the journals: both are the record of
+        // what happened, and a background reset is the one action whose
+        // record has to exist before it runs rather than after.
+        let restoreLists = RestoreListStore(
+            directoryURL: journalStoreDirectory
+                .deletingLastPathComponent().appendingPathComponent("RestoreLists")
+        )
+        self.restoreLists = restoreLists
+        self.executor = Executor(journalStore: self.journalStore, restoreLists: restoreLists)
     }
     
     public func inspect(identity: Identity) async throws -> Footprint {
@@ -370,9 +381,39 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     private var appliedPlanIds: Set<UUID> = []
     
-    public enum ApplyError: Error {
+    public enum ApplyError: LocalizedError {
         case planAlreadyApplied
-    case validationFailed(String)
+        case validationFailed(String)
+        /// The application, or one of its helpers, is still up.
+        case subjectIsRunning(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .planAlreadyApplied:
+                return "This plan has already been carried out."
+            case .validationFailed(let why):
+                return "What is on disk no longer matches the plan, so Brim stopped: \(why)"
+            case .subjectIsRunning(let why):
+                return why
+            }
+        }
+    }
+
+    /// Whether anything belonging to this plan's subject is running.
+    ///
+    /// Only for a whole-application uninstall. Tidying one leftover cache
+    /// while the app happens to be open is not the same hazard, and
+    /// refusing it would be the kind of prompt people learn to route
+    /// around.
+    private func runningApplicationRefusal(for plan: Plan) -> String? {
+        guard plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty else {
+            return nil
+        }
+        let bundlePath = plan.steps.first { $0.executionPhase == .appBundle }?.target
+        return RunningApplications.refusal(
+            bundleID: plan.intent.subjectIdentity.bundleID,
+            bundlePath: bundlePath
+        )
     }
 
     public enum UndoError: LocalizedError {
@@ -398,7 +439,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
-        
+
+        // Checked before the token is spent, so quitting the app and
+        // asking again is the whole remedy.
+        //
+        // Removing a running application does not stop it. It keeps its
+        // state in memory and writes it back out when it quits, so the
+        // preferences and caches just removed reappear minutes later and
+        // the removal looks as though it silently failed.
+        if let refusal = runningApplicationRefusal(for: plan) {
+            throw ApplyError.subjectIsRunning(refusal)
+        }
+
         try await tokenStore.consumeAndValidate(
             token: token,
             expectedPlanId: plan.planId,
@@ -632,6 +684,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// keeps the privileged path to one line in one place.
     public func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {
         await executor.setPrivilegedRemover(remover)
+    }
+
+    public func usePrivilegedReceiptForgetter(
+        _ forgetter: (@Sendable (String) async -> String?)?
+    ) async {
+        await executor.setPrivilegedReceiptForgetter(forgetter)
     }
 
     public func registrations() async -> RegistrationReport {
