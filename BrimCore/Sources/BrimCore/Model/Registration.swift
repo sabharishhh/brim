@@ -67,6 +67,9 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// and they are neither stale in any useful sense nor removable. They
     /// must never be offered as something to clean up.
     public let isSystemOwned: Bool
+    /// What signs the code this points at, when Brim looked. Nil where the
+    /// question does not arise, such as a record with no path at all.
+    public let signing: SigningState?
 
     // The record's own location is part of the identity. Google Keystone
     // installs the same job twice, once for the user and once for the
@@ -106,7 +109,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         targetExists: Bool,
         recordPath: String? = nil,
         evidence: String,
-        isSystemOwned: Bool = false
+        isSystemOwned: Bool = false,
+        signing: SigningState? = nil
     ) {
         self.kind = kind
         self.identifier = identifier
@@ -117,6 +121,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         self.recordPath = recordPath
         self.evidence = evidence
         self.isSystemOwned = isSystemOwned
+        self.signing = signing
     }
 }
 

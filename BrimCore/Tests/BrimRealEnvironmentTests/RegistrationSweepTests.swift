@@ -41,11 +41,14 @@ final class RegistrationSweepTests: XCTestCase {
         let inventory = RegistrationInventory(surfaces: [
             LaunchdRegistrationSurface(), BackgroundItemSurface()
         ])
+        let started = Date()
         let all = await inventory.all(in: root).filter { !$0.isSystemOwned }
+        print("GROUP scan took \(String(format: "%.2f", Date().timeIntervalSince(started)))s")
         for group in RegistrationGroup.group(all) {
-            print("GROUP \(group.displayName) [\(group.composition)] clearsItself=\(group.staleClearsItself)")
+            print("GROUP \(group.displayName) [\(group.composition)] signedBy=\(group.signedBy ?? "mixed or unchecked")")
             for item in group.items {
                 print("GROUP   \(item.label) | \(item.programPath ?? item.recordPath ?? "no path")")
+                if let signing = item.signing { print("GROUP     signing: \(signing.sentence)") }
             }
         }
         XCTAssertFalse(all.isEmpty)

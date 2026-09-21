@@ -130,6 +130,16 @@ conversation. Split unrelated changes rather than staging everything.
   644 `NSKeyedArchiver` archives, one per account, named after the directory
   UUID `mbr_uid_to_uuid` returns. Reading them needs Full Disk Access and
   nothing else. `BTMStore` does that; never reach for the tool again.
+- **Nothing third party can make macOS tidy its background list.** The
+  collection pass that drops records for deleted apps runs when a client
+  reaches `BTMManagerService`, and that listener refuses anyone without
+  `com.apple.private.backgroundtaskmanagement.manage`. `sfltool` gets in
+  because Apple signs it with that entitlement. Root does not help: an
+  entitlement comes from the signature, not the user, the same way TCC is
+  judged on the responsible application. Every public `SMAppService` call
+  reaches the daemon by another route that does not collect. Opening
+  Login Items in System Settings does collect, because System Settings is
+  entitled.
 - **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
   previous macOS still sits beside the v18 files, listing software that has
   since been removed. Read the highest version only, or invent leftovers.
