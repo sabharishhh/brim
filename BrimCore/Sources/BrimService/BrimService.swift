@@ -42,6 +42,7 @@ public actor BrimService: BrimServiceProtocol {
         let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
         try? FileManager.default.createDirectory(at: tokensDir, withIntermediateDirectories: true)
         self.tokenStore = TokenStore(directoryURL: tokensDir)
+        self.presenceStore = PresenceStore(directoryURL: tokensDir)
         
         let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
         self.ledgerStore = LedgerStore(directoryURL: ledgersDir)
@@ -116,10 +117,51 @@ public actor BrimService: BrimServiceProtocol {
     }()
     #endif
 
-    /// When a human last proved they were at the machine. Drives the grace
-    /// window; in memory only, so quitting Brim always costs one prompt.
-    private var lastHumanPresence: Date?
+    /// When the owner enrolled, and when presence was last proved. Persisted,
+    /// so relaunching Brim is not by itself a reason to ask again.
+    private let presenceStore: PresenceStore
     private let approvalPolicy = ApprovalPolicy()
+
+    /// Whether first-run setup has happened. Nothing is withheld until it
+    /// does; the UI uses this to decide whether to offer it.
+    public func isEnrolled() async -> Bool {
+        await presenceStore.isEnrolled
+    }
+
+    /// First-run setup: the owner confirms once, at the machine, that Brim is
+    /// theirs. Asked a single time and never again.
+    ///
+    /// This is deliberately not a gate. It establishes who set Brim up, and
+    /// it does not stand in for the confirmation before a permanent
+    /// deletion — an authentication at launch proves nothing about the person
+    /// present an hour later, which is when it would matter.
+    public func enroll() async throws {
+        #if DEBUG
+        if Self.isAutomatedRun {
+            await presenceStore.recordEnrolment()
+            return
+        }
+        #endif
+
+        let context = LAContext()
+        var authError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
+            // No biometrics and no password policy available. Enrolment is
+            // setup, not a gate, so this must not lock anyone out.
+            await presenceStore.recordEnrolment()
+            return
+        }
+        let success = try await context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: "Confirm this Mac is yours, so Brim can set itself up. "
+                           + "You will not be asked again except before a permanent deletion."
+        )
+        guard success else {
+            throw NSError(domain: "BrimService", code: 403,
+                          userInfo: [NSLocalizedDescriptionKey: "Setup was not confirmed."])
+        }
+        await presenceStore.recordEnrolment()
+    }
 
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
         let plan = try await planStore.load(planId: planId)
@@ -149,7 +191,7 @@ public actor BrimService: BrimServiceProtocol {
         // It is a user asked so often that they stop reading, at which point
         // every prompt in the product has become decoration.
         let requirement = approvalPolicy.requirement(
-            for: plan, lastAuthenticated: lastHumanPresence
+            for: plan, lastAuthenticated: await presenceStore.lastPresence
         )
         guard case .humanPresence(let reason) = requirement else {
             return await tokenStore.mintToken(
@@ -166,8 +208,9 @@ public actor BrimService: BrimServiceProtocol {
                     throw NSError(domain: "BrimService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Authentication failed."])
                 }
                 // Proving presence once covers the next few minutes of
-                // destructive work, the way sudo's timestamp does.
-                lastHumanPresence = Date()
+                // destructive work, the way sudo's timestamp does — including
+                // across a relaunch, which is why it is persisted.
+                await presenceStore.recordPresence()
             } catch {
                 if let laError = error as? LAError, laError.code == .userCancel {
                     // Ignore user cancel and throw standard error
