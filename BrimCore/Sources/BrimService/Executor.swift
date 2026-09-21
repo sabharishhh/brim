@@ -15,14 +15,85 @@ public actor Executor {
     /// nothing about XPC, and so a test can stand in for root.
     private var privilegedRemover: (@Sendable (String) async -> String?)?
 
-    public init(journalStore: JournalStore) {
+    /// Forgets an installer receipt, by asking the daemon. Nil when no
+    /// daemon is set up: receipts live in a folder that belongs to root,
+    /// so without one the step records that it needed help rather than
+    /// failing with a permission error nobody can act on.
+    private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
+
+    /// Where the restore list for a `btmReset` was written down. A reset
+    /// with no list against its plan is refused; see `BTMRestoreList`.
+    private let restoreLists: RestoreListStore?
+
+    /// Runs a fixed tool. Injected so a test can reach the `btmReset`
+    /// branch without deregistering every login item on the machine.
+    private var runTool: @Sendable (String, [String]) throws -> Int32
+
+    public init(journalStore: JournalStore, restoreLists: RestoreListStore? = nil) {
         self.journalStore = journalStore
+        self.restoreLists = restoreLists
+        self.runTool = { executable, arguments in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        }
     }
 
     public func setPrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) {
         self.privilegedRemover = remover
     }
+
+    public func setPrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) {
+        self.privilegedReceiptForgetter = forgetter
+    }
+
+    /// Only for tests. A `btmReset` that really ran would deregister every
+    /// background item on the machine.
+    func setToolRunner(_ runner: @escaping @Sendable (String, [String]) throws -> Int32) {
+        self.runTool = runner
+    }
     
+    /// The one gate T-3.8 asks for.
+    ///
+    /// A reset deregisters every login item and background service on the
+    /// Mac, and macOS keeps no record of what was there. So the list has
+    /// to have been captured and written to disk against *this* plan
+    /// before anything happens, and an incomplete list counts as no list:
+    /// a partial record reads as complete and the person finds out what
+    /// was missing when something stops starting.
+    ///
+    /// Refusing is the normal outcome and is not a failure of nerve. It is
+    /// the difference between a guided reset and a door that only opens
+    /// one way.
+    private func performBTMReset(plan: Plan) async -> String {
+        guard let restoreLists else {
+            return "refused_no_restore_list: Brim has nowhere to write down what is "
+                 + "registered, so it will not reset anything."
+        }
+        guard let list = await restoreLists.load(planId: plan.planId) else {
+            return "refused_no_restore_list: nothing was written down for this plan."
+        }
+        guard list.canSupportAReset else {
+            return "refused_incomplete_restore_list: \(list.summary)"
+        }
+
+        // `sfltool resetbtm` raises its own administrator prompt, which is
+        // correct here: this is the one step in the product that changes
+        // something for every application at once.
+        do {
+            let status = try runTool("/usr/bin/sfltool", ["resetbtm"])
+            guard status == 0 else { return "reset_did_not_run: sfltool exit \(status)" }
+            return "ok"
+        } catch {
+            return "reset_did_not_run: \(error.localizedDescription)"
+        }
+    }
+
     public func execute(plan: Plan) async throws -> JournalEntry {
         let rootPath = plan.steps.first?.target ?? "/" // fallback
         // M3: Collect unique volume paths and sum their free space
@@ -190,6 +261,69 @@ public actor Executor {
                     try fm.copyItem(atPath: step.target, toPath: itemDestURL.path)
                     
                     journal.stepOutcomes[step.index] = "ok"
+                } else if step.kind == .clearImmutableFlag {
+                    // Locked files used to vanish from the plan: the safety
+                    // checker refused them and said nothing, so a person saw
+                    // a shorter list rather than a reason. Now it is a step,
+                    // and one the review sheet shows before it happens.
+                    guard let fp = step.targetFingerprint else {
+                        throw NSError(
+                            domain: "BrimSecurity", code: 401,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                       "Missing target fingerprint for unlocking"]
+                        )
+                    }
+                    do {
+                        try ImmutableFlag.clear(
+                            atPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino
+                        )
+                        journal.stepOutcomes[step.index] = "ok"
+                    } catch {
+                        // Fatal for the plan: whatever came next wanted this
+                        // file unlocked, and a removal that carries on will
+                        // fail in a less legible way.
+                        journal.stepOutcomes[step.index] =
+                            "still_locked: \(error.localizedDescription)"
+                        hasFailures = true
+                    }
+                } else if step.kind == .revealVendorUninstaller {
+                    // Brim opens Finder and stops. It never runs a vendor's
+                    // uninstaller: that is somebody else's executable doing
+                    // who knows what, and the point of the step is that the
+                    // person decides.
+                    do {
+                        try VendorUninstaller.reveal(at: step.target)
+                        journal.stepOutcomes[step.index] = "ok"
+                    } catch {
+                        journal.stepOutcomes[step.index] =
+                            "could_not_reveal: \(error.localizedDescription)"
+                    }
+                } else if step.kind == .forgetReceipt {
+                    // Deletes no files. It removes the installer's record,
+                    // so `pkgutil --pkgs` stops listing software that is
+                    // gone and an installer cannot offer to repair it back
+                    // into existence. The target is a package identifier.
+                    if let forgetter = privilegedReceiptForgetter {
+                        if let refusal = await forgetter(step.target) {
+                            journal.stepOutcomes[step.index] = "receipt_remains: \(refusal)"
+                        } else {
+                            journal.stepOutcomes[step.index] = "ok"
+                        }
+                    } else {
+                        do {
+                            try PackageReceipts.forget(packageID: step.target)
+                            journal.stepOutcomes[step.index] = "ok"
+                        } catch {
+                            // Recorded, never fatal. The files are gone; the
+                            // record outliving them is worth reporting and
+                            // not worth abandoning the removal over.
+                            journal.stepOutcomes[step.index] =
+                                "receipt_remains: \(error.localizedDescription)"
+                        }
+                    }
+                } else if step.kind == .btmReset {
+                    journal.stepOutcomes[step.index] = await performBTMReset(plan: plan)
+                    if journal.stepOutcomes[step.index] != "ok" { hasFailures = true }
                 } else {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
