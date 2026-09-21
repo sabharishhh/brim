@@ -198,7 +198,8 @@ final class ArchivedItem: NSObject, NSSecureCoding {
             // this one is embedded in, which is both what a relative path is
             // relative to and what attributes a helper to its application.
             parentIdentifier: string("container"),
-            bundleIdentifier: string("bundleIdentifier")
+            bundleIdentifier: string("bundleIdentifier"),
+            teamIdentifier: string("teamIdentifier")
         )
     }
 

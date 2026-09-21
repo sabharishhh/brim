@@ -111,8 +111,9 @@ struct BackgroundView: View {
                     section(
                         "macOS is catching up",
                         "The software has gone and macOS has not tidied its own list yet. It "
-                        + "does that by itself the next time anything asks it for the list, so "
-                        + "there is nothing here for you to do.",
+                        + "does that by itself the next time anything asks it for the list, "
+                        + "which includes opening Login Items in System Settings. Nothing "
+                        + "here needs doing.",
                         model.clearingItself,
                         ""
                     )
@@ -215,6 +216,11 @@ private struct GroupRow: View {
                         .background(Color.secondary.opacity(0.15), in: Capsule())
                 }
                 Spacer()
+                if let team = group.signedBy {
+                    Text(team).font(.caption2).foregroundColor(.secondary)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                }
                 Text(group.composition).font(.caption).foregroundColor(.secondary)
             }
 
@@ -252,6 +258,15 @@ private struct RegistrationRow: View {
             Text(registration.evidence)
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            // Who signed the thing macOS is being told to run. Not shown
+            // when it is unremarkable: a line on every row saying the
+            // signature is fine is a line nobody reads, and then the one
+            // that says otherwise is not read either.
+            if let signing = registration.signing, signing.isTrouble {
+                Label(signing.sentence, systemImage: "exclamationmark.shield")
+                    .font(.caption).foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             // The record's own path, not just what it points at. Without it
             // Keystone's four identical rows were indistinguishable, and two
             // of them are the same job installed in a different domain.
