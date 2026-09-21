@@ -24,8 +24,8 @@ struct LeftoversView: View {
 
     var body: some View {
         HSplitView {
-            list.frame(minWidth: 330, idealWidth: 420, maxWidth: 580)
-            detail.frame(minWidth: 340, maxWidth: .infinity, maxHeight: .infinity)
+            list.frame(minWidth: 300, idealWidth: 380, maxWidth: 560)
+            detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
         .sheet(item: $reviewRequest) { intent in
