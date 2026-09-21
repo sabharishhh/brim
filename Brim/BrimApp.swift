@@ -25,7 +25,18 @@ import BrimUI
                     Text("This will remove the Brim application, its privileged helper, background agents, and all related data.")
                 }
         }
-        .defaultSize(width: 1100, height: 700)
+        // The widest section needs the sidebar (200) plus a two pane split
+        // (620), so 900 is the floor, and `.contentMinSize` stops the window
+        // being dragged below what the layout supports.
+        //
+        // The 1200x800 default is not currently honoured on this machine:
+        // the window opens at roughly half the display width whatever is
+        // set here. Ruled out so far: a saved window frame, saved split
+        // view frames, saved application state, `windowResizability`, and
+        // the content reporting an infinite width. Left in place because it
+        // is correct, and noted because it is not yet taking effect.
+        .defaultSize(width: 1200, height: 800)
+        .windowResizability(.contentMinSize)
         .commands {
             // Every section reachable from the keyboard, the way a Mac app
             // is expected to behave. `after: .sidebar` puts these in the

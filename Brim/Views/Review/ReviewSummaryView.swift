@@ -41,16 +41,25 @@ struct ReviewSummaryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                if !fullDiskAccess.isGranted { fullDiskAccessBanner }
-                if !recovery.isEmpty { recoveryBanner }
-                areas
+            // Centred with spacers rather than `.frame(maxWidth: .infinity)`.
+            // That modifier reports the content as willing to take any
+            // width, which SwiftUI resolves against the display: the window
+            // opened at half the screen and ignored `.defaultSize` entirely.
+            // A `Spacer(minLength: 0)` centres without asking for width.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    if !fullDiskAccess.isGranted { fullDiskAccessBanner }
+                    if !recovery.isEmpty { recoveryBanner }
+                    areas
+                }
+                // Capped because a line of prose past ~900pt is hard to read.
+                .frame(maxWidth: 940, alignment: .leading)
+                .padding(24)
+                Spacer(minLength: 0)
             }
-            .padding(22)
-            .frame(maxWidth: 820, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
