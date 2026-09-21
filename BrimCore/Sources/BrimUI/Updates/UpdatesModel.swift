@@ -30,7 +30,7 @@ public final class UpdatesModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let report = await service.registrations(includingBackgroundItems: false)
+        let report = await service.registrations()
         agents = report.registrations.compactMap { registration in
             guard let vendor = UpdaterRecogniser.vendor(for: registration.identifier),
                   !registration.isSystemOwned

@@ -13,7 +13,28 @@ final class RegistrationSweepTests: XCTestCase {
 
     private var root: FileSystemRoot { FileSystemRoot(rootURL: URL(fileURLWithPath: "/")) }
 
-    func testBackgroundItemsParseFromTheRealDump() async throws {
+    /// The store on this Mac, read the way the app reads it.
+    ///
+    /// This is the check that matters for the change that removed
+    /// `sfltool`: the fixtures prove the decoding, only the real store
+    /// proves it decodes what macOS actually wrote.
+    func testTheRealStoreDecodes() throws {
+        let records = try XCTUnwrap(
+            BTMStore().records(),
+            "Could not read the store. Full Disk Access for the test runner?"
+        )
+        print("BTM store records: \(records.count)")
+        for record in records {
+            print("BTM   \(record.name ?? "unnamed") | \(record.type ?? "?") | \(record.disposition ?? "?")")
+            print("BTM     id=\(record.identifier ?? "none") path=\(record.rawURLPath ?? "none")")
+        }
+        XCTAssertFalse(records.isEmpty, "A real Mac has background items")
+        XCTAssertTrue(records.contains { $0.bundleIdentifier != nil },
+                      "Records without identifiers means the keys are wrong")
+        XCTAssertTrue(records.allSatisfy { $0.uuid.count == 36 }, "Each record carries its UUID")
+    }
+
+    func testBackgroundItemsParseFromTheRealStore() async throws {
         let surface = BackgroundItemSurface()
         let items = await surface.registrations(in: root)
         print("BTM parsed items: \(items.count)")
