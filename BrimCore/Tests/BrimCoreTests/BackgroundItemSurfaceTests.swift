@@ -273,3 +273,29 @@ final class BackgroundItemPromptTests: XCTestCase {
         var count: Int { lock.lock(); defer { lock.unlock() }; return value }
     }
 }
+
+/// An empty launchd job file is a leftover, not a healthy registration.
+///
+/// Google Keystone's uninstaller empties its four plists rather than
+/// deleting them: 181 bytes of nothing, in both LaunchAgents directories,
+/// for both of its jobs. Brim listed all four under "Still in use" because
+/// a job with no program was treated as a job whose program was fine.
+final class EmptyLaunchdJobTests: XCTestCase {
+
+    func testAJobWithNothingToRunIsNotRunning() {
+        let job = LaunchdRegistrationSurface.parse(dictionary: [:], fallbackLabel: "com.google.keystone.agent")
+
+        XCTAssertNotNil(job, "launchd falls back to the file name, so this is still a job")
+        XCTAssertNil(job?.program, "An empty plist names no program")
+    }
+
+    func testAJobWithAProgramIsReadNormally() {
+        let job = LaunchdRegistrationSurface.parse(
+            dictionary: ["Label": "com.vendor.agent", "ProgramArguments": ["/usr/local/bin/agent", "-x"]],
+            fallbackLabel: "ignored"
+        )
+
+        XCTAssertEqual(job?.label, "com.vendor.agent")
+        XCTAssertEqual(job?.program, "/usr/local/bin/agent")
+    }
+}

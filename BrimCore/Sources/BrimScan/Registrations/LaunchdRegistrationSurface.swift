@@ -44,7 +44,28 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
                 // A job is stale when the program it launches is gone. That
                 // is the entry that keeps appearing in System Settings for an
                 // app the user removed months ago.
-                let programExists = job.program.map { fm.fileExists(atPath: $0) } ?? true
+                //
+                // A job that names no program at all is stale too, and was
+                // being reported as healthy. Google Keystone's uninstaller
+                // empties its four plists rather than deleting them, leaving
+                // 181 bytes of nothing in both LaunchAgents directories.
+                // launchd has no program to run and no label to register, so
+                // calling those "running in the background" was wrong twice
+                // over.
+                let programExists: Bool
+                let evidence: String
+                if let program = job.program {
+                    programExists = fm.fileExists(atPath: program)
+                    evidence = programExists
+                        ? "Registered with launchd in the \(domain.label) domain."
+                        : "Registered with launchd in the \(domain.label) domain, but the program "
+                          + "it launches is missing."
+                } else {
+                    programExists = false
+                    evidence = "An empty job file in the \(domain.label) domain. It names no "
+                             + "program, so launchd has nothing to run. Whatever installed it "
+                             + "emptied the file instead of removing it."
+                }
 
                 results.append(Registration(
                     kind: .launchdJob,
@@ -54,9 +75,7 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
                     programPath: job.program,
                     targetExists: programExists,
                     recordPath: plistURL.path,
-                    evidence: programExists
-                        ? "Registered with launchd in the \(domain.label) domain."
-                        : "Registered with launchd in the \(domain.label) domain, but the program it launches is missing.",
+                    evidence: evidence,
                     isSystemOwned: domain.label == "system"
                 ))
             }
