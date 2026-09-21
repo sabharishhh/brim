@@ -14,6 +14,8 @@ struct ContentView: View {
                     ReviewQueueView(selection: $selection)
                 case .applications:
                     ApplicationsView()
+                case .leftovers:
+                    LeftoversView()
                 case .history:
                     RemovalHistoryView()
                 default:
