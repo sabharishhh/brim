@@ -14,14 +14,21 @@ import Foundation
 /// back, and anything Brim does not recognise is left alone.
 public struct DeveloperCache: Sendable, Equatable, Identifiable {
 
-    /// What happens if you clear it.
+    /// T-5.7's three classes, which decide what Brim is allowed to do.
     public enum Cost: String, Sendable, Codable {
-        /// Rebuilt or re-downloaded automatically. Costs time, nothing else.
+        /// Regenerable. Brim removes these itself.
         case rebuilt
-        /// Re-downloaded from the network, so it costs time and bandwidth.
+        /// Owned by a tool that has its own cleanup. Brim runs that command
+        /// rather than deleting the directory underneath it, because
+        /// removing a module cache by hand leaves the tool confused.
         case refetched
-        /// Set up by hand. Clearing it loses configuration.
+        /// Stateful. Reported and routed, never touched. Xcode archives,
+        /// simulator devices and container disk images are always here,
+        /// whatever their size.
         case configured
+
+        /// Whether Brim may remove the files directly.
+        public var isBrimRemovable: Bool { self == .rebuilt }
     }
 
     public let name: String
@@ -31,12 +38,20 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
     public let cost: Cost
     /// What is in there and what happens without it.
     public let explanation: String
+    /// The tool's own cleanup, where it has one. Present only for the
+    /// delegated class.
+    public let cleanupID: String?
+    /// That command exactly as it would be typed, carried alongside the
+    /// identifier so the view can show it without linking the table that
+    /// knows how to run it.
+    public let cleanupCommand: String?
 
     public var id: String { url.path }
 
     public init(
         name: String, tool: String, url: URL, sizeBytes: Int64,
-        cost: Cost, explanation: String
+        cost: Cost, explanation: String,
+        cleanupID: String? = nil, cleanupCommand: String? = nil
     ) {
         self.name = name
         self.tool = tool
@@ -44,5 +59,7 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         self.sizeBytes = sizeBytes
         self.cost = cost
         self.explanation = explanation
+        self.cleanupID = cleanupID
+        self.cleanupCommand = cleanupCommand
     }
 }

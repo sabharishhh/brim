@@ -1,5 +1,6 @@
 import Foundation
 import BrimCore
+import BrimOps
 
 public struct DeveloperCacheScanner: Sendable {
 
@@ -11,6 +12,8 @@ public struct DeveloperCacheScanner: Sendable {
         let relativePath: String
         let cost: DeveloperCache.Cost
         let explanation: String
+        /// The tool's own cleanup, for the delegated class.
+        var cleanupID: String? = nil
     }
 
     private static let catalogue: [Known] = [
@@ -51,38 +54,45 @@ public struct DeveloperCacheScanner: Sendable {
               relativePath: ".npm/_cacache",
               cost: .refetched,
               explanation: "Every package tarball npm has downloaded. Re-downloaded when "
-                         + "something needs them."),
+                         + "something needs them.",
+              cleanupID: "npm.cache"),
         Known(name: "Store", tool: "pnpm",
               relativePath: "Library/pnpm/store",
               cost: .refetched,
               explanation: "pnpm's shared package store. Projects on this Mac link into it, "
-                         + "so clearing it means the next install re-downloads everything."),
+                         + "so clearing it means the next install re-downloads everything.",
+              cleanupID: "pnpm.store"),
         Known(name: "Wheel cache", tool: "pip",
               relativePath: "Library/Caches/pip",
               cost: .refetched,
               explanation: "Built wheels and downloaded packages. pip fetches or rebuilds "
-                         + "them as needed."),
+                         + "them as needed.",
+              cleanupID: "pip.cache"),
         Known(name: "Registry and builds", tool: "Cargo",
               relativePath: ".cargo/registry",
               cost: .refetched,
               explanation: "Crates Cargo has downloaded and the index it resolves against. "
-                         + "Restored on the next build."),
+                         + "Restored on the next build.",
+              cleanupID: "cargo.cache"),
         Known(name: "Module cache", tool: "Go",
               relativePath: "go/pkg/mod",
               cost: .refetched,
               explanation: "Every module version Go has downloaded. Re-fetched on demand, and "
-                         + "`go clean -modcache` is the tool's own way to do this."),
+                         + "`go clean -modcache` is the tool's own way to do this.",
+              cleanupID: "go.modcache"),
         Known(name: "Downloads", tool: "Homebrew",
               relativePath: "Library/Caches/Homebrew",
               cost: .refetched,
               explanation: "Bottles and source archives Homebrew has downloaded. It keeps "
                          + "these after installing and never needs them again unless you "
-                         + "reinstall the same version."),
+                         + "reinstall the same version.",
+              cleanupID: "homebrew.cleanup"),
         Known(name: "Build cache", tool: "Gradle",
               relativePath: ".gradle/caches",
               cost: .refetched,
               explanation: "Dependencies and build outputs Gradle has cached. Rebuilt and "
-                         + "re-downloaded on the next build."),
+                         + "re-downloaded on the next build.",
+              cleanupID: "gradle.cache"),
         Known(name: "Local repository", tool: "Maven",
               relativePath: ".m2/repository",
               cost: .refetched,
@@ -115,7 +125,9 @@ public struct DeveloperCacheScanner: Sendable {
 
             return DeveloperCache(
                 name: known.name, tool: known.tool, url: url,
-                sizeBytes: size, cost: known.cost, explanation: known.explanation
+                sizeBytes: size, cost: known.cost, explanation: known.explanation,
+                cleanupID: known.cleanupID,
+                cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed }
             )
         }
         .sorted { $0.sizeBytes > $1.sizeBytes }

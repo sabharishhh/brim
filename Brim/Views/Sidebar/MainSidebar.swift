@@ -7,6 +7,7 @@ enum NavigationItem: String, Hashable, CaseIterable {
     case background = "Background"
     case storage = "Storage"
     case energy = "Energy"
+    case duplicates = "Duplicates"
     
     // Developer & System
     case developer = "Developer"
@@ -20,6 +21,7 @@ enum NavigationItem: String, Hashable, CaseIterable {
         case .leftovers: return "trash"
         case .background: return "gearshape.2"
         case .storage: return "internaldrive"
+        case .duplicates: return "doc.on.doc"
         case .energy: return "bolt.fill"
         case .developer: return "hammer"
         case .updates: return "arrow.triangle.2.circlepath"
@@ -68,7 +70,7 @@ struct MainSidebar: View {
         // and to automation while doing nothing.
         List(selection: $selection) {
             Section("Primary") {
-                ForEach([NavigationItem.review, .applications, .leftovers, .background, .storage, .energy], id: \.self) { item in
+                ForEach([NavigationItem.review, .applications, .leftovers, .background, .storage, .duplicates, .energy], id: \.self) { item in
                     Label(item.rawValue, systemImage: item.icon)
                         .tag(item)
                 }
