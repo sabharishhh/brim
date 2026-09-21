@@ -5,26 +5,22 @@ import BrimService
 
 /// Decides which `BrimServiceProtocol` implementation the UI talks to.
 ///
-/// The privileged daemon is only present once it has been installed with
-/// `SMAppService`. Until then the app runs the same `BrimService` actor
-/// in-process, so scanning and user-domain removals work without a helper.
-/// Set `BRIM_USE_DAEMON=1` to route through the daemon instead.
+/// In practice there is one: the app runs a `BrimService` actor in its own
+/// process, which is enough for scanning and for everything inside the
+/// user's own Library. Root-owned work goes through `BrimJobHelper`, a
+/// separate and much smaller daemon, rather than through this.
+///
+/// `BRIM_USE_DAEMON=1` selects a full-service root daemon that no longer
+/// exists: `BrimHelper` is a package executable that the application
+/// project does not build, sign or install, so nothing registers the Mach
+/// name it listens on. The flag used to hand back a client that failed
+/// every call. It now says so and stays in process.
 enum BrimServiceLocator {
-    static let daemonMachServiceName = "com.google.Brim.daemon"
-
-    enum Backend: String {
-        case inProcess = "In-process"
-        case daemon = "Privileged daemon"
-    }
-
-    private(set) static var backend: Backend = .inProcess
-
     static func makeService() -> any BrimServiceProtocol {
         if ProcessInfo.processInfo.environment["BRIM_USE_DAEMON"] == "1" {
-            backend = .daemon
-            return makeDaemonClient()
+            NSLog("BRIM_USE_DAEMON is set, but no full-service daemon is built or "
+                  + "installed. Running in process instead.")
         }
-        backend = .inProcess
         return makeInProcessService()
     }
 
@@ -41,21 +37,6 @@ enum BrimServiceLocator {
     /// started this. What the service needs to know is not whether they
     /// agreed, it is that there was somebody to agree.
     private static let consentSource = ConsentSource { _ in true }
-
-    private static func makeDaemonClient() -> any BrimServiceProtocol {
-        let connection = NSXPCConnection(machServiceName: daemonMachServiceName, options: .privileged)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        do {
-            return try BrimXPCClient(connection: connection, expecting: .brim(.daemon))
-        } catch {
-            // Refusing to pin means refusing to connect. Falling back to
-            // the in-process service is the safe direction: it can do less,
-            // not more, and it does not involve trusting whatever is
-            // sitting on that Mach name.
-            backend = .inProcess
-            return makeInProcessService()
-        }
-    }
 
     private static func makeInProcessService() -> any BrimServiceProtocol {
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
