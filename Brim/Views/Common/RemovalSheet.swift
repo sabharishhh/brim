@@ -63,10 +63,10 @@ struct RemovalSheet: View {
     private var content: some View {
         switch model.phase {
         case .preparing:
-            ProgressView("Making sure each one is still where Brim found it…")
+            ProgressView("Checking each item is still where it was…")
         case .failed(let reason):
             VStack(spacing: 6) {
-                Text("Brim had to stop").font(.headline).foregroundColor(.red)
+                Text("Stopped").font(.headline).foregroundColor(.red)
                 Text(reason).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding()
@@ -80,7 +80,7 @@ struct RemovalSheet: View {
                 Text(result.success ? "Nothing is left" : "Removed, but something is still there")
                     .font(.headline)
                 Text(result.success
-                     ? "Brim went back to every location it touched. All of them are empty."
+                     ? "Every location was checked again. All of them are empty."
                      : (result.reason ?? "Some of it is still on disk."))
                     .foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
 

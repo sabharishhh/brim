@@ -17,16 +17,28 @@ public struct ExplanationRenderer: Sendable {
     
     /// Produces a human-readable explanation for an excluded item.
     public func renderRefusal(reason: String) -> String {
-        if reason.contains("Shared with") || reason.contains("Tier S veto") {
-            return "This item is retained because it is actively shared with another application on your system."
-        } else if reason.contains("read-only") {
-            return "macOS protects this location; it cannot be modified."
-        } else if reason.contains("ResetFilter") {
-            return "This item contains core application data or licensing information that is intentionally preserved during a reset."
-        } else if reason.contains("SIP") || reason.contains("System Integrity Protection") {
-            return "System Integrity Protection prevents this item from being removed."
+        // Reset first. Keeping the application is what a reset is for, so
+        // reporting it as a refusal reads as a failure of the thing the
+        // person just asked for.
+        if reason.contains("Preserved main application bundle") {
+            return "Kept, so the application still runs."
         }
-        return "Brim refused to modify this item to ensure system stability."
+        if reason.contains("ResetFilter") || reason.contains("reset") {
+            return "Kept: settings or licence material a reset preserves."
+        }
+        if reason.contains("Shared with") || reason.contains("Tier S veto") {
+            return "Shared with other installed software."
+        }
+        if reason.contains("read-only") {
+            return "macOS protects this location."
+        }
+        if reason.contains("SIP") || reason.contains("System Integrity Protection") {
+            return "Protected by System Integrity Protection."
+        }
+        if reason.contains("strictly protected") || reason.contains("OS boundaries") {
+            return "Protected by macOS."
+        }
+        return reason
     }
     
     private func renderMechanism(mechanism: String) -> String {
