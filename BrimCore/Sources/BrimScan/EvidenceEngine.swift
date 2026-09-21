@@ -64,6 +64,13 @@ public struct EvidenceEngine: Sendable {
         )
     }
     
+    /// Which of two pieces of evidence for the same path to keep.
+    ///
+    /// S is deliberately the heaviest, and not because it is the most
+    /// confident. It is the opposite: it says something else claims this
+    /// path. Whichever source noticed that has to survive being merged
+    /// with a confident one, or the veto is thrown away at exactly the
+    /// moment it matters.
     private func isStronger(_ t1: EvidenceTier, than t2: EvidenceTier) -> Bool {
         let weight: [EvidenceTier: Int] = [.S: 4, .A: 3, .B: 2, .C: 1]
         return weight[t1]! > weight[t2]!
