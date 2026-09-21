@@ -28,8 +28,7 @@ public final class BackgroundModel: ObservableObject {
     /// belonging to root. Observed directly rather than through a
     /// container, because a nested ObservableObject publishes nothing.
     public let helper = PrivilegedHelperClient()
-    /// What the last privileged removal said, when it refused.
-    @Published public private(set) var helperRefusals: [String] = []
+
 
     public init() {}
 
@@ -116,23 +115,24 @@ public final class BackgroundModel: ObservableObject {
         filtered(report.stale).filter(Self.needsTheHelper)
     }
 
-    /// Hands the privileged ones to the daemon, one at a time, and says
-    /// what came back. Each file is moved to a root owned holding folder
-    /// rather than deleted, so a mistake can be undone.
-    public func removeWithHelper(service: any BrimServiceProtocol) async {
-        let targets = selectedItems.filter(Self.needsTheHelper)
-        guard !targets.isEmpty else { return }
-
-        var refusals: [String] = []
-        for target in targets {
-            guard let path = target.recordPath, let domain = Self.domain(of: path) else { continue }
-            let name = (path as NSString).lastPathComponent
-            if let refusal = await helper.removeDefunctJob(domain: domain, name: name) {
-                refusals.append("\(name): \(refusal)")
-            }
+    /// Connects the daemon to the service, so a plan containing a
+    /// privileged step has something to carry it out. Called whenever the
+    /// section loads, because the daemon can be set up or taken away
+    /// between one visit and the next.
+    public func connectHelper(service: any BrimServiceProtocol) async {
+        helper.refresh()
+        guard helper.state.canRemove else {
+            await service.usePrivilegedRemover(nil)
+            return
         }
-        helperRefusals = refusals
-        await load(service: service)
+        let helper = self.helper
+        await service.usePrivilegedRemover { path in
+            guard let domain = await BackgroundModel.domain(of: path) else {
+                return "That is not somewhere Brim's helper will touch."
+            }
+            let name = (path as NSString).lastPathComponent
+            return await helper.removeDefunctJob(domain: domain, name: name)
+        }
     }
 
     /// Entries that are genuinely left over but that Brim cannot remove as
@@ -164,16 +164,17 @@ public final class BackgroundModel: ObservableObject {
 
     public var canRemoveSelection: Bool { !selectedItems.isEmpty }
 
-    /// Whether the selection needs the daemon rather than the ordinary
-    /// removal path. Deliberately all or nothing: a mixed selection would
-    /// mean two confirmations for one action.
-    public var selectionNeedsHelper: Bool {
-        !selectedItems.isEmpty && selectedItems.allSatisfy(Self.needsTheHelper)
+    /// Whether anything picked will go through the privileged daemon, so
+    /// the review can say so once rather than per row.
+    public var selectionUsesHelper: Bool {
+        selectedItems.contains(where: Self.needsTheHelper)
     }
 
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        let targets = selectedItems.filter(Self.isRemovable)
-            .compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
+        // Everything picked, whoever owns the folder it sits in. The
+        // planner decides which steps need the daemon; a person ticking
+        // boxes should not have to know the difference.
+        let targets = selectedItems.compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
@@ -197,6 +198,7 @@ public final class BackgroundModel: ObservableObject {
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         self.service = service
+        await connectHelper(service: service)
         guard report.registrations.isEmpty, !isLoading else { return }
         await load(service: service)
     }

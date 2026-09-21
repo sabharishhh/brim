@@ -35,6 +35,11 @@ helper.build_configurations.each do |config|
   config.build_settings['SWIFT_VERSION'] = '6.0'
   config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '15.0'
   config.build_settings['SKIP_INSTALL'] = 'YES'
+  # Without these a command line tool has no Info.plist, so it signs as
+  # its product name, "BrimJobHelper". The app checks the daemon against
+  # com.sabharishhh.brim.jobhelper, and nothing would ever satisfy that.
+  config.build_settings['GENERATE_INFOPLIST_FILE'] = 'YES'
+  config.build_settings['CREATE_INFOPLIST_SECTION_IN_BINARY'] = 'YES'
 end
 
 # The daemon's two lines. Everything else lives in BrimPrivileged so the
