@@ -2,6 +2,7 @@ import SwiftUI
 import BrimCore
 import BrimProtocol
 import BrimUI
+import BrimPrivileged
 
 /// What macOS runs on your behalf, and what it is still being told to run
 /// for software that is no longer here.
@@ -19,6 +20,13 @@ struct BackgroundView: View {
     @SwiftUI.Environment(\.brimService) private var service
 
     @State private var removalRequest: PlanIntent?
+    @State private var isSettingAside = false
+    @ObservedObject private var helper: PrivilegedHelperClient
+
+    init(model: BackgroundModel) {
+        self.model = model
+        self.helper = model.helper
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,10 +61,25 @@ struct BackgroundView: View {
             Text("\(model.selectedItems.count) job \(model.selectedItems.count == 1 ? "file" : "files") picked")
                 .foregroundColor(.secondary)
             Spacer()
-            Button("Remove…") {
-                removalRequest = model.removalIntent(requesterIdentity: NSUserName())
+            if isSettingAside { ProgressView().controlSize(.small) }
+            if model.selectionNeedsHelper {
+                Button("Set aside…") {
+                    isSettingAside = true
+                    Task {
+                        await model.removeWithHelper(service: service)
+                        isSettingAside = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSettingAside)
+                .help("Moves them to a holding folder only an administrator can reach, so "
+                      + "this can be undone.")
+            } else {
+                Button("Remove…") {
+                    removalRequest = model.removalIntent(requesterIdentity: NSUserName())
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -98,6 +121,7 @@ struct BackgroundView: View {
         } else {
             List {
                 if !model.gaps.isEmpty { coverageNote }
+                if !model.waitingOnHelper.isEmpty, !helper.state.canRemove { helperSetUpNote }
                 section(
                     "Left behind",
                     "These point at a program that is not on this Mac any more, and nothing "
@@ -131,6 +155,45 @@ struct BackgroundView: View {
         }
     }
 
+    /// Offered only when there is something it would actually do. A
+    /// standing invitation to install a root daemon, on a Mac with
+    /// nothing for it to remove, is not a thing to put in front of
+    /// anybody.
+    private var helperSetUpNote: some View {
+        Section {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "key.horizontal").foregroundColor(.accentColor)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(model.waitingOnHelper.count) of these need an administrator")
+                        .fontWeight(.medium)
+                    Text("They sit in a folder that belongs to the system. Brim can set up a "
+                         + "small helper that removes them for you. It only ever touches job "
+                         + "files in the two system launchd folders, it refuses anything of "
+                         + "Apple's, it refuses any job that still runs something on this Mac, "
+                         + "and what it removes is set aside rather than deleted.")
+                        .font(.callout).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if case .waitingForApproval = helper.state {
+                        Text("Now allow it in System Settings, under Login Items, and it is done.")
+                            .font(.callout).foregroundColor(.orange)
+                    }
+                    if case .unavailable(let why) = helper.state {
+                        Text(why).font(.callout).foregroundColor(.red)
+                    }
+                }
+                Spacer()
+                if case .waitingForApproval = helper.state {
+                    Button("Open Settings") { helper.openSettings() }
+                } else {
+                    Button("Set up") { helper.install() }
+                }
+            }
+            .padding(10)
+            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            .onAppear { helper.refresh() }
+        }
+    }
+
     /// What Brim could not read, and why. A list that quietly drops the
     /// half it could not see is worse than one that says so.
     private var coverageNote: some View {
@@ -151,6 +214,10 @@ struct BackgroundView: View {
                 .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+
+    private func canReachWithHelper(_ registration: Registration) -> Bool {
+        BackgroundModel.needsTheHelper(registration) && helper.state.canRemove
     }
 
     @ViewBuilder
@@ -277,8 +344,11 @@ private struct RegistrationRow: View {
                     .font(.caption).foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            // Said before it is attempted, not after it fails.
+            // Said before it is attempted, not after it fails. Once the
+            // helper is set up this stops being true of the jobs it can
+            // reach, so the row stops saying it.
             if registration.isActionableStale,
+               !canReachWithHelper(registration),
                let blocked = RemovalCapability.explanation(registration.capability) {
                 HStack(spacing: 6) {
                     Label(blocked, systemImage: "lock")

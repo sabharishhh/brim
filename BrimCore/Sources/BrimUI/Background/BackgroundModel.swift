@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import BrimCore
 import BrimProtocol
+import BrimPrivileged
 
 /// Backs the Background section: what macOS runs on your behalf, and what
 /// it is still being told to run for software that has gone.
@@ -22,6 +23,13 @@ public final class BackgroundModel: ObservableObject {
     @Published public var selection: Set<String> = []
 
     private var service: (any BrimServiceProtocol)?
+
+    /// Brim's privileged daemon, for the jobs that live in a folder
+    /// belonging to root. Observed directly rather than through a
+    /// container, because a nested ObservableObject publishes nothing.
+    public let helper = PrivilegedHelperClient()
+    /// What the last privileged removal said, when it refused.
+    @Published public private(set) var helperRefusals: [String] = []
 
     public init() {}
 
@@ -80,6 +88,53 @@ public final class BackgroundModel: ObservableObject {
             && registration.capability == .ok
     }
 
+    /// Something Brim cannot reach itself, but the daemon can once it is
+    /// set up. Only the two machine-wide launchd folders qualify, because
+    /// those are the only places the daemon will touch.
+    public static func needsTheHelper(_ registration: Registration) -> Bool {
+        guard registration.kind == .launchdJob,
+              !registration.isSystemOwned,
+              registration.capability == .needsHelper,
+              let path = registration.recordPath
+        else { return false }
+        return domain(of: path) != nil
+    }
+
+    static func domain(of path: String) -> PrivilegedJobRemoval.Domain? {
+        let directory = (path as NSString).deletingLastPathComponent
+        return PrivilegedJobRemoval.Domain.allCases.first { $0.directory == directory }
+    }
+
+    /// Whether this entry can be picked at all, now, given what is set up.
+    public func canRemove(_ registration: Registration) -> Bool {
+        if Self.isRemovable(registration) { return true }
+        return Self.needsTheHelper(registration) && helper.state.canRemove
+    }
+
+    /// Jobs that need the daemon and are waiting on it being set up.
+    public var waitingOnHelper: [Registration] {
+        filtered(report.stale).filter(Self.needsTheHelper)
+    }
+
+    /// Hands the privileged ones to the daemon, one at a time, and says
+    /// what came back. Each file is moved to a root owned holding folder
+    /// rather than deleted, so a mistake can be undone.
+    public func removeWithHelper(service: any BrimServiceProtocol) async {
+        let targets = selectedItems.filter(Self.needsTheHelper)
+        guard !targets.isEmpty else { return }
+
+        var refusals: [String] = []
+        for target in targets {
+            guard let path = target.recordPath, let domain = Self.domain(of: path) else { continue }
+            let name = (path as NSString).lastPathComponent
+            if let refusal = await helper.removeDefunctJob(domain: domain, name: name) {
+                refusals.append("\(name): \(refusal)")
+            }
+        }
+        helperRefusals = refusals
+        await load(service: service)
+    }
+
     /// Entries that are genuinely left over but that Brim cannot remove as
     /// it is running. Surfaced rather than discovered on failure, the same
     /// way the leftovers list handles a container it cannot reach.
@@ -90,16 +145,16 @@ public final class BackgroundModel: ObservableObject {
     }
 
     public func isSelected(_ group: RegistrationGroup) -> Bool {
-        let removable = group.stale.filter(Self.isRemovable)
+        let removable = group.stale.filter(canRemove)
         return !removable.isEmpty && removable.allSatisfy { selection.contains($0.id) }
     }
 
     public func canSelect(_ group: RegistrationGroup) -> Bool {
-        group.stale.contains(where: Self.isRemovable)
+        group.stale.contains(where: canRemove)
     }
 
     public func toggle(_ group: RegistrationGroup) {
-        let removable = group.stale.filter(Self.isRemovable)
+        let removable = group.stale.filter(canRemove)
         if isSelected(group) {
             for item in removable { selection.remove(item.id) }
         } else {
@@ -109,8 +164,16 @@ public final class BackgroundModel: ObservableObject {
 
     public var canRemoveSelection: Bool { !selectedItems.isEmpty }
 
+    /// Whether the selection needs the daemon rather than the ordinary
+    /// removal path. Deliberately all or nothing: a mixed selection would
+    /// mean two confirmations for one action.
+    public var selectionNeedsHelper: Bool {
+        !selectedItems.isEmpty && selectedItems.allSatisfy(Self.needsTheHelper)
+    }
+
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        let targets = selectedItems.compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
+        let targets = selectedItems.filter(Self.isRemovable)
+            .compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
