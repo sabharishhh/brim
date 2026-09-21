@@ -257,4 +257,30 @@ final class BackgroundItemElevationTests: XCTestCase {
 
         XCTAssertTrue(ran.wasRun, "The Background view asking for them is the case this is for")
     }
+
+    func testOneReportRunsTheToolOnce() async {
+        // `RegistrationInventory` asks every surface twice, once for its
+        // registrations and once for its coverage. Reading this surface
+        // costs an administrator prompt, so running it twice cost the user
+        // two prompts for a single refresh.
+        let runs = RunCounter()
+        let surface = BackgroundItemSurface(
+            elevation: .permitted,
+            dump: { runs.record(); return "fixture" }
+        )
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+
+        _ = await surface.registrations(in: root)
+        _ = await surface.coverage(in: root)
+        _ = await surface.registrations(in: root)
+
+        XCTAssertEqual(runs.count, 1, "sfltool must run once per surface, however often it is asked")
+    }
+
+    private final class RunCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        func record() { lock.lock(); value += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+    }
 }

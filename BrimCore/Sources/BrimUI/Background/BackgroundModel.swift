@@ -16,7 +16,15 @@ public final class BackgroundModel: ObservableObject {
 
     @Published public private(set) var report: RegistrationReport = .empty
     @Published public private(set) var isLoading = false
-    @Published public private(set) var hasLoadedBackgroundItems = false
+    /// Whether login items are included. A toggle rather than a one way
+    /// button: turning it off and on again reads from the cached dump, so
+    /// it costs at most one administrator prompt for the whole session.
+    @Published public var showsLoginItems = false {
+        didSet {
+            guard showsLoginItems != oldValue, let service else { return }
+            Task { await load(service: service) }
+        }
+    }
     @Published public var searchText = ""
     @Published public var showsSystemOwned = false
 
@@ -60,17 +68,6 @@ public final class BackgroundModel: ObservableObject {
         self.service = service
         isLoading = true
         defer { isLoading = false }
-        report = await service.registrations(includingBackgroundItems: hasLoadedBackgroundItems)
-    }
-
-    /// Reads the Background Task Management database. This is the one call
-    /// in the section that makes macOS ask for a password, so nothing calls
-    /// it except a button.
-    public func includeBackgroundItems() async {
-        guard let service else { return }
-        isLoading = true
-        defer { isLoading = false }
-        report = await service.registrations(includingBackgroundItems: true)
-        hasLoadedBackgroundItems = true
+        report = await service.registrations(includingBackgroundItems: showsLoginItems)
     }
 }
