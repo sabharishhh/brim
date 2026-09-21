@@ -10,6 +10,17 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         super.init()
     }
 
+    public func whatChanged(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        Task {
+            do {
+                let history = await service.whatChanged()
+                reply(try JSONEncoder().encode(history), nil)
+            } catch {
+                reply(nil, Self.wire(error))
+            }
+        }
+    }
+
     /// Carries the sentence across the connection.
     ///
     /// A Swift error's `localizedDescription` is computed, not stored, so
