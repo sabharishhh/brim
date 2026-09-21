@@ -21,6 +21,16 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         }
     }
 
+    public func updateReport(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        Task {
+            do {
+                reply(try JSONEncoder().encode(await service.updateReport()), nil)
+            } catch {
+                reply(nil, Self.wire(error))
+            }
+        }
+    }
+
     /// Carries the sentence across the connection.
     ///
     /// A Swift error's `localizedDescription` is computed, not stored, so

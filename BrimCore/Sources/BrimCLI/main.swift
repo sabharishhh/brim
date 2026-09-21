@@ -31,6 +31,7 @@ struct BrimCLI: AsyncParsableCommand {
         abstract: "Brim Command Line Interface",
         subcommands: [
             Changed.self,
+            Updates.self,
             Apps.self,
             FootprintCmd.self,
             PlanCmd.self,
@@ -127,6 +128,36 @@ struct Changed: AsyncParsableCommand {
               + "(\(ByteText.short(history.migratedBytes))):")
         for migrated in history.migrated.prefix(20) {
             print("  \(migrated.application.name) — \(migrated.verdict.sentence)")
+        }
+    }
+}
+
+struct Updates: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "updates",
+        abstract: "How each application gets its next version, read from the disk"
+    )
+    @Flag(name: .long, help: "Only the applications with no way to update") var stranded = false
+
+    mutating func run() async throws {
+        let report = await BrimCLI.getService().updateReport()
+        print(report.summary)
+        print("")
+
+        if !report.withoutAnyUpdateSource.isEmpty {
+            print("No way to update itself (\(report.withoutAnyUpdateSource.count)):")
+            for entry in report.withoutAnyUpdateSource {
+                print("  \(entry.application.name)")
+            }
+            print("")
+        }
+        guard !stranded else { return }
+
+        let covered = report.coverage.filter { !$0.sources.isEmpty }
+            .sorted { $0.application.name < $1.application.name }
+        print("Has a route (\(covered.count)):")
+        for entry in covered {
+            print("  \(entry.application.name) — \(entry.sentence)")
         }
     }
 }
