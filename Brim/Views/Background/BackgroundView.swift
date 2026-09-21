@@ -209,19 +209,29 @@ private struct GroupRow: View {
                         .toggleStyle(.checkbox)
                         .labelsHidden()
                 }
-                Text(group.displayName).fontWeight(.semibold)
-                if group.isSystemOwned {
-                    Text("macOS").font(.caption2)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
+
+                // The rest of the header is one element, not four. Left as
+                // separate views it reached a reader as a name, then a
+                // badge, then a team identifier, then a count, with nothing
+                // saying they were about the same application.
+                HStack(spacing: 6) {
+                    Text(group.displayName).fontWeight(.semibold)
+                    if group.isSystemOwned {
+                        Text("macOS").font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                    Spacer()
+                    if let team = group.signedBy {
+                        Text(team).font(.caption2).foregroundColor(.secondary)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                    }
+                    Text(group.composition).font(.caption).foregroundColor(.secondary)
                 }
-                Spacer()
-                if let team = group.signedBy {
-                    Text(team).font(.caption2).foregroundColor(.secondary)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
-                }
-                Text(group.composition).font(.caption).foregroundColor(.secondary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(group.spokenDescription)
+                .accessibilityAddTraits(.isHeader)
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -270,7 +280,7 @@ private struct RegistrationRow: View {
             // The record's own path, not just what it points at. Without it
             // Keystone's four identical rows were indistinguishable, and two
             // of them are the same job installed in a different domain.
-            if let location = registration.programPath ?? registration.recordPath {
+            if let location = registration.spokenLocation {
                 Text(location)
                     .font(.caption2).foregroundColor(.secondary)
                     .truncationMode(.middle).lineLimit(1)
@@ -278,5 +288,17 @@ private struct RegistrationRow: View {
             }
         }
         .padding(.vertical, 2)
+        // One element per entry, composed rather than inferred. Left to
+        // SwiftUI this row arrived as seven unrelated fragments, and the
+        // selectable path arrived twice, because textSelection adds a
+        // child of its own.
+        .accessibilityElement(children: .ignore)
+        // Without a trait the combined element has no role and exposes as
+        // AXUnknown, which is how the sidebar rows once looked operable to
+        // a reader while being nothing at all. An entry here is text, so
+        // it says it is text.
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(registration.spokenDescription)
+        .accessibilityValue(registration.spokenLocation ?? "")
     }
 }
