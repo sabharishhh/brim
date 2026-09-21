@@ -34,6 +34,17 @@ public struct SafetyEngine: Sendable {
     }
     
     public func evaluate(footprint: Footprint) async -> EvaluatedFootprint {
+        // Mole degrades a timed-out ownership scan and narrows the plan
+        // rather than removing shared leftovers, and Brim's own invariant
+        // says degrade, never fail. This is the concrete form of it.
+        //
+        // The rule is not "be careful when the scan was slow". A
+        // footprint is a claim about what is on the disk, and a search
+        // that did not finish cannot support the claim, so nothing found
+        // in an unfinished pass is selected for the person. Everything is
+        // still shown, and every row can still be ticked by hand.
+        let searchFinished = footprint.completeness.isComplete
+
         let evaluatedItems = footprint.items.map { item -> EvaluatedItem in
             let url = item.evidence.url
             
@@ -63,7 +74,9 @@ public struct SafetyEngine: Sendable {
                     reason: "Something else on this Mac uses this too, so Brim leaves it alone."
                 )
             case .A, .B:
-                selection = .selected
+                selection = searchFinished
+                    ? .selected
+                    : .unselected
             case .C:
                 selection = .unselected
             }
