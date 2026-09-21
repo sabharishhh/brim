@@ -129,6 +129,11 @@ conversation. Split unrelated changes rather than staging everything.
 - **Section minimum widths ratchet the window.** A split view asking for
   more than the window has grows it, `NSSplitView Subview Frames` saves the
   new size, and nothing shrinks it back.
+- **A greedy `NSViewRepresentable` overrides `.defaultSize` silently.**
+  `BrimTableView` made the window open at half the display width no matter
+  what the scene asked for, and clearing every piece of saved state made no
+  difference. If a window ignores its default size, suspect a hosted AppKit
+  view before suspecting restoration.
 
 ## Build and run
 
