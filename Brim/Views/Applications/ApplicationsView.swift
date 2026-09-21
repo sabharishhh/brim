@@ -57,7 +57,7 @@ struct ApplicationsView: View {
             .padding(.top)
             .accessibilityElement(children: .combine)
 
-            if !model.history.changes.isEmpty || !model.history.migrated.isEmpty {
+            if !model.history.changes.isEmpty {
                 changesNote
             }
 
@@ -81,12 +81,8 @@ struct ApplicationsView: View {
         }
     }
 
-    /// What is different since last time, and what never ran here.
-    ///
-    /// Derived by subtracting one snapshot from the one before it. There
-    /// is no watcher: a resident process noticing installations is what
-    /// every competitor ships and what nobody wants, and two snapshots
-    /// answer the same question for nothing.
+    /// What is different since last time, derived by subtracting one
+    /// snapshot from the one before it.
     private var changesNote: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !model.history.changes.isEmpty {
@@ -99,16 +95,6 @@ struct ApplicationsView: View {
                 }
             }
 
-            if !model.history.migrated.isEmpty {
-                let count = model.history.migrated.count
-                Text("\(count) came across from another Mac and have not run here")
-                    .font(.caption).fontWeight(.semibold)
-                Text("\(ByteText.short(model.history.migratedBytes)) between them. Migration "
-                     + "Assistant copies everything, and a good part of it is never opened "
-                     + "again. Select one to see what it would take back.")
-                    .font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

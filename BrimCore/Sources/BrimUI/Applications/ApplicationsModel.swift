@@ -124,9 +124,7 @@ public final class ApplicationsModel: ObservableObject {
 
     /// What has changed since Brim last looked, and what came across from
     /// another Mac and never ran here.
-    @Published public private(set) var history = InstallHistory(
-        changes: [], snapshots: 0, migrated: []
-    )
+    @Published public private(set) var history = InstallHistory(changes: [], snapshots: 0)
 
     /// Drops an application the UI already knows is gone, without waiting
     /// for a full re-enumeration.

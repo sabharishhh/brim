@@ -99,7 +99,7 @@ struct LeftoversView: View {
                 section(
                     "Orphaned",
                     "Something on this Mac named an owner for these, and that owner has gone. "
-                    + "Brim has ticked them, because it can show you why.",
+                    + "Ticked by default.",
                     model.visible(model.orphanedGroups),
                     "Nothing here. No registration, receipt or Launch Services entry points at "
                     + "software that has since gone."
@@ -107,7 +107,7 @@ struct LeftoversView: View {
                 section(
                     "Unclaimed",
                     "Nothing claims these and nothing remembers claiming them. Worth a look, "
-                    + "but not proof of anything, so Brim leaves them unticked.",
+                    + "but not proof. Untick or tick each one yourself.",
                     model.visible(model.unclaimedGroups),
                     "Everything here has an owner."
                 )
@@ -364,7 +364,7 @@ private struct LeftoverDetail: View {
                 .textSelection(.enabled)
                 .truncationMode(.middle).lineLimit(1)
             if item.capability == .needsFullDiskAccess {
-                Label("Brim cannot remove this without Full Disk Access", systemImage: "lock")
+                Label("Needs Full Disk Access", systemImage: "lock")
                     .font(.caption2).foregroundColor(.orange)
             }
         }

@@ -81,8 +81,7 @@ public struct ShellProfileSurface: RegistrationSurface {
                     targetExists: false,
                     recordPath: file.path,
                     evidence: "Line \(number + 1) of ~/\(name) points at \(referenced), which "
-                            + "is not there. Every new shell tries this and fails. Brim will "
-                            + "not edit your shell configuration, so this one is yours.",
+                            + "is not there. Every new shell tries this and fails.",
                     isSystemOwned: false,
                     capability: .ok
                 ))

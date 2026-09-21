@@ -117,7 +117,10 @@ final class SystemExtensionSurfaceTests: XCTestCase {
             found[0].capability, .refusedByOS,
             "Only the host application can withdraw one, so Brim must not offer to"
         )
-        XCTAssertTrue(found[0].evidence.contains("Brim"))
+        XCTAssertTrue(
+            found[0].evidence.contains("withdraw"),
+            "The row has to say who can act on it: \(found[0].evidence)"
+        )
     }
 
     func testNothingHereIsJudgedStale() {
