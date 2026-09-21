@@ -20,8 +20,8 @@ struct WelcomeSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Welcome to Brim")
                     .font(.largeTitle).fontWeight(.bold)
-                Text("Brim finds what software has left on this Mac, and proves it is gone "
-                     + "when you remove it.")
+                Text("Brim tracks down what software leaves behind on this Mac, and shows you the "
+                     + "place is empty once you clear it out.")
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -31,21 +31,21 @@ struct WelcomeSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 promise(
                     "hand.raised",
-                    "Brim asks once, here.",
-                    "After this, you will not be asked to authenticate again — except "
-                    + "immediately before something is deleted permanently."
+                    "Brim asks you once, right now.",
+                    "From here on Brim stays quiet. The one time it asks again is right before "
+                    + "something goes for good."
                 )
                 promise(
                     "arrow.uturn.backward",
-                    "Anything reversible just happens.",
-                    "Items that go to the Trash need no confirmation beyond the review "
-                    + "screen. You can put them back."
+                    "If you can undo it, Brim does not ask.",
+                    "Anything bound for the Trash just goes. You looked at the list, and you can "
+                    + "always fish it back out."
                 )
                 promise(
                     "checkmark.seal",
-                    "Every removal is checked afterwards.",
-                    "Brim re-examines each location it touched and tells you what it found, "
-                    + "rather than assuming the commands worked."
+                    "Brim checks its own work.",
+                    "Brim goes back and looks at every place it touched, then tells you what it "
+                    + "saw. It does not take its own word for it."
                 )
             }
 

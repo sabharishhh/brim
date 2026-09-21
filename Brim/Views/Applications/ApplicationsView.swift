@@ -88,7 +88,7 @@ struct ApplicationsView: View {
                     if let version = application.version {
                         Text(version)
                     }
-                    Text(ByteCountFormatter.string(fromByteCount: application.bundleSizeBytes, countStyle: .file))
+                    Text(ByteText.short(application.bundleSizeBytes))
                         .monospacedDigit()
                 }
                 .font(.caption)
@@ -101,7 +101,7 @@ struct ApplicationsView: View {
                 Image(systemName: "lock")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .help("Part of macOS — cannot be removed")
+                    .help("Part of macOS, so it stays")
             }
         }
         .padding(.vertical, 2)
@@ -109,7 +109,7 @@ struct ApplicationsView: View {
         .accessibilityLabel(
             "\(application.name). "
             + (application.version.map { "Version \($0). " } ?? "")
-            + ByteCountFormatter.string(fromByteCount: application.bundleSizeBytes, countStyle: .file)
+            + ByteText.short(application.bundleSizeBytes)
             + (application.isSystemProtected ? ". Protected by macOS." : "")
         )
     }
@@ -128,7 +128,7 @@ struct ApplicationsView: View {
             VStack(spacing: 6) {
                 Text("Select an application")
                     .font(.headline)
-                Text("Brim will show everything it has left on this Mac, and how it knows.")
+                Text("Brim will show everywhere it has written, and say how it found each one.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -184,7 +184,7 @@ struct ApplicationsView: View {
             HStack(spacing: 6) {
                 Text("**\(locations)** \(locations == 1 ? "location" : "locations")")
                 Text("·")
-                Text(ByteCountFormatter.string(fromByteCount: footprint.totalSizeBytes, countStyle: .file))
+                Text(ByteText.short(footprint.totalSizeBytes))
                     .monospacedDigit()
                 Text("·")
                 Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "mechanism" : "mechanisms")")
@@ -194,7 +194,7 @@ struct ApplicationsView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 "\(locations) locations found, "
-                + ByteCountFormatter.string(fromByteCount: footprint.totalSizeBytes, countStyle: .file)
+                + ByteText.short(footprint.totalSizeBytes)
                 + ", across \(model.footprintGroups.count) discovery mechanisms"
             )
         }
@@ -224,7 +224,7 @@ struct ApplicationsView: View {
                                     .truncationMode(.middle)
                                     .lineLimit(1)
                                 Spacer()
-                                Text(ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file))
+                                Text(ByteText.short(item.sizeBytes))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .monospacedDigit()
@@ -240,7 +240,7 @@ struct ApplicationsView: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
-                            Text("\(group.items.count) · \(ByteCountFormatter.string(fromByteCount: group.totalBytes, countStyle: .file))")
+                            Text("\(group.items.count) · \(ByteText.short(group.totalBytes))")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
