@@ -22,15 +22,14 @@ final class UndoTests: XCTestCase {
         let realService = BrimService(root: root, brimAppURL: brimAppURL, planStoreDirectory: planStoreDir, journalStoreDirectory: journalStoreDir)
         
         let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService, requireCodeSigning: false)
+        let delegate = BrimXPCListenerDelegate(service: realService, accepting: .sameProcessAnonymous)
         listener.delegate = delegate
         listener.resume()
         
         let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        
-        let service: BrimServiceProtocol = BrimXPCClient(connection: connection, requireCodeSigning: false)
+                
+        let service: BrimServiceProtocol = try BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
         
         let bundleURL = rootURL.appendingPathComponent("Applications/SandboxedApp.app")
         let resolver = IdentityResolver(root: root)

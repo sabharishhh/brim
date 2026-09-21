@@ -82,6 +82,14 @@ for five minutes: two processes cannot share one, and that is the point.
 `ApprovalGateTests` holds every part of this, including a grep test that
 fails if a second function ever returns an `ApprovalToken`.
 
+**Both ends of a connection prove who they are.** Brim is
+`com.sabharishhh.brim`, team `9LY29YLFG2`, and `MutualAuthentication` is
+the only place that decides what that means. The listener pins the app,
+the client pins the service, and a connection that cannot be pinned is
+not made. There is no boolean to switch it off: a caller either names one
+of Brim's signed components or names the anonymous same-process case out
+loud, and `XPCAuthenticationTests` fails if a third option appears.
+
 **Interrupt for irreversible things only.** Moving something to the Trash
 needs no fingerprint. Permanently deleting something that matters gets one
 prompt for the whole plan, and a five minute grace window after it. The
@@ -160,6 +168,22 @@ conversation. Split unrelated changes rather than staging everything.
 - **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
   previous macOS still sits beside the v18 files, listing software that has
   since been removed. Read the highest version only, or invent leftovers.
+- **`setCodeSigningRequirement` returns nothing and raises on a string it
+  cannot parse.** So an unparseable requirement is a crash, not a refusal,
+  and there is no return value to check. Compile it with
+  `SecRequirementCreateWithString` first and refuse the connection if it
+  will not compile.
+- **One requirement covers development and Developer ID.** `anchor apple
+  generic` with the team in `certificate leaf[subject.OU]` is satisfied by
+  an Apple Development certificate and by Developer ID alike, so there is
+  no looser development string that could be left switched on in a shipped
+  build. Verify a requirement against a real binary with
+  `codesign --verify -R=<requirement>`; it is faster than reasoning about
+  it and it caught that the old string rejected Brim's own app.
+- **`LAContext` in a unit test raises a real dialog and hangs the suite.**
+  Presence goes through the injected `PresenceCheck` so tests can reach
+  the approval gate without one. Killing a run mid-prompt leaves
+  `System authentication is running` behind for the next one.
 - **A Swift error loses its sentence crossing XPC.** `localizedDescription`
   is computed, so bridging an error to `NSError` and replying with it
   arrives as `Code=0 "(null)"`. `BrimXPCServer.wire` pins the sentence into
@@ -207,6 +231,10 @@ conversation. Split unrelated changes rather than staging everything.
   view before suspecting restoration.
 
 ## Build and run
+
+There is no `timeout` on this machine, so a command that wraps the suite
+in one silently does nothing and looks like a pass. Run long things in the
+background and wait on the process instead.
 
 ```bash
 xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build

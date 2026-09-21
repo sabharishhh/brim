@@ -184,7 +184,7 @@ public struct SafeOps {
         defer { standInTrashLock.unlock() }
         if let existing = standInTrashURL { return existing }
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("brim-test-trash-\(ProcessInfo.processInfo.processIdentifier)")
+            .appendingPathComponent("brim-test-trash-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         standInTrashURL = url
         return url

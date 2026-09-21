@@ -106,8 +106,15 @@ class MCPServer {
         } else {
             let connection = NSXPCConnection(machServiceName: "com.google.Brim.daemon", options: .privileged)
             connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-            connection.resume()
-            self.service = BrimXPCClient(connection: connection, requireCodeSigning: false)
+            // If the daemon cannot be pinned, this host talks to nothing.
+            // An agent host that falls back to an unauthenticated
+            // connection is the whole problem in one line.
+            do {
+                self.service = try BrimXPCClient(connection: connection, expecting: .brim(.daemon))
+            } catch {
+                log("Refusing to connect: the daemon could not be required to be Brim's daemon.")
+                exit(1)
+            }
         }
     }
 
