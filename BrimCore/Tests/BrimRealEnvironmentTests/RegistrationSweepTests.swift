@@ -55,9 +55,18 @@ final class LeftoversOnThisMachineTests: XCTestCase {
 
     private func scan() async throws -> [Leftover] {
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+        let inventory = RegistrationInventory(surfaces: [
+            LaunchdRegistrationSurface(), BackgroundItemSurface()
+        ])
+        var stale: [String: String] = [:]
+        for registration in await inventory.stale(in: root) {
+            guard let owner = registration.owningBundleID else { continue }
+            stale[owner] = registration.evidence
+        }
         let scanner = LeftoversScanner(
             root: root,
-            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) }
+            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
+            staleRegistrationOwners: stale
         )
         return try await scanner.scanLeftovers()
     }
@@ -166,3 +175,4 @@ final class LaunchServicesContributionTests: XCTestCase {
         )
     }
 }
+
