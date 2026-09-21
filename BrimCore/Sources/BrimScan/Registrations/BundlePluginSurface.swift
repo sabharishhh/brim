@@ -100,7 +100,7 @@ public struct BundlePluginSurface: RegistrationSurface {
             fm.fileExists(atPath: url(for: $0, in: root).path)
         })
             ? .available(kind)
-            : .unavailable(kind, "The plug-in folders could not be read.")
+            : .unavailable(kind, "The plug-in folders could not be read.", absence: .needsPermission)
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {

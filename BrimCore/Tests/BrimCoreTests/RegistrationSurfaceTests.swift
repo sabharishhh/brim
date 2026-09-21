@@ -223,3 +223,58 @@ final class ReportOnlyTests: XCTestCase {
                       "A gap has to say what the person can do instead")
     }
 }
+
+/// A boundary is not a fault.
+///
+/// The keychain, which Brim deliberately does not read, appeared in the
+/// running app under "Part of this list is missing" with a button
+/// offering to open Full Disk Access. Full Disk Access was already
+/// granted, so the screen told somebody their Mac was misconfigured,
+/// pointed them at a switch that was already on, and would have changed
+/// nothing if it had not been.
+final class CoverageAbsenceTests: XCTestCase {
+
+    func testSomethingBrimWillNotReadIsNotReportedAsAFault() {
+        let withheld = RegistrationCoverage.withheld(.keychainItem, "because")
+
+        XCTAssertFalse(withheld.available)
+        XCTAssertFalse(withheld.isAFault, "A choice is not a malfunction")
+        XCTAssertFalse(
+            withheld.isFixableByTheUser,
+            "Offering Settings here sends somebody to flip a switch that changes nothing"
+        )
+        XCTAssertEqual(withheld.absence, .byDesign)
+    }
+
+    func testAPermissionGapOffersSomethingToPress() {
+        let gap = RegistrationCoverage.unavailable(
+            .launchdJob, "No launchd directory could be read.", absence: .needsPermission
+        )
+        XCTAssertTrue(gap.isAFault)
+        XCTAssertTrue(gap.isFixableByTheUser)
+    }
+
+    func testAToolThatDidNotAnswerIsAFaultWithNothingToPress() {
+        // Worth saying, because the list is short by an unknown amount.
+        // Not worth a Settings button: no permission unblocks a tool that
+        // failed to run.
+        let gap = RegistrationCoverage.unavailable(
+            .appExtension, "pluginkit did not answer."
+        )
+        XCTAssertTrue(gap.isAFault)
+        XCTAssertFalse(gap.isFixableByTheUser)
+    }
+
+    func testAvailableSurfacesCarryNoAbsence() {
+        let fine = RegistrationCoverage.available(.launchdJob)
+        XCTAssertNil(fine.absence)
+        XCTAssertFalse(fine.isAFault)
+    }
+
+    func testTheKeychainIsTheOneSurfaceHeldBack() async {
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+        let coverage = await KeychainSurface().coverage(in: root)
+        XCTAssertEqual(coverage.absence, .byDesign)
+        XCTAssertFalse(coverage.isAFault)
+    }
+}
