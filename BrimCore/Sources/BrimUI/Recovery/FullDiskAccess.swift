@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import BrimCore
 
 /// Whether Brim can read the parts of the disk it needs.
 ///
@@ -12,13 +13,14 @@ public enum FullDiskAccess {
     /// Probes by opening the user's Trash for event monitoring, which is the
     /// operation Brim genuinely needs and which returns EPERM without access.
     /// A read-only open, immediately closed — nothing is modified.
+    ///
+    /// The probe itself lives in BrimCore, because scanning needs the same
+    /// answer as the UI: a leftover Brim can see but cannot remove has to
+    /// say why.
     public static func isGranted(
         probing url: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
     ) -> Bool {
-        let fd = open(url.path, O_EVTONLY)
-        guard fd >= 0 else { return false }
-        close(fd)
-        return true
+        FullDiskAccessProbe.isGranted(probing: url)
     }
 
     /// Opens System Settings at Privacy & Security › Full Disk Access.

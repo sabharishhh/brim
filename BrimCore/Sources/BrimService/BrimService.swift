@@ -432,7 +432,15 @@ public actor BrimService: BrimServiceProtocol {
     }
 
     public func leftovers() async throws -> [Leftover] {
-        let scanner = LeftoversScanner(root: root)
+        // Launch Services is one of the four sources T-5.1 requires be
+        // searched for an owner, and the only one that can answer both
+        // questions at once: a record whose bundle is still there names an
+        // owner the directory walk missed, and a record whose bundle has
+        // gone *is* the orphan evidence.
+        let scanner = LeftoversScanner(
+            root: root,
+            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) }
+        )
         var knownPastBundleIDs = Set<String>()
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
