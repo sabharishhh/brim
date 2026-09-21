@@ -67,10 +67,18 @@ public actor LeftoversScanner {
             for item in items {
                 let name = item.lastPathComponent
                 
-                // Skip Apple system stuff roughly
-                if name.hasPrefix("com.apple.") && !name.hasPrefix("com.apple.logic") && !name.hasPrefix("com.apple.FinalCut") {
-                    continue
-                }
+                // Apple's own data is never the user's to clean up, and the
+                // prefix check has to survive the group-container spelling:
+                // a group container is named `group.com.apple.SHTTS`, which
+                // does not start with `com.apple.` and so was being listed
+                // as a leftover — one of them had been written to under a
+                // minute before the scan.
+                //
+                // Logic and Final Cut are the deliberate exceptions: Apple
+                // ships them separately, they can genuinely be uninstalled,
+                // and their support folders are the largest leftovers on
+                // many machines.
+                if Self.isAppleOwned(name) { continue }
                 
                 if isItemActive(item: item, in: domain, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
                     continue
@@ -124,6 +132,20 @@ public actor LeftoversScanner {
         return leftovers.sorted { $0.size > $1.size }
     }
     
+    /// Whether a directory belongs to macOS itself.
+    ///
+    /// Matches both `com.apple.x` and the group-container form
+    /// `group.com.apple.x`, and the bare `group.com.apple` prefix used by
+    /// several system group containers.
+    static func isAppleOwned(_ name: String) -> Bool {
+        let identifier = name.hasPrefix("group.") ? String(name.dropFirst("group.".count)) : name
+        guard identifier.hasPrefix("com.apple.") || identifier == "com.apple" else { return false }
+        // Separately shipped, separately removable, and often the biggest
+        // leftovers on the machine.
+        return !identifier.hasPrefix("com.apple.logic")
+            && !identifier.hasPrefix("com.apple.FinalCut")
+    }
+
     private func isItemActive(
         item: URL,
         in domain: FileSystemRoot.Domain,
