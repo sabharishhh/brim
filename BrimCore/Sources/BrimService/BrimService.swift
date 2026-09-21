@@ -496,30 +496,11 @@ public actor BrimService: BrimServiceProtocol {
         }
     }
     
-    /// The last `sfltool dumpbtm` output, kept for the life of the service.
-    ///
-    /// Reading it costs an administrator prompt, so paying that on every
-    /// rescan would be unreasonable for a list that changes when software
-    /// is installed, which is to say rarely. One prompt per launch, and
-    /// only if the user asked for login items at all.
-    private var cachedBackgroundDump: String?
-
-    public func registrations(includingBackgroundItems: Bool = false) async -> RegistrationReport {
-        var surfaces: [any RegistrationSurface] = [LaunchdRegistrationSurface()]
-
-        // Only when asked. Reading this one runs `sfltool`, which raises an
-        // administrator prompt naming a tool nobody has heard of.
-        if includingBackgroundItems, let cached = cachedBackgroundDump {
-            surfaces.append(BackgroundItemSurface(elevation: .permitted, dump: { cached }))
-        } else if includingBackgroundItems {
-            let fresh = BackgroundItemSurface.runSFLTool()
-            cachedBackgroundDump = fresh
-            surfaces.append(BackgroundItemSurface(elevation: .permitted, dump: { fresh }))
-        } else {
-            surfaces.append(BackgroundItemSurface(elevation: .onlyWhenAsked))
-        }
-
-        let inventory = RegistrationInventory(surfaces: surfaces)
+    public func registrations() async -> RegistrationReport {
+        let inventory = RegistrationInventory(surfaces: [
+            LaunchdRegistrationSurface(),
+            BackgroundItemSurface()
+        ])
         return RegistrationReport(
             registrations: await inventory.all(in: root),
             coverage: await inventory.coverage(in: root)

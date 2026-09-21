@@ -35,11 +35,6 @@ struct BackgroundView: View {
                     Text(summary).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()
-                Toggle("Login items", isOn: $model.showsLoginItems)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .help("Reading these needs an administrator password. Brim asks once "
-                          + "and remembers the answer until you quit.")
                 Toggle("Include macOS", isOn: $model.showsSystemOwned)
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -66,7 +61,7 @@ struct BackgroundView: View {
             ProgressView("Reading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                if !model.showsLoginItems { loginItemsNote }
+                if !model.gaps.isEmpty { coverageNote }
                 section(
                     "Left behind",
                     "These point at a program that is not on this Mac any more. Each one either "
@@ -89,25 +84,25 @@ struct BackgroundView: View {
         }
     }
 
-    /// Says what is missing and why, without offering to do anything. The
-    /// toggle in the header is the control; a second button here asking
-    /// the same question would be one prompt too many.
-    private var loginItemsNote: some View {
+    /// What Brim could not read, and why. A list that quietly drops the
+    /// half it could not see is worse than one that says so.
+    private var coverageNote: some View {
         Section {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "questionmark.circle").foregroundColor(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Login items are not in this list").fontWeight(.medium)
-                    Text("macOS keeps those separately and wants an administrator password "
-                         + "before it will show them. Turn on Login items above and Brim will "
-                         + "ask once, then remember for the rest of the session.")
-                        .font(.callout).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            ForEach(model.gaps, id: \.kind) { gap in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "eye.slash").foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Part of this list is missing").fontWeight(.medium)
+                        Text(gap.limitation ?? "Brim could not read \(gap.kind.displayName).")
+                            .font(.callout).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Open Settings") { FullDiskAccess.openSettings() }
                 }
-                Spacer()
+                .padding(10)
+                .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             }
-            .padding(10)
-            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 

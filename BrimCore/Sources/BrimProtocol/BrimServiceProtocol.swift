@@ -28,14 +28,15 @@ public protocol BrimServiceProtocol: Sendable {
     /// First-run setup: one confirmation that this Mac belongs to the person
     /// using it. Never asked again.
     func enroll() async throws
-    /// Everything macOS has registered on behalf of software.
+    /// Everything macOS has registered on behalf of software: launchd
+    /// jobs, and the login items and background services in Background
+    /// Task Management.
     ///
-    /// `includingBackgroundItems` is off by default because reading the
-    /// Background Task Management database means running `sfltool`, and
-    /// macOS puts up an administrator prompt the moment it does. That is
-    /// fine when a person pressed a button asking for it, and not fine
-    /// during a scan they did not ask for.
-    func registrations(includingBackgroundItems: Bool) async -> RegistrationReport
+    /// This used to take a flag, because background items came from
+    /// `sfltool` and reading them cost an administrator prompt. They are
+    /// read from the store directly now, so there is nothing left to opt
+    /// into and no reason to withhold half the answer.
+    func registrations() async -> RegistrationReport
     /// Space on each local volume, kept as separate figures rather than
     /// collapsed into one.
     func volumes() async -> [VolumeAccount]
@@ -58,7 +59,7 @@ public extension BrimServiceProtocol {
     /// nothing prompts. Keeps stubs and the XPC client conforming.
     func isEnrolled() async -> Bool { true }
     func enroll() async throws {}
-    func registrations(includingBackgroundItems: Bool) async -> RegistrationReport { .empty }
+    func registrations() async -> RegistrationReport { .empty }
     func volumes() async -> [VolumeAccount] { [] }
     func sampleEnergy() async -> EnergySampleResult {
         EnergySampleResult(samples: [], coverageGaps: 0)
