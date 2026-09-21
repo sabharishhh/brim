@@ -104,6 +104,13 @@ class MCPServer {
         if ProcessInfo.processInfo.environment["BRIM_MCP_TEST"] == "1" {
             self.service = MockService()
         } else {
+            // Nothing registers this any more: the full-service root
+            // daemon it named was never built or signed by the
+            // application, and has been deleted. Left pointing at it on
+            // purpose rather than quietly repointed at the job helper,
+            // whose interface is two methods and answers none of this.
+            // An MCP host has no service to talk to until the transport
+            // work lands, and failing to connect is the honest outcome.
             let connection = NSXPCConnection(machServiceName: "com.google.Brim.daemon", options: .privileged)
             connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
             // If the daemon cannot be pinned, this host talks to nothing.

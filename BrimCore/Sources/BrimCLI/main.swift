@@ -450,20 +450,27 @@ struct DryRunUninstall: AsyncParsableCommand {
 import ServiceManagement
 
 struct Install: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "install", abstract: "Install the Brim privileged helper daemon")
-    
+    static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Set up the helper that removes root-owned job files"
+    )
+
     mutating func run() async throws {
-        if #available(macOS 13.0, *) {
-            let service = SMAppService.daemon(plistName: "com.google.Brim.daemon.plist")
-            do {
-                try service.register()
-                print("Successfully registered daemon. You may be prompted for authentication.")
-            } catch {
-                print("Failed to register daemon: \(error)")
-            }
-        } else {
-            print("SMAppService requires macOS 13.0 or newer.")
-        }
+        // This used to register `com.google.Brim.daemon`, a full-service
+        // root daemon that ran the whole of BrimService as root. It was
+        // never built, signed or installed by the application, and it has
+        // been deleted. Registering a daemon is also not something a
+        // command line tool should do on its own: macOS shows the approval
+        // in Login Items, against the application, so the application is
+        // where it belongs.
+        print("""
+        Brim's helper is set up from the app, in the Background section, \
+        where it explains what the helper will and will not touch before \
+        you approve it.
+
+        It is one approval, in System Settings, and nothing runs at login.
+        """)
+        throw ExitCode(1)
     }
 }
 

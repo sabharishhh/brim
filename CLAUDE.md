@@ -192,6 +192,12 @@ conversation. Split unrelated changes rather than staging everything.
   Presence goes through the injected `PresenceCheck` so tests can reach
   the approval gate without one. Killing a run mid-prompt leaves
   `System authentication is running` behind for the next one.
+- **Brim is `com.sabharishhh.brim`.** Nothing should carry a list of
+  identifiers for it: `SafetyChecker` reads its own from the bundle it was
+  given, because the hardcoded list named `com.google.Brim` and a
+  `devplaceholder` identifier and matched neither the real application nor
+  anything else, so self-removal was silently blocked. The two old
+  identifiers are kept only so an upgrade can clear what they left.
 - **An `SMAppService` daemon survives an application update.** The root
   process answering can be the one an older Brim registered, running that
   version's rules about what is safe to remove. Check the version on
