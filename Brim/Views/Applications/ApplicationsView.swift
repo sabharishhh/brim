@@ -13,6 +13,7 @@ struct ApplicationsView: View {
     @ObservedObject var model: ApplicationsModel
     @SwiftUI.Environment(\.brimService) private var service
     @State private var uninstalling: InstalledApplication?
+    @State private var resetting: InstalledApplication?
 
     var body: some View {
         HSplitView {
@@ -23,6 +24,11 @@ struct ApplicationsView: View {
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
+        .sheet(item: $resetting) { application in
+            UninstallSheet(application: application, service: service, intentType: .reset) {
+                Task { await model.load(service: service) }
+            }
+        }
         .sheet(item: $uninstalling) { application in
             UninstallSheet(application: application, service: service) {
                 // Drop the row at once if the bundle really is gone —
@@ -86,7 +92,7 @@ struct ApplicationsView: View {
     private var changesNote: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !model.history.changes.isEmpty {
-                Text("Since Brim last looked").font(.caption).fontWeight(.semibold)
+                Text("Since the last scan").font(.caption).fontWeight(.semibold)
                 ForEach(Array(model.history.changes.prefix(5).enumerated()), id: \.offset) {
                     _, change in
                     Text(change.sentence)
@@ -159,7 +165,7 @@ struct ApplicationsView: View {
             VStack(spacing: 6) {
                 Text("Select an application")
                     .font(.headline)
-                Text("Brim will show everywhere it has written, and say how it found each one.")
+                Text("Everywhere it has written, and how each item was found.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -191,6 +197,13 @@ struct ApplicationsView: View {
                         .foregroundColor(.secondary)
                         .help(reason)
                 } else {
+                    // Reset keeps the application and its licence and
+                    // clears its state. Offered beside the removal
+                    // because "make it work again" is a different job
+                    // from "get rid of it", and people reach for the
+                    // second when they only wanted the first.
+                    Button("Reset…") { resetting = application }
+                        .disabled(model.isInspecting || model.footprint == nil)
                     Button("Uninstall…") {
                         uninstalling = application
                     }
@@ -273,7 +286,7 @@ struct ApplicationsView: View {
             VStack(spacing: 6) {
                 Text("Nothing found beyond the application itself")
                     .font(.headline)
-                Text("Brim searched every location an app can write to and found no other trace.")
+                Text("No other files were found for this application.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }

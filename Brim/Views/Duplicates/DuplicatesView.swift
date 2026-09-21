@@ -58,7 +58,7 @@ struct DuplicatesView: View {
     private var summary: String {
         if model.isScanning { return "Reading the files that share a size…" }
         guard let folder = model.scannedFolder else {
-            return "Pick a folder to look through. Brim reads the whole of any file that "
+            return "Pick a folder to look through. The whole of any file that "
                  + "shares a size with another, so a folder beats a whole disk."
         }
         if model.groups.isEmpty { return "Nothing duplicated in \(folder.lastPathComponent)." }
@@ -87,7 +87,7 @@ struct DuplicatesView: View {
             VStack(spacing: 6) {
                 Image(systemName: "doc.on.doc").font(.largeTitle).foregroundColor(.secondary)
                 Text("Choose a folder").font(.headline)
-                Text("Brim compares files that share a size, then reads only the ones that "
+                Text("Files that share a size are compared, then only the ones that "
                      + "still look alike. Nothing is read twice and the scan does not push "
                      + "your own files out of the disk cache.")
                     .foregroundColor(.secondary).multilineTextAlignment(.center)
