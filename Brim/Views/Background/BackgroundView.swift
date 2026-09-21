@@ -199,11 +199,18 @@ struct BackgroundView: View {
         }
     }
 
-    /// What Brim could not read, and why. A list that quietly drops the
-    /// half it could not see is worse than one that says so.
+    /// What Brim could not read, and what it chose not to.
+    ///
+    /// These were one banner and it said the wrong thing. The keychain,
+    /// which Brim deliberately does not read, appeared under "Part of
+    /// this list is missing" with a button offering to open Full Disk
+    /// Access. Full Disk Access was already on, so the screen told
+    /// somebody their Mac was misconfigured, pointed them at a switch
+    /// that was already flipped, and would have fixed nothing if it had
+    /// not been. A boundary is not a gap.
     private var coverageNote: some View {
         Section {
-            ForEach(model.gaps, id: \.kind) { gap in
+            ForEach(model.faults, id: \.kind) { gap in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "eye.slash").foregroundColor(.orange)
                     VStack(alignment: .leading, spacing: 2) {
@@ -213,10 +220,31 @@ struct BackgroundView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    Button("Open Settings") { FullDiskAccess.openSettings() }
+                    // Only where a permission is actually the thing in the
+                    // way. Offering Settings for a tool that did not answer
+                    // sends somebody to flip a switch that changes nothing.
+                    if gap.isFixableByTheUser {
+                        Button("Open Settings") { FullDiskAccess.openSettings() }
+                    }
                 }
                 .padding(10)
                 .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            ForEach(model.boundaries, id: \.kind) { boundary in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "hand.raised").foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(boundary.kind.displayName)s are not Brim's to touch")
+                            .fontWeight(.medium)
+                        Text(boundary.limitation ?? "")
+                            .font(.callout).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }

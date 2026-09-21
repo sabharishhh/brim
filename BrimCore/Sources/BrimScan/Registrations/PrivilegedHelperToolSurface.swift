@@ -36,7 +36,7 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
         guard fm.fileExists(atPath: path) else { return .available(kind) }
         return fm.isReadableFile(atPath: path)
             ? .available(kind)
-            : .unavailable(kind, "The privileged helper folder could not be read.")
+            : .unavailable(kind, "The privileged helper folder could not be read.", absence: .needsPermission)
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
