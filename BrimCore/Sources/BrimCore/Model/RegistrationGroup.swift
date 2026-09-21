@@ -40,6 +40,30 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         !stale.isEmpty && stale.allSatisfy(\.isClearedByMacOS)
     }
 
+    /// Who signed the code behind this, when every item agrees. Shown on
+    /// the group rather than on each row, because an application and the
+    /// helpers it ships are signed by the same team and repeating it is
+    /// noise.
+    /// Items with no code to examine, such as a background-tasks record
+    /// with no path at all, are passed over rather than counted against
+    /// the group. Requiring every item to be signed meant an application
+    /// beside one pathless record showed nothing.
+    public var signedBy: String? {
+        var teams: Set<String> = []
+        for item in items {
+            switch item.signing {
+            case .valid(let team):
+                guard let team else { return nil }
+                teams.insert(team)
+            case .none, .notChecked:
+                continue
+            case .teamChanged, .invalid, .unsigned:
+                return nil
+            }
+        }
+        return teams.count == 1 ? teams.first : nil
+    }
+
     /// One line saying what this application has registered, so the group
     /// header carries the shape of the list underneath it.
     public var composition: String {

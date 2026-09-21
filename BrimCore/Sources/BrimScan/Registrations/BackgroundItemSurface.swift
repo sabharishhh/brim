@@ -109,6 +109,8 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 of: record, parents: recordsByIdentifier
             ) ?? record.bundleIdentifier
 
+            let isSystemOwned = Self.isSystemOwned(record, resolved: resolved)
+
             let label = record.name
                 ?? record.bundleIdentifier
                 ?? resolved?.lastPathComponent
@@ -127,7 +129,13 @@ public struct BackgroundItemSurface: RegistrationSurface {
                         + (record.developerName.map { " by \($0)." } ?? ".")
                     : "The application is gone and macOS has not tidied its list yet. It drops "
                         + "these by itself the next time anything asks it for the list.",
-                isSystemOwned: Self.isSystemOwned(record, resolved: resolved)
+                isSystemOwned: isSystemOwned,
+                // Apple's own items are not examined. Their signatures are
+                // never the question, and validating something the size of
+                // Xcode on every scan would make the section feel broken.
+                signing: (isSystemOwned || !targetExists) ? nil : resolved.map {
+                    CodeSignature.state(of: $0, recordedTeam: record.teamIdentifier)
+                }
             )
         }
     }

@@ -20,6 +20,10 @@ public struct BTMRecord: Equatable, Sendable {
     /// a helper to the app that ships it.
     public let parentIdentifier: String?
     public let bundleIdentifier: String?
+    /// The signing team macOS recorded when it accepted this item. The
+    /// store has carried this all along and nothing read it, which is the
+    /// signing state T-3.8 asks for and never got.
+    public let teamIdentifier: String?
 
     /// The URL only when the dump gave an absolute path. A relative one needs
     /// its parent to resolve and is left to the caller.
@@ -43,7 +47,8 @@ public struct BTMRecord: Equatable, Sendable {
         identifier: String?,
         rawURLPath: String?,
         parentIdentifier: String? = nil,
-        bundleIdentifier: String?
+        bundleIdentifier: String?,
+        teamIdentifier: String? = nil
     ) {
         self.uuid = uuid
         self.name = name
@@ -54,5 +59,6 @@ public struct BTMRecord: Equatable, Sendable {
         self.rawURLPath = rawURLPath
         self.parentIdentifier = parentIdentifier
         self.bundleIdentifier = bundleIdentifier
+        self.teamIdentifier = teamIdentifier
     }
 }
