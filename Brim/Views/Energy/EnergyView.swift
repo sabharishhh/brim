@@ -130,6 +130,18 @@ struct EnergyView: View {
             }
         }
         .padding(.vertical, 2)
+        // One element per application. Left alone the name, the process
+        // count and what it cost arrived as three unrelated fragments,
+        // and the bar was already hidden because a bar says nothing out
+        // loud.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(SpokenText.sentences([
+            reading.name,
+            reading.bundlePath == nil ? "runs in the background" : "",
+            reading.processCount > 1 ? "\(reading.processCount) processes" : ""
+        ]))
+        .accessibilityValue(costs(reading))
     }
 
     /// Says what the process actually did, rather than showing a score

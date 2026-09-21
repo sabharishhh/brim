@@ -120,5 +120,17 @@ struct UpdatesView: View {
             }
         }
         .padding(.vertical, 2)
+        // Composed, because the four pieces arrived as four unrelated
+        // fragments. The location matters more here than anywhere: Google
+        // installs the same updater twice, so without it two rows read
+        // identically and a reader cannot tell which is which.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(SpokenText.sentences([
+            agent.vendor,
+            agent.registration.identifier,
+            agent.productIsInstalled ? "" : "nothing to update, the program it checks is gone"
+        ]))
+        .accessibilityValue(agent.registration.spokenLocation ?? "")
     }
 }

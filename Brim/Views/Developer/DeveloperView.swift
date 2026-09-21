@@ -150,10 +150,13 @@ struct DeveloperView: View {
             // Only the regenerable class gets a checkbox. The others are
             // not things Brim removes.
             if cache.cost.isBrimRemovable {
-                Toggle("", isOn: Binding(
+                // Named for the accessibility tree, hidden visually. An
+                // empty label exposes nothing to press.
+                Toggle("Select \(cache.tool) \(cache.name)", isOn: Binding(
                     get: { model.isSelected(cache) },
                     set: { _ in model.toggle(cache) }
                 ))
+                .toggleStyle(.checkbox)
                 .labelsHidden()
             } else {
                 Image(systemName: cache.cost == .configured ? "hand.raised" : "terminal")
@@ -173,12 +176,18 @@ struct DeveloperView: View {
                 Text(ByteText.short(cache.sizeBytes))
                     .monospacedDigit().foregroundColor(cache.cost == .configured ? .orange : .primary)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel(cache.spokenDescription)
+            .accessibilityValue(ByteText.short(cache.sizeBytes))
             Text(cache.explanation)
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
             Text(cache.url.path)
                 .font(.caption2).foregroundColor(.secondary)
                 .truncationMode(.middle).lineLimit(1).textSelection(.enabled)
+                .accessibilityHidden(true)
 
             HStack(spacing: 8) {
                 if cache.cleanupID != nil {
@@ -192,6 +201,11 @@ struct DeveloperView: View {
                     .buttonStyle(.link).font(.caption)
                 }
             }
+            .accessibilityElement(children: .contain)
         }
+        // One element for the description, composed rather than inferred.
+        // The buttons underneath stay addressable on their own; only the
+        // text collapses.
+        .accessibilityElement(children: .contain)
     }
 }

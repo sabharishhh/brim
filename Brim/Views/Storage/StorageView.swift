@@ -133,6 +133,15 @@ struct StorageView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        // One element per figure, with the number as the value. Three
+        // separate pieces of text meant a reader got a heading, then a
+        // number, then a sentence, and had to hold them together itself.
+        // These three figures mean different things and the whole point
+        // of the section is not to let them blur.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(SpokenText.sentences([title, detail]))
+        .accessibilityValue(ByteText.short(bytes))
     }
 
     private var reclaimable: some View {
