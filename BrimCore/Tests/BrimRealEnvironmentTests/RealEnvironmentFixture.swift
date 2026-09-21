@@ -141,6 +141,14 @@ struct RealEnvironmentFixture {
             made.append((label, url))
         }
 
+        // Note: the LaunchAgents plist makes macOS post an "App Background
+        // Activity" notification while the test runs. It names the item
+        // "(null)" because the plist carries a Label and nothing else — no
+        // executable and no owning bundle for Background Task Management to
+        // take a display name from. That is expected, and it is the same
+        // literal `(null)` BTMParser has to cope with when reading the real
+        // database. The plist stays minimal on purpose: this exercises
+        // discovery of a launchd item, not the running of one.
         let files: [(String, URL)] = [
             ("Preferences", library.appendingPathComponent("Preferences/\(id).plist")),
             ("LaunchAgents", library.appendingPathComponent("LaunchAgents/\(id).plist"))
