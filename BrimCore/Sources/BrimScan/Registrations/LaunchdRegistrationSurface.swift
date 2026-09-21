@@ -76,7 +76,12 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
                     targetExists: programExists,
                     recordPath: plistURL.path,
                     evidence: evidence,
-                    isSystemOwned: domain.label == "system"
+                    isSystemOwned: domain.label == "system",
+                    // Asked of the directory, because that is what a
+                    // deletion edits. /Library/LaunchAgents belongs to
+                    // root, so a job there needs an administrator however
+                    // ordinary its own permissions look.
+                    capability: RemovalCapability.forDeleting(plistURL.path)
                 ))
             }
         }

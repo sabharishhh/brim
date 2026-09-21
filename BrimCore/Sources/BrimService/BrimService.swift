@@ -401,9 +401,10 @@ public actor BrimService: BrimServiceProtocol {
             reason = "Every file is gone, but macOS still has this app registered at "
                    + staleRegistrations.map(\.path).joined(separator: ", ") + "."
         case (_, true):
-            reason = "\(targetsRemaining) targets still remain."
+            reason = Self.whyTheseRemain(pathsRemaining)
         default:
-            reason = "\(targetsRemaining) targets still remain, and macOS still has this app registered."
+            reason = Self.whyTheseRemain(pathsRemaining)
+                   + " macOS also still has this app registered."
         }
         
         return VerificationResult(
@@ -518,6 +519,24 @@ public actor BrimService: BrimServiceProtocol {
             registrations: await inventory.all(in: root),
             coverage: await inventory.coverage(in: root)
         )
+    }
+
+    /// Names what is still there and what stopped it going.
+    ///
+    /// "2 targets still remain" was the whole message, and it was useless:
+    /// it did not say which two, or why, and the answer in the case that
+    /// produced it was that both sat in a root-owned directory and no
+    /// amount of retrying would have helped. A count is not a finding.
+    static func whyTheseRemain(_ paths: Set<String>) -> String {
+        let named = paths.sorted().map { path -> String in
+            let name = (path as NSString).lastPathComponent
+            if let why = RemovalCapability.explanation(RemovalCapability.forDeleting(path)) {
+                return "\(name): \(why)"
+            }
+            return "\(name) is still at \(path)."
+        }
+        let opening = paths.count == 1 ? "One thing is still there." : "\(paths.count) things are still there."
+        return ([opening] + named).joined(separator: " ")
     }
 
     /// A one step plan that runs a tool's own cleanup.

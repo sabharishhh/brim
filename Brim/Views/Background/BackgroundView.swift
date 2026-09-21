@@ -277,6 +277,23 @@ private struct RegistrationRow: View {
                     .font(.caption).foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // Said before it is attempted, not after it fails.
+            if registration.isActionableStale,
+               let blocked = RemovalCapability.explanation(registration.capability) {
+                HStack(spacing: 6) {
+                    Label(blocked, systemImage: "lock")
+                        .font(.caption).foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let path = registration.recordPath {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([
+                                URL(fileURLWithPath: path)
+                            ])
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
+                }
+            }
             // The record's own path, not just what it points at. Without it
             // Keystone's four identical rows were indistinguishable, and two
             // of them are the same job installed in a different domain.
