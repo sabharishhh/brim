@@ -17,6 +17,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
+    private let energyStore: EnergyLedgerStore
     /// What was registered before a background reset, written down so the
     /// person can put it back. The reset is refused without one.
     public let restoreLists: RestoreListStore
@@ -72,6 +73,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             .deletingLastPathComponent().appendingPathComponent("brim.sqlite")
         self.index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
 
+        self.energyStore = EnergyLedgerStore(
+            directoryURL: journalStoreDirectory.deletingLastPathComponent()
+        )
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
         // Restore lists sit beside the journals: both are the record of
         // what happened, and a background reset is the one action whose
@@ -791,6 +795,25 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func developerCaches() async -> [DeveloperCache] {
         await DeveloperCacheScanner().scan()
+    }
+
+    /// Where energy totals are kept between runs.
+    private var energyLedger: EnergyLedger { energyStore.load() }
+
+    /// Samples, folds the result into the running totals, and hands back
+    /// both. A single reading only says what a process has spent since it
+    /// started; the totals say what software costs to keep around.
+    public func energyTotals() async -> EnergyTotals {
+        let result = await sampleEnergy()
+        let updated = energyLedger.accumulating(result)
+        try? energyStore.save(updated)
+        return EnergyTotals(
+            accumulated: updated.ranked().map {
+                EnergyTotals.Entry(key: $0.key, milliwattHours: $0.milliwattHours)
+            },
+            since: updated.since,
+            coverageGaps: result.coverageGaps
+        )
     }
 
     public func sampleEnergy() async -> EnergySampleResult {
