@@ -19,7 +19,7 @@ struct ContentView: View {
             if let selection = selection {
                 switch selection {
                 case .review:
-                    ReviewQueueView(selection: $selection, models: models)
+                    ReviewSummaryView(navigationSelection: $selection, models: models)
                 case .applications:
                     ApplicationsView(model: models.applications)
                 case .leftovers:

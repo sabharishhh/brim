@@ -30,6 +30,47 @@ public final class LeftoversModel: ObservableObject {
 
     public var all: [Leftover] { orphaned + unclaimed }
 
+    /// One entry per piece of software rather than one per path. The list
+    /// was unreadable per-path: the same tool appeared several times with
+    /// nothing connecting the rows.
+    public var orphanedGroups: [LeftoverGroup] { orphaned.groupedByOwner() }
+    public var unclaimedGroups: [LeftoverGroup] { unclaimed.groupedByOwner() }
+
+    /// Which group's detail is open. The list answers "what is here"; the
+    /// detail answers "what is this and what do I lose".
+    @Published public var inspected: LeftoverGroup?
+
+    public func visible(_ groups: [LeftoverGroup]) -> [LeftoverGroup] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return groups }
+        return groups.filter { group in
+            group.displayName.localizedCaseInsensitiveContains(query)
+                || (group.identifier?.localizedCaseInsensitiveContains(query) ?? false)
+                || group.items.contains { $0.url.path.localizedCaseInsensitiveContains(query) }
+        }
+    }
+
+    /// Selection is per group: a user reasons about software, not paths.
+    public func isSelected(_ group: LeftoverGroup) -> Bool {
+        !group.items.isEmpty && group.items.allSatisfy { selection.contains($0.id) }
+    }
+
+    public func toggle(_ group: LeftoverGroup) {
+        if isSelected(group) {
+            for item in group.items { selection.remove(item.id) }
+        } else {
+            for item in group.items where item.capability == .ok { selection.insert(item.id) }
+        }
+    }
+
+    public func selectAll(groups: [LeftoverGroup]) {
+        for group in groups { for item in group.items where item.capability == .ok { selection.insert(item.id) } }
+    }
+
+    public func deselectAll(groups: [LeftoverGroup]) {
+        for group in groups { for item in group.items { selection.remove(item.id) } }
+    }
+
     public func visible(_ items: [Leftover]) -> [Leftover] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
@@ -79,6 +120,7 @@ public final class LeftoversModel: ObservableObject {
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
             selection = Set(orphaned.filter { $0.capability == .ok }.map(\.id))
+            inspected = nil
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
