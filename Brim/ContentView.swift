@@ -8,8 +8,13 @@ struct ContentView: View {
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
     @Environment(\.brimService) private var service
-    /// nil until asked; the sheet only appears on a genuinely first run.
-    @State private var needsWelcome: Bool?
+    /// Setup runs once and then never again, whether or not the person
+    /// accepted everything in it. Asking again next launch is how an app
+    /// trains people to dismiss without reading.
+    @AppStorage("hasFinishedSetup") private var hasFinishedSetup = false
+    /// nil until asked. Somebody who enrolled before this flag existed has
+    /// already been through setup and should not see it again.
+    @State private var needsSetup: Bool?
 
     var body: some View {
         NavigationSplitView {
@@ -54,13 +59,22 @@ struct ContentView: View {
         .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
         .focusedSceneValue(\.navigateAction) { item in selection = item }
         .task {
-            if needsWelcome == nil { needsWelcome = !(await service.isEnrolled()) }
+            guard needsSetup == nil else { return }
+            if hasFinishedSetup {
+                needsSetup = false
+            } else {
+                let enrolled = await service.isEnrolled()
+                needsSetup = !enrolled
+            }
         }
         .sheet(isPresented: Binding(
-            get: { needsWelcome == true },
-            set: { if !$0 { needsWelcome = false } }
+            get: { needsSetup == true },
+            set: { if !$0 { needsSetup = false } }
         )) {
-            WelcomeSheet(service: service) { needsWelcome = false }
+            OnboardingSheet(service: service) {
+                hasFinishedSetup = true
+                needsSetup = false
+            }
         }
     }
 }
