@@ -176,6 +176,21 @@ public actor Executor {
                         throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"])
                     }
 
+                    // Preferences are owned by cfprefsd, not by the file.
+                    // Unlinking the plist and leaving the daemon holding
+                    // the domain means the daemon writes it straight back
+                    // out, and the person watches a setting they removed
+                    // reappear. Told first, so the cache is invalid before
+                    // the file goes.
+                    //
+                    // Best effort on purpose: failing to invalidate a cache
+                    // is not a reason to abandon an uninstall, and the
+                    // journal records it either way.
+                    var preferenceDomainForgotten: Bool?
+                    if let domain = PreferenceDomains.domain(forPlistAt: step.target) {
+                        preferenceDomainForgotten = PreferenceDomains.forget(domain)
+                    }
+
                     switch step.effectiveDisposition {
                     case .trash:
                         let resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
@@ -188,7 +203,14 @@ public actor Executor {
                         // there is nothing to put back for this step.
                         try SafeOps.deleteItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     }
-                    journal.stepOutcomes[step.index] = "ok"
+                    if preferenceDomainForgotten == false {
+                        journal.stepOutcomes[step.index] =
+                            "ok_but_preferences_may_return: the file is gone, and macOS's "
+                            + "preference daemon would not let go of the settings, so they "
+                            + "can come back until you log out."
+                    } else {
+                        journal.stepOutcomes[step.index] = "ok"
+                    }
                 } else if step.kind == .resetPrivacyGrants {
                     // Must run while the bundle is still on disk; the plan's
                     // privacyReset phase sorts ahead of every removal so that
