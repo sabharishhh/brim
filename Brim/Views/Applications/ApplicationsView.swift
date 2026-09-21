@@ -202,6 +202,15 @@ struct ApplicationsView: View {
                      + "what it has written elsewhere on this Mac.")
                     .font(.caption)
 
+                // A search that did not finish cannot claim to be the
+                // whole footprint, so it says so and nothing is ticked
+                // for the person.
+                if let gap = footprint.completeness.explanation {
+                    Label(gap, systemImage: "clock.badge.exclamationmark")
+                        .font(.caption).foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 // A total short by an unknown amount has to say so. Without
                 // Full Disk Access every container reads as empty, and a
                 // quietly wrong number is worse than a refused one.

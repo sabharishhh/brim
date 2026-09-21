@@ -27,6 +27,12 @@ public struct Footprint: Codable, Equatable, Sendable {
     public let logicalSizeBytes: Int64
     public let reclaimableSizeBytes: Int64
     public let snapshotPinnedBytes: Int64
+
+    /// What the search could not reach. When this is not complete the
+    /// safety engine takes everything out of the default selection: a
+    /// footprint is a claim about what is there, and an unfinished
+    /// search cannot support the claim.
+    public let completeness: ScanCompleteness
     
     /// The logical total: what these files contain. Not what removing them
     /// gives back, which is `reclaimableSizeBytes`, and not what a snapshot
@@ -43,9 +49,10 @@ public struct Footprint: Codable, Equatable, Sendable {
         items.reduce(0) { $0 + $1.unreadableEntries }
     }
     
-    public init(identity: Identity, items: [FootprintItem], logicalSizeBytes: Int64? = nil, reclaimableSizeBytes: Int64? = nil, snapshotPinnedBytes: Int64? = nil) {
+    public init(identity: Identity, items: [FootprintItem], logicalSizeBytes: Int64? = nil, reclaimableSizeBytes: Int64? = nil, snapshotPinnedBytes: Int64? = nil, completeness: ScanCompleteness = .complete) {
         self.identity = identity
         self.items = items
+        self.completeness = completeness
         
         let calculatedLogical = logicalSizeBytes ?? items.reduce(0) { $0 + $1.sizeBytes }
         self.logicalSizeBytes = calculatedLogical
