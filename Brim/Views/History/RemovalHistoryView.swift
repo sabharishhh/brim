@@ -103,7 +103,11 @@ struct RemovalHistoryView: View {
                 HStack(spacing: 6) {
                     Text("\(record.itemCount) \(record.itemCount == 1 ? "item" : "items")")
                     Text("·")
-                    Text(ByteCountFormatter.string(fromByteCount: record.bytes, countStyle: .file))
+                    // ByteText, like everywhere else. The raw formatter
+                    // writes "Zero KB" for an empty removal, and two
+                    // spellings of the same quantity in one product is the
+                    // thing that makes people distrust all of them.
+                    Text(ByteText.short(record.bytes))
                         .monospacedDigit()
                     Text("·")
                     Text(record.plan.createdAt, format: .dateTime.month().day().hour().minute())
@@ -132,7 +136,7 @@ struct RemovalHistoryView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(record.name), \(record.itemCount) items, "
-            + ByteCountFormatter.string(fromByteCount: record.bytes, countStyle: .file)
+            + ByteText.short(record.bytes)
             + ". " + (record.canUndo ? "Can be undone." : (record.unavailableReason ?? "") + ", cannot be undone.")
         )
     }

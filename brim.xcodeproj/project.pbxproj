@@ -13,6 +13,7 @@
 		3BDB12959F52922B97001549 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8804B4FC58AC1DE26BB847B8 /* main.swift */; };
 		5FFE01FA8BF0C0898EE2B422 /* BrimService in Frameworks */ = {isa = PBXBuildFile; productRef = 0174E8AA4613EA6B84753F4E /* BrimService */; };
 		DEC2463C7961F62E26ADDD19 /* com.sabharishhh.brim.jobhelper.plist in Embed the daemon launchd plist */ = {isa = PBXBuildFile; fileRef = 5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */; };
+		DEE7C907306120B600245421 /* BrimPrivileged in Frameworks */ = {isa = PBXBuildFile; productRef = 56C0EC2028F3846A221B6EC8 /* BrimPrivileged */; };
 		E07015045BD21105F60039C6 /* BrimCore in Frameworks */ = {isa = PBXBuildFile; productRef = EC0D03B715BEB2FE71B3ED57 /* BrimCore */; };
 		FDE2DBCA62CA0977E28DC5C8 /* BrimJobHelper in Embed the privileged daemon */ = {isa = PBXBuildFile; fileRef = 04F873C06CC7334CB88BFF2B /* BrimJobHelper */; };
 /* End PBXBuildFile section */
@@ -30,31 +31,27 @@
 /* Begin PBXCopyFilesBuildPhase section */
 		03C5393EE1F4043B2A958E9D /* Embed the daemon launchd plist */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = Contents/Library/LaunchDaemons;
-			dstSubfolderSpec = 1;
+			dstSubfolder = Wrapper;
 			files = (
 				DEC2463C7961F62E26ADDD19 /* com.sabharishhh.brim.jobhelper.plist in Embed the daemon launchd plist */,
 			);
 			name = "Embed the daemon launchd plist";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		8B0D1156B82F21301405D850 /* Embed the privileged daemon */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "";
-			dstSubfolderSpec = 6;
+			dstSubfolder = Executables;
 			files = (
 				FDE2DBCA62CA0977E28DC5C8 /* BrimJobHelper in Embed the privileged daemon */,
 			);
 			name = "Embed the privileged daemon";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* brim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = brim.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		04F873C06CC7334CB88BFF2B /* BrimJobHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = BrimJobHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		04F873C06CC7334CB88BFF2B /* BrimJobHelper */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = BrimJobHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		2361A3605B5F0DA1399BCC22 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = com.sabharishhh.brim.jobhelper.plist; sourceTree = "<group>"; };
 		8804B4FC58AC1DE26BB847B8 /* main.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -63,8 +60,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Brim */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Brim;
 			sourceTree = "<group>";
 		};
@@ -82,11 +77,10 @@
 		};
 		9DE33D211F204A99BFA8FEAA /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
+				DEE7C907306120B600245421 /* BrimPrivileged in Frameworks */,
 				07A01441515EE4FAFE6FA302 /* Cocoa.framework in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -116,7 +110,6 @@
 				8804B4FC58AC1DE26BB847B8 /* main.swift */,
 				5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */,
 			);
-			name = Helper;
 			path = Helper;
 			sourceTree = SOURCE_ROOT;
 		};
@@ -176,8 +169,6 @@
 				9DE33D211F204A99BFA8FEAA /* Frameworks */,
 			);
 			buildRules = (
-			);
-			dependencies = (
 			);
 			name = BrimJobHelper;
 			packageProductDependencies = (
@@ -241,11 +232,9 @@
 		};
 		C2F52A63CC669E37E6095E4E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				3BDB12959F52922B97001549 /* main.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -259,7 +248,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		000000000000000011000000 /* Debug */ = {
+		000000000000000011000000 /* Debug configuration for PBXProject "Brim" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -329,7 +318,7 @@
 			};
 			name = Debug;
 		};
-		000000000000000012000000 /* Release */ = {
+		000000000000000012000000 /* Release configuration for PBXProject "Brim" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -391,9 +380,11 @@
 			};
 			name = Release;
 		};
-		000000000000000111000000 /* Debug */ = {
+		000000000000000111000000 /* Debug configuration for PBXNativeTarget "brim" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -433,9 +424,11 @@
 			};
 			name = Debug;
 		};
-		000000000000000112000000 /* Release */ = {
+		000000000000000112000000 /* Release configuration for PBXNativeTarget "brim" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9LY29YLFG2;
@@ -473,7 +466,7 @@
 			};
 			name = Release;
 		};
-		AAF985D5169575C1AFD44371 /* Debug */ = {
+		AAF985D5169575C1AFD44371 /* Debug configuration for PBXNativeTarget "BrimJobHelper" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -490,7 +483,7 @@
 			};
 			name = Debug;
 		};
-		E0B4BC7C7EA20D35DF044C0C /* Release */ = {
+		E0B4BC7C7EA20D35DF044C0C /* Release configuration for PBXNativeTarget "BrimJobHelper" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -513,26 +506,25 @@
 		000000000000000010000000 /* Build configuration list for PBXProject "Brim" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				000000000000000011000000 /* Debug */,
-				000000000000000012000000 /* Release */,
+				000000000000000011000000 /* Debug configuration for PBXProject "Brim" */,
+				000000000000000012000000 /* Release configuration for PBXProject "Brim" */,
 			);
 			defaultConfigurationName = Release;
 		};
 		000000000000000110000000 /* Build configuration list for PBXNativeTarget "brim" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				000000000000000111000000 /* Debug */,
-				000000000000000112000000 /* Release */,
+				000000000000000111000000 /* Debug configuration for PBXNativeTarget "brim" */,
+				000000000000000112000000 /* Release configuration for PBXNativeTarget "brim" */,
 			);
 			defaultConfigurationName = Release;
 		};
 		C334B1364B2BAEF85A312AC3 /* Build configuration list for PBXNativeTarget "BrimJobHelper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E0B4BC7C7EA20D35DF044C0C /* Release */,
-				AAF985D5169575C1AFD44371 /* Debug */,
+				E0B4BC7C7EA20D35DF044C0C /* Release configuration for PBXNativeTarget "BrimJobHelper" */,
+				AAF985D5169575C1AFD44371 /* Debug configuration for PBXNativeTarget "BrimJobHelper" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */

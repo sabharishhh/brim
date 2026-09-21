@@ -88,7 +88,12 @@ struct ApplicationsView: View {
                     if let version = application.version {
                         Text(version)
                     }
-                    Text(ByteText.short(application.bundleSizeBytes))
+                    // Said out loud, because the detail pane shows a much
+                    // larger number for the same application and the two
+                    // look like a contradiction otherwise. This is the
+                    // bundle; that is everything the app has scattered
+                    // elsewhere as well.
+                    Text(ByteText.short(application.bundleSizeBytes) + " app")
                         .monospacedDigit()
                 }
                 .font(.caption)
@@ -181,22 +186,47 @@ struct ApplicationsView: View {
                 .foregroundColor(.secondary)
         } else if let footprint = model.footprint {
             let locations = footprint.items.count
-            HStack(spacing: 6) {
-                Text("**\(locations)** \(locations == 1 ? "location" : "locations")")
-                Text("·")
-                Text(ByteText.short(footprint.totalSizeBytes))
-                    .monospacedDigit()
-                Text("·")
-                Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "mechanism" : "mechanisms")")
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("**\(locations)** \(locations == 1 ? "location" : "locations")")
+                    Text("·")
+                    // Named, not just printed. The list beside this shows
+                    // the bundle alone, so an unlabelled larger number here
+                    // reads as one of the two being wrong.
+                    Text(ByteText.short(footprint.totalSizeBytes) + " in total")
+                        .monospacedDigit()
+                    Text("·")
+                    Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "mechanism" : "mechanisms")")
+                }
+                Text("The app itself is \(ByteText.short(application.bundleSizeBytes)). The rest is "
+                     + "what it has written elsewhere on this Mac.")
+                    .font(.caption)
+
+                // A total short by an unknown amount has to say so. Without
+                // Full Disk Access every container reads as empty, and a
+                // quietly wrong number is worse than a refused one.
+                if footprint.unreadableEntries > 0 {
+                    Label(
+                        "\(footprint.unreadableEntries) "
+                        + (footprint.unreadableEntries == 1 ? "item" : "items")
+                        + " could not be read, so this is at least that much and probably more.",
+                        systemImage: "eye.slash"
+                    )
+                    .font(.caption).foregroundColor(.orange)
+                }
             }
             .font(.subheadline)
             .foregroundColor(.secondary)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel(
-                "\(locations) locations found, "
-                + ByteText.short(footprint.totalSizeBytes)
-                + ", across \(model.footprintGroups.count) discovery mechanisms"
+                "\(locations) locations found, across "
+                + "\(model.footprintGroups.count) discovery mechanisms. "
+                + "The app itself is \(ByteText.short(application.bundleSizeBytes))."
+                + (footprint.unreadableEntries > 0
+                   ? " \(footprint.unreadableEntries) items could not be read." : "")
             )
+            .accessibilityValue(ByteText.short(footprint.totalSizeBytes) + " in total")
         }
     }
 
