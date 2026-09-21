@@ -126,6 +126,32 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
 }
 
 extension Registration {
+    /// What a screen reader should say for this row.
+    ///
+    /// The view builds a row out of seven separate pieces of text, and
+    /// left alone the accessibility tree hands a reader all seven as
+    /// unrelated fragments: a name, then a category, then a warning, then
+    /// a sentence, then a path, with nothing saying they describe one
+    /// thing. Composed here instead, so the row reads as a row.
+    ///
+    /// The path is deliberately left out and carried as the value instead.
+    /// Reading a full filesystem path aloud in the middle of every entry
+    /// buries the part that matters, and a reader can ask for the value
+    /// when they want it.
+    public var spokenDescription: String {
+        var parts: [String] = [label, kind.displayName]
+        if isSystemOwned { parts.append("belongs to macOS") }
+        if isActionableStale {
+            parts.append(isClearedByMacOS ? "macOS will drop this" : "points at nothing")
+        }
+        parts.append(evidence)
+        if let signing, signing.isTrouble { parts.append(signing.sentence) }
+        return SpokenText.sentences(parts)
+    }
+
+    /// The location, for the accessibility value.
+    public var spokenLocation: String? { programPath ?? recordPath }
+
     /// Whether this entry belongs to the given application.
     ///
     /// Matches on the bundle identifier, then on the program path pointing
