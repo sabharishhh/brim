@@ -63,21 +63,44 @@ struct StorageView: View {
             figure("Free right now", volume.freeRightNow,
                    "Genuinely empty this second. This is what a new file writes into.", .green)
             figure("Held by macOS", volume.reclaimableByTheSystem,
-                   volume.localSnapshots > 0
-                     ? "Caches and \(volume.localSnapshots) local Time Machine "
-                       + "\(volume.localSnapshots == 1 ? "snapshot" : "snapshots"). macOS gives this "
-                       + "back when something needs it, so deleting files does not add to it."
-                     : "Caches macOS gives back when something needs the room. Deleting files "
-                       + "does not add to it.",
+                   "Caches macOS gives back when something needs the room. Deleting files "
+                   + "does not add to it.",
                    .orange)
 
             Divider()
             Text("Finder would say " + ByteText.short(volume.freeAsFinderReportsIt)
                  + " free, because it counts the last two together.")
                 .font(.caption).foregroundColor(.secondary)
+
+            if !volume.snapshots.isEmpty { snapshotNote(volume) }
         }
         .padding(14)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Snapshots are reported by count and purgeability, never by size.
+    /// macOS exposes no supported way to ask how many bytes one is holding,
+    /// and a figure invented here would be the exact dishonesty this
+    /// section exists to avoid.
+    private func snapshotNote(_ volume: VolumeAccount) -> some View {
+        let pinning = volume.pinningSnapshots.count
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath").foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(volume.snapshots.count) local "
+                     + (volume.snapshots.count == 1 ? "snapshot" : "snapshots"))
+                    .fontWeight(.medium)
+                Text(pinning == 0
+                     ? "macOS will discard these when it needs the room."
+                     : "\(pinning) of them will not be discarded automatically. Until they go, "
+                       + "deleting a large file can free nothing, because the blocks are still "
+                       + "referenced. macOS does not report how much they hold, so Brim does "
+                       + "not guess.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 2)
     }
 
     private func bar(_ volume: VolumeAccount) -> some View {

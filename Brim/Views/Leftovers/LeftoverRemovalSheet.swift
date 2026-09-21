@@ -78,6 +78,14 @@ struct LeftoverRemovalSheet: View {
                      ? "Brim went back to every location it touched. All of them are empty."
                      : (result.reason ?? "Some of it is still on disk."))
                     .foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+
+                if let explanation = model.spaceExplanation {
+                    Label(explanation, systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundColor(.orange)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal)
+                }
             }
             .padding()
         case .ready:

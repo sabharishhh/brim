@@ -181,6 +181,14 @@ struct UninstallSheet: View {
                     .foregroundColor(.secondary)
                     .monospacedDigit()
             }
+
+            if let explanation = model.spaceExplanation {
+                Label(explanation, systemImage: "clock.arrow.circlepath")
+                    .font(.caption).foregroundColor(.orange)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal)
+            }
         }
         .padding()
         .accessibilityElement(children: .combine)
