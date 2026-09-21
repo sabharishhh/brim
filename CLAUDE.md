@@ -69,6 +69,19 @@ asked so often that they stop reading.
 macOS is holding, and space Brim could clear are three facts. One combined
 figure is how cleaning utilities end up lying.
 
+**Three classes of developer artefact, and the third is untouchable.**
+Regenerable caches Brim removes itself. Tool managed stores are delegated
+to the tool's own command, shown in full before approval, because deleting
+a module cache by hand leaves the tool confused. Stateful artefacts are
+reported and routed, never touched: Xcode archives, simulator devices and
+container disk images are always in this class whatever their size, and
+`DeveloperSafetyTests` holds the line.
+
+**Savings are what comes back, not what was counted.** Two identical files
+on APFS often share their blocks already, so removing one frees nothing.
+Snapshots pin blocks the same way, which is why a deletion can free
+nothing at all and has to say so rather than report success.
+
 **No AI written explanations.** `C-4` cut them from V1 because they are
 presentation over facts the deterministic renderer already produces. If a
 row is unclear, the usual cause is missing structure, not missing prose.
