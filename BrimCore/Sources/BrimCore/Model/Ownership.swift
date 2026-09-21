@@ -48,6 +48,13 @@ public struct OwnershipSearch: Sendable {
     public let receiptBundleIDs: Set<String>
     /// Identifiers Brim itself has removed, from its own ledger.
     public let previouslyRemovedBundleIDs: Set<String>
+    /// Identifiers named by a registration — a launchd job, a background
+    /// item, an installer receipt — whose program is no longer on disk,
+    /// mapped to the sentence describing that registration. The strongest
+    /// everyday orphan evidence there is: macOS is still holding a record
+    /// of software that has gone, which is precisely what a user notices as
+    /// "I uninstalled this and it is still here".
+    public let staleRegistrationOwners: [String: String]
     /// Launch Services' answer for an identifier: every location it still
     /// associates with that bundle.
     public let launchServicesLookup: @Sendable (String) -> [URL]
@@ -59,6 +66,7 @@ public struct OwnershipSearch: Sendable {
         installedNames: Set<String>,
         receiptBundleIDs: Set<String>,
         previouslyRemovedBundleIDs: Set<String>,
+        staleRegistrationOwners: [String: String] = [:],
         launchServicesLookup: @escaping @Sendable (String) -> [URL],
         exists: @escaping @Sendable (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
     ) {
@@ -66,6 +74,7 @@ public struct OwnershipSearch: Sendable {
         self.installedNames = installedNames
         self.receiptBundleIDs = receiptBundleIDs
         self.previouslyRemovedBundleIDs = previouslyRemovedBundleIDs
+        self.staleRegistrationOwners = staleRegistrationOwners
         self.launchServicesLookup = launchServicesLookup
         self.exists = exists
     }
@@ -95,6 +104,10 @@ public struct OwnershipSearch: Sendable {
                 evidence: "macOS still lists an application with this identifier at "
                         + "\(stale.path), which is no longer there."
             )
+        }
+
+        if let registration = staleRegistrationOwners[identifier] {
+            return .recordedButGone(evidence: registration)
         }
 
         if receiptBundleIDs.contains(identifier) {

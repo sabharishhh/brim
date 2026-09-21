@@ -12,11 +12,18 @@ public actor LeftoversScanner {
     /// whether a container leftover is removable or only visible.
     private let hasFullDiskAccess: Bool
 
+    /// Registrations whose program has gone, keyed by the bundle they name.
+    /// Supplied by the caller because enumerating them is the registration
+    /// sweep's job, not this scanner's.
+    private let staleRegistrationOwners: [String: String]
+
     public init(
         root: FileSystemRoot,
         launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
+        staleRegistrationOwners: [String: String] = [:],
         hasFullDiskAccess: Bool? = nil
     ) {
+        self.staleRegistrationOwners = staleRegistrationOwners
         self.root = root
         self.resolver = IdentityResolver(root: root)
         self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
@@ -37,6 +44,7 @@ public actor LeftoversScanner {
             installedNames: activeNames,
             receiptBundleIDs: receiptBundleIDs,
             previouslyRemovedBundleIDs: knownPastBundleIDs,
+            staleRegistrationOwners: staleRegistrationOwners,
             launchServicesLookup: launchServicesLookup
         )
 
