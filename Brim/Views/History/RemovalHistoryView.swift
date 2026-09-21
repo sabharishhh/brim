@@ -4,8 +4,8 @@ import BrimUI
 
 /// Past removals, and the one place undo is offered.
 struct RemovalHistoryView: View {
-    @StateObject private var model = RemovalHistoryModel()
-    @StateObject private var recovery = RecoveryStatusModel()
+    @ObservedObject var model: RemovalHistoryModel
+    @ObservedObject var recovery: RecoveryStatusModel
     @SwiftUI.Environment(\.brimService) private var service
 
     var body: some View {

@@ -116,6 +116,11 @@ public actor BrimService: BrimServiceProtocol {
     }()
     #endif
 
+    /// When a human last proved they were at the machine. Drives the grace
+    /// window; in memory only, so quitting Brim always costs one prompt.
+    private var lastHumanPresence: Date?
+    private let approvalPolicy = ApprovalPolicy()
+
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
         let plan = try await planStore.load(planId: planId)
         
@@ -134,10 +139,25 @@ public actor BrimService: BrimServiceProtocol {
         }
         #endif
 
-        // Use LAContext for real human approval
+        // Not every plan is worth interrupting a human for. The review
+        // sheet is the consent; a fingerprint proves only that a person is
+        // at the machine right now, which is worth one interruption before
+        // something is destroyed beyond recovery and worth nothing before a
+        // file is moved to the Trash.
+        //
+        // The failure this guards against is not an unauthorised deletion.
+        // It is a user asked so often that they stop reading, at which point
+        // every prompt in the product has become decoration.
+        let requirement = approvalPolicy.requirement(
+            for: plan, lastAuthenticated: lastHumanPresence
+        )
+        guard case .humanPresence(let reason) = requirement else {
+            return await tokenStore.mintToken(
+                planId: planId, planHash: hash, requesterIdentity: requesterIdentity
+            )
+        }
+
         let context = LAContext()
-        let reason = "Approve \(requesterIdentity) deletion of \(plan.intent.subjectIdentity.name) (\(plan.steps.count) items)."
-        
         var authError: NSError?
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) {
             do {
@@ -145,6 +165,9 @@ public actor BrimService: BrimServiceProtocol {
                 guard success else {
                     throw NSError(domain: "BrimService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Authentication failed."])
                 }
+                // Proving presence once covers the next few minutes of
+                // destructive work, the way sudo's timestamp does.
+                lastHumanPresence = Date()
             } catch {
                 if let laError = error as? LAError, laError.code == .userCancel {
                     // Ignore user cancel and throw standard error

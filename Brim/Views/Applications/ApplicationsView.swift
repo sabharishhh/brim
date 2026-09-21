@@ -10,7 +10,7 @@ import BrimUI
 /// the whole footprint Brim discovered from its identity alone, each group
 /// labelled with the mechanism that found it.
 struct ApplicationsView: View {
-    @StateObject private var model = ApplicationsModel()
+    @ObservedObject var model: ApplicationsModel
     @SwiftUI.Environment(\.brimService) private var service
     @State private var uninstalling: InstalledApplication?
 
@@ -22,7 +22,7 @@ struct ApplicationsView: View {
             detail
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task { await model.load(service: service) }
+        .task { await model.loadIfNeeded(service: service) }
         .sheet(item: $uninstalling) { application in
             UninstallSheet(application: application, service: service) {
                 // Drop the row at once if the bundle really is gone —
