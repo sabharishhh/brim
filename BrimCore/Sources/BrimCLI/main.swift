@@ -130,8 +130,24 @@ struct Updates: AsyncParsableCommand {
         abstract: "How each application gets its next version, read from the disk"
     )
     @Flag(name: .long, help: "Only the applications with no way to update") var stranded = false
+    @Flag(name: .long, help: "Check for newer versions. Reaches the network.") var check = false
 
     mutating func run() async throws {
+        if check {
+            let available = await BrimCLI.getService().checkForUpdates()
+            if available.isEmpty {
+                print("Everything is up to date.")
+                return
+            }
+            print("\(available.count) \(available.count == 1 ? "update" : "updates") available:")
+            for update in available {
+                let how = update.canInstall ? "brim can install this" : "opens itself to update"
+                print("  \(update.name): \(update.installed ?? "?") → \(update.latest) "
+                      + "(\(how))")
+            }
+            return
+        }
+
         let report = await BrimCLI.getService().updateReport()
         print(report.summary)
         print("")

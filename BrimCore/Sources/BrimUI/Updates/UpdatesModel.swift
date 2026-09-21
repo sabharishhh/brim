@@ -50,4 +50,73 @@ public final class UpdatesModel: ObservableObject {
         report.coverage.filter { $0.homebrewCask != nil }
             .sorted { $0.application.name < $1.application.name }
     }
+
+    // MARK: - Checking, and doing something about it
+
+    /// Updates that actually exist. Empty until somebody presses the
+    /// button, because finding out reaches the network.
+    @Published public private(set) var available: [AvailableUpdate] = []
+    @Published public private(set) var isChecking = false
+    @Published public private(set) var hasChecked = false
+    /// Bundle identifiers currently being installed.
+    @Published public private(set) var installing: Set<String> = []
+    @Published public var problem: String?
+
+    /// The line at the top. Says whether there is anything to do, which
+    /// is the question somebody opening this section is asking.
+    public var headline: String {
+        if isChecking { return "Checking for updates…" }
+        if !hasChecked {
+            let count = report.coverage.filter { !$0.sources.isEmpty }.count
+            return "\(count) \(count == 1 ? "application" : "applications") can be checked "
+                 + "for updates."
+        }
+        if available.isEmpty {
+            return orphanedCasks.isEmpty
+                ? "Everything is up to date."
+                : "Everything is up to date. \(orphanedCasks.count) Homebrew "
+                + "\(orphanedCasks.count == 1 ? "record refers" : "records refer") to "
+                + "software that is not installed."
+        }
+        let count = available.count
+        return "\(count) \(count == 1 ? "update is" : "updates are") available."
+    }
+
+    /// Casks Homebrew tracks whose application is gone.
+    @Published public private(set) var orphanedCasks: [OrphanedCask] = []
+
+    public func forget(_ cask: OrphanedCask, service: any BrimServiceProtocol) async {
+        if let complaint = await service.forgetCask(cask.name) {
+            problem = complaint
+            return
+        }
+        problem = nil
+        orphanedCasks.removeAll { $0.name == cask.name }
+    }
+
+    public func check(service: any BrimServiceProtocol) async {
+        isChecking = true
+        defer { isChecking = false; hasChecked = true }
+        available = await service.checkForUpdates()
+        orphanedCasks = await service.orphanedCasks()
+    }
+
+    public func install(_ update: AvailableUpdate, service: any BrimServiceProtocol) async {
+        installing.insert(update.bundleID)
+        defer { installing.remove(update.bundleID) }
+
+        if let complaint = await service.installUpdate(update) {
+            problem = complaint
+            return
+        }
+        problem = nil
+        available.removeAll { $0.bundleID == update.bundleID }
+        await load(service: service)
+    }
+
+    public func installAll(service: any BrimServiceProtocol) async {
+        for update in available where update.canInstall {
+            await install(update, service: service)
+        }
+    }
 }

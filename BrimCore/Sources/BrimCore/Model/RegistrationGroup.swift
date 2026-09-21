@@ -81,6 +81,12 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
     /// What a screen reader should say for the group's header row, so a
     /// reader hears one application rather than a name followed by
     /// unattached counts.
+    /// Where this group's first located item sits, for a table column and
+    /// for revealing it in Finder.
+    public var location: String? {
+        items.compactMap { $0.programPath ?? $0.recordPath }.first
+    }
+
     public var spokenDescription: String {
         var parts = [displayName, composition]
         if let signedBy { parts.append("signed by \(signedBy)") }

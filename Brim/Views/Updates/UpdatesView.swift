@@ -36,16 +36,20 @@ struct UpdatesView: View {
                 Text(summary).font(.caption).foregroundColor(.secondary)
             }
             Spacer()
-            Button("Rescan") { Task { await model.load(service: service) } }
-                .disabled(model.isLoading)
+            if model.available.contains(where: \.canInstall) {
+                Button("Update All") { Task { await model.installAll(service: service) } }
+                    .disabled(!model.installing.isEmpty)
+            }
+            Button(model.hasChecked ? "Check Again" : "Check for Updates") {
+                Task { await model.check(service: service) }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(model.isChecking || model.isLoading)
         }
         .padding()
     }
 
-    private var summary: String {
-        if model.isLoading { return "Reading what each application updates from…" }
-        return model.report.summary
-    }
+    private var summary: String { model.headline }
 
     @ViewBuilder
     private var content: some View {
@@ -61,6 +65,11 @@ struct UpdatesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
+                if let problem = model.problem {
+                    Text(problem).font(.caption).foregroundColor(.orange)
+                }
+                availableSection
+                orphanedCaskSection
                 strandedSection
                 homebrewSection
                 section(
@@ -79,6 +88,82 @@ struct UpdatesView: View {
                 )
             }
             .listStyle(.inset)
+        }
+    }
+
+    /// What can actually be updated, and the button that does it.
+    @ViewBuilder
+    private var availableSection: some View {
+        if !model.available.isEmpty {
+            Section {
+                ForEach(model.available) { update in
+                    HStack(spacing: 8) {
+                        Text(update.name).fontWeight(.medium)
+                        Text("\(update.installed ?? "?") → \(update.latest)")
+                            .font(.caption).foregroundColor(.secondary).monospacedDigit()
+                        Spacer()
+                        if model.installing.contains(update.bundleID) {
+                            ProgressView().controlSize(.small)
+                        } else if update.canInstall {
+                            Button("Update") {
+                                Task { await model.install(update, service: service) }
+                            }
+                        } else if case .appStore = update.source {
+                            Button("Open App Store") {
+                                if let url = URL(string: "macappstore://showUpdatesPage") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }
+                        } else {
+                            Button("Open") {
+                                NSWorkspace.shared.open(
+                                    URL(fileURLWithPath: "/Applications/\(update.name).app")
+                                )
+                            }
+                            .help("This application installs its own updates. Opening it "
+                                  + "lets it do so.")
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                }
+            } header: {
+                Text("Available (\(model.available.count))").font(.headline)
+                    .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// Homebrew records for software that is not on the disk.
+    @ViewBuilder
+    private var orphanedCaskSection: some View {
+        if !model.orphanedCasks.isEmpty {
+            Section {
+                ForEach(model.orphanedCasks) { cask in
+                    HStack(spacing: 8) {
+                        Text(cask.name).fontWeight(.medium)
+                        if let version = cask.installedVersion {
+                            Text(version).font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button("Remove Record") {
+                            Task { await model.forget(cask, service: service) }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                }
+            } header: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Homebrew records with nothing installed "
+                         + "(\(model.orphanedCasks.count))").font(.headline)
+                    Text("The application was removed but Homebrew still lists it, so it keeps "
+                         + "offering to update software that is not here.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
@@ -107,8 +192,10 @@ struct UpdatesView: View {
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("No update source (\(model.stranded.count))").font(.headline)
-                    Text("No App Store receipt, Sparkle feed, Homebrew cask or updater.")
+                    Text("Cannot be checked (\(model.stranded.count))").font(.headline)
+                    Text("These have no App Store receipt, Sparkle feed, Homebrew cask or "
+                         + "updater, so there is no way to tell whether a newer version "
+                         + "exists.")
                         .font(.caption).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
