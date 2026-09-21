@@ -12,7 +12,7 @@ import BrimUI
 struct LeftoversView: View {
     @SwiftUI.Environment(\.brimService) private var service
 
-    @StateObject private var model = LeftoversModel()
+    @ObservedObject var model: LeftoversModel
     @State private var reviewRequest: PlanIntent?
 
     var body: some View {
@@ -23,7 +23,7 @@ struct LeftoversView: View {
             Divider()
             footer
         }
-        .task { await model.load(service: service) }
+        .task { await model.loadIfNeeded(service: service) }
         .sheet(item: $reviewRequest) { intent in
             LeftoverRemovalSheet(intent: intent, service: service) {
                 Task { await model.load(service: service) }
