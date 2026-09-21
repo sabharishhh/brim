@@ -31,7 +31,10 @@ public enum BrimJobHelper {
     /// replace a stale copy rather than talk to it.
     public static let version = "1"
 
-    /// What the daemon demands of anything that connects to it.
+    public static let teamID = "9LY29YLFG2"
+
+    /// What the daemon demands of anything that connects to it: the
+    /// application, and nothing else.
     ///
     /// Anchored to Apple, pinned to this application and this team. The
     /// previous attempt at this pinned `com.google.Brim` and team
@@ -39,10 +42,28 @@ public enum BrimJobHelper {
     /// connection anyway because the result was never checked.
     public static func clientRequirement(
         bundleID: String = "com.sabharishhh.brim",
-        teamID: String = "9LY29YLFG2"
+        teamID: String = BrimJobHelper.teamID
     ) -> String {
+        requirement(identifier: bundleID, teamID: teamID)
+    }
+
+    /// What the application demands of the daemon it is talking to.
+    ///
+    /// A separate requirement, because the two are separate identities
+    /// and pinning the wrong one is easy: the first version had the app
+    /// checking the daemon against the *app's* identifier, which nothing
+    /// could ever satisfy. Both directions are checked, because a root
+    /// service accepting whatever answers is how one gets replaced.
+    public static func daemonRequirement(
+        identifier: String = "com.sabharishhh.brim.jobhelper",
+        teamID: String = BrimJobHelper.teamID
+    ) -> String {
+        requirement(identifier: identifier, teamID: teamID)
+    }
+
+    private static func requirement(identifier: String, teamID: String) -> String {
         "anchor apple generic"
-        + " and identifier \"\(bundleID)\""
+        + " and identifier \"\(identifier)\""
         + " and certificate leaf[subject.OU] = \"\(teamID)\""
     }
 
