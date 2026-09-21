@@ -46,7 +46,8 @@ public struct ShellProfileSurface: RegistrationSurface {
         }
         return readable
             ? .available(kind)
-            : .unavailable(kind, "Your shell profiles could not be read.")
+            : .unavailable(kind, "Your shell profiles could not be read.",
+                           absence: .needsPermission)
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
@@ -148,7 +149,7 @@ public struct KeychainSurface: RegistrationSurface {
     public init() {}
 
     public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
-        .unavailable(
+        .withheld(
             kind,
             "Brim does not read your keychain. macOS only shows an application its own "
             + "entries, and reading anybody else's means a password prompt for each one. "
