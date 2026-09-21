@@ -511,6 +511,14 @@ public actor BrimService: BrimServiceProtocol {
         )
     }
 
+    public func sampleEnergy() async -> EnergySampleResult {
+        await EnergySampler().sample()
+    }
+
+    public func volumes() async -> [VolumeAccount] {
+        await VolumeAccountant().accounts()
+    }
+
     public func installedApplications() async throws -> [InstalledApplication] {
         await ApplicationInventory(root: root).installedApplications()
     }
