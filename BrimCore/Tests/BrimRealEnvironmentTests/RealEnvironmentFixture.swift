@@ -92,22 +92,26 @@ struct RealEnvironmentFixture {
     /// from it lands inside the namespace the safety rail will allow.
     var harnessBundleID: String { "\(runID).deepuninstall" }
 
-    /// Whether this process may create a sandbox container it can later
-    /// remove.
+    /// The harness does **not** create sandbox containers, and there is no
+    /// probe that would make it safe to.
     ///
     /// Creating `~/Library/Containers/<id>` makes `containermanagerd` adopt
-    /// the directory and write protected metadata inside it. Removing that
-    /// afterwards needs Full Disk Access, which the app has and a plain
-    /// `swift test` run usually does not — so a harness without it would
-    /// strand a directory in the user's Library on every run. Probed the same
-    /// way the app probes, by attempting the operation that actually fails.
-    static var canManageContainers: Bool {
-        let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
-        let fd = open(trash.path, O_EVTONLY)
-        guard fd >= 0 else { return false }
-        close(fd)
-        return true
-    }
+    /// the directory and write `.com.apple.containermanagerd.metadata.plist`
+    /// inside it. That file cannot be removed afterwards — not by this
+    /// process, not with Full Disk Access, and not as root. It is a data
+    /// vault, and SIP does not yield to any of them; only the owning daemon
+    /// or a process holding the right entitlement can unlink it, which is
+    /// why Finder puts up an authorization dialog instead of simply failing.
+    ///
+    /// An earlier version probed for Full Disk Access and created a
+    /// container when it found it. That probe tested the wrong thing: the
+    /// runs had Full Disk Access, created four containers, and could not
+    /// remove any of them. They are still in the author's Library.
+    ///
+    /// A correct probe is not possible either, because finding out whether
+    /// removal works means creating the container that cannot be removed.
+    /// So the container surface belongs to the synthetic fixtures, which
+    /// own their filesystem root and can delete anything in it.
 
     /// Lays down the footprint a real application scatters across the user's
     /// Library — the whole point of a deep uninstall being that every one of
@@ -128,10 +132,6 @@ struct RealEnvironmentFixture {
             ("Application Scripts", library.appendingPathComponent("Application Scripts/\(id)")),
             ("Saved Application State", library.appendingPathComponent("Saved Application State/\(id).savedState"))
         ]
-
-        if Self.canManageContainers {
-            directories.append(("Containers", library.appendingPathComponent("Containers/\(id)")))
-        }
 
         var made: [(String, URL)] = []
         for (label, url) in directories {
