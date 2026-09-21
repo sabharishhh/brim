@@ -158,12 +158,67 @@ struct RealEnvironmentFixture {
         return made
     }
 
+    /// A real application bundle in `~/Applications`, registered with Launch
+    /// Services exactly as an installed app is.
+    ///
+    /// Needed because the registration is a separate surface from the files:
+    /// deleting the bundle leaves the record behind, and only an actually
+    /// registered bundle can prove the record is retracted.
+    mutating func makeRegisteredAppBundle(suffix: String = "") throws -> URL {
+        let applications = home.appendingPathComponent("Applications")
+        let bundle = applications.appendingPathComponent("\(runID)\(suffix).app")
+        let macOS = bundle.appendingPathComponent("Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+        created.append(bundle)
+
+        let info = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+          <key>CFBundleIdentifier</key><string>\(harnessBundleID)</string>
+          <key>CFBundleName</key><string>\(runID)</string>
+          <key>CFBundleExecutable</key><string>harness</string>
+          <key>CFBundleShortVersionString</key><string>1.0</string>
+        </dict></plist>
+        """
+        try info.write(
+            to: bundle.appendingPathComponent("Contents/Info.plist"),
+            atomically: true, encoding: .utf8
+        )
+        let executable = macOS.appendingPathComponent("harness")
+        try "#!/bin/sh\nexit 0\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        try Self.lsregister(["-f", bundle.path])
+        return bundle
+    }
+
+    /// Runs `lsregister` with fixed arguments. Used only by the harness, to
+    /// put a bundle into the state a real installation leaves it in.
+    static func lsregister(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath:
+            "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks"
+            + "/LaunchServices.framework/Versions/A/Support/lsregister")
+        process.arguments = arguments
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+    }
+
     // MARK: - Teardown
 
     /// Removes everything this run created. Call from `tearDown`, and treat
     /// failures as test failures: a harness that leaks real directories into
     /// a user's Library is worse than one that fails.
     func cleanUp(file: StaticString = #filePath, line: UInt = #line) {
+        for url in created where url.pathExtension == "app" {
+            // Retract before removing: a harness that leaves a registration
+            // behind is leaving exactly the leftover these tests exist to
+            // catch. Harmless when the test already unregistered it.
+            try? Self.lsregister(["-u", url.path])
+        }
         for url in created {
             guard Self.isSafeToRemove(url) else {
                 XCTFail("Refusing to remove \(url.path): outside the harness namespace", file: file, line: line)
@@ -185,16 +240,27 @@ struct RealEnvironmentFixture {
         }
     }
 
+    /// The only directories this harness may create in, and therefore the
+    /// only ones it may remove from. `~/Applications` is here because a
+    /// Launch Services registration can only be proven against a bundle that
+    /// really is installed where applications go; the system-wide
+    /// `/Applications` is deliberately absent.
+    static var removableRoots: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            home.appendingPathComponent("Library").standardizedFileURL,
+            home.appendingPathComponent("Applications").standardizedFileURL
+        ]
+    }
+
     /// The one rule that keeps this harness from being dangerous: a path is
-    /// removable only if the harness marker appears in its own last component.
-    /// Checking the whole path would let `~/BrimHarness-x/../../Documents`
-    /// through, so the component is checked directly.
+    /// removable only if the harness marker appears in its own last component
+    /// *and* it sits inside one of the roots above. Checking the whole path
+    /// would let `~/BrimHarness-x/../../Documents` through, so the component
+    /// is checked directly and the path is standardized first.
     static func isSafeToRemove(_ url: URL) -> Bool {
         let standardized = url.standardizedFileURL
         guard standardized.lastPathComponent.hasPrefix(marker) else { return false }
-        // Must still live under the user's Library, never anywhere else.
-        let library = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library").standardizedFileURL
-        return standardized.path.hasPrefix(library.path + "/")
+        return removableRoots.contains { standardized.path.hasPrefix($0.path + "/") }
     }
 }

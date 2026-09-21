@@ -268,22 +268,55 @@ public actor BrimService: BrimServiceProtocol {
         let after = journal?.freeSpaceAfter ?? 0
         let recoveredBytes = max(0, after - before)
         
-        // Re-observe targets using lstat to avoid traversing symlinks
-        var targetsRemaining = 0
-        for step in plan.steps {
+        // Re-observe targets using lstat to avoid traversing symlinks.
+        // Only path-targeted steps: a bundle identifier is not a file, and
+        // lstat-ing one resolves it against the working directory.
+        var pathsRemaining = Set<String>()
+        for step in plan.steps where step.kind.targetIsPath {
+            if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" { continue }
             var statBuf = stat()
             if lstat(step.target, &statBuf) == 0 { // 0 means it exists (symlink or real file)
-                // Was it excluded?
-                if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" {
-                    continue
-                }
                 print("VERIFY FOUND LEFTOVER TARGET: \(step.target) (Step \(step.index) - \(step.kind))")
-                targetsRemaining += 1
+                pathsRemaining.insert(step.target)
             }
         }
-        
-        let success = targetsRemaining == 0
-        let reason = success ? nil : "\(targetsRemaining) targets still remain."
+        let targetsRemaining = pathsRemaining.count
+
+        // Files are not the whole claim. A removed application whose Launch
+        // Services record survives still appears in "Open With" and still
+        // answers when something resolves its bundle identifier — which is
+        // exactly the kind of leftover this product exists to prevent, so
+        // verification has to look for it rather than trust the step.
+        var staleRegistrations: [URL] = []
+        let unregistered = plan.steps.filter { $0.kind == .unregisterLaunchServices }
+        if plan.intent.type == .uninstall,
+           !unregistered.isEmpty,
+           let bundleID = plan.intent.subjectIdentity.bundleID {
+            // Scoped to the paths this plan actually removed. Another copy
+            // of the same app elsewhere on disk is somebody else's bundle,
+            // not a leftover of this uninstall — and reporting it would make
+            // the check fire on every machine that has one.
+            let removedPaths = Set(unregistered.map {
+                URL(fileURLWithPath: $0.target).standardizedFileURL.path
+            })
+            staleRegistrations = LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: bundleID)
+                .filter { removedPaths.contains($0.standardizedFileURL.path) }
+        }
+
+        let success = targetsRemaining == 0 && staleRegistrations.isEmpty
+        let reason: String?
+        switch (targetsRemaining, staleRegistrations.isEmpty) {
+        case (0, true):
+            reason = nil
+        case (0, false):
+            reason = "Every file is gone, but macOS still has this app registered at "
+                   + staleRegistrations.map(\.path).joined(separator: ", ") + "."
+        case (_, true):
+            reason = "\(targetsRemaining) targets still remain."
+        default:
+            reason = "\(targetsRemaining) targets still remain, and macOS still has this app registered."
+        }
         
         return VerificationResult(
             planId: planId,

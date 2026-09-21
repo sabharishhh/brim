@@ -22,9 +22,10 @@ final class PlannerTests: XCTestCase {
         
         let plan = planner.createPlan(from: evaluatedFootprint, intent: intent, engineVersion: "1.0")
         
-        // A whole-app uninstall clears the app's privacy grants first, so
-        // there is one more step than there are files.
-        XCTAssertEqual(plan.steps.count, 2)
+        // A whole-app uninstall brackets the removal: grants cleared first
+        // while the bundle exists, its registration retracted after it does
+        // not. So there are two more steps than there are files.
+        XCTAssertEqual(plan.steps.count, 3)
 
         let privacy = try XCTUnwrap(plan.steps.first { $0.kind == .resetPrivacyGrants })
         XCTAssertEqual(privacy.target, "test", "The reset is scoped to the bundle identifier")
@@ -47,7 +48,66 @@ final class PlannerTests: XCTestCase {
         
         XCTAssertEqual(plan.expectedTotalBytes, 1024)
     }
-    
+
+    func testAWholeAppUninstallRetractsTheLaunchServicesRegistration() throws {
+        // Deleting a bundle leaves its Launch Services record behind: the app
+        // keeps appearing in "Open With" and keeps claiming its document
+        // types. Removing the files is not the whole uninstall.
+        let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
+        let identity = Identity(bundleID: "com.test.app", name: "TestApp")
+        let appURL = rootURL.appendingPathComponent("Test.app")
+
+        let evidence = Evidence(url: appURL, tier: .A, mechanism: "test", humanSentence: "test")
+        let item = EvaluatedItem(
+            footprintItem: FootprintItem(evidence: evidence, sizeBytes: 1024, capability: .ok),
+            selection: .selected,
+            costOfError: .low
+        )
+        let footprint = EvaluatedFootprint(identity: identity, items: [item])
+
+        let plan = Planner().createPlan(
+            from: footprint,
+            intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
+            engineVersion: "1.0"
+        )
+
+        let unregister = try XCTUnwrap(
+            plan.steps.first { $0.kind == .unregisterLaunchServices },
+            "A whole-app uninstall must retract the registration"
+        )
+        XCTAssertEqual(unregister.target, appURL.path, "Scoped to the bundle, never a database rebuild")
+        XCTAssertEqual(unregister.executionPhase, .registration)
+        XCTAssertEqual(unregister.expectedBytes, 0, "A registration is not disk space")
+
+        XCTAssertEqual(plan.executionOrderedSteps.last?.kind, .unregisterLaunchServices,
+                       "Launch Services re-registers a bundle it can still see, so this runs last")
+    }
+
+    func testTidyingSpecificItemsDoesNotTouchTheRegistration() throws {
+        // Picking one leftover out of the queue is not an uninstall. It must
+        // not unregister the application that still exists.
+        let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
+        let identity = Identity(bundleID: "com.test.app", name: "TestApp")
+        let cacheURL = rootURL.appendingPathComponent("Caches/com.test.app")
+
+        let evidence = Evidence(url: cacheURL, tier: .B, mechanism: "test", humanSentence: "test")
+        let item = EvaluatedItem(
+            footprintItem: FootprintItem(evidence: evidence, sizeBytes: 10, capability: .ok),
+            selection: .selected,
+            costOfError: .low
+        )
+        let footprint = EvaluatedFootprint(identity: identity, items: [item])
+
+        let plan = Planner().createPlan(
+            from: footprint,
+            intent: PlanIntent(type: .uninstall, subjectIdentity: identity, specificTargets: [cacheURL]),
+            engineVersion: "1.0"
+        )
+
+        XCTAssertFalse(plan.steps.contains { $0.kind == .unregisterLaunchServices })
+        XCTAssertFalse(plan.steps.contains { $0.kind == .resetPrivacyGrants })
+    }
+
     func testArchiveOnlyDoesNotGenerateTrashSteps() throws {
         let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
         let identity = Identity(bundleID: "test", name: "test")

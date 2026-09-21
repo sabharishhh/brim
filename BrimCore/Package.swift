@@ -63,6 +63,6 @@ let package = Package(
         .testTarget(name: "BrimGoldenTests", dependencies: ["BrimCore", "BrimFixtures"]),
         .testTarget(name: "BrimUITests", dependencies: ["BrimUI", "BrimCore", "BrimProtocol"]),
         // Exercises the real machine. Opt-in via BRIM_REAL_ENV=1; skips otherwise.
-        .testTarget(name: "BrimRealEnvironmentTests", dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan"]),
+        .testTarget(name: "BrimRealEnvironmentTests", dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan", "BrimOps"]),
     ]
 )

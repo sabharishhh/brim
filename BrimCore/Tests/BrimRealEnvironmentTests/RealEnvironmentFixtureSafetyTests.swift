@@ -27,5 +27,18 @@ final class RealEnvironmentFixtureSafetyTests: XCTestCase {
 
         let legitimate = home.appendingPathComponent("Library/Caches/BrimHarness-abc123-cache")
         XCTAssertTrue(RealEnvironmentFixture.isSafeToRemove(legitimate))
+
+        // ~/Applications is allowed, because a Launch Services registration
+        // can only be proven against a bundle installed where apps go. The
+        // marker rule still applies, and /Applications still does not.
+        XCTAssertTrue(RealEnvironmentFixture.isSafeToRemove(
+            home.appendingPathComponent("Applications/BrimHarness-abc123.app")
+        ))
+        XCTAssertFalse(RealEnvironmentFixture.isSafeToRemove(
+            URL(fileURLWithPath: "/Applications/BrimHarness-abc123.app")
+        ), "System-wide /Applications is never the harness's to touch")
+        XCTAssertFalse(RealEnvironmentFixture.isSafeToRemove(
+            home.appendingPathComponent("Applications/Something.app")
+        ), "Unmarked bundles stay off limits even in an allowed root")
     }
 }

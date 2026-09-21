@@ -56,10 +56,16 @@ public actor Executor {
                 }
             }
             
-            // Steps whose target is an identifier rather than a path are
-            // not subject to the "already gone" check; a bundle id is not a
-            // file, and skipping it here would silently drop the reset.
-            if step.kind != .resetPrivacyGrants, !fm.fileExists(atPath: step.target) {
+            // Steps whose target is an identifier rather than a path are not
+            // subject to the "already gone" check; a bundle id is not a file,
+            // and skipping it here would silently drop the reset.
+            //
+            // Unregistering is exempt for the opposite reason: its target is
+            // a path, but the whole point is that the bundle is already gone
+            // while its registration is not.
+            if step.kind.targetIsPath,
+               step.kind != .unregisterLaunchServices,
+               !fm.fileExists(atPath: step.target) {
                 journal.stepOutcomes[step.index] = "already_gone"
                 continue
             }
@@ -97,6 +103,18 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "ok"
                     } catch {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
+                    }
+                } else if step.kind == .unregisterLaunchServices {
+                    // Recorded, never fatal — for the same reason as the
+                    // privacy reset. The files are already gone; refusing the
+                    // whole uninstall over a registration would be the wrong
+                    // trade, and the journal says what happened either way.
+                    do {
+                        try LaunchServicesRegistration.unregister(bundlePath: step.target)
+                        journal.stepOutcomes[step.index] = "ok"
+                    } catch {
+                        journal.stepOutcomes[step.index] =
+                            "launch_services_registration_remains: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unloadLaunchdJob {
                     try SafeOps.unloadLaunchdJob(path: step.target)
