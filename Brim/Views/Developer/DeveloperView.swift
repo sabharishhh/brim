@@ -27,7 +27,12 @@ struct DeveloperView: View {
         }
         .task { await model.loadIfNeeded(service: service) }
         .sheet(item: $reviewRequest) { intent in
-            LeftoverRemovalSheet(intent: intent, service: service) {
+            RemovalSheet(
+                intent: intent,
+                service: service,
+                title: "Remove build caches",
+                subtitle: "\(intent.explicitTargets.count) caches your tools will rebuild"
+            ) {
                 Task { await model.load(service: service) }
             }
         }

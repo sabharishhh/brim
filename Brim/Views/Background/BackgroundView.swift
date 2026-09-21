@@ -18,13 +18,47 @@ struct BackgroundView: View {
     @ObservedObject var model: BackgroundModel
     @SwiftUI.Environment(\.brimService) private var service
 
+    @State private var removalRequest: PlanIntent?
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
             content
+            if model.canRemoveSelection {
+                Divider()
+                footer
+            }
         }
         .task { await model.loadIfNeeded(service: service) }
+        .sheet(item: $removalRequest) { intent in
+            RemovalSheet(
+                intent: intent,
+                service: service,
+                title: "Remove background jobs",
+                subtitle: intent.explicitTargets.count == 1
+                    ? "One job file, unloaded and then moved to the Trash"
+                    : "\(intent.explicitTargets.count) job files, unloaded and then moved to the Trash"
+            ) {
+                Task { await model.load(service: service) }
+            }
+        }
+    }
+
+    /// Only appears once something is picked. A permanently visible bar
+    /// with a disabled button is an invitation to a screen where most of
+    /// the rows are not removable at all.
+    private var footer: some View {
+        HStack {
+            Text("\(model.selectedItems.count) job \(model.selectedItems.count == 1 ? "file" : "files") picked")
+                .foregroundColor(.secondary)
+            Spacer()
+            Button("Remove…") {
+                removalRequest = model.removalIntent(requesterIdentity: NSUserName())
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
     }
 
     private var header: some View {
@@ -127,7 +161,14 @@ struct BackgroundView: View {
             if groups.isEmpty {
                 Text(emptyNote).font(.caption).foregroundColor(.secondary)
             } else {
-                ForEach(groups) { group in GroupRow(group: group) }
+                ForEach(groups) { group in
+                    GroupRow(
+                        group: group,
+                        canSelect: model.canSelect(group),
+                        isSelected: model.isSelected(group),
+                        toggle: { model.toggle(group) }
+                    )
+                }
             }
         } header: {
             VStack(alignment: .leading, spacing: 3) {
@@ -150,10 +191,23 @@ struct BackgroundView: View {
 /// One application, and everything macOS has been told to run for it.
 private struct GroupRow: View {
     let group: RegistrationGroup
+    var canSelect = false
+    var isSelected = false
+    var toggle: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
+                if canSelect {
+                    // A real label, hidden visually rather than absent. An
+                    // empty one leaves nothing for the accessibility tree
+                    // to expose, and the control reads as scenery: the same
+                    // way the sidebar rows looked operable and were not.
+                    Toggle("Select \(group.displayName)",
+                           isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                }
                 Text(group.displayName).fontWeight(.semibold)
                 if group.isSystemOwned {
                     Text("macOS").font(.caption2)
