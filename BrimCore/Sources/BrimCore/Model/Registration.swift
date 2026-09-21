@@ -68,7 +68,26 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// must never be offered as something to clean up.
     public let isSystemOwned: Bool
 
-    public var id: String { "\(kind.rawValue):\(identifier)" }
+    // The record's own location is part of the identity. Google Keystone
+    // installs the same job twice, once for the user and once for the
+    // machine, and without the path both copies claimed the same id: one
+    // row in a SwiftUI list, and no way to tell which file was which.
+    public var id: String { "\(kind.rawValue):\(identifier):\(recordPath ?? "")" }
+
+    /// Whether macOS removes this entry by itself once what it points at is
+    /// gone.
+    ///
+    /// Background Task Management does. `backgroundtaskmanagementd` runs a
+    /// garbage collection pass whenever a client asks it for the list, and
+    /// drops every record whose application has been deleted. Watched in
+    /// its own log: two AppCleaner records removed seconds after System
+    /// Settings was opened, and the store written out three seconds later.
+    /// So a background item pointing at nothing is a list macOS has not
+    /// tidied yet, not something the user has to deal with.
+    ///
+    /// A launchd job is a file. Nothing collects it, which is why an
+    /// uninstall that misses one leaves it forever.
+    public var isClearedByMacOS: Bool { kind == .backgroundItem }
 
     /// A registration pointing at something no longer on disk.
     public var isStale: Bool { !targetExists }

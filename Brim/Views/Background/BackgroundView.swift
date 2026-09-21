@@ -51,8 +51,10 @@ struct BackgroundView: View {
         if model.isLoading { return "Reading what macOS has been told to run…" }
         let stale = model.stale.count
         let live = model.live.count
-        if stale == 0 { return "\(live) running for software you still have. Nothing left over." }
-        return "\(stale) left over by software that has gone, \(live) belonging to software you still have"
+        let apps = live == 1 ? "1 application" : "\(live) applications"
+        if stale == 0 { return "\(apps) running something in the background. Nothing left over." }
+        let left = stale == 1 ? "1 loose end" : "\(stale) loose ends"
+        return "\(left) from software that has gone, and \(apps) you still have"
     }
 
     @ViewBuilder
@@ -64,13 +66,23 @@ struct BackgroundView: View {
                 if !model.gaps.isEmpty { coverageNote }
                 section(
                     "Left behind",
-                    "These point at a program that is not on this Mac any more. Each one either "
-                    + "fails quietly every time you log in, or keeps running something you "
-                    + "thought was gone.",
+                    "These point at a program that is not on this Mac any more, and nothing "
+                    + "clears them on its own. Each one either fails quietly every time you "
+                    + "log in, or keeps running something you thought was gone.",
                     model.stale,
                     "Nothing left over. Every background job here points at software you "
                     + "still have."
                 )
+                if !model.clearingItself.isEmpty {
+                    section(
+                        "macOS is catching up",
+                        "The software has gone and macOS has not tidied its own list yet. It "
+                        + "does that by itself the next time anything asks it for the list, so "
+                        + "there is nothing here for you to do.",
+                        model.clearingItself,
+                        ""
+                    )
+                }
                 section(
                     "Still in use",
                     "Software you have, running in the background. Here so you can see it, "
@@ -109,18 +121,18 @@ struct BackgroundView: View {
     @ViewBuilder
     private func section(
         _ title: String, _ caption: String,
-        _ items: [Registration], _ emptyNote: String
+        _ groups: [RegistrationGroup], _ emptyNote: String
     ) -> some View {
         Section {
-            if items.isEmpty {
+            if groups.isEmpty {
                 Text(emptyNote).font(.caption).foregroundColor(.secondary)
             } else {
-                ForEach(items) { item in RegistrationRow(registration: item) }
+                ForEach(groups) { group in GroupRow(group: group) }
             }
         } header: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("\(title) (\(items.count))").font(.headline)
+                    Text("\(title) (\(groups.count))").font(.headline)
                     Spacer()
                     if title == "Still in use", model.hiddenSystemCount > 0 {
                         Text("\(model.hiddenSystemCount) from macOS hidden")
@@ -135,33 +147,62 @@ struct BackgroundView: View {
     }
 }
 
+/// One application, and everything macOS has been told to run for it.
+private struct GroupRow: View {
+    let group: RegistrationGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(group.displayName).fontWeight(.semibold)
+                if group.isSystemOwned {
+                    Text("macOS").font(.caption2)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
+                }
+                Spacer()
+                Text(group.composition).font(.caption).foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(group.items) { item in RegistrationRow(registration: item) }
+            }
+            .padding(.leading, 12)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 private struct RegistrationRow: View {
     let registration: Registration
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
-                Text(registration.label).fontWeight(.medium)
+                Text(registration.label).font(.callout)
                 Text(registration.kind.displayName)
                     .font(.caption2)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Color.secondary.opacity(0.15), in: Capsule())
-                if registration.isSystemOwned {
-                    Text("macOS").font(.caption2)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
-                }
                 Spacer()
                 if registration.isActionableStale {
-                    Label("Points at nothing", systemImage: "exclamationmark.triangle")
-                        .font(.caption2).foregroundColor(.orange)
+                    if registration.isClearedByMacOS {
+                        Label("macOS will drop this", systemImage: "clock")
+                            .font(.caption2).foregroundColor(.secondary)
+                    } else {
+                        Label("Points at nothing", systemImage: "exclamationmark.triangle")
+                            .font(.caption2).foregroundColor(.orange)
+                    }
                 }
             }
             Text(registration.evidence)
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let program = registration.programPath {
-                Text(program)
+            // The record's own path, not just what it points at. Without it
+            // Keystone's four identical rows were indistinguishable, and two
+            // of them are the same job installed in a different domain.
+            if let location = registration.programPath ?? registration.recordPath {
+                Text(location)
                     .font(.caption2).foregroundColor(.secondary)
                     .truncationMode(.middle).lineLimit(1)
                     .textSelection(.enabled)
