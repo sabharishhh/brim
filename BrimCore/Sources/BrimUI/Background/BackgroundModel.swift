@@ -121,6 +121,10 @@ public final class BackgroundModel: ObservableObject {
     /// between one visit and the next.
     public func connectHelper(service: any BrimServiceProtocol) async {
         helper.refresh()
+        // Before trusting it with anything: an SMAppService daemon stays
+        // registered across an application update, so the root process
+        // answering can be one an older Brim installed.
+        await helper.verifyVersion()
         guard helper.state.canRemove else {
             await service.usePrivilegedRemover(nil)
             return

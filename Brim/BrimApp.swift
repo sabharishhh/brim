@@ -3,6 +3,7 @@ import SwiftUI
 import BrimProtocol
 import BrimCore
 import BrimUI
+import BrimPrivileged
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
@@ -22,7 +23,10 @@ import BrimUI
                         Task { await performSelfUninstall() }
                     }
                 } message: {
-                    Text("This will remove the Brim application, its privileged helper, background agents, and all related data.")
+                    Text("This removes Brim, the helper that runs as an administrator, its "
+                         + "background agents and everything it has written. Any job files "
+                         + "Brim set aside for you go with it, so restore anything you still "
+                         + "want first.")
                 }
         }
         // The widest section needs the sidebar (200) plus a two pane split
@@ -71,11 +75,22 @@ import BrimUI
         }
     }
     
+    /// The root daemon, so its own cleanup can run before Brim goes.
+    @StateObject private var helper = PrivilegedHelperClient()
+
     private func performSelfUninstall() async {
         let bundleID = Bundle.main.bundleIdentifier ?? "devplaceholder.PJ52YXEB.brim"
         let identity = Identity(bundleID: bundleID, teamID: "PJ52YXEB", name: "Brim")
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
         
+        // The daemon first, while it is still running. Its quarantine is
+        // root owned, so nothing left behind can remove it afterwards, and
+        // an uninstaller that leaves a root-owned folder on the disk is
+        // the exact failure this product exists to point at.
+        if let complaint = await helper.uninstall() {
+            print("The helper did not clean up after itself: \(complaint)")
+        }
+
         do {
             let plan = try await client.plan(intent: intent)
             try await client.approveAndApply(

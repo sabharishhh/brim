@@ -175,6 +175,16 @@ struct BackgroundView: View {
                     if case .unavailable(let why) = helper.state {
                         Text(why).font(.callout).foregroundColor(.red)
                     }
+                    if case .stale(let installed) = helper.state {
+                        // Registered, but the root process answering is
+                        // the one an older Brim installed, and its rules
+                        // about what is safe to remove are that version's
+                        // rules. Brim will not use it.
+                        Text("The helper already installed is from an older Brim (version "
+                             + "\(installed)). It has been replaced, and macOS will start the "
+                             + "new one next time. Nothing will be removed until it does.")
+                            .font(.callout).foregroundColor(.orange)
+                    }
                 }
                 Spacer()
                 if case .waitingForApproval = helper.state {
