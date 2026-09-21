@@ -17,9 +17,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let ledgerStore: LedgerStore
     private let executor: Executor
     
-    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, automatedConsentAllowed: Bool = true) {
+    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true) {
         self.root = root
         self.consent = consent
+        self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
         
         self.engine = EvidenceEngine(sources: [
@@ -148,6 +149,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// CLI, in an MCP host, and in any process that is not Brim's app,
     /// which is why none of them can approve anything.
     private var consent: ConsentSource?
+
+    /// How presence is proved. Nil means the real thing, which is a system
+    /// dialog; a test supplies its own so the gate can be exercised
+    /// without one.
+    private let presence: PresenceCheck?
 
     /// Lets a test turn off the debug automation shortcut, so the gate can
     /// be examined as it behaves in a shipped build. Has no effect outside
@@ -286,7 +292,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 for: plan, lastAuthenticated: await presenceStore.lastPresence
             )
             if case .humanPresence(let reason) = requirement {
-                try await proveHumanPresence(reason: reason)
+                if let presence {
+                    try await presence.prove(reason)
+                    await presenceStore.recordPresence()
+                } else {
+                    try await proveHumanPresence(reason: reason)
+                }
             }
         }
 

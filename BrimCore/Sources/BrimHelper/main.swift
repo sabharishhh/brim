@@ -46,8 +46,8 @@ func runHelper() {
     // 2. Setup XPC Listener on the Mach Service
     let listener = NSXPCListener(machServiceName: "com.google.Brim.daemon")
     
-    // We require code signing for all incoming connections to the daemon.
-    let delegate = BrimXPCListenerDelegate(service: service, requireCodeSigning: true)
+    // Root talks to Brim's application and to nothing else.
+    let delegate = BrimXPCListenerDelegate(service: service, accepting: .brim(.application))
     listener.delegate = delegate
     
     // 3. Resume and park the main thread

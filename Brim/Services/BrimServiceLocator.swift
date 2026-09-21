@@ -45,8 +45,16 @@ enum BrimServiceLocator {
     private static func makeDaemonClient() -> any BrimServiceProtocol {
         let connection = NSXPCConnection(machServiceName: daemonMachServiceName, options: .privileged)
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        return BrimXPCClient(connection: connection, requireCodeSigning: false)
+        do {
+            return try BrimXPCClient(connection: connection, expecting: .brim(.daemon))
+        } catch {
+            // Refusing to pin means refusing to connect. Falling back to
+            // the in-process service is the safe direction: it can do less,
+            // not more, and it does not involve trusting whatever is
+            // sitting on that Mach name.
+            backend = .inProcess
+            return makeInProcessService()
+        }
     }
 
     private static func makeInProcessService() -> any BrimServiceProtocol {

@@ -37,12 +37,26 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         // this, which is the enforcement. The previous attempt set a
         // requirement naming the wrong application and the wrong team,
         // then returned true regardless, so it accepted everyone.
-        connection.setCodeSigningRequirement(BrimJobHelper.clientRequirement())
+        //
+        // Compiled first, because `setCodeSigningRequirement` raises on a
+        // string it cannot parse rather than returning a failure, and a
+        // root daemon crashing on an incoming connection is a worse
+        // outcome than one refusing it.
+        let requirement = BrimJobHelper.clientRequirement()
+        guard BrimJobHelper.isWellFormed(requirement) else {
+            log.error("refusing every connection: the client requirement will not compile")
+            return false
+        }
+        connection.setCodeSigningRequirement(requirement)
 
         connection.exportedInterface = NSXPCInterface(with: BrimJobHelperProtocol.self)
         connection.exportedObject = self
         connection.resume()
-        log.info("accepted a connection from pid \(connection.processIdentifier)")
+        // Deliberately not logging the peer's pid. A pid is reused, so it
+        // names the wrong process by the time anybody reads the log, and
+        // the grep test that keeps pids out of authorisation decisions is
+        // worth more than the detail.
+        log.info("accepted a connection from a peer that satisfied the requirement")
         return true
     }
 

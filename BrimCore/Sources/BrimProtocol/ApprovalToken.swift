@@ -82,6 +82,22 @@ public struct ConsentSource: Sendable {
     }
 }
 
+/// Proving that a person is at the machine right now.
+///
+/// Injected rather than reached for directly, because the real one puts a
+/// Touch ID dialog on screen and waits. A test that exercises the approval
+/// gate has to be able to reach the presence check without stopping the
+/// suite dead on a prompt nobody is there to answer, which is exactly what
+/// happened the first time these tests ran.
+public struct PresenceCheck: Sendable {
+    /// Throws if the person is not there, or said no.
+    public let prove: @Sendable (_ reason: String) async throws -> Void
+
+    public init(prove: @escaping @Sendable (_ reason: String) async throws -> Void) {
+        self.prove = prove
+    }
+}
+
 /// The channel a human decision travels back along.
 ///
 /// Kept off `BrimServiceProtocol` on purpose. `BrimXPCClient` does not

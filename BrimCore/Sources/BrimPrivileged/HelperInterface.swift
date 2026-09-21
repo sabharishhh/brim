@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// The whole of what the root daemon will do.
 ///
@@ -59,6 +60,15 @@ public enum BrimJobHelper {
         teamID: String = BrimJobHelper.teamID
     ) -> String {
         requirement(identifier: identifier, teamID: teamID)
+    }
+
+    /// Whether a requirement string is one the system can evaluate.
+    /// `setCodeSigningRequirement` raises on one it cannot parse, and the
+    /// daemon refuses rather than crashes.
+    public static func isWellFormed(_ requirement: String) -> Bool {
+        var compiled: SecRequirement?
+        let status = SecRequirementCreateWithString(requirement as CFString, [], &compiled)
+        return status == errSecSuccess && compiled != nil
     }
 
     private static func requirement(identifier: String, teamID: String) -> String {
