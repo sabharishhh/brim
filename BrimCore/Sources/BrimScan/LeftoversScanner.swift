@@ -4,10 +4,23 @@ import BrimCore
 public actor LeftoversScanner {
     public let root: FileSystemRoot
     private let resolver: IdentityResolver
-    
-    public init(root: FileSystemRoot) {
+    /// Launch Services' answer for a bundle identifier. Injected so the
+    /// ownership rules can be tested without depending on what happens to be
+    /// installed on the machine running the suite.
+    private let launchServicesLookup: @Sendable (String) -> [URL]
+    /// Whether this process can reach protected locations, which decides
+    /// whether a container leftover is removable or only visible.
+    private let hasFullDiskAccess: Bool
+
+    public init(
+        root: FileSystemRoot,
+        launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
+        hasFullDiskAccess: Bool? = nil
+    ) {
         self.root = root
         self.resolver = IdentityResolver(root: root)
+        self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
+        self.hasFullDiskAccess = hasFullDiskAccess ?? FullDiskAccessProbe.isGranted()
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
@@ -19,6 +32,14 @@ public actor LeftoversScanner {
         let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
         
+        let search = OwnershipSearch(
+            installedBundleIDs: activeBundleIDs,
+            installedNames: activeNames,
+            receiptBundleIDs: receiptBundleIDs,
+            previouslyRemovedBundleIDs: knownPastBundleIDs,
+            launchServicesLookup: launchServicesLookup
+        )
+
         var leftovers: [Leftover] = []
         
         let domainsToScan: [FileSystemRoot.Domain] = [
@@ -48,28 +69,50 @@ public actor LeftoversScanner {
                 }
                 
                 let ownerID = extractOwnerIdentifier(from: item, in: domain)
-                
-                // Determine category
-                let category: Leftover.Category
-                if receiptBundleIDs.contains(ownerID) || knownPastBundleIDs.contains(ownerID) || receiptBundleIDs.contains(name) || knownPastBundleIDs.contains(name) {
-                    category = .orphaned
+
+                // The whole search, in one place: an item is only a leftover
+                // once every source that could name an owner has come back
+                // without one. The identifier and the directory name are both
+                // tried, because not every domain is named after the bundle.
+                let verdict = [ownerID, name]
+                    .map(search.ownership(of:))
+                    .reduce(Ownership.unattributable) { strongest, next in
+                        switch (strongest, next) {
+                        case (.present, _): return strongest
+                        case (_, .present): return next
+                        case (.recordedButGone, _): return strongest
+                        case (_, .recordedButGone): return next
+                        default: return strongest
+                        }
+                    }
+
+                guard let category = verdict.category else { continue }
+                let evidence: String
+                if case .recordedButGone(let sentence) = verdict {
+                    evidence = sentence
                 } else {
-                    category = .unclaimed
+                    evidence = "No application on any mounted volume or readable account "
+                             + "claims this, and macOS has no record of one. Brim cannot say "
+                             + "what put it here."
                 }
-                
-                let size = calculateSize(url: item)
-                
+
                 let leftover = Leftover(
                     url: item,
-                    size: size,
+                    size: calculateSize(url: item),
                     category: category,
-                    potentialOwner: Identity(bundleID: ownerID.contains(".") ? ownerID : nil, name: item.deletingPathExtension().lastPathComponent)
+                    potentialOwner: Identity(bundleID: ownerID.contains(".") ? ownerID : nil, name: item.deletingPathExtension().lastPathComponent),
+                    evidence: evidence,
+                    capability: capability(for: item, in: domain),
+                    lastAccessed: lastAccessed(of: item)
                 )
                 leftovers.append(leftover)
             }
         }
         
-        // Return sorted by size descending as per Volume I (Unclaimed sorted by size)
+        // Sorted by size descending. Access time is carried on each item and
+        // may be used to order them, but never to argue that something is
+        // disposable: nothing having read a file lately says nothing about
+        // whether its owner is gone.
         return leftovers.sorted { $0.size > $1.size }
     }
     
@@ -150,6 +193,26 @@ public actor LeftoversScanner {
         return name
     }
     
+    /// Whether Brim can remove this, rather than only see it.
+    ///
+    /// A sandbox container carries a `containermanagerd` metadata file that
+    /// cannot be unlinked without Full Disk Access — and not by `sudo`
+    /// either, since TCC is judged on the responsible application rather
+    /// than the effective user. Reported honestly so the UI can explain it
+    /// instead of failing.
+    private func capability(for url: URL, in domain: FileSystemRoot.Domain) -> Capability {
+        switch domain {
+        case .userContainers, .userGroupContainers:
+            return hasFullDiskAccess ? .ok : .needsFullDiskAccess
+        default:
+            return .ok
+        }
+    }
+
+    private func lastAccessed(of url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
+    }
+
     private func calculateSize(url: URL) -> Int64 {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
