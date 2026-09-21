@@ -132,6 +132,39 @@ public struct Planner: Sendable {
                 // distinction a person should have to make.
                 let needsPrivilege = item.footprintItem.capability == .needsHelper
 
+                // A locked file used to disappear from the plan: the safety
+                // checker refused it and said nothing, so the person saw a
+                // shorter list instead of a reason. Unlocking is now a step
+                // of its own, placed before the removal it exists to let
+                // through, and the review sheet shows it.
+                if shouldDelete, let lock = ArtifactLock.on(path: targetPath) {
+                    if lock.canBeCleared {
+                        steps.append(Step(
+                            index: index,
+                            kind: .clearImmutableFlag,
+                            target: targetPath,
+                            targetFingerprint: fingerprint,
+                            tier: item.footprintItem.evidence.tier,
+                            evidence: "This is locked, the way Finder's Get Info panel locks a "
+                                    + "file. Brim unlocks it first, or nothing below can move.",
+                            expectedBytes: 0,
+                            capability: item.footprintItem.capability,
+                            reversible: true,
+                            costOfError: item.costOfError,
+                            executionPhase: .privacyReset
+                        ))
+                        index += 1
+                    } else {
+                        excludedItems.append(ExcludedItem(
+                            target: targetPath,
+                            reason: "macOS has locked this at the system level, not you. "
+                                  + "Nothing Brim can do will unlock it, and it is almost "
+                                  + "always locked for a reason."
+                        ))
+                        continue
+                    }
+                }
+
                 if shouldDelete, needsPrivilege {
                     steps.append(Step(
                         index: index,
@@ -211,6 +244,68 @@ public struct Planner: Sendable {
             }
         }
         
+        // Receipts, after the files they describe. `pkgutil --forget`
+        // deletes nothing: it removes the installer's record, so the
+        // product stops appearing in `pkgutil --pkgs` and an installer
+        // cannot offer to "repair" it back into existence. Irreversible
+        // for the same reason it is safe, because a record is all it is.
+        if intent.type == .uninstall, intent.explicitTargets.isEmpty {
+            var alreadyForgotten = Set<String>()
+            for item in evaluatedItems {
+                guard case .selected = item.selection,
+                      item.footprintItem.evidence.mechanism == "InstallerReceiptSource"
+                else { continue }
+                let packageID = item.footprintItem.evidence.url
+                    .deletingPathExtension().lastPathComponent
+                guard !packageID.isEmpty, alreadyForgotten.insert(packageID).inserted else {
+                    continue
+                }
+                steps.append(Step(
+                    index: index,
+                    kind: .forgetReceipt,
+                    target: packageID,
+                    targetFingerprint: nil,
+                    tier: .A,
+                    evidence: "Removes the installer's record of \(packageID). No files are "
+                            + "deleted by this, but without it the package keeps showing up "
+                            + "as installed.",
+                    expectedBytes: 0,
+                    capability: .needsHelper,
+                    reversible: false,
+                    costOfError: .medium,
+                    executionPhase: .registration,
+                    disposition: .delete
+                ))
+                index += 1
+            }
+        }
+
+        // The vendor's own uninstaller, when one ships. Revealed, never
+        // run: this is somebody else's executable, and the point of the
+        // step is that a person decides. A plan carrying one is incomplete
+        // by design and says so.
+        if intent.type == .uninstall,
+           intent.explicitTargets.isEmpty,
+           let bundleStep = steps.first(where: { $0.executionPhase == .appBundle }),
+           let found = VendorUninstallerDetector.insideBundle(
+               at: URL(fileURLWithPath: bundleStep.target)
+           ) {
+            steps.append(Step(
+                index: index,
+                kind: .revealVendorUninstaller,
+                target: found.path,
+                targetFingerprint: nil,
+                tier: .A,
+                evidence: found.reason,
+                expectedBytes: 0,
+                capability: .ok,
+                reversible: true,
+                costOfError: .low,
+                executionPhase: .registration
+            ))
+            index += 1
+        }
+
         // The last thing to happen, and only for a whole-app uninstall:
         // retract the Launch Services registration for the bundle we just
         // removed. Deleting the bundle does not do this — the record

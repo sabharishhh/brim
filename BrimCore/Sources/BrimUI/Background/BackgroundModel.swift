@@ -127,9 +127,13 @@ public final class BackgroundModel: ObservableObject {
         await helper.verifyVersion()
         guard helper.state.canRemove else {
             await service.usePrivilegedRemover(nil)
+            await service.usePrivilegedReceiptForgetter(nil)
             return
         }
         let helper = self.helper
+        await service.usePrivilegedReceiptForgetter { packageID in
+            await helper.forgetReceipt(packageID: packageID)
+        }
         await service.usePrivilegedRemover { path in
             guard let domain = await BackgroundModel.domain(of: path) else {
                 return "That is not somewhere Brim's helper will touch."

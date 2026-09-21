@@ -17,6 +17,14 @@ import Security
         withReply reply: @escaping (String?) -> Void
     )
 
+    /// Forgets one installer receipt. Deletes no files: the record lives
+    /// in a folder that belongs to root, which is the only reason this is
+    /// here. The daemon applies its own rules; see
+    /// `PrivilegedReceiptRemoval`.
+    ///
+    /// The reply carries nil when it worked, or a sentence saying why not.
+    func forgetReceipt(packageID: String, withReply reply: @escaping (String?) -> Void)
+
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
@@ -43,7 +51,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "2"
+    public static let version = "3"
 
     public static let teamID = "9LY29YLFG2"
 

@@ -54,6 +54,10 @@ public protocol BrimServiceProtocol: Sendable {
     /// Hands the service a way to remove something in a folder that
     /// belongs to root, once Brim's privileged daemon is set up.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
+    /// Hands the service a way to forget an installer receipt. Receipts
+    /// live in a folder that belongs to root, so without the daemon the
+    /// step records that the record remains rather than half succeeding.
+    func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
 }
 
 public extension BrimServiceProtocol {
@@ -95,4 +99,5 @@ public extension BrimServiceProtocol {
     }
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
+    func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
 }

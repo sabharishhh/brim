@@ -62,6 +62,38 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
 
     // MARK: - What it will do
 
+    func forgetReceipt(packageID: String, withReply reply: @escaping (String?) -> Void) {
+        do {
+            try PrivilegedReceiptRemoval.check(packageID)
+            let status = try runPkgutil(forgetting: packageID)
+            guard status == 0 else {
+                throw PrivilegedReceiptRemoval.Refusal.pkgutilFailed(status)
+            }
+            log.info("forgot the receipt for \(packageID, privacy: .public)")
+            reply(nil)
+        } catch let refusal as PrivilegedReceiptRemoval.Refusal {
+            log.error("refused \(packageID, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch {
+            log.error("failed \(packageID, privacy: .public): \(error.localizedDescription)")
+            reply(error.localizedDescription)
+        }
+    }
+
+    /// A fixed tool with fixed arguments. The package identifier has
+    /// already been checked to contain nothing but identifier characters,
+    /// and it is passed as an argument rather than through a shell.
+    private func runPkgutil(forgetting packageID: String) throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/pkgutil")
+        process.arguments = ["--forget", packageID]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
     func version(withReply reply: @escaping (String) -> Void) {
         reply(BrimJobHelper.version)
     }
