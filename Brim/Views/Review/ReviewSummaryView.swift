@@ -28,6 +28,10 @@ struct ReviewSummaryView: View {
     @ObservedObject private var applications: ApplicationsModel
     @ObservedObject private var recovery: RecoveryStatusModel
     @ObservedObject private var fullDiskAccess: FullDiskAccessModel
+    @ObservedObject private var background: BackgroundModel
+    @ObservedObject private var storage: StorageModel
+    @ObservedObject private var developer: DeveloperModel
+    @ObservedObject private var updates: UpdatesModel
 
     init(navigationSelection: Binding<NavigationItem?>, models: SectionModels) {
         self._navigationSelection = navigationSelection
@@ -35,6 +39,10 @@ struct ReviewSummaryView: View {
         self.applications = models.applications
         self.recovery = models.recovery
         self.fullDiskAccess = models.fullDiskAccess
+        self.background = models.background
+        self.storage = models.storage
+        self.developer = models.developer
+        self.updates = models.updates
     }
 
     @SwiftUI.Environment(\.brimService) private var service
@@ -63,6 +71,10 @@ struct ReviewSummaryView: View {
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
+        .task { await background.loadIfNeeded(service: service) }
+        .task { await storage.loadIfNeeded(service: service) }
+        .task { await developer.loadIfNeeded(service: service) }
+        .task { await updates.loadIfNeeded(service: service) }
         .onAppear { fullDiskAccess.startObserving() }
     }
 
@@ -164,30 +176,57 @@ struct ReviewSummaryView: View {
 
             card(
                 .background, "gearshape.2",
-                "Background items",
-                .notChecked("macOS wants an administrator password to list these, so Brim "
-                            + "leaves them alone until you ask."),
-                "Login items and background services. Some of them were registered by "
-                + "software you no longer have, and go on running anyway."
+                "Background",
+                background.isLoading
+                    ? .working
+                    : .counted(background.stale.isEmpty
+                        ? "\(background.live.count) running, nothing left over"
+                        : "\(background.stale.count) left over, \(background.live.count) running",
+                        nil),
+                "Background jobs and login items. Some get registered by software you no "
+                + "longer have, and go on running anyway."
             )
 
-            ForEach(pending, id: \.0) { item, symbol, title, detail in
-                card(item, symbol, title, .notBuilt, detail)
-            }
-        }
-    }
+            card(
+                .storage, "internaldrive",
+                "Storage",
+                storage.isLoading
+                    ? .working
+                    : storage.startupVolume.map {
+                        .counted(ByteText.short($0.freeRightNow) + " free right now", nil)
+                      } ?? .notChecked("Could not read the volumes."),
+                "How much space is really yours to take back, and how much local snapshots "
+                + "are holding."
+            )
 
-    private var pending: [(NavigationItem, String, String, String)] {
-        [
-            (.storage, "internaldrive", "Storage",
-             "How much space is really yours to take back, and how much local snapshots are holding."),
-            (.energy, "bolt", "Energy",
-             "What has been draining the battery, measured rather than guessed at."),
-            (.developer, "hammer", "Developer",
-             "Caches, simulators and derived data that build tools pile up over time."),
-            (.updates, "arrow.triangle.2.circlepath", "Updates",
-             "Updater agents and helpers that outlived the software they came with.")
-        ]
+            card(
+                .developer, "hammer",
+                "Developer",
+                developer.isScanning
+                    ? .working
+                    : .counted("\(developer.caches.count) build caches", developer.totalBytes),
+                "Caches, simulators and derived data that build tools pile up over time."
+            )
+
+            card(
+                .updates, "arrow.triangle.2.circlepath",
+                "Updates",
+                updates.isLoading
+                    ? .working
+                    : .counted(updates.orphaned.isEmpty
+                        ? "\(updates.working.count) checking, none stranded"
+                        : "\(updates.orphaned.count) checking for software that has gone",
+                        nil),
+                "Updater agents and helpers that outlived the software they came with."
+            )
+
+            card(
+                .energy, "bolt",
+                "Energy",
+                .notChecked("Measured over a couple of seconds, so Brim waits until you open it."),
+                "What has been draining the battery, measured rather than guessed at."
+            )
+        }
     }
 
     private enum Status {

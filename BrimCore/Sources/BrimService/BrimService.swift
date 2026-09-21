@@ -511,6 +511,10 @@ public actor BrimService: BrimServiceProtocol {
         )
     }
 
+    public func developerCaches() async -> [DeveloperCache] {
+        await DeveloperCacheScanner().scan()
+    }
+
     public func sampleEnergy() async -> EnergySampleResult {
         await EnergySampler().sample()
     }
