@@ -33,6 +33,29 @@ public struct BackgroundItemSurface: RegistrationSurface {
 
     public let kind: Registration.Kind = .backgroundItem
     private let elevation: Elevation
+    /// Holds the dump for the life of this surface.
+    ///
+    /// `RegistrationInventory` asks every surface twice, once for its
+    /// registrations and once for its coverage. Without this, one report
+    /// ran `sfltool` twice and macOS asked for an administrator password
+    /// twice, which is how a single refresh came to cost two prompts.
+    private let memo = DumpMemo()
+
+    private final class DumpMemo: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: String??
+        func resolve(_ produce: () -> String?) -> String? {
+            lock.lock(); defer { lock.unlock() }
+            if let cached = value { return cached }
+            let fresh = produce()
+            value = fresh
+            return fresh
+        }
+    }
+
+    private func currentDump() -> String? {
+        memo.resolve { dump() }
+    }
 
     /// Produces the raw BTM dump. Defaults to running `sfltool`.
     private let dump: @Sendable () -> String?
@@ -58,7 +81,7 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 + "them, and Brim does not ask for that during a scan."
             )
         }
-        guard let text = dump(), !text.isEmpty else {
+        guard let text = currentDump(), !text.isEmpty else {
             return .unavailable(kind, "Background items could not be read from sfltool.")
         }
         return .available(kind)
@@ -69,7 +92,7 @@ public struct BackgroundItemSurface: RegistrationSurface {
         // not read, which is a different thing and the reason that method
         // exists.
         guard elevation == .permitted else { return [] }
-        guard let text = dump(), !text.isEmpty else { return [] }
+        guard let text = currentDump(), !text.isEmpty else { return [] }
 
         let fm = FileManager.default
         let records = BTMParser().parse(dump: text)
@@ -186,7 +209,9 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
     }
 
-    private static func runSFLTool() -> String? {
+    /// Internal so the service can run it once and hand the text back in,
+    /// rather than every surface invoking it for itself.
+    public static func runSFLTool() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sfltool")
         process.arguments = ["dumpbtm"]
