@@ -62,6 +62,15 @@ public final class BackgroundModel: ObservableObject {
 
     public var gaps: [RegistrationCoverage] { report.gaps }
 
+    /// Surfaces Brim tried to read and could not. Worth a warning.
+    public var faults: [RegistrationCoverage] { report.gaps.filter(\.isAFault) }
+
+    /// Surfaces Brim will not read on purpose. Worth saying once, quietly,
+    /// and never as something the person should go and fix.
+    public var boundaries: [RegistrationCoverage] {
+        report.gaps.filter { $0.absence == .byDesign }
+    }
+
     // MARK: - Removing what is left over
 
     /// Everything currently selected.

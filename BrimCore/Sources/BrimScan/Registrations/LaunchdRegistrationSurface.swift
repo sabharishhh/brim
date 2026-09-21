@@ -28,7 +28,7 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
         let readable = domains(in: root).contains { FileManager.default.isReadableFile(atPath: $0.url.path) }
         return readable
             ? .available(kind)
-            : .unavailable(kind, "No launchd directory could be read.")
+            : .unavailable(kind, "No launchd directory could be read.", absence: .needsPermission)
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {

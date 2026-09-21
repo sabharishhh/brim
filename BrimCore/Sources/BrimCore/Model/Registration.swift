@@ -224,23 +224,70 @@ extension Registration {
 /// from "could not look" — Milestone 5's gate requires every feature to
 /// report its own gaps.
 public struct RegistrationCoverage: Equatable, Sendable, Codable {
+
+    /// Why a surface is not in the list, which decides what the person is
+    /// offered about it.
+    ///
+    /// These were one thing and it produced a wrong screen: the keychain,
+    /// which Brim deliberately does not read, appeared under "Part of
+    /// this list is missing" with a button offering to open Full Disk
+    /// Access. Full Disk Access was already granted, so the banner told
+    /// somebody their machine was misconfigured, pointed them at a switch
+    /// that was already on, and would have changed nothing if it had not
+    /// been. A boundary Brim has chosen is not a gap the person can close.
+    public enum Absence: String, Equatable, Sendable, Codable {
+        /// A permission the person can grant. Worth interrupting for, and
+        /// there is something to press.
+        case needsPermission
+        /// The mechanism did not answer. Worth saying, nothing to press.
+        case couldNotRead
+        /// Brim will not read this on purpose. Not a fault, not missing,
+        /// and never presented as either.
+        case byDesign
+    }
+
     public let kind: Registration.Kind
     public let available: Bool
     /// Why the surface is unavailable, in the user's terms.
     public let limitation: String?
+    public let absence: Absence?
 
-    public init(kind: Registration.Kind, available: Bool, limitation: String? = nil) {
+    public init(
+        kind: Registration.Kind, available: Bool,
+        limitation: String? = nil, absence: Absence? = nil
+    ) {
         self.kind = kind
         self.available = available
         self.limitation = limitation
+        self.absence = available ? nil : (absence ?? .couldNotRead)
     }
+
+    /// Whether this is something the person can do something about.
+    public var isFixableByTheUser: Bool { absence == .needsPermission }
+
+    /// Whether this is a fault at all. A deliberate boundary is not.
+    public var isAFault: Bool { !available && absence != .byDesign }
 
     public static func available(_ kind: Registration.Kind) -> RegistrationCoverage {
         RegistrationCoverage(kind: kind, available: true)
     }
 
-    public static func unavailable(_ kind: Registration.Kind, _ limitation: String) -> RegistrationCoverage {
-        RegistrationCoverage(kind: kind, available: false, limitation: limitation)
+    public static func unavailable(
+        _ kind: Registration.Kind, _ limitation: String,
+        absence: Absence = .couldNotRead
+    ) -> RegistrationCoverage {
+        RegistrationCoverage(
+            kind: kind, available: false, limitation: limitation, absence: absence
+        )
+    }
+
+    /// Something Brim has chosen not to read. Stated, never as a problem.
+    public static func withheld(
+        _ kind: Registration.Kind, _ explanation: String
+    ) -> RegistrationCoverage {
+        RegistrationCoverage(
+            kind: kind, available: false, limitation: explanation, absence: .byDesign
+        )
     }
 }
 
