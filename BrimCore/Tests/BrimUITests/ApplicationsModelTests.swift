@@ -232,6 +232,15 @@ final class ApplicationsModelRemovalTests: XCTestCase {
         XCTAssertNil(model.selected, "A removed app must not stay selected")
         XCTAssertNil(model.footprint)
     }
+
+    func testTheSharedTierIsLabelledSharedRatherThanGuaranteed() {
+        // It read "Guaranteed", which is the opposite of what Tier S means
+        // and would have read to a person as a reason to remove the item
+        // with confidence. S says another application claims it.
+        XCTAssertEqual(EvidenceTier.S.shortLabel, "Shared")
+        XCTAssertEqual(EvidenceTier.A.shortLabel, "Direct")
+    }
+
 }
 
 private actor StubInventoryService: BrimServiceProtocol {

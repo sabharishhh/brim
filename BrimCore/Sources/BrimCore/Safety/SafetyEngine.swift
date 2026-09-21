@@ -53,11 +53,15 @@ public struct SafetyEngine: Sendable {
             // 2. Cost-of-error annotation based on path
             let cost = evaluateCostOfError(url: url)
             
-            // 3. Tier Defaults
+            // 3. Tier defaults. S is not a confidence level: it says
+            // something else on this Mac claims this item, so it leaves
+            // the selection and cannot re-enter it.
             let selection: SelectionState
             switch item.evidence.tier {
             case .S:
-                selection = .selected
+                selection = .excluded(
+                    reason: "Something else on this Mac uses this too, so Brim leaves it alone."
+                )
             case .A, .B:
                 selection = .selected
             case .C:

@@ -48,7 +48,7 @@ public struct ExplanationRenderer: Sendable {
     private func renderConfidence(tier: EvidenceTier) -> String {
         switch tier {
         case .S:
-            return "The operating system cryptographically guarantees this belongs to the application."
+            return "Another application on this Mac uses this too, so it stays."
         case .A:
             return "It has a direct structural link to the application."
         case .B:

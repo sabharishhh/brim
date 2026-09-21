@@ -1,15 +1,38 @@
 import Foundation
 
 /// Represents the level of confidence for a piece of evidence belonging to an app.
-public enum EvidenceTier: String, Codable, Equatable, Sendable {
-    /// Cryptographically guaranteed or OS-level mapping (e.g. Receipt BOM, Sandbox container).
+/// How Brim knows an item belongs to an application, and whether anything
+/// else has a claim on it.
+///
+/// A, B and C are one scale: how sure Brim is. **S is not on that scale.**
+/// S means Shared: something else installed on this Mac also claims this
+/// item, so it is removed from the selection whatever the confidence was.
+///
+/// The letters used to disagree with the specification, and dangerously.
+/// `S` meant "cryptographically guaranteed" here and mapped to selected,
+/// while T-1.9 and T-3.4 define it as the shared-file veto that may only
+/// ever *deselect*. Anybody following the specification and writing
+/// `tier: .S` to keep an item out of a plan would have put it in. Nothing
+/// emitted `.S`, which is the only reason this never fired.
+public enum EvidenceTier: String, Codable, Equatable, Sendable, CaseIterable {
+    /// Shared with something else on this Mac, so Brim will not remove it.
+    ///
+    /// One way only. This tier can take an item out of the default
+    /// selection and can never put one in, which is what stops a suite
+    /// uninstall taking a component its sibling still needs.
     case S
-    /// Direct structural mapping (e.g. App bundle itself, matching bundle ID).
+    /// A direct structural link: the bundle itself, a receipt's file list,
+    /// a sandbox container, a path that is the bundle identifier.
     case A
-    /// High probability heuristic (e.g. Developer name matching, fuzzy app name match).
+    /// Probable, from how the developer names things.
     case B
-    /// Low probability / weak heuristic (e.g. generic folder with related cache).
+    /// A heuristic. Shown, never selected by default.
     case C
+
+    /// Whether this tier is a statement of confidence at all. S is not:
+    /// it is a claim about somebody else, and code that ranks or compares
+    /// confidence has to leave it out rather than sort it to one end.
+    public var isConfidence: Bool { self != .S }
 }
 
 /// Represents a single piece of evidence found on disk.
