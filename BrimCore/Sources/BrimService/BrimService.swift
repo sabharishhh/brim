@@ -496,6 +496,21 @@ public actor BrimService: BrimServiceProtocol {
         }
     }
     
+    public func registrations(includingBackgroundItems: Bool = false) async -> RegistrationReport {
+        var surfaces: [any RegistrationSurface] = [LaunchdRegistrationSurface()]
+        // Only when asked. Reading this one runs `sfltool`, which raises an
+        // administrator prompt naming a tool nobody has heard of.
+        surfaces.append(BackgroundItemSurface(
+            elevation: includingBackgroundItems ? .permitted : .onlyWhenAsked
+        ))
+
+        let inventory = RegistrationInventory(surfaces: surfaces)
+        return RegistrationReport(
+            registrations: await inventory.all(in: root),
+            coverage: await inventory.coverage(in: root)
+        )
+    }
+
     public func installedApplications() async throws -> [InstalledApplication] {
         await ApplicationInventory(root: root).installedApplications()
     }

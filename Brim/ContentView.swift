@@ -24,6 +24,8 @@ struct ContentView: View {
                     ApplicationsView(model: models.applications)
                 case .leftovers:
                     LeftoversView(model: models.leftovers)
+                case .background:
+                    BackgroundView(model: models.background)
                 case .history:
                     RemovalHistoryView(model: models.history, recovery: models.recovery)
                 default:
