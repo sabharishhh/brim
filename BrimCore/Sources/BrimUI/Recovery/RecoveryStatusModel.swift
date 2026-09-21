@@ -109,6 +109,13 @@ public final class RecoveryStatusModel: ObservableObject {
             await MainActor.run { self.isRefreshing = true }
             defer { Task { @MainActor in self.isRefreshing = false } }
 
+            // The Trash changing is also the moment a removal's registration
+            // can go stale: emptying it leaves macOS pointing at a bundle
+            // that is no longer there. Reconcile before reading, so the
+            // state the UI shows and the state of the machine agree.
+            await service.reconcileRegistrations()
+            guard !Task.isCancelled else { return }
+
             let fetched = (try? await service.recoverableItems()) ?? []
             guard !Task.isCancelled else { return }
             await MainActor.run { self.items = fetched }

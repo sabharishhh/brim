@@ -331,4 +331,71 @@ final class DeepUninstallTests: XCTestCase {
             "A restored application macOS does not know about has no document types and no Open With"
         )
     }
+
+    /// Emptying the Trash is what turns an accurate registration into a
+    /// stale one, and macOS does not reliably prune it — a record for a
+    /// bundle that had already gone from the Trash was observed surviving
+    /// the file by minutes. So the Trash lifecycle has to clear it.
+    ///
+    /// The record is pointed at a bundle outside the Trash on purpose. What
+    /// `reconcileRegistrations` acts on is "a bundle this plan trashed that
+    /// is no longer there", and the Trash itself cannot be used to stage
+    /// that: registering anything under `~/.Trash` needs Full Disk Access to
+    /// read it, which a `swift test` run does not have. So the journal — the
+    /// record Brim itself keeps and the only input this reads — is pointed
+    /// at a bundle the test can register and then remove.
+    func testAVanishedTrashedBundleLosesItsRegistration() async throws {
+        _ = try fixture.makeRegisteredAppBundle()
+        _ = try fixture.makeAppFootprint()
+        let identity = Identity(bundleID: fixture.harnessBundleID, name: fixture.runID)
+
+        let service = makeService()
+        let plan = try await service.plan(intent: PlanIntent(
+            type: .uninstall,
+            subjectIdentity: identity,
+            requesterKind: "harness",
+            requesterIdentity: NSUserName()
+        ))
+        let bundleStep = try XCTUnwrap(plan.steps.first { $0.executionPhase == .appBundle })
+
+        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        try await service.apply(planId: plan.planId, token: token)
+
+        // Stand a registered bundle where the journal will say the trashed
+        // copy went, then record that in the journal.
+        let standIn = try fixture.makeRegisteredAppBundle(suffix: "-asif-trashed")
+        let journals = JournalStore(directoryURL: supportDirectory.appendingPathComponent("Journals"))
+        let loaded = try await journals.load(planId: plan.planId)
+        var journal = try XCTUnwrap(loaded)
+        journal.stepTrashedURLs = [bundleStep.index: standIn]
+        try await journals.write(entry: journal)
+
+        try XCTSkipUnless(
+            LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
+                .contains { $0.standardizedFileURL.path == standIn.standardizedFileURL.path },
+            "Launch Services did not register the stand-in bundle"
+        )
+
+        // Nothing to reconcile while the bundle is still there: the record
+        // is accurate, exactly as it is for an app sitting in the Trash.
+        await service.reconcileRegistrations()
+        XCTAssertTrue(
+            LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
+                .contains { $0.standardizedFileURL.path == standIn.standardizedFileURL.path },
+            "A registration for a bundle that exists must be left alone"
+        )
+
+        // Now it goes, the way emptying the Trash removes it.
+        try FileManager.default.removeItem(at: standIn)
+        await service.reconcileRegistrations()
+
+        XCTAssertFalse(
+            LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
+                .contains { $0.standardizedFileURL.path == standIn.standardizedFileURL.path },
+            "macOS is still pointing at a bundle that no longer exists"
+        )
+    }
 }
