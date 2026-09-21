@@ -3,13 +3,18 @@ import XCTest
 @testable import BrimProtocol
 @testable import BrimService
 
-/// Covers the sequence the Review & Execute modal performs when the user
-/// presses "Authorize & Remove": plan the whole selection as ONE plan against
-/// `specificTargets`, with the identity the UI can build from a `Leftover`
-/// (often no bundle ID at all), then take a single approval and apply it. The
-/// existing XPC integration test plans from a resolved app identity, which is
-/// a different shape than anything the queue produces.
-final class ReviewModalFlowIntegrationTests: XCTestCase {
+/// Removing several chosen things at once, from planning to undo.
+///
+/// The shape that matters here is a selection of named targets with no
+/// owning application: one plan against `specificTargets`, built from an
+/// identity that often has no bundle id at all, approved once and applied as
+/// a unit. That is what the Leftovers sheet sends, and it is a different
+/// shape from the XPC test, which plans from a resolved application.
+///
+/// Written against the Review queue, which has since been replaced by the
+/// Leftovers section. The name changed with it; nothing else needed to,
+/// because none of this ever touched the view.
+final class BatchRemovalFlowTests: XCTestCase {
 
     private func makeService(root rootURL: URL, support: URL) -> BrimService {
         BrimService(
@@ -20,7 +25,7 @@ final class ReviewModalFlowIntegrationTests: XCTestCase {
         )
     }
 
-    /// Exactly what ReviewModal builds for a selection.
+    /// Exactly what the removal sheet builds for a selection.
     private func modalIntent(title: String, targets: [URL]) -> PlanIntent {
         PlanIntent(
             type: .uninstall,
@@ -368,7 +373,7 @@ final class ReviewModalFlowIntegrationTests: XCTestCase {
     }
 
     func testOnePlanFailingDoesNotStopTheOthersFromBeingRemoved() async throws {
-        // ReviewModal keeps whatever already succeeded when a later plan fails,
+        // The sheet keeps whatever already succeeded when a later plan fails,
         // so a plan whose target vanished must not strand the rest.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
