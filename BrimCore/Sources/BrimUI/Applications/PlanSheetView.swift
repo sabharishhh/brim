@@ -62,7 +62,7 @@ public struct PlanSheetView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))
+                    Text(ByteText.short(step.expectedBytes))
                         .foregroundColor(.secondary)
                 }
             }
@@ -80,7 +80,7 @@ public struct PlanSheetView: View {
                 Text(result.success ? "Uninstall Complete" : "Uninstall Partially Complete")
                     .font(.title)
                 
-                Text("Recovered \(ByteCountFormatter.string(fromByteCount: result.recoveredBytes, countStyle: .file))")
+                Text("Recovered \(ByteText.short(result.recoveredBytes))")
                     .font(.headline)
                 
                 if let reason = result.reason {

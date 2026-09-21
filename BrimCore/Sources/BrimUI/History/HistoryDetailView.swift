@@ -33,7 +33,7 @@ public struct HistoryDetailView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))
+                    Text(ByteText.short(step.expectedBytes))
                         .foregroundColor(.secondary)
                 }
             }
