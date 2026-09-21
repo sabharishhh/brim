@@ -68,10 +68,25 @@ public final class BackgroundModel: ObservableObject {
     /// background item is a row in a database macOS owns, and the only
     /// tool it offers resets every application's items at once, so there
     /// is nothing honest to offer per item. Those clear themselves anyway.
+    ///
+    /// The capability is the part that was missing. Two jobs in
+    /// `/Library/LaunchAgents` were offered, authorized and then failed,
+    /// because that directory belongs to root and nothing had asked
+    /// whether the removal could succeed before promising it.
     public static func isRemovable(_ registration: Registration) -> Bool {
         registration.kind == .launchdJob
             && registration.recordPath != nil
             && !registration.isSystemOwned
+            && registration.capability == .ok
+    }
+
+    /// Entries that are genuinely left over but that Brim cannot remove as
+    /// it is running. Surfaced rather than discovered on failure, the same
+    /// way the leftovers list handles a container it cannot reach.
+    public var blocked: [Registration] {
+        filtered(report.stale).filter {
+            $0.kind == .launchdJob && !$0.isSystemOwned && $0.capability != .ok
+        }
     }
 
     public func isSelected(_ group: RegistrationGroup) -> Bool {
