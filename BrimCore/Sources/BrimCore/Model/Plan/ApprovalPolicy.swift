@@ -103,24 +103,32 @@ public struct ApprovalPolicy: Sendable, Equatable {
         return .humanPresence(reason: Self.reason(for: destructive, in: plan))
     }
 
-    /// The sentence shown in the system prompt. It has to name what cannot be
-    /// undone, because that is the only thing the prompt is asking about.
+    /// What the system prompt says Brim is trying to do.
+    ///
+    /// macOS renders this as "Brim is trying to _____", so it must be a
+    /// lowercase verb phrase with no trailing full stop. Written as a
+    /// sentence it comes out as "Brim is trying to Remove Figma, clear the
+    /// privacy permissions…." — which is how the first version read.
+    ///
+    /// It names what cannot be undone, because that is the only thing the
+    /// prompt is asking about.
     static func reason(for destructive: [Step], in plan: Plan) -> String {
         let subject = plan.intent.subjectIdentity.name
         let grantsCleared = destructive.contains { $0.kind == .resetPrivacyGrants }
         let permanentCount = destructive.filter { $0.effectiveDisposition == .delete }.count
 
         if grantsCleared && permanentCount > 1 {
-            return "Remove \(subject), clear the privacy permissions macOS holds for it, and "
-                 + "permanently delete \(permanentCount) items. This cannot be undone."
+            return "remove \(subject) and permanently delete \(permanentCount) items, "
+                 + "including the privacy permissions macOS holds for it — this cannot be undone"
         }
         if grantsCleared {
-            return "Remove \(subject) and clear the privacy permissions macOS holds for it. "
-                 + "This cannot be undone."
+            return "remove \(subject) and clear the privacy permissions macOS holds for it "
+                 + "— this cannot be undone"
         }
         if permanentCount == 1 {
-            return "Permanently delete 1 item for \(subject). This cannot be undone."
+            return "permanently delete 1 item belonging to \(subject) — this cannot be undone"
         }
-        return "Permanently delete \(permanentCount) items for \(subject). This cannot be undone."
+        return "permanently delete \(permanentCount) items belonging to \(subject) "
+             + "— this cannot be undone"
     }
 }
