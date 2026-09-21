@@ -510,6 +510,15 @@ public actor BrimService: BrimServiceProtocol {
         }
     }
     
+    /// Gives the executor a way to reach Brim's privileged daemon.
+    ///
+    /// Set by the application once, after the daemon reports itself
+    /// ready. Nothing else in the service knows the daemon exists, which
+    /// keeps the privileged path to one line in one place.
+    public func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {
+        await executor.setPrivilegedRemover(remover)
+    }
+
     public func registrations() async -> RegistrationReport {
         let inventory = RegistrationInventory(surfaces: [
             LaunchdRegistrationSurface(),

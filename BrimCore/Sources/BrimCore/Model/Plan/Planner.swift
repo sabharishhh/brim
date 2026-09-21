@@ -123,7 +123,34 @@ public struct Planner: Sendable {
                 // Only generate destructive steps if intent is NOT archive, OR if archive explicitly requested uninstall
                 let shouldDelete = (intent.type != .archive) || (intent.type == .archive && intent.archiveAndUninstall)
                 
-                if shouldDelete {
+                // A target in a folder that belongs to root needs the
+                // daemon, whatever kind of thing it is. Deciding this here
+                // rather than at the point of failure is what lets one
+                // selection mix a file of the user's with one of root's
+                // and still be a single plan, a single review and a single
+                // confirmation. Whose folder something sits in is not a
+                // distinction a person should have to make.
+                let needsPrivilege = item.footprintItem.capability == .needsHelper
+
+                if shouldDelete, needsPrivilege {
+                    steps.append(Step(
+                        index: index,
+                        kind: .trashPathPrivileged,
+                        target: targetPath,
+                        targetFingerprint: fingerprint,
+                        tier: item.footprintItem.evidence.tier,
+                        evidence: "In a folder that belongs to the system, so Brim's helper "
+                                + "sets it aside where an administrator can still reach it.",
+                        expectedBytes: sizeBytes,
+                        capability: item.footprintItem.capability,
+                        reversible: true,
+                        costOfError: item.costOfError,
+                        executionPhase: item.footprintItem.evidence.mechanism == "LaunchdSource"
+                            ? .launchd : .auxiliary,
+                        disposition: .trash
+                    ))
+                    index += 1
+                } else if shouldDelete {
                     if item.footprintItem.evidence.mechanism == "LaunchdSource" {
                         let unloadStep = Step(
                             index: index,

@@ -5,9 +5,22 @@ import BrimOps
 public actor Executor {
     private let journalStore: JournalStore
     private let fm = FileManager.default
-    
+
+    /// Removes something this process cannot reach, by asking Brim's
+    /// privileged daemon. Nil when no daemon is set up, which is the
+    /// normal state and is not an error: the step then records that it
+    /// needed one, and the plan says so rather than half succeeding.
+    ///
+    /// Injected rather than imported so the executor keeps knowing
+    /// nothing about XPC, and so a test can stand in for root.
+    private var privilegedRemover: (@Sendable (String) async -> String?)?
+
     public init(journalStore: JournalStore) {
         self.journalStore = journalStore
+    }
+
+    public func setPrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) {
+        self.privilegedRemover = remover
     }
     
     public func execute(plan: Plan) async throws -> JournalEntry {
@@ -71,7 +84,23 @@ public actor Executor {
             }
             
             do {
-                if step.kind == .trashPath || step.kind == .trashPathPrivileged || step.kind == .removeLaunchdPlist {
+                if step.kind == .trashPathPrivileged {
+                    // Something in a folder that belongs to root. The
+                    // daemon applies its own rules and moves the file to a
+                    // holding folder rather than deleting it, so this is
+                    // as reversible as the Trash is.
+                    guard let privilegedRemover else {
+                        journal.stepOutcomes[step.index] = "needs_helper_not_set_up"
+                        hasFailures = true
+                        continue
+                    }
+                    if let refusal = await privilegedRemover(step.target) {
+                        journal.stepOutcomes[step.index] = "helper_refused: \(refusal)"
+                        hasFailures = true
+                    } else {
+                        journal.stepOutcomes[step.index] = "ok"
+                    }
+                } else if step.kind == .trashPath || step.kind == .removeLaunchdPlist {
                     guard let fp = step.targetFingerprint else {
                         throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"])
                     }

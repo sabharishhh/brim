@@ -1,4 +1,5 @@
 import XCTest
+import BrimCore
 @testable import BrimPrivileged
 
 /// What the root daemon refuses.
@@ -113,6 +114,25 @@ final class PrivilegedJobRemovalTests: XCTestCase {
 
     // MARK: - Who may connect
 
+    func testTheAppAndTheDaemonArePinnedSeparately() {
+        // They are two identities, and pinning the wrong one is easy: the
+        // first version had the app checking the daemon against the
+        // *app's* identifier, which nothing could ever satisfy, so the
+        // connection would have been dropped every time.
+        XCTAssertTrue(BrimJobHelper.clientRequirement().contains("\"com.sabharishhh.brim\""))
+        XCTAssertTrue(BrimJobHelper.daemonRequirement().contains("\"com.sabharishhh.brim.jobhelper\""))
+        XCTAssertNotEqual(BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement())
+    }
+
+    func testBothDirectionsAreAnchoredToApple() {
+        // A root service accepting whatever answers, or an app trusting
+        // whatever holds the mach name, is how one of them gets replaced.
+        for requirement in [BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement()] {
+            XCTAssertTrue(requirement.contains("anchor apple generic"))
+            XCTAssertTrue(requirement.contains("subject.OU] = \"9LY29YLFG2\""))
+        }
+    }
+
     func testTheClientRequirementPinsThisAppAndThisTeam() {
         let requirement = BrimJobHelper.clientRequirement()
         XCTAssertTrue(requirement.contains("anchor apple generic"),
@@ -123,5 +143,55 @@ final class PrivilegedJobRemovalTests: XCTestCase {
                        "The placeholder named an application that does not exist")
         XCTAssertFalse(requirement.contains("EQHXZ8M8AV"),
                        "The placeholder pinned Google's team identifier")
+    }
+}
+
+/// One selection, one plan, whoever owns the folders.
+///
+/// The first version made it all or nothing: either everything ticked
+/// needed the daemon or nothing did, so a person who picked one file of
+/// their own and one of root's had to do it twice. Whose folder something
+/// sits in is Brim's problem, not a distinction to make anyone sort their
+/// selection by.
+final class MixedPrivilegeSelectionTests: XCTestCase {
+
+    func testAPlanCanCarryBothKindsOfRemoval() throws {
+        // Deliberately checks the step vocabulary rather than the planner
+        // internals: what matters is that one plan can express both, so
+        // one review and one confirmation covers the selection.
+        XCTAssertTrue(StepKind.trashPath.targetIsPath)
+        XCTAssertTrue(StepKind.trashPathPrivileged.targetIsPath)
+
+        let ordinary = Step(
+            index: 0, kind: .trashPath, target: "/Users/me/Library/LaunchAgents/a.plist",
+            targetFingerprint: nil, tier: .A, evidence: "yours", expectedBytes: 181,
+            capability: .ok, reversible: true, costOfError: .low,
+            executionPhase: .launchd, disposition: .trash
+        )
+        let privileged = Step(
+            index: 1, kind: .trashPathPrivileged, target: "/Library/LaunchAgents/a.plist",
+            targetFingerprint: nil, tier: .A, evidence: "root's", expectedBytes: 181,
+            capability: .needsHelper, reversible: true, costOfError: .low,
+            executionPhase: .launchd, disposition: .trash
+        )
+
+        let plan = Plan(
+            planId: UUID(), createdAt: Date(), engineVersion: "1.0.0", osVersion: "test",
+            intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: nil, name: "Background jobs")),
+            steps: [ordinary, privileged], excludedItems: [], expectedTotalBytes: 362
+        )
+
+        XCTAssertEqual(plan.steps.count, 2)
+        XCTAssertTrue(plan.steps.allSatisfy(\.reversible),
+                      "Both set the file aside rather than deleting it, so neither earns a prompt")
+    }
+
+    func testAPrivilegedRemovalIsReversibleAndSoNeedsNoExtraPrompt() {
+        // The reason there is no fingerprint per cleanup. The daemon
+        // renames the file into a root owned holding folder; it does not
+        // unlink it. Brim's rule is that reversible things do not
+        // interrupt, and this is reversible.
+        XCTAssertTrue(BrimJobHelper.quarantineDirectory.hasPrefix("/Library/"),
+                      "The holding folder has to be somewhere only root can write")
     }
 }

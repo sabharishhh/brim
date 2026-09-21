@@ -20,7 +20,6 @@ struct BackgroundView: View {
     @SwiftUI.Environment(\.brimService) private var service
 
     @State private var removalRequest: PlanIntent?
-    @State private var isSettingAside = false
     @ObservedObject private var helper: PrivilegedHelperClient
 
     init(model: BackgroundModel) {
@@ -58,28 +57,24 @@ struct BackgroundView: View {
     /// the rows are not removable at all.
     private var footer: some View {
         HStack {
-            Text("\(model.selectedItems.count) job \(model.selectedItems.count == 1 ? "file" : "files") picked")
-                .foregroundColor(.secondary)
-            Spacer()
-            if isSettingAside { ProgressView().controlSize(.small) }
-            if model.selectionNeedsHelper {
-                Button("Set aside…") {
-                    isSettingAside = true
-                    Task {
-                        await model.removeWithHelper(service: service)
-                        isSettingAside = false
-                    }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(model.selectedItems.count) job \(model.selectedItems.count == 1 ? "file" : "files") picked")
+                    .foregroundColor(.secondary)
+                // Said once, here, rather than as a warning on each row.
+                // Whether a folder belongs to you or to the system is
+                // Brim's problem to solve, not something to make anyone
+                // sort their selection by.
+                if model.selectionUsesHelper {
+                    Text("Some of these need an administrator. Brim's helper will set those "
+                         + "aside where you can still get them back.")
+                        .font(.caption).foregroundColor(.secondary)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isSettingAside)
-                .help("Moves them to a holding folder only an administrator can reach, so "
-                      + "this can be undone.")
-            } else {
-                Button("Remove…") {
-                    removalRequest = model.removalIntent(requesterIdentity: NSUserName())
-                }
-                .buttonStyle(.borderedProminent)
             }
+            Spacer()
+            Button("Remove…") {
+                removalRequest = model.removalIntent(requesterIdentity: NSUserName())
+            }
+            .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -216,10 +211,6 @@ struct BackgroundView: View {
         }
     }
 
-    private func canReachWithHelper(_ registration: Registration) -> Bool {
-        BackgroundModel.needsTheHelper(registration) && helper.state.canRemove
-    }
-
     @ViewBuilder
     private func section(
         _ title: String, _ caption: String,
@@ -234,6 +225,7 @@ struct BackgroundView: View {
                         group: group,
                         canSelect: model.canSelect(group),
                         isSelected: model.isSelected(group),
+                        helperIsReady: helper.state.canRemove,
                         toggle: { model.toggle(group) }
                     )
                 }
@@ -261,6 +253,9 @@ private struct GroupRow: View {
     let group: RegistrationGroup
     var canSelect = false
     var isSelected = false
+    /// Whether the privileged daemon is set up. A row that needs it stops
+    /// saying so once it does.
+    var helperIsReady = false
     var toggle: () -> Void = {}
 
     var body: some View {
@@ -302,7 +297,9 @@ private struct GroupRow: View {
             }
 
             VStack(alignment: .leading, spacing: 5) {
-                ForEach(group.items) { item in RegistrationRow(registration: item) }
+                ForEach(group.items) { item in
+                    RegistrationRow(registration: item, helperIsReady: helperIsReady)
+                }
             }
             .padding(.leading, 12)
         }
@@ -312,6 +309,12 @@ private struct GroupRow: View {
 
 private struct RegistrationRow: View {
     let registration: Registration
+    var helperIsReady = false
+
+    /// Something Brim cannot reach itself but the daemon can, right now.
+    private var reachableWithHelper: Bool {
+        helperIsReady && BackgroundModel.needsTheHelper(registration)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -348,7 +351,7 @@ private struct RegistrationRow: View {
             // helper is set up this stops being true of the jobs it can
             // reach, so the row stops saying it.
             if registration.isActionableStale,
-               !canReachWithHelper(registration),
+               !reachableWithHelper,
                let blocked = RemovalCapability.explanation(registration.capability) {
                 HStack(spacing: 6) {
                     Label(blocked, systemImage: "lock")

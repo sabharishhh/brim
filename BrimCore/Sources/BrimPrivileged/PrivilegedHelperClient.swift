@@ -104,7 +104,7 @@ public final class PrivilegedHelperClient: ObservableObject {
         // The daemon checks the app, and the app checks the daemon. Either
         // side accepting the other on trust is how a root service ends up
         // talking to something that replaced it.
-        fresh.setCodeSigningRequirement(BrimJobHelper.clientRequirement())
+        fresh.setCodeSigningRequirement(BrimJobHelper.daemonRequirement())
         fresh.invalidationHandler = { [weak self] in
             Task { @MainActor in self?.connection = nil }
         }
