@@ -189,3 +189,69 @@ final class ApplicationsModelTests: XCTestCase {
         XCTAssertFalse(model.isLoading)
     }
 }
+
+/// Removing an application must take its row off screen at once. Waiting for
+/// a full re-enumeration leaves a removed app visible for seconds after the
+/// sheet says nothing remains.
+@MainActor
+final class ApplicationsModelRemovalTests: XCTestCase {
+
+    private func app(at url: URL) -> InstalledApplication {
+        InstalledApplication(
+            identity: Identity(bundleID: "com.t.\(url.lastPathComponent)", name: url.lastPathComponent),
+            url: url,
+            bundleSizeBytes: 1,
+            isSystemProtected: false
+        )
+    }
+
+    func testARemovedApplicationLeavesTheListImmediately() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let goneURL = dir.appendingPathComponent("Gone.app")
+        let stillURL = dir.appendingPathComponent("Still.app")
+        try FileManager.default.createDirectory(at: goneURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: stillURL, withIntermediateDirectories: true)
+
+        let gone = app(at: goneURL)
+        let still = app(at: stillURL)
+        let model = ApplicationsModel()
+        await model.load(service: StubInventoryService(applications: [gone, still]))
+        model.select(gone)
+
+        // Still on disk: nothing is dropped on the sheet's word alone.
+        XCTAssertFalse(model.forgetIfRemoved(gone))
+        XCTAssertEqual(model.applications.count, 2)
+
+        try FileManager.default.removeItem(at: goneURL)
+        XCTAssertTrue(model.forgetIfRemoved(gone))
+        XCTAssertEqual(model.applications.map(\.id), [still.id])
+        XCTAssertNil(model.selected, "A removed app must not stay selected")
+        XCTAssertNil(model.footprint)
+    }
+}
+
+private actor StubInventoryService: BrimServiceProtocol {
+    let applications: [InstalledApplication]
+    init(applications: [InstalledApplication]) { self.applications = applications }
+
+    func installedApplications() async throws -> [InstalledApplication] { applications }
+
+    func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Nope.no }
+    func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
+    func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
+    func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
+    func explain(planId: UUID) async throws -> String { throw Nope.no }
+    func history() async throws -> [Plan] { [] }
+    func undo(planId: UUID) async throws { throw Nope.no }
+    func dumpBTM() async throws -> String { "" }
+    func leftovers() async throws -> [Leftover] { [] }
+    func recoverableItems() async throws -> [RecoverableItem] { [] }
+    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
+}
+
+private enum Nope: Error { case no }

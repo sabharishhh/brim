@@ -25,9 +25,11 @@ struct ApplicationsView: View {
         .task { await model.load(service: service) }
         .sheet(item: $uninstalling) { application in
             UninstallSheet(application: application, service: service) {
-                // The app is gone: drop the selection and refresh the list
-                // rather than leaving a row pointing at nothing.
-                model.select(nil)
+                // Drop the row at once if the bundle really is gone —
+                // re-enumerating every application takes seconds, and a row
+                // that outlives "nothing remains" reads as a failure. The
+                // full refresh still follows, to pick up anything else.
+                model.forgetIfRemoved(application)
                 Task { await model.load(service: service) }
             }
         }

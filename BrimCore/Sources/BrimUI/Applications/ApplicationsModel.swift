@@ -104,6 +104,26 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
+    /// Drops an application the UI already knows is gone, without waiting
+    /// for a full re-enumeration.
+    ///
+    /// Listing every bundle and sizing each one takes seconds, and a row
+    /// that lingers after the sheet says "nothing remains" reads as a
+    /// failure. The check is on disk rather than on the sheet's word, so a
+    /// removal that quietly did not happen leaves the row where it is.
+    @discardableResult
+    public func forgetIfRemoved(_ application: InstalledApplication) -> Bool {
+        guard !FileManager.default.fileExists(atPath: application.url.path) else { return false }
+        applications.removeAll { $0.id == application.id }
+        if selected?.id == application.id {
+            inspectionTask?.cancel()
+            selected = nil
+            footprint = nil
+            isInspecting = false
+        }
+        return true
+    }
+
     /// Selects an application and discovers its footprint.
     ///
     /// Selecting again while a scan is in flight cancels it, so clicking

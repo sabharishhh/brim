@@ -93,8 +93,19 @@ public struct SafeOps {
     }
     
     /// Securely trashes an item.
-    /// It attempts to rename the item securely into a temporary directory on the same volume,
-    /// then uses NSWorkspace or FileManager to trash it or remove it safely.
+    ///
+    /// The item is renamed into an isolated directory on the same volume
+    /// first, so a path swapped between the fingerprint check and the move
+    /// cannot redirect this at something else. That rename uses a UUID, and
+    /// the item is then given its **original name back** before it reaches
+    /// the Trash — otherwise the user opens the Trash and finds a pile of
+    /// opaque identifiers they cannot recognise, which makes "recoverable"
+    /// true only on paper.
+    ///
+    /// Finder's own "Put Back" still will not work: macOS records where an
+    /// item came from at the moment it is trashed, and by then it came from
+    /// the isolated directory. Restoring is Brim's job — the journal records
+    /// the trashed URL against the planned target, and `undo` uses that.
     public static func trashItem(
         targetPath: String,
         expectedDev: Int32,
@@ -119,11 +130,37 @@ public struct SafeOps {
         
         // 3. Now that it is in our secure isolated temp directory, we can safely delete or trash it recursively
         let isolatedURL = volumeURL.appendingPathComponent(destName)
-        
+
+        // 4. Give it its name back before trashing. The item is already
+        // unreachable by its original path, so nothing can be substituted
+        // here — and the Trash needs to show "Photoshop.app", not a UUID.
+        let originalName = targetURL.lastPathComponent
+        var toTrash = isolatedURL
+        if Self.isUsableTrashName(originalName) {
+            let namedURL = volumeURL.appendingPathComponent(originalName)
+            // The isolation directory is created fresh for this one item, so
+            // there is nothing to collide with; if the rename fails anyway,
+            // trashing under the UUID still beats not trashing at all.
+            if (try? fm.moveItem(at: isolatedURL, to: namedURL)) != nil {
+                toTrash = namedURL
+            }
+        }
+
         // Move to Trash using FileManager since the item is now in an isolated temp space.
         var resultingURL: NSURL? = nil
-        try fm.trashItem(at: isolatedURL, resultingItemURL: &resultingURL)
+        try fm.trashItem(at: toTrash, resultingItemURL: &resultingURL)
         return resultingURL as URL?
+    }
+
+    /// Whether a basename can safely be used as a filename in the isolation
+    /// directory. Rejects anything that would escape it or name the directory
+    /// itself rather than an item inside it.
+    public static func isUsableTrashName(_ name: String) -> Bool {
+        !name.isEmpty
+            && name != "."
+            && name != ".."
+            && !name.contains("/")
+            && !name.utf8.contains(0)
     }
     
     /// Securely and permanently removes an item.
