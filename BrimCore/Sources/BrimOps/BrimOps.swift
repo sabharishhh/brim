@@ -147,10 +147,49 @@ public struct SafeOps {
         }
 
         // Move to Trash using FileManager since the item is now in an isolated temp space.
+        #if DEBUG
+        if let stand = Self.standInTrash() {
+            // Its own name, in a directory of its own. The real Trash
+            // disambiguates by appending a time, and a test that checks the
+            // name survives has to see the same thing here.
+            let slot = stand.appendingPathComponent(UUID().uuidString)
+            try fm.createDirectory(at: slot, withIntermediateDirectories: true)
+            let landing = slot.appendingPathComponent(toTrash.lastPathComponent)
+            try fm.moveItem(at: toTrash, to: landing)
+            return landing
+        }
+        #endif
         var resultingURL: NSURL? = nil
         try fm.trashItem(at: toTrash, resultingItemURL: &resultingURL)
         return resultingURL as URL?
     }
+
+    #if DEBUG
+    /// Where a test's trashed items land instead of the user's Trash.
+    ///
+    /// `FileManager.trashItem` always means the real Trash, so a test that
+    /// exercised the executor put its fixtures there: 58 bundles one
+    /// session, 68 another, with Launch Services records to match. The
+    /// harness is meant to leave nothing behind, and the only way to keep
+    /// that promise is for the tests not to reach the real Trash at all.
+    ///
+    /// Detected rather than configured, so no test has to remember to opt
+    /// in, and compiled out of a release build entirely.
+    nonisolated(unsafe) private static var standInTrashURL: URL?
+    private static let standInTrashLock = NSLock()
+
+    static func standInTrash() -> URL? {
+        guard NSClassFromString("XCTestCase") != nil else { return nil }
+        standInTrashLock.lock()
+        defer { standInTrashLock.unlock() }
+        if let existing = standInTrashURL { return existing }
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("brim-test-trash-\(ProcessInfo.processInfo.processIdentifier)")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        standInTrashURL = url
+        return url
+    }
+    #endif
 
     /// Whether a basename can safely be used as a filename in the isolation
     /// directory. Rejects anything that would escape it or name the directory

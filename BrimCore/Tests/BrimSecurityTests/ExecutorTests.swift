@@ -10,7 +10,14 @@ final class ExecutorTests: XCTestCase {
     }
 
 
-    func testXPCValidationFailureGracefulFallback() async throws {
+    /// A step that needs the helper, with no helper installed, says so.
+    ///
+    /// This used to expect `refusedByOS`, from the days when a privileged
+    /// step fell through to an ordinary trash attempt and hit EPERM. It
+    /// does not fall through any more: if the planner decided root has to
+    /// do this and root is not available, the honest outcome is that Brim
+    /// never tried, and the user is told which of the two it was.
+    func testAPrivilegedStepWithNoHelperSaysSoRatherThanGuessing() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let journalStoreDir = tempDir.appendingPathComponent("Journals")
         let journalStore = JournalStore(directoryURL: journalStoreDir)
@@ -42,7 +49,7 @@ final class ExecutorTests: XCTestCase {
         let journal = try await executor.execute(plan: plan)
         
         XCTAssertEqual(journal.status, .partial)
-        XCTAssertEqual(journal.stepOutcomes[0], "refusedByOS")
+        XCTAssertEqual(journal.stepOutcomes[0], "needs_helper_not_set_up")
     }
 
 
