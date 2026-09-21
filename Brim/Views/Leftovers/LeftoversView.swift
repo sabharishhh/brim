@@ -130,7 +130,8 @@ struct LeftoversView: View {
                         group: group,
                         isSelected: model.isSelected(group),
                         isInspected: model.inspected?.id == group.id,
-                        toggle: { model.toggle(group) }
+                        toggle: { model.toggle(group) },
+                        inspect: { model.inspected = group }
                     )
                     .contentShape(Rectangle())
                     .onTapGesture { model.inspected = group }
@@ -210,6 +211,10 @@ private struct GroupRow: View {
     let isSelected: Bool
     let isInspected: Bool
     let toggle: () -> Void
+    /// Opening the detail pane. A tap gesture does this for a mouse and
+    /// exposes nothing, so without an action of its own the pane that
+    /// explains each entry could not be reached at all without one.
+    let inspect: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -221,6 +226,8 @@ private struct GroupRow: View {
                 .labelsHidden()
                 .disabled(!group.isFullyActionable)
 
+            // One element rather than nine. The toggle beside it stays
+            // addressable on its own, which is the part a reader acts on.
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(group.displayName).fontWeight(.medium)
@@ -252,6 +259,12 @@ private struct GroupRow: View {
                         .font(.caption2).foregroundColor(.orange)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(isInspected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityLabel(group.spokenDescription)
+            .accessibilityValue(ByteText.short(group.totalBytes))
+            .accessibilityHint("Shows what this is and where it lives")
+            .accessibilityAction { inspect() }
         }
         .padding(.vertical, 3)
         .background(isInspected ? Color.accentColor.opacity(0.10) : .clear)

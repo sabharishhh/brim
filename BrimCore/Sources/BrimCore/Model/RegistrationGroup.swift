@@ -78,6 +78,21 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
             .joined(separator: ", ")
     }
 
+    /// What a screen reader should say for the group's header row, so a
+    /// reader hears one application rather than a name followed by
+    /// unattached counts.
+    public var spokenDescription: String {
+        var parts = [displayName, composition]
+        if let signedBy { parts.append("signed by \(signedBy)") }
+        if isSystemOwned { parts.append("belongs to macOS") }
+        if !stale.isEmpty {
+            parts.append(staleClearsItself
+                ? "macOS has not tidied this away yet"
+                : "\(stale.count) of these point at nothing")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     /// Gathers registrations by the application that owns them.
     ///
     /// Keyed on the owning bundle identifier, falling back to the entry's

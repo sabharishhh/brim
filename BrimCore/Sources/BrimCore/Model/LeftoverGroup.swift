@@ -62,6 +62,24 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         self.identifier = identifier
         self.items = items
     }
+
+    /// What a screen reader should say for this entry.
+    ///
+    /// The row is built from a name, a lock, a size, a count, up to four
+    /// capsules and a warning, and a reader was handed all of them as
+    /// unrelated fragments. The size is carried as the value rather than
+    /// the label, so the name and the consequence come first.
+    public var spokenDescription: String {
+        var parts = [displayName]
+        parts.append(items.count == 1 ? "one location" : "\(items.count) locations")
+        parts.append(category == .orphaned ? "orphaned" : "unclaimed")
+        if !isFullyActionable { parts.append("Brim cannot remove all of it as it is running") }
+        if meaningfulBytes > 0 {
+            parts.append("some of this is what the application remembered about you")
+        }
+        parts.append(evidence)
+        return SpokenText.sentences(parts)
+    }
 }
 
 public extension Array where Element == Leftover {
