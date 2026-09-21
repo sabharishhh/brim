@@ -25,6 +25,8 @@ final class SectionModels: ObservableObject {
     let applications = ApplicationsModel()
     let leftovers = LeftoversModel()
     let background = BackgroundModel()
+    let storage = StorageModel()
+    let energy = EnergyModel()
     let history = RemovalHistoryModel()
 
     /// Shared, because the Trash is one thing. Two watchers on two views

@@ -27,7 +27,14 @@ public struct EnergySample: Codable, Sendable {
 
 public struct EnergySampleResult: Codable, Sendable {
     public let samples: [EnergySample]
+    /// Processes that could not be read at all, so a short list is never
+    /// mistaken for a quiet machine.
     public let coverageGaps: Int
+
+    public init(samples: [EnergySample], coverageGaps: Int) {
+        self.samples = samples
+        self.coverageGaps = coverageGaps
+    }
 }
 
 public actor EnergySampler {

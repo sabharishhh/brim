@@ -26,6 +26,10 @@ struct ContentView: View {
                     LeftoversView(model: models.leftovers)
                 case .background:
                     BackgroundView(model: models.background)
+                case .storage:
+                    StorageView(model: models.storage)
+                case .energy:
+                    EnergyView(model: models.energy)
                 case .history:
                     RemovalHistoryView(model: models.history, recovery: models.recovery)
                 default:
