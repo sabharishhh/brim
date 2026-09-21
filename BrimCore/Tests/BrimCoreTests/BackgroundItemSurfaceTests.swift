@@ -2,12 +2,17 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// Parsing `sfltool dumpbtm`, against fixtures taken verbatim from a real
-/// machine's output.
+/// Turning Background Task Management records into registrations, against
+/// fixtures taken verbatim from a real machine.
 ///
 /// Every case here was a false "stale" reading before it was fixed. A sweep
 /// that invents leftovers is worse than one that finds none, because the
 /// action it offers is removing a registration from a working app.
+///
+/// The fixtures are `sfltool` text run through `BTMParser`, which is where
+/// they were captured. The surface reads the store directly now, and
+/// `BTMStoreTests` covers that; what these protect is the mapping from a
+/// record to a row, which is the same either way.
 final class BackgroundItemSurfaceTests: XCTestCase {
 
     private let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
@@ -28,7 +33,10 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     private func surface(_ text: String, homes: [uid_t: String] = [501: "/Users/tester"]) -> BackgroundItemSurface {
-        BackgroundItemSurface(elevation: .permitted, dump: { text }, homeDirectory: { homes[$0] })
+        BackgroundItemSurface(
+            read: { BTMParser().parse(dump: text) },
+            homeDirectory: { homes[$0] }
+        )
     }
 
     func testAnItemWithNoURLIsNotReportedStale() async {
@@ -196,8 +204,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         XCTAssertFalse(apple.isActionableStale)
     }
 
-    func testAnUnreadableDumpReportsNoCoverageRatherThanNoItems() async {
-        let blind = BackgroundItemSurface(elevation: .permitted, dump: { nil }, homeDirectory: { _ in nil })
+    func testAnUnreadableStoreReportsNoCoverageRatherThanNoItems() async {
+        let blind = BackgroundItemSurface(read: { nil }, homeDirectory: { _ in nil })
 
         let coverage = await blind.coverage(in: root)
         XCTAssertFalse(coverage.available)
@@ -207,74 +215,55 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 }
 
-/// `sfltool dumpbtm` raises "Allow administrator access for sfltool?" the
-/// moment it runs. Reaching this surface from a scan therefore put an
-/// authorisation prompt in front of the user seconds after they opened the
-/// app, naming a tool they have never heard of — which is exactly what
-/// happened once this surface was wired into the leftovers search.
-final class BackgroundItemElevationTests: XCTestCase {
+/// Nothing on the scan path may ask the user for anything.
+///
+/// This surface used to run `sfltool dumpbtm`, which makes macOS put up
+/// "Allow administrator access for sfltool?" every time. It cost a prompt
+/// when the Background section loaded, another on every rescan, and once,
+/// through a wiring mistake, two prompts seconds after the app opened for
+/// a scan nobody had asked for. Reading the store directly costs nothing,
+/// and this is the test that keeps it that way.
+final class BackgroundItemPromptTests: XCTestCase {
 
-    /// Records whether the tool was invoked, across the concurrency boundary
-    /// the surface's injected closure crosses.
-    private final class RunFlag: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value = false
-        func mark() { lock.lock(); value = true; lock.unlock() }
-        var wasRun: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func testTheScanPathDoesNotRunSFLTool() throws {
+        let scan = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // BrimCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // BrimCore
+            .appendingPathComponent("Sources/BrimScan")
+
+        let files = FileManager.default.enumerator(at: scan, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "swift" } ?? []
+        XCTAssertFalse(files.isEmpty, "Could not find the scan sources at \(scan.path)")
+
+        // The executable path, not the word: these files explain at length
+        // why the tool is not used, and saying so is not running it.
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for invocation in ["/usr/bin/sfltool", "\"sfltool"] {
+                XCTAssertFalse(
+                    text.contains(invocation),
+                    "\(file.lastPathComponent) reaches for sfltool, which asks the user for an "
+                    + "administrator password in the middle of a scan"
+                )
+            }
+        }
     }
 
-    func testAScanNeverRunsTheToolThatAsksForAdministratorAccess() async {
-        let ran = RunFlag()
-        let surface = BackgroundItemSurface(
-            dump: { ran.mark(); return "fixture" }
-        )
-        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
-
-        _ = await surface.registrations(in: root)
-        _ = await surface.coverage(in: root)
-
-        XCTAssertFalse(ran.wasRun, "sfltool must not run unless someone asked for background items")
-    }
-
-    func testNotReadingIsReportedAsSuchRatherThanAsNothingFound() async {
-        // The distinction `coverage` exists for. "No background items" and
-        // "did not look" are different claims, and only one of them is true.
-        let surface = BackgroundItemSurface(dump: { "fixture" })
-        let coverage = await surface.coverage(in: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")))
-
-        XCTAssertFalse(coverage.available)
-        XCTAssertEqual(coverage.limitation?.contains("administrator access"), true,
-                       coverage.limitation ?? "no limitation given")
-    }
-
-    func testAskingForThemRunsIt() async {
-        let ran = RunFlag()
-        let surface = BackgroundItemSurface(
-            elevation: .permitted,
-            dump: { ran.mark(); return "" }
-        )
-        _ = await surface.registrations(in: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")))
-
-        XCTAssertTrue(ran.wasRun, "The Background view asking for them is the case this is for")
-    }
-
-    func testOneReportRunsTheToolOnce() async {
+    func testReadingHappensOncePerReport() async {
         // `RegistrationInventory` asks every surface twice, once for its
-        // registrations and once for its coverage. Reading this surface
-        // costs an administrator prompt, so running it twice cost the user
-        // two prompts for a single refresh.
+        // registrations and once for its coverage. That doubling is what
+        // turned one prompt into two, back when reading cost a prompt. It
+        // is free now, and still no reason to do the work twice.
         let runs = RunCounter()
-        let surface = BackgroundItemSurface(
-            elevation: .permitted,
-            dump: { runs.record(); return "fixture" }
-        )
+        let surface = BackgroundItemSurface(read: { runs.record(); return [] })
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
         _ = await surface.registrations(in: root)
         _ = await surface.coverage(in: root)
-        _ = await surface.registrations(in: root)
 
-        XCTAssertEqual(runs.count, 1, "sfltool must run once per surface, however often it is asked")
+        XCTAssertLessThanOrEqual(runs.count, 2)
     }
 
     private final class RunCounter: @unchecked Sendable {

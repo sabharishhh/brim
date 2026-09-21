@@ -3,28 +3,19 @@ import Combine
 import BrimCore
 import BrimProtocol
 
-/// Backs the Background section: what macOS runs on your behalf, and what it
-/// is still being told to run for software that has gone.
+/// Backs the Background section: what macOS runs on your behalf, and what
+/// it is still being told to run for software that has gone.
 ///
-/// Loads in two stages, and the split is the point. Launchd agents and
-/// daemons are plain files anyone can read, so they appear as soon as the
-/// section opens. Background Task Management needs an administrator
-/// password, so it waits until somebody asks for it, and until then the view
-/// says it has not looked rather than showing a number it did not earn.
+/// One load, everything in it. This used to arrive in two stages, because
+/// login items came from `sfltool` and cost an administrator prompt, so
+/// they waited behind a toggle. They are read from the Background Task
+/// Management store now, at the same price as everything else, which is
+/// nothing.
 @MainActor
 public final class BackgroundModel: ObservableObject {
 
     @Published public private(set) var report: RegistrationReport = .empty
     @Published public private(set) var isLoading = false
-    /// Whether login items are included. A toggle rather than a one way
-    /// button: turning it off and on again reads from the cached dump, so
-    /// it costs at most one administrator prompt for the whole session.
-    @Published public var showsLoginItems = false {
-        didSet {
-            guard showsLoginItems != oldValue, let service else { return }
-            Task { await load(service: service) }
-        }
-    }
     @Published public var searchText = ""
     @Published public var showsSystemOwned = false
 
@@ -68,6 +59,6 @@ public final class BackgroundModel: ObservableObject {
         self.service = service
         isLoading = true
         defer { isLoading = false }
-        report = await service.registrations(includingBackgroundItems: showsLoginItems)
+        report = await service.registrations()
     }
 }

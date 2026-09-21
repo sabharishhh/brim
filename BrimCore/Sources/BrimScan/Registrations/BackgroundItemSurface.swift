@@ -5,102 +5,64 @@ import BrimCore
 ///
 /// This is the surface that motivated the product. When an app is removed
 /// without deregistering, System Settings goes on listing its background
-/// item — often as a bare identifier with no name — and no amount of file
+/// item, often as a bare identifier with no name, and no amount of file
 /// deletion clears it.
 ///
-/// Read through `sfltool dumpbtm`, **which asks for administrator access**.
-/// macOS puts up "Allow administrator access for sfltool?" with Touch ID the
-/// moment it runs.
+/// Read straight from the Background Task Management store. That matters
+/// more than it sounds: this used to go through `sfltool dumpbtm`, which
+/// made macOS ask "Allow administrator access for sfltool?" every single
+/// time. The surface grew a whole apparatus for dodging that prompt, and
+/// the user still met it whenever they wanted to see their login items.
 ///
-/// That makes this surface unlike every other one: reading it is not free,
-/// and running it inside a scan means an authorisation prompt the user did
-/// not ask for, seconds after opening the app, naming a tool they have never
-/// heard of. So it does not run unless someone asked for it — `.onlyWhenAsked`
-/// is the default, and a scan gets an honest "not read" instead of a prompt.
+/// `BTMStore` reads the same records out of the files macOS keeps them in,
+/// which needs Full Disk Access and nothing else. So this is now an
+/// ordinary surface: it runs during a scan like the rest, costs nothing,
+/// and asks for nothing.
 ///
-/// The dump is injectable so the parsing can be tested against fixtures
-/// without invoking anything.
+/// The records are injectable so the mapping can be tested against fixtures
+/// without a machine that happens to have the right software on it.
 public struct BackgroundItemSurface: RegistrationSurface {
 
-    /// Whether this surface may raise the administrator prompt.
-    public enum Elevation: Sendable, Equatable {
-        /// Never run `sfltool`. Coverage reports why, and no prompt appears.
-        case onlyWhenAsked
-        /// The user asked to see background items and is expecting the
-        /// prompt, so running it is what they came for.
-        case permitted
-    }
-
     public let kind: Registration.Kind = .backgroundItem
-    private let elevation: Elevation
-    /// Holds the dump for the life of this surface.
-    ///
-    /// `RegistrationInventory` asks every surface twice, once for its
-    /// registrations and once for its coverage. Without this, one report
-    /// ran `sfltool` twice and macOS asked for an administrator password
-    /// twice, which is how a single refresh came to cost two prompts.
-    private let memo = DumpMemo()
 
-    private final class DumpMemo: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value: String??
-        func resolve(_ produce: () -> String?) -> String? {
-            lock.lock(); defer { lock.unlock() }
-            if let cached = value { return cached }
-            let fresh = produce()
-            value = fresh
-            return fresh
-        }
-    }
-
-    private func currentDump() -> String? {
-        memo.resolve { dump() }
-    }
-
-    /// Produces the raw BTM dump. Defaults to running `sfltool`.
-    private let dump: @Sendable () -> String?
+    /// Produces the records. Nil means the store could not be read, which
+    /// `coverage` reports as such rather than as an empty list.
+    private let read: @Sendable () -> [BTMRecord]?
     /// Maps a numeric UID to that account's home directory. Injectable so
     /// the path normalisation can be tested without real accounts.
     private let homeDirectory: @Sendable (uid_t) -> String?
 
     public init(
-        elevation: Elevation = .onlyWhenAsked,
-        dump: (@Sendable () -> String?)? = nil,
+        read: (@Sendable () -> [BTMRecord]?)? = nil,
         homeDirectory: (@Sendable (uid_t) -> String?)? = nil
     ) {
-        self.elevation = elevation
-        self.dump = dump ?? { Self.runSFLTool() }
+        self.read = read ?? { BTMStore().records() }
         self.homeDirectory = homeDirectory ?? { Self.systemHomeDirectory(for: $0) }
     }
 
     public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
-        guard elevation == .permitted else {
+        guard read() != nil else {
             return .unavailable(
                 kind,
-                "Background items were not read. macOS requires administrator access to list "
-                + "them, and Brim does not ask for that during a scan."
+                "Login items and background services could not be read. Brim needs Full Disk "
+                + "Access to see the list macOS keeps."
             )
-        }
-        guard let text = currentDump(), !text.isEmpty else {
-            return .unavailable(kind, "Background items could not be read from sfltool.")
         }
         return .available(kind)
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
-        // Reporting nothing found would be a lie — `coverage` says it was
-        // not read, which is a different thing and the reason that method
-        // exists.
-        guard elevation == .permitted else { return [] }
-        guard let text = currentDump(), !text.isEmpty else { return [] }
+        // Reporting nothing found would be a lie. `coverage` says it could
+        // not be read, which is a different thing and the reason that
+        // method exists.
+        guard let records = read() else { return [] }
 
         let fm = FileManager.default
-        let records = BTMParser().parse(dump: text)
 
-        // Embedded items print a path relative to the app that ships them,
-        // and name that app through Parent Identifier. Index the absolute
-        // ones so a child can be resolved against its parent instead of
-        // against the working directory.
+        // An embedded item records a path relative to the app that ships
+        // it, and names that app as its parent. Index the absolute ones so
+        // a child can be resolved against its parent rather than against
+        // the working directory.
         var absoluteByIdentifier: [String: URL] = [:]
         for record in records {
             if let identifier = record.identifier, let url = record.url {
@@ -123,10 +85,10 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 return nil
             }
 
-            // Only claim staleness from a path we could actually resolve. An
-            // item with no URL at all — a background-tasks record — says
-            // nothing about whether its owner is present, so it is judged by
-            // its parent instead.
+            // Only claim staleness from a path we could actually resolve.
+            // An item with no URL at all, a background-tasks record for
+            // instance, says nothing about whether its owner is present, so
+            // it is judged by its parent instead.
             let targetExists: Bool
             if let resolved {
                 targetExists = fm.fileExists(atPath: resolved.path)
@@ -156,7 +118,8 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 targetExists: targetExists,
                 recordPath: nil,
                 evidence: targetExists
-                    ? "Registered as a background item with macOS" + (record.developerName.map { " by \($0)." } ?? ".")
+                    ? "Registered as a background item with macOS"
+                        + (record.developerName.map { " by \($0)." } ?? ".")
                     : "Still listed as a background item, but the application it points to is gone.",
                 isSystemOwned: Self.isSystemOwned(record, resolved: resolved)
             )
@@ -177,10 +140,11 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return parentURL.appendingPathComponent(relative)
     }
 
-    /// `sfltool` renders a home directory as `/Users/<uid>`, not as the
-    /// account name. Taken literally that path does not exist, so a perfectly
-    /// healthy login item reads as a leftover — observed with Figma's agent,
-    /// printed as `/Users/501/...` while the app sits in the real home.
+    /// The store records a home directory as `/Users/<uid>`, not as the
+    /// account name. Taken literally that path does not exist, so a
+    /// perfectly healthy login item reads as a leftover. Seen with Figma's
+    /// agent, recorded as `/Users/501/...` while the app sits in the real
+    /// home.
     static func normalizingUserPlaceholder(
         _ url: URL,
         homeDirectory: @Sendable (uid_t) -> String?
@@ -207,27 +171,5 @@ public struct BackgroundItemSurface: RegistrationSurface {
         if let bundleID = record.bundleIdentifier, bundleID.hasPrefix("com.apple.") { return true }
         guard let path = resolved?.resolvingSymlinksInPath().path else { return false }
         return ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
-    }
-
-    /// Internal so the service can run it once and hand the text back in,
-    /// rather than every surface invoking it for itself.
-    public static func runSFLTool() -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sfltool")
-        process.arguments = ["dumpbtm"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

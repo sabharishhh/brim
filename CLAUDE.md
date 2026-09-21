@@ -118,9 +118,15 @@ conversation. Split unrelated changes rather than staging everything.
   `containermanagerd` metadata file that neither Full Disk Access nor root
   can unlink. Only Finder or the owning daemon can. Never create one in a
   test.
-- **`sfltool dumpbtm` raises an administrator prompt.** Never call it during
-  a scan. `BackgroundItemSurface` defaults to `.onlyWhenAsked` for this
-  reason.
+- **`sfltool dumpbtm` raises an administrator prompt, and nothing needs it.**
+  The prompt belongs to the tool, not to the data. Background Task
+  Management lives in `/var/db/com.apple.backgroundtaskmanagement` as mode
+  644 `NSKeyedArchiver` archives, one per account, named after the directory
+  UUID `mbr_uid_to_uuid` returns. Reading them needs Full Disk Access and
+  nothing else. `BTMStore` does that; never reach for the tool again.
+- **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
+  previous macOS still sits beside the v18 files, listing software that has
+  since been removed. Read the highest version only, or invent leftovers.
 - **`tccutil` resolves through Launch Services**, so privacy grants must be
   cleared while the bundle still exists. Hence `ExecutionPhase.privacyReset`
   running first.
