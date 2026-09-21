@@ -11,6 +11,13 @@ import BrimUI
 /// minute ago look asleep. The difference between two samples says what is
 /// costing you something now.
 ///
+/// One row per application, not per process. A modern Mac app is a crowd
+/// of them: ChatGPT runs thirteen and Claude seven, each a renderer, a GPU
+/// helper or a network service with its own pid and its own share of the
+/// work. Listed separately they filled the view with the same three names
+/// and answered nobody's question, because "what is using my battery" is a
+/// question about an app.
+///
 /// The number beside each row is a score, not joules. Nothing on a Mac
 /// reports per process energy in physical units, and inventing a figure in
 /// watts would be the kind of confident nonsense this app exists to avoid.
@@ -43,7 +50,9 @@ struct EnergyView: View {
     private var summary: String {
         if model.isSampling { return "Watching for a couple of seconds…" }
         if model.readings.isEmpty { return "Nothing was busy while Brim watched." }
-        var text = "\(model.measured) busy over \(Int(model.window.rounded())) seconds"
+        let processes = model.readings.reduce(0) { $0 + $1.processCount }
+        var text = "\(model.measured) apps busy over \(Int(model.window.rounded())) seconds"
+        if processes > model.measured { text += ", across \(processes) processes" }
         if model.coverageGaps > 0 {
             text += ", and \(model.coverageGaps) that macOS would not let Brim read"
         }
@@ -96,6 +105,14 @@ struct EnergyView: View {
                     Text(reading.name).fontWeight(.medium)
                     if reading.bundlePath == nil {
                         Text("background").font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                    // Said out loud, because the total is the sum of them
+                    // and a single row for thirteen processes would
+                    // otherwise look like an undercount.
+                    if reading.processCount > 1 {
+                        Text("\(reading.processCount) processes").font(.caption2)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.secondary.opacity(0.15), in: Capsule())
                     }
