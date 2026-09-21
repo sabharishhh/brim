@@ -77,7 +77,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         let plan = try await service.plan(intent: modalIntent(title: "throwaway-one-record", targets: [target]))
         XCTAssertEqual(storedPlanFiles(in: tempDir), ["\(plan.planId.uuidString).json"])
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertEqual(
@@ -99,7 +99,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         let service = makeService(root: rootURL, support: tempDir)
 
         let plan = try await service.plan(intent: modalIntent(title: "3 selected items", targets: targets))
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertEqual(
@@ -129,7 +129,7 @@ final class BatchRemovalFlowTests: XCTestCase {
 
         for (title, target) in [("recoverable-settings", settings), ("gone-forever-cache", cache)] {
             let plan = try await service.plan(intent: modalIntent(title: title, targets: [target]))
-            let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+            let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
             try await service.apply(planId: plan.planId, token: token)
         }
 
@@ -178,7 +178,7 @@ final class BatchRemovalFlowTests: XCTestCase {
                        "One plan must cover every selected target")
 
         // --- executePlans(): exactly one approval for the batch ---
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: first.path))
@@ -210,7 +210,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         XCTAssertEqual(threeItems.steps.count, 3)
         XCTAssertNotEqual(try twoItems.contentHash(), try threeItems.contentHash())
 
-        let token = try await service.requestApproval(planId: twoItems.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: twoItems.planId, requester: "test-user")
         try await service.apply(planId: twoItems.planId, token: token)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: a.path))
@@ -279,7 +279,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         XCTAssertEqual(plan.immediatelyFreedBytes, 0, "Trashing frees nothing until the Trash is emptied")
         XCTAssertGreaterThan(plan.trashedBytes, 0)
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
 
@@ -310,7 +310,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         XCTAssertGreaterThan(plan.immediatelyFreedBytes, 0)
         XCTAssertEqual(plan.trashedBytes, 0)
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
 
@@ -343,7 +343,7 @@ final class BatchRemovalFlowTests: XCTestCase {
 
         let service = makeService(root: rootURL, support: tempDir)
         let plan = try await service.plan(intent: modalIntent(title: "throwaway-emptied", targets: [target]))
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: "test-user")
+        let token = try await service.approvedToken(planId: plan.planId, requester: "test-user")
         try await service.apply(planId: plan.planId, token: token)
 
         // Stand in for the user emptying the Trash.
@@ -393,14 +393,14 @@ final class BatchRemovalFlowTests: XCTestCase {
         // The target disappears between planning and applying.
         try FileManager.default.removeItem(at: doomed)
 
-        let doomedToken = try await service.requestApproval(planId: doomedPlan.planId, requesterIdentity: "test-user")
+        let doomedToken = try await service.approvedToken(planId: doomedPlan.planId, requester: "test-user")
         do {
             try await service.apply(planId: doomedPlan.planId, token: doomedToken)
         } catch {
             // Expected: revalidation refuses a plan whose footprint changed.
         }
 
-        let goodToken = try await service.requestApproval(planId: goodPlan.planId, requesterIdentity: "test-user")
+        let goodToken = try await service.approvedToken(planId: goodPlan.planId, requester: "test-user")
         try await service.apply(planId: goodPlan.planId, token: goodToken)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: good.path), "The healthy target should still be removed")

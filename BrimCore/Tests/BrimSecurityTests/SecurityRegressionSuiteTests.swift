@@ -23,7 +23,7 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         // Create a real plan first
         let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.test", name: "Test"))
         let plan = try await service.plan(intent: intent)
-        let fakeToken = ApprovalToken(token: "invalid-token")
+        let fakeToken = ApprovalToken.forged()
         
         do {
             try await service.apply(planId: plan.planId, token: fakeToken)
@@ -205,7 +205,7 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         
         // Fuzz apply with nonsense ID and token
         do {
-            try await service.apply(planId: UUID(), token: ApprovalToken(token: "junk"))
+            try await service.apply(planId: UUID(), token: ApprovalToken.forged())
             XCTFail("Should fail for invalid plan/token")
         } catch { }
         
