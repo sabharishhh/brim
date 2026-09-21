@@ -184,6 +184,33 @@ public struct Planner: Sendable {
             }
         }
         
+        // The last thing to happen, and only for a whole-app uninstall:
+        // retract the Launch Services registration for the bundle we just
+        // removed. Deleting the bundle does not do this — the record
+        // survives, which is why removed apps linger in "Open With" and keep
+        // claiming their document types. It has to run after the removal,
+        // because Launch Services re-registers a bundle it can still see.
+        if intent.type == .uninstall,
+           intent.explicitTargets.isEmpty,
+           let bundleStep = steps.first(where: { $0.executionPhase == .appBundle }) {
+            steps.append(Step(
+                index: index,
+                kind: .unregisterLaunchServices,
+                target: bundleStep.target,
+                targetFingerprint: nil,
+                tier: .A,
+                evidence: "Removes the Launch Services registration, so the app stops appearing in "
+                        + "\"Open With\" and no longer claims its document types or URL schemes.",
+                expectedBytes: 0,
+                capability: .ok,
+                reversible: false,
+                costOfError: .low,
+                executionPhase: .registration,
+                disposition: .delete
+            ))
+            index += 1
+        }
+
         return Plan(
             planId: UUID(),
             createdAt: Date(),

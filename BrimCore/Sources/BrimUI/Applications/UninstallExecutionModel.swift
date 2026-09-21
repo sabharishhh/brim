@@ -44,8 +44,19 @@ public final class UninstallExecutionModel: ObservableObject {
     /// Steps that remove something, excluding the bookkeeping ones. Used for
     /// the counts the sheet shows, so "12 locations" means twelve things on
     /// disk rather than twelve plan entries.
+    private static let bookkeepingKinds: Set<StepKind> = [
+        .resetPrivacyGrants, .unloadLaunchdJob, .unregisterLaunchServices
+    ]
+
     public var removalSteps: [Step] {
-        (plan?.steps ?? []).filter { $0.kind != .resetPrivacyGrants && $0.kind != .unloadLaunchdJob }
+        (plan?.steps ?? []).filter { !Self.bookkeepingKinds.contains($0.kind) }
+    }
+
+    /// Whether this plan also retracts the app's Launch Services
+    /// registration — the reason a removed app stops appearing in
+    /// "Open With".
+    public var clearsRegistrations: Bool {
+        (plan?.steps ?? []).contains { $0.kind == .unregisterLaunchServices }
     }
 
     /// Whether this plan also clears the app's privacy permissions.
