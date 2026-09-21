@@ -30,6 +30,7 @@ struct BrimCLI: AsyncParsableCommand {
         commandName: "brim",
         abstract: "Brim Command Line Interface",
         subcommands: [
+            Changed.self,
             Apps.self,
             FootprintCmd.self,
             PlanCmd.self,
@@ -90,6 +91,43 @@ struct BrimCLI: AsyncParsableCommand {
         sharedClient = client
         
         return client
+    }
+}
+
+struct Changed: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "changed",
+        abstract: "What has been installed, removed or updated since Brim last looked"
+    )
+    @Flag(name: .shortAndLong, help: "Output in JSON format") var json = false
+
+    mutating func run() async throws {
+        // Enumerating writes this run's snapshot, so asking what changed
+        // has to happen after, or the comparison is against itself.
+        _ = try await BrimCLI.getService().installedApplications()
+        let history = await BrimCLI.getService().whatChanged()
+
+        if json {
+            outputJSON([
+                "snapshots": "\(history.snapshots)",
+                "changes": history.changes.map(\.sentence).joined(separator: " "),
+                "migrated": "\(history.migrated.count)",
+            ])
+            return
+        }
+
+        print(history.summary)
+        for change in history.changes {
+            print("  \(change.sentence)")
+        }
+
+        guard !history.migrated.isEmpty else { return }
+        print("")
+        print("\(history.migrated.count) came across from another Mac and have not run here "
+              + "(\(ByteText.short(history.migratedBytes))):")
+        for migrated in history.migrated.prefix(20) {
+            print("  \(migrated.application.name) — \(migrated.verdict.sentence)")
+        }
     }
 }
 

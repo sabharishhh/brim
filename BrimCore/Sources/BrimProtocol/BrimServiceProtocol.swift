@@ -58,6 +58,10 @@ public protocol BrimServiceProtocol: Sendable {
     /// live in a folder that belongs to root, so without the daemon the
     /// step records that the record remains rather than half succeeding.
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
+    /// What has been installed, removed or updated since Brim last
+    /// looked, worked out by subtracting one snapshot from the one
+    /// before it. Nothing watches, and nothing runs at login.
+    func whatChanged() async -> InstallHistory
 }
 
 public extension BrimServiceProtocol {
@@ -100,4 +104,8 @@ public extension BrimServiceProtocol {
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
+    /// A service with no history has seen nothing change.
+    func whatChanged() async -> InstallHistory {
+        InstallHistory(changes: [], snapshots: 0, migrated: [])
+    }
 }

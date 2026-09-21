@@ -4,6 +4,7 @@ import LocalAuthentication
 import BrimScan
 import BrimProtocol
 import BrimOps
+import BrimIndex
 
 /// The in-process implementation of the BrimService.
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
@@ -19,6 +20,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// What was registered before a background reset, written down so the
     /// person can put it back. The reset is refused without one.
     public let restoreLists: RestoreListStore
+
+    /// The durable store. Written and never read used to be the whole of
+    /// it: the schema existed, the module compiled, and the service did
+    /// not import it, so there was no history and nothing that needed
+    /// one could be built.
+    ///
+    /// Optional because a database that will not open must not stop Brim
+    /// listing what is on the disk. History is a better product, not a
+    /// working one.
+    private let index: Index?
     
     public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true) {
         self.root = root
@@ -57,6 +68,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
         self.ledgerStore = LedgerStore(directoryURL: ledgersDir)
         
+        let indexURL = journalStoreDirectory
+            .deletingLastPathComponent().appendingPathComponent("brim.sqlite")
+        self.index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
+
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
         // Restore lists sit beside the journals: both are the record of
         // what happened, and a background reset is the one action whose
@@ -787,7 +802,79 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func installedApplications() async throws -> [InstalledApplication] {
-        await ApplicationInventory(root: root).installedApplications()
+        let applications = await ApplicationInventory(root: root).installedApplications()
+
+        // Every enumeration is written down. Nothing is watched and
+        // nothing runs at login: two snapshots and a subtraction answer
+        // "what changed" for the cost of one insert per application.
+        //
+        // Best effort, and deliberately not fatal. A history that could
+        // not be written is a worse product, not a broken one, and
+        // refusing to list applications because a database is locked
+        // would be the wrong trade.
+        await recordSnapshot(of: applications)
+        return applications
+    }
+
+    private func recordSnapshot(of applications: [InstalledApplication]) async {
+        guard let index else { return }
+        let provenance = ApplicationProvenance()
+        let observations = applications.compactMap { application -> InstallObservation? in
+            guard let bundleID = application.identity.bundleID else { return nil }
+            let dates = provenance.dates(for: application.url)
+            return InstallObservation(
+                bundleID: bundleID,
+                name: application.name,
+                version: application.version,
+                bundlePath: application.url.path,
+                sizeBytes: application.bundleSizeBytes,
+                addedAt: dates.addedAt,
+                lastUsedAt: dates.lastUsedAt
+            )
+        }
+        do {
+            try await index.recordInstalled(observations)
+        } catch {
+            print("Could not write the install snapshot: \(error.localizedDescription)")
+        }
+    }
+
+    /// What is different since the last time Brim looked.
+    ///
+    /// Empty on a first run, which is the honest answer: there is
+    /// nothing to compare against, and inventing a list of "new"
+    /// applications the first time somebody opens Brim would make every
+    /// later list untrustworthy.
+    public func whatChanged() async -> InstallHistory {
+        guard let index else {
+            return InstallHistory(changes: [], snapshots: 0, migrated: [])
+        }
+        let changes = (try? await index.changesSinceLastScan()) ?? []
+        let snapshots = (try? await index.snapshotCount()) ?? 0
+
+        // Software that came across from another Mac and never ran here.
+        // The safest removals on the machine, and nothing surfaces them,
+        // because the only evidence is two dates nobody thinks to
+        // compare.
+        let provenance = ApplicationProvenance()
+        let systemInstalledAt = provenance.systemInstalledAt()
+        let migrated = await ApplicationInventory(root: root).installedApplications()
+            .filter { !$0.isSystemProtected }
+            .compactMap { application -> MigratedApplication? in
+                let dates = provenance.dates(for: application.url)
+                let verdict = MigrationHygiene.judge(
+                    addedAt: dates.addedAt,
+                    lastUsedAt: dates.lastUsedAt,
+                    systemInstalledAt: systemInstalledAt
+                )
+                guard verdict.isWorthReviewing else { return nil }
+                return MigratedApplication(
+                    application: application, verdict: verdict,
+                    sizeBytes: application.bundleSizeBytes
+                )
+            }
+
+        return InstallHistory(changes: changes, snapshots: snapshots, migrated: migrated)
     }
 
     public func leftovers() async throws -> [Leftover] {
