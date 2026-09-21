@@ -36,6 +36,10 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
         }
+        // An ideal as well as a minimum. Without a concrete ideal the
+        // content reports that it will take any width, `.defaultSize` is
+        // ignored, and the window opens at whatever the display allows.
+        .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
         .focusedSceneValue(\.navigateAction) { item in selection = item }
         .task {
             if needsWelcome == nil { needsWelcome = !(await service.isEnrolled()) }
