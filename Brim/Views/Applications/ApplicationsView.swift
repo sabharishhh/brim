@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import BrimCore
 import BrimUI
 
@@ -14,6 +15,9 @@ struct ApplicationsView: View {
     @SwiftUI.Environment(\.brimService) private var service
     @State private var uninstalling: InstalledApplication?
     @State private var resetting: InstalledApplication?
+    /// What a drop that matched nothing should say. Doing nothing at all
+    /// looks like the drop was not noticed.
+    @State private var dropComplaint: String?
 
     var body: some View {
         HSplitView {
@@ -75,6 +79,12 @@ struct ApplicationsView: View {
 
             Divider()
 
+            if let dropComplaint {
+                Text(dropComplaint)
+                    .font(.caption).foregroundColor(.orange)
+                    .padding(.horizontal).padding(.bottom, 6)
+            }
+
             List(selection: Binding(
                 get: { model.selected?.id },
                 set: { id in model.select(model.applications.first { $0.id == id }) }
@@ -84,6 +94,28 @@ struct ApplicationsView: View {
                 }
             }
             .listStyle(.inset)
+            // Drop an application here, or on the Dock icon, to jump
+            // straight to it.
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                load(providers)
+                return true
+            }
+        }
+    }
+
+    private func load(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                Task { @MainActor in
+                    if model.selectApplication(at: url) {
+                        dropComplaint = nil
+                    } else {
+                        dropComplaint = "\(url.lastPathComponent) is not an application in "
+                                      + "this list."
+                    }
+                }
+            }
         }
     }
 
