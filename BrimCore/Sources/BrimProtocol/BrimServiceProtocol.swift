@@ -23,6 +23,11 @@ public protocol BrimServiceProtocol: Sendable {
     /// when the user empties the Trash. Cheap, idempotent, and safe to call
     /// on every Trash change.
     func reconcileRegistrations() async
+    /// Whether the owner has completed first-run setup.
+    func isEnrolled() async -> Bool
+    /// First-run setup: one confirmation that this Mac belongs to the person
+    /// using it. Never asked again.
+    func enroll() async throws
 }
 
 public extension BrimServiceProtocol {
@@ -30,4 +35,9 @@ public extension BrimServiceProtocol {
     /// registrations — a test stub, or the XPC client until the daemon
     /// carries this — is not forced to implement it.
     func reconcileRegistrations() async {}
+
+    /// A service that does not track enrolment is already past it, so
+    /// nothing prompts. Keeps stubs and the XPC client conforming.
+    func isEnrolled() async -> Bool { true }
+    func enroll() async throws {}
 }
