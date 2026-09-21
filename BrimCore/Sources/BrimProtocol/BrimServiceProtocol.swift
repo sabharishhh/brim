@@ -65,6 +65,8 @@ public protocol BrimServiceProtocol: Sendable {
     /// How each application gets its next version, read from the disk
     /// with no network request of any kind.
     func updateReport() async -> UpdateReport
+    /// Energy per application, accumulated across restarts.
+    func energyTotals() async -> EnergyTotals
 }
 
 public extension BrimServiceProtocol {
@@ -113,5 +115,8 @@ public extension BrimServiceProtocol {
     }
     func updateReport() async -> UpdateReport {
         UpdateReport(coverage: [], agents: [], homebrewPresent: false)
+    }
+    func energyTotals() async -> EnergyTotals {
+        EnergyTotals(accumulated: [], since: Date(), coverageGaps: 0)
     }
 }

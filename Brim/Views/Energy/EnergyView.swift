@@ -49,12 +49,12 @@ struct EnergyView: View {
 
     private var summary: String {
         if model.isSampling { return "Watching for a couple of seconds…" }
-        if model.readings.isEmpty { return "Nothing was busy while Brim watched." }
+        if model.readings.isEmpty { return "Nothing was busy." }
         let processes = model.readings.reduce(0) { $0 + $1.processCount }
         var text = "\(model.measured) apps busy over \(Int(model.window.rounded())) seconds"
         if processes > model.measured { text += ", across \(processes) processes" }
         if model.coverageGaps > 0 {
-            text += ", and \(model.coverageGaps) that macOS would not let Brim read"
+            text += ", \(model.coverageGaps) could not be read"
         }
         return text
     }
@@ -64,8 +64,7 @@ struct EnergyView: View {
         if model.isSampling && model.readings.isEmpty {
             VStack(spacing: 8) {
                 ProgressView()
-                Text("Taking two readings a couple of seconds apart, so the number means "
-                     + "\"right now\" and not \"since you logged in\".")
+                Text("Taking two readings a couple of seconds apart.")
                     .font(.caption).foregroundColor(.secondary)
                     .multilineTextAlignment(.center).frame(maxWidth: 320)
             }
@@ -74,17 +73,56 @@ struct EnergyView: View {
             VStack(spacing: 6) {
                 Image(systemName: "leaf").font(.largeTitle).foregroundColor(.green)
                 Text("Quiet").font(.headline)
-                Text("Nothing did enough work to measure while Brim was watching.")
+                Text("Nothing used enough energy to measure.")
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(model.readings) { reading in
-                row(reading, share: share(of: reading))
+            List {
+                if let totals = model.totals, !topTotals(totals).isEmpty {
+                    Section {
+                        ForEach(topTotals(totals), id: \.key) { entry in
+                            HStack {
+                                Text(entry.name)
+                                Spacer()
+                                Text(String(format: "%.0f mWh", entry.milliwattHours))
+                                    .foregroundColor(.secondary).monospacedDigit()
+                                if let share = model.battery?
+                                    .sentence(forMilliwattHours: entry.milliwattHours) {
+                                    Text(share).font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    } header: {
+                        Text("Total since \(Self.started.string(from: totals.since))")
+                            .font(.headline)
+                    }
+                }
+
+                Section {
+                    ForEach(model.readings) { reading in
+                        row(reading, share: share(of: reading))
+                    }
+                } header: {
+                    Text("Right now").font(.headline)
+                }
             }
             .listStyle(.inset)
         }
     }
+
+    /// The ten that matter. A list of everything is a list of nothing.
+    private func topTotals(_ totals: EnergyTotals) -> [EnergyTotals.Entry] {
+        Array(totals.accumulated.filter { $0.milliwattHours >= 1 }.prefix(10))
+    }
+
+    static let started: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     private func share(of reading: EnergyModel.Reading) -> Double {
         let top = model.readings.first?.milliwattHours ?? 1

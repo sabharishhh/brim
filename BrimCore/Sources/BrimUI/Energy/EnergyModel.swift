@@ -56,6 +56,9 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var isSampling = false
     @Published public private(set) var coverageGaps = 0
     @Published public private(set) var window: TimeInterval = 0
+    /// Energy per application since counting started, which survives both
+    /// the application restarting and Brim restarting.
+    @Published public private(set) var totals: EnergyTotals?
     /// This Mac's battery, so energy can be said as a share of a full
     /// charge. Nil on a machine with no battery, where a share of one is
     /// not a thing that can be said.
@@ -87,6 +90,7 @@ public final class EnergyModel: ObservableObject {
 
         let before = Dictionary(first.samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         coverageGaps = second.coverageGaps
+        totals = await service.energyTotals()
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so
@@ -100,7 +104,10 @@ public final class EnergyModel: ObservableObject {
                 &- (then.diskReadBytes &+ then.diskWriteBytes)
             let nanojoules = now.energyNanojoules >= then.energyNanojoules
                 ? now.energyNanojoules - then.energyNanojoules : 0
-            guard nanojoules > 0 else { return nil }
+            // Below a hundredth of a milliwatt-hour across the window is
+            // measurement noise. Seventy-seven rows all reading 0.02 mWh
+            // is a list nobody can act on.
+            guard nanojoules >= 36_000_000 else { return nil }
 
             return Measured(
                 bundlePath: now.bundlePath,
