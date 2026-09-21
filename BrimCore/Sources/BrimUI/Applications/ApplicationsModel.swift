@@ -91,6 +91,14 @@ public final class ApplicationsModel: ObservableObject {
             }
     }
 
+    /// Lists only if the list is empty. Enumerating and sizing every
+    /// installed bundle takes seconds, and paying that on each visit to the
+    /// section is what made switching panels feel broken.
+    public func loadIfNeeded(service: any BrimServiceProtocol) async {
+        guard applications.isEmpty, !isLoading else { return }
+        await load(service: service)
+    }
+
     public func load(service: any BrimServiceProtocol) async {
         self.service = service
         isLoading = applications.isEmpty
