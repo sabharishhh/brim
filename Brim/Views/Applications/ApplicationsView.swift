@@ -30,6 +30,7 @@ struct ApplicationsView: View {
                 // that outlives "nothing remains" reads as a failure. The
                 // full refresh still follows, to pick up anything else.
                 model.forgetIfRemoved(application)
+                AppIcon.forget(application.url)
                 Task { await model.load(service: service) }
             }
         }
@@ -78,6 +79,8 @@ struct ApplicationsView: View {
 
     private func row(_ application: InstalledApplication) -> some View {
         HStack(spacing: 8) {
+            AppIconView(url: application.url, size: 28)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(application.name)
                     .fontWeight(.medium)
@@ -136,6 +139,8 @@ struct ApplicationsView: View {
     private func detailHeader(_ application: InstalledApplication) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
+                AppIconView(url: application.url, size: 48)
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(application.name)
                         .font(.title2)

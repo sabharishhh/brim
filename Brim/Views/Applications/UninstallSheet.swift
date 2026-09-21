@@ -43,6 +43,8 @@ struct UninstallSheet: View {
 
     private var header: some View {
         HStack(alignment: .top) {
+            AppIconView(url: application.url, size: 40)
+
             VStack(alignment: .leading, spacing: 3) {
                 Text("Uninstall \(application.name)")
                     .font(.title2)
