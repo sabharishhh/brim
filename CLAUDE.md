@@ -59,6 +59,12 @@ read reports that it could not be read. `RegistrationCoverage` and
 not a directory. Two rows for `Application Support/Codex` and
 `Caches/Codex` is a failure of the list, not of the user.
 
+**Ask once, at the start.** Everything Brim needs from the person is
+settled during setup, while they are paying attention to setup. A
+permission dialog standing between someone and a list they asked to see
+is a bug, and the fix is usually to find the free way to read the same
+thing.
+
 **Interrupt for irreversible things only.** Moving something to the Trash
 needs no fingerprint. Permanently deleting something that matters gets one
 prompt for the whole plan, and a five minute grace window after it. The
