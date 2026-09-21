@@ -2,15 +2,36 @@ import Foundation
 import BrimProtocol
 import BrimCore
 
+public enum XPCAuthenticationError: LocalizedError {
+    case couldNotPinPeer
+
+    public var errorDescription: String? {
+        "Brim could not require that the other end of this connection is Brim. "
+        + "Rather than talk to whatever answers, it is not connecting at all."
+    }
+}
+
 public actor BrimXPCClient: BrimServiceProtocol {
     private let connection: NSXPCConnection
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(connection: NSXPCConnection, requireCodeSigning: Bool = true) {
-        if requireCodeSigning {
-            MutualAuthentication.secure(connection)
+    /// Pins the far end, then starts the connection. Fails if it cannot.
+    ///
+    /// Throwing rather than returning a client that quietly talks to
+    /// anything. Both directions are checked: the listener pins the app,
+    /// and this pins the service, because a boundary guarded from one side
+    /// is a boundary an impostor walks through from the other.
+    ///
+    /// Resuming is done here rather than by the caller so that the order
+    /// cannot be got wrong. A requirement applied after the connection is
+    /// live is a requirement that missed whatever was already in flight.
+    public init(connection: NSXPCConnection, expecting: XPCPeerExpectation) throws {
+        guard MutualAuthentication.pin(connection, to: expecting) else {
+            connection.invalidate()
+            throw XPCAuthenticationError.couldNotPinPeer
         }
+        connection.resume()
         self.connection = connection
     }
 

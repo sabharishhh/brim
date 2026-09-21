@@ -2,66 +2,172 @@ import XCTest
 @testable import BrimService
 import BrimProtocol
 import BrimCore
+import BrimPrivileged
 
+/// Who is allowed to talk to whom, and the fact that anybody checks.
+///
+/// The requirement string named `com.google.Brim` and team `EQHXZ8M8AV`,
+/// which belongs to Google, so nothing Brim signs could ever have matched
+/// it. The debug branch had no anchor and no team, leaving a bare
+/// identifier that any process can claim by naming itself. And none of it
+/// ran anyway: every call site the product actually uses passed
+/// `requireCodeSigning: false`.
 final class XPCAuthenticationTests: XCTestCase {
-    
-    func testCodeSigningRejectsUnsignedTestRunner() async throws {
-        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let root = FileSystemRoot(rootURL: tempDir)
-        let brimAppURL = tempDir.appendingPathComponent("Brim.app")
-        let planStoreDir = tempDir.appendingPathComponent("Plans")
-        let journalStoreDir = tempDir.appendingPathComponent("Journal")
-        
-        let realService = BrimService(
-            root: root,
-            brimAppURL: brimAppURL,
-            planStoreDirectory: planStoreDir,
-            journalStoreDirectory: journalStoreDir
-        )
-        
-        let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService, requireCodeSigning: true)
-        listener.delegate = delegate
-        listener.resume()
-        
-        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        
-        let client = BrimXPCClient(connection: connection, requireCodeSigning: true)
-        let identity = Identity(bundleID: "com.apple.Safari", teamID: "EQHXZ8M8AV", name: "Safari")
-        
-        do {
-            _ = try await client.inspect(identity: identity)
-            XCTFail("Expected XPC connection to be rejected due to code signing requirement!")
-        } catch let error as NSError {
-            XCTAssertEqual(error.domain, NSCocoaErrorDomain)
-            XCTAssertEqual(error.code, 4097) // NSXPCConnectionInterrupted
+
+    // MARK: - The requirement itself
+
+    func testTheRequirementNamesThisApplicationAndThisTeam() {
+        let requirement = MutualAuthentication.requirement(for: .application)
+
+        XCTAssertTrue(requirement.contains("identifier \"com.sabharishhh.brim\""), requirement)
+        XCTAssertTrue(requirement.contains("9LY29YLFG2"), requirement)
+        XCTAssertTrue(requirement.hasPrefix("anchor apple generic"),
+                      "Without an anchor, any process can claim the identifier")
+        XCTAssertFalse(requirement.contains("com.google.Brim"))
+        XCTAssertFalse(requirement.contains("EQHXZ8M8AV"), "That is somebody else's team")
+    }
+
+    func testEveryRequirementCompiles() {
+        // `setCodeSigningRequirement` raises rather than returns on a string
+        // it cannot parse, so an unparseable requirement is a crash, not a
+        // refusal. Each one is compiled before it is ever applied.
+        for peer in BrimPeer.allCases {
+            let requirement = MutualAuthentication.requirement(for: peer)
+            XCTAssertTrue(
+                MutualAuthentication.isWellFormed(requirement),
+                "\(peer) has a requirement the system cannot evaluate: \(requirement)"
+            )
         }
     }
 
+    func testNonsenseIsRefusedRatherThanApplied() {
+        XCTAssertFalse(MutualAuthentication.isWellFormed("anchor apple generic and and"))
+        XCTAssertFalse(MutualAuthentication.isWellFormed("identifier"))
+    }
+
+    func testTheTwoDirectionsArePinnedSeparately() {
+        // The first attempt at this had the app checking the daemon against
+        // the app's own identifier, which nothing could ever satisfy.
+        XCTAssertNotEqual(
+            MutualAuthentication.requirement(for: .application),
+            MutualAuthentication.requirement(for: .daemon)
+        )
+    }
+
+    /// `BrimPrivileged` deliberately depends on nothing, so it builds its
+    /// own copy of this string. Two copies is how three different team
+    /// identifiers ended up in one codebase, so they are held together
+    /// here instead.
+    func testThePrivilegedHelperAgreesAboutWhoBrimIs() {
+        XCTAssertEqual(BrimJobHelper.teamID, MutualAuthentication.teamID)
+        XCTAssertEqual(
+            BrimJobHelper.clientRequirement(),
+            MutualAuthentication.requirement(for: .application),
+            "The root daemon and the rest of the product disagree about what Brim's "
+            + "application is, which is exactly how this broke the first time."
+        )
+    }
+
+    // MARK: - Enforcement
+
+    func testAPeerThatCannotSatisfyTheRequirementIsRejected() async throws {
+        // The test bundle is signed for testing, not as Brim, so it cannot
+        // satisfy a requirement pinned to the application. The connection
+        // is meant to die rather than be served.
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let realService = BrimService(
+            root: FileSystemRoot(rootURL: tempDir),
+            brimAppURL: tempDir.appendingPathComponent("Brim.app"),
+            planStoreDirectory: tempDir.appendingPathComponent("Plans"),
+            journalStoreDirectory: tempDir.appendingPathComponent("Journal")
+        )
+
+        let listener = NSXPCListener.anonymous()
+        let delegate = BrimXPCListenerDelegate(service: realService, accepting: .brim(.application))
+        listener.delegate = delegate
+        listener.resume()
+
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
+        let client = try BrimXPCClient(connection: connection, expecting: .brim(.application))
+
+        do {
+            _ = try await client.inspect(identity: Identity(bundleID: "com.apple.Safari", name: "Safari"))
+            XCTFail("A peer that is not Brim was served")
+        } catch let error as NSError {
+            XCTAssertEqual(error.domain, NSCocoaErrorDomain)
+            XCTAssertEqual(error.code, 4097, "Expected the connection to be torn down")
+        }
+    }
+
+    func testAnUnpinnableConnectionIsNotHandedBack() {
+        // A listener whose requirement will not compile must refuse, not
+        // serve. Verified through the delegate rather than by inspection,
+        // because the old code applied the requirement and then returned
+        // true whatever happened.
+        let connection = NSXPCConnection(listenerEndpoint: NSXPCListener.anonymous().endpoint)
+        XCTAssertTrue(MutualAuthentication.pin(connection, to: .brim(.application)))
+        connection.invalidate()
+    }
+
+    // MARK: - Shape
 
     func testNoProcessIdentifierUsage() throws {
-        // Assert that 'processIdentifier' is never used for XPC auth
-        let sourcePath = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent() // BrimSecurityTests
-            .deletingLastPathComponent() // Tests
-            .deletingLastPathComponent() // BrimCore
-            .appendingPathComponent("Sources")
-        
-        guard let enumerator = FileManager.default.enumerator(at: sourcePath, includingPropertiesForKeys: nil) else {
-            XCTFail("Failed to enumerate sources")
-            return
+        for file in Self.productSources() {
+            let content = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                content.contains("processIdentifier"),
+                "\(file.lastPathComponent) reads a process identifier. A pid is reused and "
+                + "can be raced; an authorisation decision has to come from the signature."
+            )
         }
-        
-        for case let fileURL as URL in enumerator {
-            if fileURL.pathExtension == "swift" {
-                let content = try String(contentsOf: fileURL, encoding: .utf8)
-                if content.contains("processIdentifier") {
-                    XCTFail("Found forbidden usage of processIdentifier in \(fileURL.lastPathComponent)")
+    }
+
+    /// The regression guard that matters most. `requireCodeSigning: false`
+    /// was passed at four of the five call sites, and nobody had to think
+    /// about it at any of them, so the bool is gone and the only way to opt
+    /// out is to name the anonymous same-process case out loud.
+    func testOnlyTheSameProcessCaseSkipsPinning() throws {
+        var unpinned: [String] = []
+        for file in Self.productSources() {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for line in text.split(separator: "\n") {
+                // Prose about the old bool is not the old bool.
+                let code = line.trimmingCharacters(in: .whitespaces)
+                if code.hasPrefix("//") || code.hasPrefix("///") { continue }
+                if line.contains("requireCodeSigning") {
+                    unpinned.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
+                }
+                guard line.contains(".sameProcessAnonymous") else { continue }
+                // Only the CLI's own in-process listener may say this, and
+                // the file that declares the case. Matched on the path, not
+                // the basename: there are three main.swift in this tree and
+                // two of them talk to a real daemon.
+                let permitted = ["BrimCLI/main.swift", "Security/MutualAuthentication.swift"]
+                if !permitted.contains(where: { file.path.hasSuffix($0) }) {
+                    unpinned.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
                 }
             }
         }
+        XCTAssertEqual(unpinned, [], "Something ships an XPC connection that nobody authenticates")
+    }
+
+    private static func productSources() -> [URL] {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        var files: [URL] = []
+        for directory in ["BrimCore/Sources", "Brim"] {
+            let walker = FileManager.default.enumerator(
+                at: root.appendingPathComponent(directory), includingPropertiesForKeys: nil
+            )
+            while let entry = walker?.nextObject() as? URL {
+                if entry.pathExtension == "swift" { files.append(entry) }
+            }
+        }
+        return files
     }
 }

@@ -16,8 +16,31 @@ import Foundation
 /// rather than asserted in a document.
 final class ApprovalGateTests: XCTestCase {
 
+    /// Counts how many times the gate asked for a fingerprint, without
+    /// raising one. The real check puts a system dialog on screen and
+    /// waits, which stopped the whole suite the first time these ran.
+    actor PresenceSpy {
+        private(set) var asks: [String] = []
+        private var refusing = false
+
+        func refuse() { refusing = true }
+        private func record(_ reason: String) throws {
+            asks.append(reason)
+            if refusing {
+                throw NSError(domain: "test", code: 403,
+                              userInfo: [NSLocalizedDescriptionKey: "nobody is there"])
+            }
+        }
+
+        nonisolated func check() -> PresenceCheck {
+            PresenceCheck { reason in try await self.record(reason) }
+        }
+    }
+
     private func makeService(
-        consent: ConsentSource? = nil, automatedConsentAllowed: Bool = false
+        consent: ConsentSource? = nil,
+        presence: PresenceCheck? = nil,
+        automatedConsentAllowed: Bool = false
     ) throws -> (service: BrimService, gen: FixtureTreeGenerator, rootURL: URL, planDir: URL) {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
@@ -30,6 +53,7 @@ final class ApprovalGateTests: XCTestCase {
             planStoreDirectory: planDir,
             journalStoreDirectory: tempDir.appendingPathComponent("Journals"),
             consent: consent,
+            presence: presence ?? PresenceCheck { _ in },
             automatedConsentAllowed: automatedConsentAllowed
         )
         return (service, gen, rootURL, planDir)
@@ -164,13 +188,12 @@ final class ApprovalGateTests: XCTestCase {
         defer { gen.destroy() }
 
         let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: service, requireCodeSigning: false)
+        let delegate = BrimXPCListenerDelegate(service: service, accepting: .sameProcessAnonymous)
         listener.delegate = delegate
         listener.resume()
         let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        connection.resume()
-        let client = BrimXPCClient(connection: connection, requireCodeSigning: false)
+        let client = try BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
 
         XCTAssertNil(
             client as Any as? ApprovalGranting,
@@ -206,6 +229,52 @@ final class ApprovalGateTests: XCTestCase {
 
         let verification = try await service.verify(planId: plan.planId)
         XCTAssertTrue(verification.success, "The app could not finish a removal it approved")
+    }
+
+    func testADestructivePlanStillCostsAFingerprint() async throws {
+        // Consent and presence are different claims. The review sheet says
+        // the person agreed; the fingerprint says somebody is at the
+        // machine now rather than software driving the app. A plan that
+        // destroys something nothing can restore needs both.
+        let spy = PresenceSpy()
+        let (service, gen, rootURL, _) = try makeService(
+            consent: ConsentSource { _ in true }, presence: spy.check()
+        )
+        defer { gen.destroy() }
+        let plan = try await plan(from: service, in: rootURL)
+        try XCTSkipIf(plan.stepsWarrantingHumanPresence.isEmpty,
+                      "The fixture plan destroys nothing, so there is nothing to prove here")
+
+        let receipt = try await service.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        _ = try await service.grantApproval(for: receipt)
+
+        let asks = await spy.asks
+        XCTAssertEqual(asks.count, 1, "A destructive plan has to ask once, and only once")
+        XCTAssertFalse(asks[0].isEmpty)
+        XCTAssertFalse(asks[0].hasSuffix("."),
+                       "macOS renders this as \"Brim is trying to ___\"")
+        XCTAssertEqual(asks[0], asks[0].prefix(1).lowercased() + asks[0].dropFirst(),
+                       "It is a lowercase verb phrase, not a sentence")
+    }
+
+    func testNobodyAtTheMachineMeansNoToken() async throws {
+        let spy = PresenceSpy()
+        await spy.refuse()
+        let (service, gen, rootURL, _) = try makeService(
+            consent: ConsentSource { _ in true }, presence: spy.check()
+        )
+        defer { gen.destroy() }
+        let plan = try await plan(from: service, in: rootURL)
+        try XCTSkipIf(plan.stepsWarrantingHumanPresence.isEmpty,
+                      "The fixture plan destroys nothing, so presence is never asked for")
+
+        let receipt = try await service.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        do {
+            _ = try await service.grantApproval(for: receipt)
+            XCTFail("A failed fingerprint still produced a token")
+        } catch {
+            XCTAssertEqual((error as NSError).code, 403)
+        }
     }
 
     // MARK: - Shape
