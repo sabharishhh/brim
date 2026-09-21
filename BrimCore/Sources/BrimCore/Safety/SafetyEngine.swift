@@ -38,7 +38,7 @@ public struct SafetyEngine: Sendable {
             let url = item.evidence.url
             
             // 1. Absolute Deny List (via SafetyChecker)
-            let isSelfRemoval = footprint.identity.bundleID == "devplaceholder.PJ52YXEB.brim" || footprint.identity.bundleID == "com.google.Brim"
+            let isSelfRemoval = safetyChecker.isBrimItself(footprint.identity.bundleID)
             if !safetyChecker.isSafeToRemove(url: url, isSelfRemoval: isSelfRemoval) {
                 return EvaluatedItem(
                     footprintItem: item,

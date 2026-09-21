@@ -14,13 +14,11 @@ let package = Package(
         .library(name: "BrimOps", targets: ["BrimOps"]),
         .library(name: "BrimProtocol", targets: ["BrimProtocol"]),
         .library(name: "BrimService", targets: ["BrimService"]),
-        .library(name: "BrimHelperCore", targets: ["BrimHelperCore"]),
         .library(name: "BrimPrivileged", targets: ["BrimPrivileged"]),
         .library(name: "BrimUI", targets: ["BrimUI"]),
         .executable(name: "BrimApp", targets: ["BrimApp"]),
         .executable(name: "BrimCLI", targets: ["BrimCLI"]),
         .executable(name: "BrimMCP", targets: ["BrimMCP"]),
-        .executable(name: "BrimHelper", targets: ["BrimHelper"]),
         .executable(name: "BrimJobHelper", targets: ["BrimJobHelper"]),
     ],
     dependencies: [
@@ -38,7 +36,6 @@ let package = Package(
         .target(name: "BrimOps", dependencies: ["BrimScanShim"]),
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
         .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
-        .target(name: "BrimHelperCore", dependencies: ["BrimCore", "BrimOps", "BrimProtocol"]),
         // Deliberately depends on nothing. A root daemon should be small
         // enough to read in one sitting.
         .target(name: "BrimPrivileged"),
@@ -54,9 +51,6 @@ let package = Package(
             .product(name: "ArgumentParser", package: "swift-argument-parser")
         ]),
         .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol", "BrimService"]),
-        .executableTarget(name: "BrimHelper", dependencies: ["BrimHelperCore", "BrimService"], resources: [
-            .copy("com.google.Brim.daemon.plist")
-        ]),
         .executableTarget(name: "BrimJobHelper", dependencies: ["BrimPrivileged"]),
         
         // Tests
@@ -65,7 +59,7 @@ let package = Package(
         ]),
         .testTarget(name: "BrimCoreTests", dependencies: ["BrimCore", "BrimScan", "BrimFixtures"]),
         .testTarget(name: "BrimIndexTests", dependencies: ["BrimIndex", "BrimFixtures"]),
-        .testTarget(name: "BrimSecurityTests", dependencies: ["BrimService", "BrimHelperCore", "BrimPrivileged", "BrimFixtures"]),
+        .testTarget(name: "BrimSecurityTests", dependencies: ["BrimService", "BrimPrivileged", "BrimFixtures"]),
         .testTarget(name: "BrimGoldenTests", dependencies: ["BrimCore", "BrimFixtures"]),
         .testTarget(name: "BrimUITests", dependencies: ["BrimUI", "BrimCore", "BrimProtocol"]),
         // Exercises the real machine. Opt-in via BRIM_REAL_ENV=1; skips otherwise.
