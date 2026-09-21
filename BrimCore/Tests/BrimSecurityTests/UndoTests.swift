@@ -39,7 +39,6 @@ final class UndoTests: XCTestCase {
         
         let plan = try await service.plan(intent: intent)
         
-        try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         let hash = try plan.contentHash()
         let token = await realService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
@@ -71,7 +70,6 @@ final class UndoTests: XCTestCase {
         
         let plan2 = try await service.plan(intent: intent)
         
-        try await service.requestApproval(planId: plan2.planId, requesterIdentity: intent.requesterIdentity)
         let hash2 = try plan2.contentHash()
         let token2 = await realService.tokenStore.mintToken(planId: plan2.planId, planHash: hash2, requesterIdentity: intent.requesterIdentity)
         try await service.apply(planId: plan2.planId, token: token2)

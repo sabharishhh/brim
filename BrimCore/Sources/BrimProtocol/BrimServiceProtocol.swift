@@ -7,7 +7,11 @@ public protocol BrimServiceProtocol: Sendable {
     func inspect(identity: Identity) async throws -> Footprint
     func plan(intent: PlanIntent) async throws -> Plan
     func explain(planId: UUID) async throws -> String
-        func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken
+    /// Asks for a person's approval. Returns an acknowledgement, never
+    /// permission: there is deliberately no method here that produces an
+    /// `ApprovalToken`. The answer comes back through `ApprovalGranting`,
+    /// which only Brim's own process implements.
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt
     func apply(planId: UUID, token: ApprovalToken) async throws
     func verify(planId: UUID) async throws -> VerificationResult
     func history() async throws -> [Plan]
@@ -53,6 +57,23 @@ public protocol BrimServiceProtocol: Sendable {
 }
 
 public extension BrimServiceProtocol {
+    /// Ask, wait for the answer, then act on it.
+    ///
+    /// The one route from a plan to a removal, so there is one place where
+    /// the gate is enforced rather than one per caller. A service that
+    /// cannot ask a person does not conform to `ApprovalGranting`, and this
+    /// stops before anything is touched.
+    func approveAndApply(planId: UUID, requesterIdentity: String) async throws {
+        let receipt = try await requestApproval(
+            planId: planId, requesterIdentity: requesterIdentity
+        )
+        guard let granting = self as? ApprovalGranting else {
+            throw ApprovalError.noHumanToAsk
+        }
+        let token = try await granting.grantApproval(for: receipt)
+        try await apply(planId: planId, token: token)
+    }
+
     /// Nothing to reconcile by default, so a service that does not track
     /// registrations — a test stub, or the XPC client until the daemon
     /// carries this — is not forced to implement it.

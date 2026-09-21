@@ -3,7 +3,7 @@ import BrimCore
 import BrimProtocol
 @testable import BrimUI
 
-private actor UninstallStub: BrimServiceProtocol {
+private actor UninstallStub: BrimServiceProtocol, ApprovalGranting {
     var planToReturn: Plan?
     var planError: Error?
     var approvalError: Error?
@@ -30,10 +30,14 @@ private actor UninstallStub: BrimServiceProtocol {
         return planToReturn!
     }
 
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
         approvals += 1
         if let approvalError { throw approvalError }
-        return ApprovalToken(token: "test-token")
+        return .stub(planId: planId, requester: requesterIdentity)
+    }
+
+    func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
+        .stub(requester: receipt.requester)
     }
 
     func apply(planId: UUID, token: ApprovalToken) async throws {

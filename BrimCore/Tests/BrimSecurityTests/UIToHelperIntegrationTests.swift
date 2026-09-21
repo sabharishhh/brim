@@ -45,8 +45,11 @@ final class UIToHelperIntegrationTests: XCTestCase {
         }
         XCTAssertEqual(plan.steps[0].target, appDir.path)
         
-        let token = try await client.requestApproval(planId: plan.planId, requesterIdentity: "user")
-        XCTAssertNotNil(token)
+        // The client asks; only the service grants. This is the whole gate
+        // in three lines: `BrimXPCClient` has no `grantApproval`, so the
+        // token can only come from the process holding the service.
+        let receipt = try await client.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        let token = try await realService.grantApproval(for: receipt)
         
         try await client.apply(planId: plan.planId, token: token)
         

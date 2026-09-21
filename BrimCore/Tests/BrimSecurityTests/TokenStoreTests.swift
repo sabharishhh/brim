@@ -7,9 +7,7 @@ import Foundation
 final class TokenStoreTests: XCTestCase {
     
     func testTokenValidationScenarios() async throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let store = TokenStore(directoryURL: tempDir)
+        let store = TokenStore()
         
         let planId = UUID()
         let planHash = "somehash"

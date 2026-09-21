@@ -32,7 +32,7 @@ private actor AppsStub: BrimServiceProtocol {
 
     func plan(intent: PlanIntent) async throws -> Plan { throw Stub.no }
     func explain(planId: UUID) async throws -> String { throw Stub.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Stub.no }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.no }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.no }
     func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
     func history() async throws -> [Plan] { [] }
@@ -170,7 +170,7 @@ final class ApplicationsModelTests: XCTestCase {
             func inspect(identity: Identity) async throws -> Footprint { throw Stub.no }
             func plan(intent: PlanIntent) async throws -> Plan { throw Stub.no }
             func explain(planId: UUID) async throws -> String { throw Stub.no }
-            func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Stub.no }
+            func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.no }
             func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.no }
             func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
             func history() async throws -> [Plan] { [] }
@@ -241,7 +241,7 @@ private actor StubInventoryService: BrimServiceProtocol {
     func installedApplications() async throws -> [InstalledApplication] { applications }
 
     func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Nope.no }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Nope.no }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
     func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
     func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }

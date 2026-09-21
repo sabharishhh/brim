@@ -6,7 +6,7 @@ import BrimProtocol
 import BrimOps
 
 /// The in-process implementation of the BrimService.
-public actor BrimService: BrimServiceProtocol {
+public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public let root: FileSystemRoot
     private let engine: EvidenceEngine
     private let safetyEngine: SafetyEngine
@@ -17,8 +17,10 @@ public actor BrimService: BrimServiceProtocol {
     private let ledgerStore: LedgerStore
     private let executor: Executor
     
-    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL) {
+    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, automatedConsentAllowed: Bool = true) {
         self.root = root
+        self.consent = consent
+        self.automatedConsentAllowed = automatedConsentAllowed
         
         self.engine = EvidenceEngine(sources: [
             
@@ -41,7 +43,10 @@ public actor BrimService: BrimServiceProtocol {
         self.planStore = PlanStore(directoryURL: planStoreDirectory)
         let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
         try? FileManager.default.createDirectory(at: tokensDir, withIntermediateDirectories: true)
-        self.tokenStore = TokenStore(directoryURL: tokensDir)
+        // Tokens live in memory only. The directory is still here because
+        // `PresenceStore` writes to it, and presence, unlike approval, is
+        // meant to survive a relaunch.
+        self.tokenStore = TokenStore()
         self.presenceStore = PresenceStore(directoryURL: tokensDir)
         
         let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
@@ -135,6 +140,20 @@ public actor BrimService: BrimServiceProtocol {
     private let presenceStore: PresenceStore
     private let approvalPolicy = ApprovalPolicy()
 
+    /// Requests waiting for a person. Held in memory, expiring in minutes,
+    /// and carrying no authority of their own.
+    private var pendingApprovals: [UUID: ApprovalRequestReceipt] = [:]
+
+    /// The only thing in this process that can ask a person. Nil in the
+    /// CLI, in an MCP host, and in any process that is not Brim's app,
+    /// which is why none of them can approve anything.
+    private var consent: ConsentSource?
+
+    /// Lets a test turn off the debug automation shortcut, so the gate can
+    /// be examined as it behaves in a shipped build. Has no effect outside
+    /// a debug build, where the shortcut does not exist at all.
+    private let automatedConsentAllowed: Bool
+
     /// Whether first-run setup has happened. Nothing is withheld until it
     /// does; the UI uses this to decide whether to offer it.
     public func isEnrolled() async -> Bool {
@@ -179,80 +198,165 @@ public actor BrimService: BrimServiceProtocol {
         await presenceStore.recordEnrolment()
     }
 
-    public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
-        let plan = try await planStore.load(planId: planId)
-        
-        let hash = try plan.contentHash()
+    // MARK: - Approval
 
-        // A test run must never block on a human. The fallbacks below only
-        // cover machines where LAContext is unavailable; on a Mac with working
-        // Touch ID the suite raises a real prompt for every plan it applies.
-        //
-        // Debug-only on purpose: a release build must have no way to reach
-        // mintToken without a human, least of all one an environment variable
-        // can switch on.
-        #if DEBUG
-        if Self.isAutomatedRun {
-            return await tokenStore.mintToken(planId: planId, planHash: hash, requesterIdentity: requesterIdentity)
+    /// Requests that a person approve a plan. Returns an acknowledgement.
+    ///
+    /// This deliberately cannot approve anything. It records that a
+    /// decision is pending, describes what the decision is about, and hands
+    /// back a receipt with no authority in it. The only thing that turns a
+    /// receipt into a token is `grantApproval(for:)`, which is not on this
+    /// protocol and not reachable across a process boundary.
+    ///
+    /// The old version minted a token here whenever `ApprovalPolicy`
+    /// decided the plan was reversible, which is almost every plan. In the
+    /// app that was defensible, because the review sheet had already been
+    /// read and confirmed. From the CLI and from an MCP host there is no
+    /// review sheet, so a caller could plan, request and apply without a
+    /// person ever being involved. That is the one thing the product
+    /// promises cannot happen.
+    public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
+        let plan = try await planStore.load(planId: planId)
+        let hash = try plan.contentHash()
+        let now = Date()
+
+        let receipt = ApprovalRequestReceipt(
+            requestId: UUID(),
+            planId: planId,
+            planHash: hash,
+            requester: requesterIdentity,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(Self.requestTimeToLive),
+            summary: Self.summary(of: plan),
+            awaitingHuman: true
+        )
+        pendingApprovals[receipt.requestId] = receipt
+        forgetStaleApprovalRequests(now: now)
+        return receipt
+    }
+
+    /// Turns an answered request into a token. The only mint site there is.
+    ///
+    /// Three things have to hold, in this order. Something in this process
+    /// has to be able to ask a person, or there is nothing here that can
+    /// approve. The plan has to still say what it said when the request was
+    /// made, or the answer was given about something else. And where the
+    /// plan destroys something nothing can restore, a person has to prove
+    /// they are at the machine right now.
+    public func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
+        guard let pending = pendingApprovals[receipt.requestId],
+              pending == receipt,
+              Date() < receipt.expiresAt else {
+            throw ApprovalError.requestNotPending
         }
+        // Single use, whatever happens next. A request that has been
+        // answered is spent.
+        pendingApprovals.removeValue(forKey: receipt.requestId)
+
+        let plan = try await planStore.load(planId: receipt.planId)
+        let hash = try plan.contentHash()
+        guard hash == receipt.planHash else {
+            throw ApprovalError.planChangedSinceRequest
+        }
+
+        // A test run must never block on a human, and must never be able to
+        // stand in for one either. Debug-only on purpose: a release build
+        // has no path to a token that does not pass through `consent`, least
+        // of all one an environment variable can switch on.
+        var automated = false
+        #if DEBUG
+        automated = Self.isAutomatedRun && automatedConsentAllowed
         #endif
 
-        // Not every plan is worth interrupting a human for. The review
-        // sheet is the consent; a fingerprint proves only that a person is
-        // at the machine right now, which is worth one interruption before
-        // something is destroyed beyond recovery and worth nothing before a
-        // file is moved to the Trash.
-        //
-        // The failure this guards against is not an unauthorised deletion.
-        // It is a user asked so often that they stop reading, at which point
-        // every prompt in the product has become decoration.
-        let requirement = approvalPolicy.requirement(
-            for: plan, lastAuthenticated: await presenceStore.lastPresence
-        )
-        guard case .humanPresence(let reason) = requirement else {
-            return await tokenStore.mintToken(
-                planId: planId, planHash: hash, requesterIdentity: requesterIdentity
+        if !automated {
+            guard let consent else { throw ApprovalError.noHumanToAsk }
+            guard await consent.ask(receipt) else { throw ApprovalError.declined }
+
+            // Not every plan is worth interrupting a human for. The review
+            // sheet is the consent; a fingerprint proves only that a person
+            // is at the machine right now, which is worth one interruption
+            // before something is destroyed beyond recovery and worth
+            // nothing before a file is moved to the Trash.
+            //
+            // The failure this guards against is not an unauthorised
+            // deletion. It is a user asked so often that they stop reading,
+            // at which point every prompt in the product has become
+            // decoration.
+            let requirement = approvalPolicy.requirement(
+                for: plan, lastAuthenticated: await presenceStore.lastPresence
             )
+            if case .humanPresence(let reason) = requirement {
+                try await proveHumanPresence(reason: reason)
+            }
         }
 
+        // The one mint in the product, and it is downstream of every check
+        // above. `ApprovalGateTests` fails if a second one appears.
+        return await tokenStore.mintToken(
+            planId: receipt.planId, planHash: hash, requesterIdentity: receipt.requester
+        )
+    }
+
+    /// Installs the thing that can ask a person. Brim's app calls this at
+    /// launch; nothing else does, and nothing else can.
+    public func useConsentSource(_ source: ConsentSource?) {
+        self.consent = source
+    }
+
+    private func proveHumanPresence(reason: String) async throws {
         let context = LAContext()
         var authError: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) {
-            do {
-                let success = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
-                guard success else {
-                    throw NSError(domain: "BrimService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Authentication failed."])
-                }
-                // Proving presence once covers the next few minutes of
-                // destructive work, the way sudo's timestamp does — including
-                // across a relaunch, which is why it is persisted.
-                await presenceStore.recordPresence()
-            } catch {
-                if let laError = error as? LAError, laError.code == .userCancel {
-                    // Ignore user cancel and throw standard error
-                    throw NSError(domain: "BrimService", code: 403, userInfo: [NSLocalizedDescriptionKey: "User cancelled authentication."])
-                }
-                // Handle testing environments where LAContext immediately fails
-                print("LAContext failed (\(error)), simulating approval for testing fallback if in mock environment")
-                #if DEBUG
-                if ProcessInfo.processInfo.environment["BRIM_MCP_TEST"] == nil && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-                     throw error
-                }
-                #else
-                throw error
-                #endif
-            }
-        } else {
-            // No auth mechanism available, or we are in a testing environment without access to LAContext.
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
+            // No authentication mechanism at all. In a release build that is
+            // a refusal, because the whole point of the prompt is that it
+            // cannot be skipped.
             #if DEBUG
             print("LAContext unavailable, allowing fallback for tests")
+            return
             #else
-            throw authError ?? NSError(domain: "BrimService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Authentication unavailable."])
+            throw authError ?? NSError(
+                domain: "BrimService", code: 403,
+                userInfo: [NSLocalizedDescriptionKey: "Authentication unavailable."]
+            )
             #endif
         }
-        
-        return await tokenStore.mintToken(planId: planId, planHash: hash, requesterIdentity: requesterIdentity)
+
+        do {
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication, localizedReason: reason
+            )
+            guard success else {
+                throw NSError(domain: "BrimService", code: 403,
+                              userInfo: [NSLocalizedDescriptionKey: "Authentication failed."])
+            }
+            // Proving presence once covers the next few minutes of
+            // destructive work, the way sudo's timestamp does, including
+            // across a relaunch, which is why it is persisted.
+            await presenceStore.recordPresence()
+        } catch let error as LAError where error.code == .userCancel {
+            throw NSError(domain: "BrimService", code: 403,
+                          userInfo: [NSLocalizedDescriptionKey: "User cancelled authentication."])
+        }
     }
+
+    /// What the person is being asked about, in one line.
+    static func summary(of plan: Plan) -> String {
+        let subject = plan.intent.subjectIdentity.name
+        let count = plan.steps.count
+        let items = "\(count) \(count == 1 ? "step" : "steps")"
+        let permanent = plan.steps.filter { $0.effectiveDisposition == .delete }.count
+        if permanent > 0 {
+            return "Remove \(subject): \(items), \(permanent) of them permanent."
+        }
+        return "Remove \(subject): \(items), all recoverable from the Trash."
+    }
+
+    private static let requestTimeToLive: TimeInterval = 300
+
+    private func forgetStaleApprovalRequests(now: Date) {
+        pendingApprovals = pendingApprovals.filter { $0.value.expiresAt > now }
+    }
+
     private var appliedPlanIds: Set<UUID> = []
     
     public enum ApplyError: Error {

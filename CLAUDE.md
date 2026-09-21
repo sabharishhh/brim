@@ -43,6 +43,12 @@ machine, so the harness must leave nothing behind. It has failed at this
 twice: four sandbox containers that cannot be removed by anyone, and 58
 bundles left in the Trash with 58 Launch Services records to match.
 
+`FileManager.trashItem` always means the real Trash, which is why the plain
+suite was filling it. Under XCTest, `SafeOps.trashItem` diverts to a
+per-process directory in `NSTemporaryDirectory`, detected rather than
+configured so no test has to opt in, and compiled out of a release build.
+A full run now adds nothing to `~/.Trash`; check that it still does not.
+
 Do not run the whole suite after every edit. Run what you changed, and the
 full suite before committing.
 
@@ -64,6 +70,17 @@ settled during setup, while they are paying attention to setup. A
 permission dialog standing between someone and a list they asked to see
 is a bug, and the fix is usually to find the free way to read the same
 thing.
+
+**Approval comes from a person, in Brim's window, or not at all.**
+`requestApproval` returns a receipt and cannot approve anything. The only
+mint is `BrimService.grantApproval`, reached through `ApprovalGranting`,
+which is not on `BrimServiceProtocol` and has no XPC message, so the CLI
+and an MCP host have no method to call rather than a check to argue with.
+A service only mints if a `ConsentSource` was installed in its own
+process, which the app does and nothing else does. Tokens live in memory
+for five minutes: two processes cannot share one, and that is the point.
+`ApprovalGateTests` holds every part of this, including a grep test that
+fails if a second function ever returns an `ApprovalToken`.
 
 **Interrupt for irreversible things only.** Moving something to the Trash
 needs no fingerprint. Permanently deleting something that matters gets one
@@ -143,6 +160,11 @@ conversation. Split unrelated changes rather than staging everything.
 - **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
   previous macOS still sits beside the v18 files, listing software that has
   since been removed. Read the highest version only, or invent leftovers.
+- **A Swift error loses its sentence crossing XPC.** `localizedDescription`
+  is computed, so bridging an error to `NSError` and replying with it
+  arrives as `Code=0 "(null)"`. `BrimXPCServer.wire` pins the sentence into
+  the user info first. A refusal that says nothing gets read as a bug and
+  worked around.
 - **`tccutil` resolves through Launch Services**, so privacy grants must be
   cleared while the bundle still exists. Hence `ExecutionPhase.privacyReset`
   running first.

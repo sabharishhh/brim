@@ -10,6 +10,22 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         super.init()
     }
 
+    /// Carries the sentence across the connection.
+    ///
+    /// A Swift error's `localizedDescription` is computed, not stored, so
+    /// bridging one straight to `NSError` and sending it over XPC arrives
+    /// as `Code=0 "(null)"`. A refusal that says nothing gets read as a
+    /// bug and worked around, which is the opposite of what a refusal is
+    /// for. This pins the sentence into the user info before it travels.
+    static func wire(_ error: Error) -> NSError {
+        let bridged = error as NSError
+        if bridged.userInfo[NSLocalizedDescriptionKey] != nil { return bridged }
+        return NSError(
+            domain: bridged.domain, code: bridged.code,
+            userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]
+        )
+    }
+
     public func inspect(identityData: Data, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
         Task {
             do {
@@ -18,7 +34,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try { () -> JSONEncoder in let e = JSONEncoder(); return e }().encode(footprint)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -31,7 +47,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try { () -> JSONEncoder in let e = JSONEncoder(); return e }().encode(plan)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -46,7 +62,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let explanation = try await service.explain(planId: planId)
                 reply(explanation, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -60,11 +76,11 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         }
         Task {
             do {
-                let token = try await service.requestApproval(planId: planId, requesterIdentity: requesterIdentity)
-                let data = try JSONEncoder().encode(token)
+                let receipt = try await service.requestApproval(planId: planId, requesterIdentity: requesterIdentity)
+                let data = try JSONEncoder().encode(receipt)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -80,7 +96,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 try await service.apply(planId: planId, token: token)
                 reply(nil)
             } catch {
-                reply(error as NSError)
+                reply(Self.wire(error))
             }
         }
     }
@@ -96,7 +112,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try { () -> JSONEncoder in let e = JSONEncoder(); return e }().encode(result)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -108,7 +124,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try { () -> JSONEncoder in let e = JSONEncoder(); return e }().encode(history)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -123,7 +139,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 try await service.undo(planId: planId)
                 reply(nil)
             } catch {
-                reply(error as NSError)
+                reply(Self.wire(error))
             }
         }
     }
@@ -134,7 +150,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let dump = try await service.dumpBTM()
                 reply(dump, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -146,7 +162,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try JSONEncoder().encode(leftovers)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -156,7 +172,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let apps = try await service.installedApplications()
                 reply(try JSONEncoder().encode(apps), nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -168,7 +184,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try JSONEncoder().encode(items)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }
@@ -180,7 +196,7 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
                 let data = try JSONEncoder().encode(duplicates)
                 reply(data, nil)
             } catch {
-                reply(nil, error as NSError)
+                reply(nil, Self.wire(error))
             }
         }
     }

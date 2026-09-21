@@ -53,7 +53,6 @@ final class BrimServiceTests: XCTestCase {
         let verifyBefore = try await service.verify(planId: plan.planId)
         XCTAssertFalse(verifyBefore.success)
         
-        try await service.requestApproval(planId: plan.planId, requesterIdentity: intent.requesterIdentity)
         
         let hash = try plan.contentHash()
         let token = await realService.tokenStore.mintToken(planId: plan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
