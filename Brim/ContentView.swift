@@ -26,5 +26,6 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
         }
+        .focusedSceneValue(\.navigateAction) { item in selection = item }
     }
 }
