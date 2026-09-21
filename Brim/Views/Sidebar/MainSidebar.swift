@@ -28,6 +28,19 @@ enum NavigationItem: String, Hashable, CaseIterable {
     }
 }
 
+/// Lets the View menu drive sidebar selection, so every section is
+/// reachable from the keyboard as a Mac app is expected to be.
+struct NavigateActionKey: FocusedValueKey {
+    typealias Value = (NavigationItem) -> Void
+}
+
+extension FocusedValues {
+    var navigateAction: ((NavigationItem) -> Void)? {
+        get { self[NavigateActionKey.self] }
+        set { self[NavigateActionKey.self] = newValue }
+    }
+}
+
 struct MainSidebar: View {
     @Binding var selection: NavigationItem?
 
