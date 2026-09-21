@@ -160,6 +160,28 @@ public final class PrivilegedHelperClient: ObservableObject {
         }
     }
 
+    /// Asks the daemon to forget an installer receipt. Nil when it
+    /// worked, otherwise the daemon's own sentence explaining why not.
+    public func forgetReceipt(packageID: String) async -> String? {
+        guard state == .ready else {
+            return "Brim's helper is not set up, so the installer's record of this package "
+                 + "stays where it is."
+        }
+        return await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(returning: error.localizedDescription)
+            } as? BrimJobHelperProtocol
+
+            guard let proxy else {
+                return continuation.resume(returning: "The helper did not answer.")
+            }
+            proxy.forgetReceipt(packageID: packageID) { refusal in
+                continuation.resume(returning: refusal)
+            }
+        }
+    }
+
     private func openConnection() -> NSXPCConnection {
         if let connection { return connection }
         let fresh = NSXPCConnection(machServiceName: BrimJobHelper.machServiceName, options: .privileged)

@@ -14,7 +14,7 @@ public enum CostOfError: String, Codable, Equatable, Sendable {
     case high = "User-created documents or system-level configuration"
 }
 
-public enum StepKind: String, Codable, Equatable, Sendable {
+public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     case trashPath
     case trashPathPrivileged
     case unloadLaunchdJob

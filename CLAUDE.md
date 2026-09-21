@@ -108,6 +108,17 @@ protect a shared component would have marked it for removal.
 macOS is holding, and space Brim could clear are three facts. One combined
 figure is how cleaning utilities end up lying.
 
+**A step kind that nothing emits is decoration.** Four of the eleven in
+§3.1 were declared, reserved and dead: a plan containing one recorded
+`unsupported_kind`. `StepVocabularyTests` reads the planner and the
+executor and fails when a kind has no producer or no branch.
+
+**Never run a vendor's uninstaller.** Find it, reveal it in Finder, and
+let the person decide. Detection is deliberately shallow and matches
+whole words in the file name: a deep search finds every framework
+shipping a string with "uninstall" in it, and a false positive here tells
+somebody to run a stranger's executable.
+
 **Three classes of developer artefact, and the third is untouchable.**
 Regenerable caches Brim removes itself. Tool managed stores are delegated
 to the tool's own command, shown in full before approval, because deleting
@@ -192,6 +203,28 @@ conversation. Split unrelated changes rather than staging everything.
   Presence goes through the injected `PresenceCheck` so tests can reach
   the approval gate without one. Killing a run mid-prompt leaves
   `System authentication is running` behind for the next one.
+- **A running application undoes a removal.** It keeps its state in
+  memory and writes it back when it quits, so preferences and caches
+  removed underneath it reappear minutes later and the removal looks as
+  though it silently failed. `apply` refuses before the token is spent,
+  so quitting and asking again is the whole remedy. Helpers inside the
+  bundle count: they have their own identifiers and write just as much.
+- **Two immutable flags, and they are not interchangeable.**
+  `UF_IMMUTABLE` is Finder's "Locked" and the owner can clear it.
+  `SF_IMMUTABLE` needs root and SIP's permission, and is reported rather
+  than offered. `SafetyChecker` used to refuse both silently, so a locked
+  file went missing from the plan instead of explaining itself.
+- **`pkgutil --forget` deletes nothing.** It removes the installer's
+  record, which is why a product keeps appearing in `pkgutil --pkgs` and
+  why an installer can offer to "repair" something already removed. The
+  record cannot be rebuilt, and Apple's are never forgotten: a missing
+  system receipt can leave a later macOS update unable to reason about
+  what is installed.
+- **Detection in `BrimCore`, mutation in `BrimOps`.** `BrimCore` depends
+  on nothing and the planner has to be able to ask whether a file is
+  locked or whether a bundle ships an uninstaller. Where a fact is
+  therefore read in two modules, a test holds the two readings to one
+  answer.
 - **Brim is `com.sabharishhh.brim`.** Nothing should carry a list of
   identifiers for it: `SafetyChecker` reads its own from the bundle it was
   given, because the hardcoded list named `com.google.Brim` and a
