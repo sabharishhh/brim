@@ -48,6 +48,14 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
 
     public var id: String { url.path }
 
+    /// What a screen reader should say for this row, as one sentence
+    /// rather than the five fragments the view is built from. The size
+    /// rides as the value and the path is left out of the label, the same
+    /// way the other lists handle theirs.
+    public var spokenDescription: String {
+        SpokenText.sentences([tool, name, explanation])
+    }
+
     public init(
         name: String, tool: String, url: URL, sizeBytes: Int64,
         cost: Cost, explanation: String,
