@@ -161,6 +161,20 @@ conversation. Split unrelated changes rather than staging everything.
 - **`NavigationLink(value:)` inside `List(selection:)` breaks
   accessibility.** Rows expose as `AXUnknown` and ignore a press. Use
   `.tag`.
+- **A composed row needs a role as well as a label.**
+  `.accessibilityElement(children: .ignore)` with a label but no trait
+  exposes as `AXUnknown`, the same dead end as the sidebar rows. Add
+  `.isStaticText`, or `.isButton` with an `.accessibilityAction` when the
+  row does something.
+- **`Toggle("")` exposes nothing to press.** Give it a real label and
+  `.labelsHidden()`. Hidden is not the same as absent.
+- **`.textSelection(.enabled)` adds a child text element**, so the string
+  is in the tree twice and a reader says it twice. Composing the row with
+  `children: .ignore` removes the duplicate.
+- **Check the tree, not the automation tool.** `scripts/ax_tree.swift`
+  dumps the real one. A tool that walks a few levels reported seventeen
+  elements for a window that actually had seventy-seven, and the app was
+  blamed for what the tool could not reach.
 - **Section minimum widths ratchet the window.** A split view asking for
   more than the window has grows it, `NSSplitView Subview Frames` saves the
   new size, and nothing shrinks it back.
