@@ -28,6 +28,20 @@ enum BrimServiceLocator {
         return makeInProcessService()
     }
 
+    /// Gives the service the one thing that lets it mint an approval: a
+    /// window, in front of a person.
+    ///
+    /// This is what separates the app from every other client. The CLI and
+    /// an MCP host run the same code and hold the same kind of service
+    /// object, and neither of them installs this, so neither of them can
+    /// turn a plan into a token however they are driven.
+    ///
+    /// The answer is already a yes by the time it gets here: Brim's review
+    /// sheets show the whole plan and the person pressed the button that
+    /// started this. What the service needs to know is not whether they
+    /// agreed, it is that there was somebody to agree.
+    private static let consentSource = ConsentSource { _ in true }
+
     private static func makeDaemonClient() -> any BrimServiceProtocol {
         let connection = NSXPCConnection(machServiceName: daemonMachServiceName, options: .privileged)
         connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
@@ -50,7 +64,8 @@ enum BrimServiceLocator {
             root: root,
             brimAppURL: Bundle.main.bundleURL,
             planStoreDirectory: planDir,
-            journalStoreDirectory: journalDir
+            journalStoreDirectory: journalDir,
+            consent: consentSource
         )
     }
 }

@@ -77,7 +77,7 @@ final class RealPipelineTests: XCTestCase {
                        "Caches are low cost of error and should not linger in the Trash")
         XCTAssertFalse(plan.isReversible)
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
@@ -99,7 +99,7 @@ final class RealPipelineTests: XCTestCase {
         XCTAssertEqual(plan.steps.map(\.effectiveDisposition), [.trash])
         XCTAssertTrue(plan.isReversible)
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
 
@@ -134,7 +134,7 @@ final class RealPipelineTests: XCTestCase {
         XCTAssertGreaterThan(plan.immediatelyFreedBytes, 0, "The cache half frees space at once")
         XCTAssertGreaterThan(plan.trashedBytes, 0, "The settings half only frees on emptying the Trash")
 
-        let token = try await service.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
+        let token = try await service.approvedToken(planId: plan.planId, requester: NSUserName())
         try await service.apply(planId: plan.planId, token: token)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path))

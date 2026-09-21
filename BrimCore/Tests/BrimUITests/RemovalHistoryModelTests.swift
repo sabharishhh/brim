@@ -31,7 +31,7 @@ private actor HistoryStub: BrimServiceProtocol {
     func inspect(identity: Identity) async throws -> Footprint { throw Stub.unimplemented }
     func plan(intent: PlanIntent) async throws -> Plan { throw Stub.unimplemented }
     func explain(planId: UUID) async throws -> String { throw Stub.unimplemented }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { throw Stub.unimplemented }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.unimplemented }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.unimplemented }
     func verify(planId: UUID) async throws -> VerificationResult { throw Stub.unimplemented }
     func dumpBTM() async throws -> String { throw Stub.unimplemented }

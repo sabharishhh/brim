@@ -82,7 +82,7 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
     }
     func plan(intent: PlanIntent) async throws -> Plan { fatalError() }
     func explain(planId: UUID) async throws -> String { fatalError() }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken { fatalError() }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { fatalError() }
     func apply(planId: UUID, token: ApprovalToken) async throws { }
     func verify(planId: UUID) async throws -> VerificationResult { fatalError() }
     func history() async throws -> [Plan] { return [] }
@@ -95,8 +95,6 @@ final class MockService: BrimServiceProtocol, @unchecked Sendable {
 }
 
 class MCPServer {
-    private var approvedTokens: [UUID: ApprovalToken] = [:]
-
     let service: BrimServiceProtocol
     let decoder = JSONDecoder()
     let encoder = JSONEncoder()
@@ -305,18 +303,24 @@ class MCPServer {
             
         case "request_approval":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid arguments") }
-            let token = try await service.requestApproval(planId: pid, requesterIdentity: "agent")
-            approvedTokens[pid] = token
-            return "Approval successful. The token has been secured server-side."
+            let receipt = try await service.requestApproval(planId: pid, requesterIdentity: "agent")
+            // An agent asking is not a person answering. Nothing here can
+            // approve: this host holds an XPC client, which has no method
+            // that produces a token, so the request goes no further than
+            // saying what it is about.
+            return "Approval requested, and not granted. A person has to approve this in "
+                 + "Brim's own window. What they will be asked: \(receipt.summary)"
             
         case "apply":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid arguments") }
-            guard let token = approvedTokens[pid] else {
-                return "Error: No approval token found for this plan. You must call request_approval first."
-            }
-            try await service.apply(planId: pid, token: token)
-            approvedTokens.removeValue(forKey: pid)
-            return "Plan applied."
+            // This host used to hold a token between `request_approval`
+            // and `apply`, which is how an agent could complete a removal
+            // by itself. It holds nothing now, because there is nothing to
+            // hold: the service it talks to has no method that mints one.
+            _ = pid
+            return "Nothing has approved this plan. request_approval records that you "
+                 + "asked; it does not grant anything, and this host cannot grant it "
+                 + "either. Approval happens in Brim's own window."
             
         case "verify":
             guard let pidStr = args["planId"]?.stringValue, let pid = UUID(uuidString: pidStr) else { throw MCPError.invalidRequest("Invalid arguments") }

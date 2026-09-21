@@ -78,8 +78,9 @@ import BrimUI
         
         do {
             let plan = try await client.plan(intent: intent)
-            let token = try await client.requestApproval(planId: plan.planId, requesterIdentity: NSUserName())
-            try await client.apply(planId: plan.planId, token: token)
+            try await client.approveAndApply(
+                planId: plan.planId, requesterIdentity: NSUserName()
+            )
             // Quit immediately after applying the uninstall
             NSApplication.shared.terminate(nil)
         } catch {

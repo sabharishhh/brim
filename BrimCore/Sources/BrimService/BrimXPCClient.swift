@@ -67,7 +67,11 @@ public actor BrimXPCClient: BrimServiceProtocol {
 
 
 
-    public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalToken {
+    /// Note what is missing here: `BrimXPCClient` does not conform to
+    /// `ApprovalGranting`. Whoever holds one of these can ask for approval
+    /// and can apply a token they were given, and has no way at all to turn
+    /// the first into the second.
+    public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
         let resultData: Data = try await withProxy { proxy, reply in
             proxy.requestApproval(planIdString: planId.uuidString, requesterIdentity: requesterIdentity) { data, error in
                 if let error = error { reply(.failure(error)) }
@@ -75,7 +79,7 @@ public actor BrimXPCClient: BrimServiceProtocol {
                 else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
             }
         }
-        return try decoder.decode(ApprovalToken.self, from: resultData)
+        return try decoder.decode(ApprovalRequestReceipt.self, from: resultData)
     }
 
     public func apply(planId: UUID, token: ApprovalToken) async throws {

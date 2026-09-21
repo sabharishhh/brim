@@ -65,7 +65,8 @@ final class SelfRemovalIntegrationTests: XCTestCase {
         let plistExistsInPlan = plan.steps.contains { $0.target.contains("devplaceholder.PJ52YXEB.brim.plist") }
         XCTAssertTrue(plistExistsInPlan, "Agent plist must be included. Excluded: \(plan.excludedItems.map { $0.reason })")
         
-        let token = try await client.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        let receipt = try await client.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        let token = try await realService.grantApproval(for: receipt)
         try await client.apply(planId: plan.planId, token: token)
         
         let verification = try await client.verify(planId: plan.planId)
