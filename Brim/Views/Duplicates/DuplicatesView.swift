@@ -151,10 +151,15 @@ struct DuplicatesView: View {
     private func row(_ path: String, in group: DuplicateGroup) -> some View {
         let isKept = group.paths.first == path
         return HStack(alignment: .top, spacing: 8) {
-            Toggle("", isOn: Binding(
+            // Named for the accessibility tree, hidden visually. Every
+            // copy in a set has the same file name, so the label has to
+            // carry the path or a reader hears the same thing twice with
+            // no way to tell which one is ticked.
+            Toggle("Select \(path)", isOn: Binding(
                 get: { model.selection.contains(path) },
                 set: { _ in model.toggle(path, in: group) }
             ))
+            .toggleStyle(.checkbox)
             .labelsHidden()
             .disabled(!model.canSelect(path, in: group))
 
@@ -171,6 +176,12 @@ struct DuplicatesView: View {
                     .font(.caption).foregroundColor(.secondary)
                     .truncationMode(.middle).lineLimit(1).textSelection(.enabled)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel(isKept
+                ? "\(URL(fileURLWithPath: path).lastPathComponent). The copy this set keeps."
+                : URL(fileURLWithPath: path).lastPathComponent)
+            .accessibilityValue(path)
         }
         .padding(.vertical, 1)
     }
