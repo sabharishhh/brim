@@ -87,11 +87,8 @@ struct UpdatesView: View {
     /// anything that opens a file off the internet is the whole problem.
     @ViewBuilder
     private var strandedSection: some View {
-        Section {
-            if model.stranded.isEmpty {
-                Text("Everything here has a way to get its next version.")
-                    .font(.caption).foregroundColor(.secondary)
-            } else {
+        if !model.stranded.isEmpty {
+            Section {
                 ForEach(model.stranded) { entry in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
@@ -103,23 +100,20 @@ struct UpdatesView: View {
                             Text(ByteText.short(entry.application.bundleSizeBytes))
                                 .font(.caption).foregroundColor(.secondary).monospacedDigit()
                         }
-                        Text(entry.sentence).font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+
                     }
                     .padding(.vertical, 2)
                     .accessibilityElement(children: .combine)
                 }
+            } header: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No update source (\(model.stranded.count))").font(.headline)
+                    Text("No App Store receipt, Sparkle feed, Homebrew cask or updater.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
             }
-        } header: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("No way to update itself (\(model.stranded.count))").font(.headline)
-                Text("Nothing checks these for a new version: no App Store receipt, no "
-                     + "Sparkle feed, no Homebrew cask, no updater. They stay where they are "
-                     + "until you replace them by hand.")
-                    .font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 4)
         }
     }
 
@@ -144,11 +138,10 @@ struct UpdatesView: View {
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Homebrew looks after these (\(model.homebrewManaged.count))")
+                    Text("Installed by Homebrew (\(model.homebrewManaged.count))")
                         .font(.headline)
-                    Text("brew upgrade updates them. When you remove one, let Homebrew do it: "
-                         + "deleting the files underneath leaves Homebrew believing it is "
-                         + "still installed.")
+                    Text("Updated with brew upgrade. Remove them with brew uninstall, or "
+                         + "Homebrew will still list them as installed.")
                         .font(.caption).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -157,24 +150,25 @@ struct UpdatesView: View {
         }
     }
 
+    /// A section with nothing in it is not rendered. A heading, a
+    /// paragraph explaining what it would have contained and a row saying
+    /// "None" is three lines about nothing.
     @ViewBuilder
     private func section(
         _ title: String, _ caption: String,
         _ agents: [UpdaterAgent], _ emptyNote: String
     ) -> some View {
-        Section {
-            if agents.isEmpty {
-                Text(emptyNote).font(.caption).foregroundColor(.secondary)
-            } else {
+        if !agents.isEmpty {
+            Section {
                 ForEach(agents) { agent in row(agent) }
+            } header: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(title) (\(agents.count))").font(.headline)
+                    Text(caption).font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
             }
-        } header: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(title) (\(agents.count))").font(.headline)
-                Text(caption).font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 4)
         }
     }
 

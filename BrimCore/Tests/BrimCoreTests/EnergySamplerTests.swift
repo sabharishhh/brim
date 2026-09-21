@@ -3,7 +3,16 @@ import XCTest
 
 final class EnergySamplerTests: XCTestCase {
     
-    func testEnergySampleImpactScoreCalculation() {
+    /// Energy is joules now, not a score.
+    ///
+    /// This used to assert a synthetic figure: CPU nanoseconds plus
+    /// wakeups times a million plus bytes times ten. That number could be
+    /// compared against itself and against nothing else. It had no unit,
+    /// so it could not become a share of a battery, could not be added up
+    /// over a week and could not be checked against anything. The real
+    /// figure was in the same `rusage_info_v6` the sampler was already
+    /// reading, in `ri_energy_nj`, unused.
+    func testEnergyIsMeasuredInJoulesAndConvertsToWhatABatteryIsMeasuredIn() {
         let sample = EnergySample(
             pid: 1234,
             executablePath: "/Applications/Test.app/Contents/MacOS/Test",
@@ -12,15 +21,35 @@ final class EnergySamplerTests: XCTestCase {
             systemTime: 1_000_000,
             diskReadBytes: 500,
             diskWriteBytes: 500,
-            wakeups: 10
+            wakeups: 10,
+            energyNanojoules: 3_600_000_000_000,
+            performanceCoreNanojoules: 1_800_000_000_000,
+            startedAt: 999
         )
-        
-        // Expected: 2_000_000 + 1_000_000 + (10 * 1_000_000) + (500 + 500) * 10
-        // = 3_000_000 + 10_000_000 + 10_000 = 13_010_000
-        XCTAssertEqual(sample.impactScore, 13_010_000)
-        // Check backwards compatibility property
-        XCTAssertEqual(sample.energyScore, sample.impactScore)
+
+        XCTAssertEqual(sample.joules, 3600, accuracy: 0.001)
+        // 3600 J is one watt-hour, so a thousand milliwatt-hours.
+        XCTAssertEqual(sample.milliwattHours, 1000, accuracy: 0.001)
         XCTAssertEqual(sample.bundlePath, "/Applications/Test.app")
+    }
+
+    func testTheSamplerReadsRealEnergyFromThisMac() async {
+        // Every one of 530 readable processes reported a non-zero
+        // ri_energy_nj when this was written. A build where the field
+        // came back empty would render a view full of zeroes, and the
+        // synthetic score it replaced would have hidden that.
+        let result = await EnergySampler().sample()
+        let withEnergy = result.samples.filter { $0.energyNanojoules > 0 }
+
+        XCTAssertFalse(result.samples.isEmpty)
+        XCTAssertFalse(
+            withEnergy.isEmpty,
+            "No process reported any energy, so the view would show nothing but zeroes"
+        )
+        XCTAssertTrue(
+            result.samples.allSatisfy { $0.startedAt > 0 },
+            "Without a start time, a reused pid inherits the last process's total"
+        )
     }
     
     func testEnergySamplerExecutionAndCoverageGaps() async {

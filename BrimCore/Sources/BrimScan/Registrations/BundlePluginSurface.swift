@@ -133,8 +133,7 @@ public struct BundlePluginSurface: RegistrationSurface {
                     targetExists: true,
                     recordPath: item.path,
                     evidence: "A \(folder.singular) in \(Self.readablePath(directory.path)). "
-                            + "macOS loads it from there whether or not the application that "
-                            + "installed it is still here.",
+                            + "Loaded by macOS from that folder.",
                     isSystemOwned: directory.path.hasPrefix("/System/"),
                     capability: RemovalCapability.forDeleting(item.path)
                 ))

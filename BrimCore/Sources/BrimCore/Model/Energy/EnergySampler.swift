@@ -10,18 +10,55 @@ public struct EnergySample: Codable, Sendable {
     public let diskReadBytes: UInt64
     public let diskWriteBytes: UInt64
     public let wakeups: UInt64
-    
-    // A synthetic impact score combining CPU time, disk IO, and wakeups.
-    // Explicitly not physical Joules.
-    public var impactScore: UInt64 {
-        // CPU time in ns (1e9 ns = 1s). Wakeups and IO also cost energy.
-        // Synthetic metric for spike.
-        return userTime + systemTime + (wakeups * 1000_000) + (diskReadBytes + diskWriteBytes) * 10
-    }
-    
-    @available(*, deprecated, message: "Use impactScore instead; this metric is a synthetic score, not physical energy.")
-    public var energyScore: UInt64 {
-        return impactScore
+
+    /// Energy the process has used since it started, in nanojoules.
+    ///
+    /// The real thing, from `ri_energy_nj`. It was sitting in the same
+    /// `rusage_info_v6` the sampler was already reading, unused, while
+    /// the view showed a synthetic score made of CPU time plus wakeups
+    /// plus bytes times ten. That number could be compared against itself
+    /// and against nothing else: it had no unit, so it could not be
+    /// turned into a share of a battery, added up over a week, or
+    /// checked against anything. Measured on this Mac, every one of 530
+    /// readable processes reports it.
+    public let energyNanojoules: UInt64
+    /// The part of it spent on performance cores, from `ri_penergy_nj`.
+    /// Worth separating because the same work costs several times more
+    /// there, and software that never yields to the efficiency cores is
+    /// the software worth knowing about.
+    public let performanceCoreNanojoules: UInt64
+    /// When the process started, in Mach absolute time. Two processes can
+    /// share a pid over a machine's uptime, so accumulating without this
+    /// attributes a new process's energy to the one that held the pid
+    /// before it.
+    public let startedAt: UInt64
+
+    /// Joules, for arithmetic that has to read as arithmetic.
+    public var joules: Double { Double(energyNanojoules) / 1_000_000_000 }
+
+    /// Milliwatt-hours, which is what a battery is measured in. 1 Wh is
+    /// 3600 J, so this is the only conversion in the product and it is
+    /// here rather than in a view.
+    public var milliwattHours: Double { joules / 3.6 }
+
+    public init(
+        pid: Int32, executablePath: String, bundlePath: String?,
+        userTime: UInt64, systemTime: UInt64,
+        diskReadBytes: UInt64, diskWriteBytes: UInt64, wakeups: UInt64,
+        energyNanojoules: UInt64 = 0, performanceCoreNanojoules: UInt64 = 0,
+        startedAt: UInt64 = 0
+    ) {
+        self.pid = pid
+        self.executablePath = executablePath
+        self.bundlePath = bundlePath
+        self.userTime = userTime
+        self.systemTime = systemTime
+        self.diskReadBytes = diskReadBytes
+        self.diskWriteBytes = diskWriteBytes
+        self.wakeups = wakeups
+        self.energyNanojoules = energyNanojoules
+        self.performanceCoreNanojoules = performanceCoreNanojoules
+        self.startedAt = startedAt
     }
 }
 
@@ -85,7 +122,10 @@ public actor EnergySampler {
                     systemTime: ru.ri_system_time,
                     diskReadBytes: ru.ri_diskio_bytesread,
                     diskWriteBytes: ru.ri_diskio_byteswritten,
-                    wakeups: ru.ri_interrupt_wkups + ru.ri_pkg_idle_wkups
+                    wakeups: ru.ri_interrupt_wkups + ru.ri_pkg_idle_wkups,
+                    energyNanojoules: ru.ri_energy_nj,
+                    performanceCoreNanojoules: ru.ri_penergy_nj,
+                    startedAt: ru.ri_proc_start_abstime
                 )
                 samples.append(sample)
             } else {

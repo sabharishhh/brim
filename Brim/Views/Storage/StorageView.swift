@@ -38,7 +38,7 @@ struct StorageView: View {
                 Text("Storage").font(.title2).fontWeight(.bold)
                 Text(model.isLoading
                      ? "Reading the volumes…"
-                     : "Kept as separate figures, because adding them together hides what is going on.")
+                     : "Free space, space macOS is holding, and what can be cleared.")
                     .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
@@ -59,16 +59,16 @@ struct StorageView: View {
             bar(volume)
 
             figure("In use", volume.used,
-                   "Files, applications and everything else actually stored.", .accentColor)
+                   "Files, applications and everything else stored.", .accentColor)
             figure("Free right now", volume.freeRightNow,
-                   "Genuinely empty this second. This is what a new file writes into.", .green)
+                   "Available for new files.", .green)
             figure("Held by macOS", volume.reclaimableByTheSystem,
                    "Caches macOS gives back when something needs the room. Deleting files "
                    + "does not add to it.",
                    .orange)
 
             Divider()
-            Text("Finder would say " + ByteText.short(volume.freeAsFinderReportsIt)
+            Text("Finder reports " + ByteText.short(volume.freeAsFinderReportsIt)
                  + " free, because it counts the last two together.")
                 .font(.caption).foregroundColor(.secondary)
 
@@ -92,10 +92,8 @@ struct StorageView: View {
                     .fontWeight(.medium)
                 Text(pinning == 0
                      ? "macOS will discard these when it needs the room."
-                     : "\(pinning) of them will not be discarded automatically. Until they go, "
-                       + "deleting a large file can free nothing, because the blocks are still "
-                       + "referenced. macOS does not report how much they hold, so Brim does "
-                       + "not guess.")
+                     : "\(pinning) will not be discarded automatically. Until they go, "
+                       + "deleting a large file may free nothing.")
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -148,18 +146,16 @@ struct StorageView: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "tray.full").foregroundColor(.accentColor)
             VStack(alignment: .leading, spacing: 2) {
-                Text("What Brim could clear").fontWeight(.medium)
+                Text("Can be cleared").fontWeight(.medium)
                 if model.isLoading {
                     Text("Still counting…").font(.callout).foregroundColor(.secondary)
                 } else if model.brimCanClear == 0 {
-                    Text("Nothing. Brim has not found anything on this Mac it can attribute "
-                         + "to software you no longer have.")
+                    Text("Nothing found.")
                         .font(.callout).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text(ByteText.short(model.brimCanClear) + " across "
-                         + "\(model.brimCanClearCount) items, from the same scan the Leftovers "
-                         + "section shows. Counted, not estimated.")
+                         + "\(model.brimCanClearCount) items, listed in Leftovers.")
                         .font(.callout).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

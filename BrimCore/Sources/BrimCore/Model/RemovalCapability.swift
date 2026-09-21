@@ -50,9 +50,9 @@ public enum RemovalCapability {
             return nil
         case .needsHelper:
             return "This sits in a folder that belongs to the system, so removing it needs an "
-                 + "administrator. Brim cannot do that yet."
+                 + "administrator."
         case .needsFullDiskAccess:
-            return "Brim cannot reach this without Full Disk Access."
+            return "Needs Full Disk Access."
         case .refusedByOS:
             return "macOS protects this one and will not let anything remove it."
         }

@@ -804,32 +804,24 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func installedApplications() async throws -> [InstalledApplication] {
         let applications = await ApplicationInventory(root: root).installedApplications()
 
-        // Every enumeration is written down. Nothing is watched and
-        // nothing runs at login: two snapshots and a subtraction answer
-        // "what changed" for the cost of one insert per application.
-        //
-        // Best effort, and deliberately not fatal. A history that could
-        // not be written is a worse product, not a broken one, and
-        // refusing to list applications because a database is locked
-        // would be the wrong trade.
+        // Every enumeration is written down, so "what changed" is the
+        // last two snapshots differenced and nothing has to watch for
+        // installations. Best effort: a history that could not be
+        // written must not stop the list being returned.
         await recordSnapshot(of: applications)
         return applications
     }
 
     private func recordSnapshot(of applications: [InstalledApplication]) async {
         guard let index else { return }
-        let provenance = ApplicationProvenance()
         let observations = applications.compactMap { application -> InstallObservation? in
             guard let bundleID = application.identity.bundleID else { return nil }
-            let dates = provenance.dates(for: application.url)
             return InstallObservation(
                 bundleID: bundleID,
                 name: application.name,
                 version: application.version,
                 bundlePath: application.url.path,
-                sizeBytes: application.bundleSizeBytes,
-                addedAt: dates.addedAt,
-                lastUsedAt: dates.lastUsedAt
+                sizeBytes: application.bundleSizeBytes
             )
         }
         do {
@@ -911,36 +903,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// applications the first time somebody opens Brim would make every
     /// later list untrustworthy.
     public func whatChanged() async -> InstallHistory {
-        guard let index else {
-            return InstallHistory(changes: [], snapshots: 0, migrated: [])
-        }
-        let changes = (try? await index.changesSinceLastScan()) ?? []
-        let snapshots = (try? await index.snapshotCount()) ?? 0
-
-        // Software that came across from another Mac and never ran here.
-        // The safest removals on the machine, and nothing surfaces them,
-        // because the only evidence is two dates nobody thinks to
-        // compare.
-        let provenance = ApplicationProvenance()
-        let systemInstalledAt = provenance.systemInstalledAt()
-        let migrated = await ApplicationInventory(root: root).installedApplications()
-            .filter { !$0.isSystemProtected }
-            .compactMap { application -> MigratedApplication? in
-                let dates = provenance.dates(for: application.url)
-                let verdict = MigrationHygiene.judge(
-                    addedAt: dates.addedAt,
-                    lastUsedAt: dates.lastUsedAt,
-                    systemInstalledAt: systemInstalledAt
-                )
-                guard verdict.isWorthReviewing else { return nil }
-                return MigratedApplication(
-                    application: application, verdict: verdict,
-                    sizeBytes: application.bundleSizeBytes
-                )
-            }
-
-        return InstallHistory(changes: changes, snapshots: snapshots, migrated: migrated)
+        guard let index else { return InstallHistory(changes: [], snapshots: 0) }
+        return InstallHistory(
+            changes: (try? await index.changesSinceLastScan()) ?? [],
+            snapshots: (try? await index.snapshotCount()) ?? 0
+        )
     }
+
 
     public func leftovers() async throws -> [Leftover] {
         // A registration whose program has gone names an owner that was

@@ -54,9 +54,8 @@ public struct AppExtensionSurface: RegistrationSurface {
                 targetExists: exists,
                 recordPath: nil,
                 evidence: exists
-                    ? "Registered with PluginKit, and its extension is still on disk."
-                    : "Registered with PluginKit, but the extension it points at is gone. "
-                    + "It can still appear in Share sheets and System Settings.",
+                    ? "Registered with PluginKit."
+                    : "Registered with PluginKit, but the extension is gone.",
                 isSystemOwned: isApple,
                 capability: .ok
             )

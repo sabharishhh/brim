@@ -14,11 +14,11 @@ final class EnergyGroupingTests: XCTestCase {
 
     private func measured(
         bundle: String?, executable: String,
-        cpu: UInt64 = 0, wakeups: UInt64 = 0, bytes: UInt64 = 0, impact: UInt64 = 1
+        cpu: UInt64 = 0, wakeups: UInt64 = 0, bytes: UInt64 = 0, nanojoules: UInt64 = 1
     ) -> EnergyModel.Measured {
         EnergyModel.Measured(
             bundlePath: bundle, executablePath: executable,
-            cpuNanoseconds: cpu, wakeups: wakeups, bytesMoved: bytes, impact: impact
+            cpuNanoseconds: cpu, wakeups: wakeups, bytesMoved: bytes, nanojoules: nanojoules
         )
     }
 
@@ -26,18 +26,18 @@ final class EnergyGroupingTests: XCTestCase {
         let chatGPT = "/Applications/ChatGPT.app"
         let rows = EnergyModel.group([
             measured(bundle: chatGPT, executable: "\(chatGPT)/Contents/MacOS/ChatGPT",
-                     wakeups: 133, impact: 133),
+                     wakeups: 133, nanojoules: 133),
             measured(bundle: chatGPT, executable: "\(chatGPT)/Contents/Frameworks/Codex (Renderer)",
-                     wakeups: 62, impact: 62),
+                     wakeups: 62, nanojoules: 62),
             measured(bundle: chatGPT, executable: "\(chatGPT)/Contents/Frameworks/Codex (Service)",
-                     wakeups: 53, impact: 53)
+                     wakeups: 53, nanojoules: 53)
         ])
 
         XCTAssertEqual(rows.count, 1, "One app, one row")
         XCTAssertEqual(rows[0].name, "ChatGPT")
         XCTAssertEqual(rows[0].processCount, 3)
         XCTAssertEqual(rows[0].wakeups, 248, "The cost is the sum of every process")
-        XCTAssertEqual(rows[0].impact, 248)
+        XCTAssertEqual(rows[0].nanojoules, 248)
     }
 
     func testDifferentAppsStayApart() {
@@ -62,8 +62,8 @@ final class EnergyGroupingTests: XCTestCase {
 
     func testSeveralCopiesOfOneDaemonCollapseToo() {
         let rows = EnergyModel.group([
-            measured(bundle: nil, executable: "/usr/libexec/somed", wakeups: 2, impact: 2),
-            measured(bundle: nil, executable: "/usr/libexec/somed", wakeups: 3, impact: 3)
+            measured(bundle: nil, executable: "/usr/libexec/somed", wakeups: 2, nanojoules: 2),
+            measured(bundle: nil, executable: "/usr/libexec/somed", wakeups: 3, nanojoules: 3)
         ])
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].processCount, 2)
@@ -72,8 +72,8 @@ final class EnergyGroupingTests: XCTestCase {
 
     func testTheBusiestAppLeads() {
         let rows = EnergyModel.group([
-            measured(bundle: "/Applications/Quiet.app", executable: "q", impact: 5),
-            measured(bundle: "/Applications/Busy.app", executable: "b", impact: 900)
+            measured(bundle: "/Applications/Quiet.app", executable: "q", nanojoules: 5),
+            measured(bundle: "/Applications/Busy.app", executable: "b", nanojoules: 900)
         ])
         XCTAssertEqual(rows.map(\.name), ["Busy", "Quiet"])
     }
