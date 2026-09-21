@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import BrimOps
 
 /// Provisions disposable targets in the **real** user domains so the pipeline
 /// can be exercised against the machine Brim actually runs on.
@@ -41,6 +42,9 @@ struct RealEnvironmentFixture {
 
     let runID: String
     private(set) var created: [URL] = []
+    /// Whether this run put a bundle into Launch Services, and therefore has
+    /// a registration to clean up afterwards.
+    private var registeredAnyBundle = false
 
     init() {
         self.runID = "\(Self.marker)\(UUID().uuidString.prefix(8))"
@@ -190,6 +194,7 @@ struct RealEnvironmentFixture {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
 
         try Self.lsregister(["-f", bundle.path])
+        registeredAnyBundle = true
         return bundle
     }
 
@@ -213,12 +218,37 @@ struct RealEnvironmentFixture {
     /// failures as test failures: a harness that leaks real directories into
     /// a user's Library is worse than one that fails.
     func cleanUp(file: StaticString = #filePath, line: UInt = #line) {
+        // Anything Brim trashed rather than deleted is still on the machine,
+        // in the user's Trash, and stays there until they empty it. Left
+        // alone these accumulate one per run — and for as long as a `.app`
+        // among them exists, Launch Services keeps re-registering it, so
+        // unregistering is futile while the file is there. 58 such records
+        // had built up before this was noticed.
+        //
+        // The harness cannot *list* ~/.Trash without Full Disk Access, but
+        // it can remove a path it can name, and each run's names are unique
+        // so macOS appends no disambiguating suffix.
+        let trash = home.appendingPathComponent(".Trash")
+        for url in created {
+            let name = url.lastPathComponent
+            guard name.hasPrefix(Self.marker) else { continue }
+            try? FileManager.default.removeItem(at: trash.appendingPathComponent(name))
+        }
+
+        // Then retract whatever registration is left. Best effort, not an
+        // assertion: with the files gone Launch Services prunes these on its
+        // own schedule, and a harness that fails the suite over the timing
+        // of a system daemon is worse than one that tidies quietly.
+        if registeredAnyBundle {
+            for url in LaunchServicesRegistration
+                .registeredApplicationURLs(forBundleID: harnessBundleID) {
+                try? Self.lsregister(["-u", url.path])
+            }
+        }
         for url in created where url.pathExtension == "app" {
-            // Retract before removing: a harness that leaves a registration
-            // behind is leaving exactly the leftover these tests exist to
-            // catch. Harmless when the test already unregistered it.
             try? Self.lsregister(["-u", url.path])
         }
+
         for url in created {
             guard Self.isSafeToRemove(url) else {
                 XCTFail("Refusing to remove \(url.path): outside the harness namespace", file: file, line: line)
