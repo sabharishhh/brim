@@ -113,6 +113,20 @@ figure is how cleaning utilities end up lying.
 `unsupported_kind`. `StepVocabularyTests` reads the planner and the
 executor and fails when a kind has no producer or no branch.
 
+**A location needs a rule, not just a path.** `LocationInventory` pairs
+every place software hides with how a match there is proved, and the
+rule decides the tier: an identifier match is Tier B, a name match is
+Tier C, and a domain that can only ever be name-matched floors the tier
+whatever the row says. Adding a path without deciding its rule is how a
+cleaner deletes a folder for sharing a word with your app.
+
+**An unfinished search selects nothing.** A footprint is a claim about
+what is on the disk, and a scan that timed out or could not read
+somewhere cannot support it. Everything found is still shown and every
+row can still be ticked by hand; what goes away is Brim ticking them for
+you. `ScanBudget` gives the run a deadline so one unreadable path cannot
+hang it, and `ScanCompleteness` carries the gap all the way to the row.
+
 **The veto applies to registrations, not only to files.** A suite
 installs one login-item helper and several applications register against
 it. The file veto never sees that, because a registration is a record in
@@ -216,6 +230,17 @@ conversation. Split unrelated changes rather than staging everything.
   though it silently failed. `apply` refuses before the token is spent,
   so quitting and asking again is the whole remedy. Helpers inside the
   bundle count: they have their own identifiers and write just as much.
+- **`~/Library/Preferences/ByHost` is a second copy of the settings.**
+  A scan of `Preferences` walks straight past it. Real examples on this
+  Mac: Claude and VS Code both keep a `ShipIt` domain there.
+- **An audio plug-in's file name says nothing.** `Reverb.component` is
+  attributable only by reading the bundle's own `Info.plist`, which is
+  why every path-matching scanner misses them. The same is true of
+  preference panes, Quick Look generators and the rest of that family.
+- **The Darwin per-user folders hold real data and nothing enumerates
+  them.** `confstr(_CS_DARWIN_USER_CACHE_DIR)`, not a hard-coded path,
+  and under a fixture root it must answer inside the tree or a test
+  walks the developer's own cache. WhatsApp keeps 6 MB there.
 - **`cfprefsd` owns preferences, not the file.** Unlinking a plist and
   leaving the daemon holding the domain means it writes the file straight
   back out, and the person watches a setting they removed reappear. Clear

@@ -10,12 +10,20 @@ public struct DiscoveredApp: AppArtifact {
     public let name: String
     public let evidence: [Evidence]
     public let engineVersion: String
-    
-    public init(bundleID: String, name: String, evidence: [Evidence], engineVersion: String) {
+    /// What the search did not manage to see. Carried rather than
+    /// discarded, because a list that came from an unfinished search
+    /// cannot support the claim that it is the whole footprint.
+    public let completeness: ScanCompleteness
+
+    public init(
+        bundleID: String, name: String, evidence: [Evidence], engineVersion: String,
+        completeness: ScanCompleteness = .complete
+    ) {
         self.bundleID = bundleID
         self.name = name
         self.evidence = evidence
         self.engineVersion = engineVersion
+        self.completeness = completeness
     }
 }
 
@@ -30,9 +38,19 @@ public struct EvidenceEngine: Sendable {
     /// Aggregates, deduplicates by target, resolves tier conflicts, and sorts deterministically.
     public func discover(identity: Identity, in root: FileSystemRoot) async throws -> DiscoveredApp {
         var rawEvidence = [Evidence]()
-        
+        var completeness = ScanCompleteness.complete
+
         for source in sources {
-            rawEvidence.append(contentsOf: try await source.evidence(for: identity, in: root))
+            // A source that knows what it could not reach says so, and
+            // the gap travels with the result instead of being lost the
+            // moment the evidence is merged.
+            if let inventory = source as? LocationInventorySource {
+                let found = inventory.findings(for: identity, in: root)
+                rawEvidence.append(contentsOf: found.evidence)
+                completeness = completeness.merging(found.completeness)
+            } else {
+                rawEvidence.append(contentsOf: try await source.evidence(for: identity, in: root))
+            }
         }
         
         // Deduplicate and resolve tier conflicts
@@ -60,7 +78,8 @@ public struct EvidenceEngine: Sendable {
             bundleID: bundleID,
             name: identity.name,
             evidence: sortedEvidence,
-            engineVersion: EvidenceEngineRevision
+            engineVersion: EvidenceEngineRevision,
+            completeness: completeness
         )
     }
     

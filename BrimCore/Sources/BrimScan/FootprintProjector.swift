@@ -13,11 +13,15 @@ public struct FootprintProjector: Sendable {
     /// Re-evaluates sizes and presence dynamically, fulfilling the "query, never a stored object" invariant.
     public func project(identity: Identity, in root: FileSystemRoot, explicitEvidence: [Evidence]? = nil) async throws -> Footprint {
         let evidenceList: [Evidence]
+        var completeness = ScanCompleteness.complete
         if let explicit = explicitEvidence {
+            // The caller named the targets, so there was no search to be
+            // incomplete.
             evidenceList = explicit
         } else {
             let app = try await engine.discover(identity: identity, in: root)
             evidenceList = app.evidence
+            completeness = app.completeness
         }
         
         let fm = FileManager.default
@@ -40,7 +44,7 @@ public struct FootprintProjector: Sendable {
             return localItems
         }.value
         
-        return Footprint(identity: identity, items: items)
+        return Footprint(identity: identity, items: items, completeness: completeness)
     }
     
     

@@ -32,6 +32,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             SandboxContainerSource(),
             InstallerReceiptSource(),
             BundleIdentifierComponentSource(),
+            LocationInventorySource(),
             GroupContainerSource(),
             BundleIdentifierStateSource(),
             TeamIDSource(),
@@ -81,7 +82,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             items: footprint.items,
             logicalSizeBytes: logical,
             reclaimableSizeBytes: reclaimable,
-            snapshotPinnedBytes: pinned
+            snapshotPinnedBytes: pinned,
+            completeness: footprint.completeness
         )
         
         return footprint
