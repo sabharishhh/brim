@@ -3,17 +3,23 @@ import BrimCore
 import BrimProtocol
 import BrimUI
 
-/// Removing a selection of leftovers: planned, approved once, applied, and
-/// then re-checked.
+/// Removing a named selection: planned, approved once, applied, and then
+/// re-checked.
 ///
 /// Shares `UninstallExecutionModel` with the application uninstall, so the
-/// guarantee is the same one — a single authorization for the whole
+/// guarantee is the same one: a single authorization for the whole
 /// selection, and a verification pass afterwards rather than an assumption.
-/// What differs is only what went in: named targets with no owner, instead
-/// of an identity to discover a footprint from.
-struct LeftoverRemovalSheet: View {
+/// What differs is only what went in, named targets with no owner rather
+/// than an identity to discover a footprint from.
+///
+/// Used by the leftovers sweep and by the background section. Only the two
+/// lines at the top differ between them, which is not a reason for two
+/// copies of the approval flow.
+struct RemovalSheet: View {
     let intent: PlanIntent
     let service: any BrimServiceProtocol
+    let title: String
+    let subtitle: String
     let onFinished: () -> Void
 
     @StateObject private var model = UninstallExecutionModel()
@@ -39,9 +45,8 @@ struct LeftoverRemovalSheet: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Remove leftovers").font(.title2).fontWeight(.bold)
-                Text("\(intent.explicitTargets.count) items nothing on this Mac claims")
-                    .font(.caption).foregroundColor(.secondary)
+                Text(title).font(.title2).fontWeight(.bold)
+                Text(subtitle).font(.caption).foregroundColor(.secondary)
             }
             Spacer()
             Button(isFinished ? "Done" : "Cancel") {

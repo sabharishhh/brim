@@ -112,3 +112,27 @@ final class RegistrationGroupTests: XCTestCase {
         XCTAssertEqual(groups[0].composition, "2 background jobs, background item")
     }
 }
+
+/// A launchd job file named for removal has to be unloaded first.
+///
+/// The Background section names plist paths directly, with no application
+/// to discover them from. Planned as ordinary files they would be trashed
+/// while still loaded: gone from disk, still running, and nothing left to
+/// explain why.
+final class LaunchdJobFileTests: XCTestCase {
+
+    func testJobFilesAreRecognisedByWhereTheyLive() {
+        let agents = "/Users/someone/Library/LaunchAgents/com.google.keystone.agent.plist"
+        let daemons = "/Library/LaunchDaemons/com.vendor.helper.plist"
+        XCTAssertTrue(LaunchdJobFile.isOne(URL(fileURLWithPath: agents)))
+        XCTAssertTrue(LaunchdJobFile.isOne(URL(fileURLWithPath: daemons)))
+    }
+
+    func testAPlistSomewhereElseIsJustAFile() {
+        // launchd loads what is in its directories and ignores the rest,
+        // so a preferences plist is not a job however it is named.
+        let preference = "/Users/someone/Library/Preferences/com.google.keystone.agent.plist"
+        XCTAssertFalse(LaunchdJobFile.isOne(URL(fileURLWithPath: preference)))
+        XCTAssertFalse(LaunchdJobFile.isOne(URL(fileURLWithPath: "/Library/LaunchAgents/readme.txt")))
+    }
+}

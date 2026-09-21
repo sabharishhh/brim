@@ -87,8 +87,21 @@ public actor BrimService: BrimServiceProtocol {
             // Bypass evidence engine, project exactly the requested targets.
             // Several targets become one plan, so the user approves the whole
             // selection once rather than once per item.
-            let evidence = explicitTargets.map {
-                Evidence(url: $0, tier: .A, mechanism: "DirectTarget", humanSentence: "Specific target requested by intent")
+            // A launchd job file is named as what it is, not as a file.
+            // The planner reads the mechanism to decide the steps, and a
+            // plist trashed without `launchctl bootout` first leaves the
+            // job loaded until the next login: removed on disk, still
+            // running, which is the worst of both.
+            let evidence = explicitTargets.map { url -> Evidence in
+                let isJob = LaunchdJobFile.isOne(url)
+                return Evidence(
+                    url: url,
+                    tier: .A,
+                    mechanism: isJob ? "LaunchdSource" : "DirectTarget",
+                    humanSentence: isJob
+                        ? "A launchd job file named for removal"
+                        : "Specific target requested by intent"
+                )
             }
             footprint = try await projector.project(identity: intent.subjectIdentity, in: root, explicitEvidence: evidence)
         } else {

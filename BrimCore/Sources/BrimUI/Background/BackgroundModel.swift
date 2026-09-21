@@ -18,6 +18,8 @@ public final class BackgroundModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public var searchText = ""
     @Published public var showsSystemOwned = false
+    /// Which loose ends are picked for removal, by registration id.
+    @Published public var selection: Set<String> = []
 
     private var service: (any BrimServiceProtocol)?
 
@@ -53,6 +55,57 @@ public final class BackgroundModel: ObservableObject {
 
     public var gaps: [RegistrationCoverage] { report.gaps }
 
+    // MARK: - Removing what is left over
+
+    /// Everything currently selected.
+    public var selectedItems: [Registration] {
+        report.stale.filter { selection.contains($0.id) }
+    }
+
+    /// Whether this entry is something Brim can actually take away.
+    ///
+    /// A launchd job is a file: unload it, remove the file, done. A
+    /// background item is a row in a database macOS owns, and the only
+    /// tool it offers resets every application's items at once, so there
+    /// is nothing honest to offer per item. Those clear themselves anyway.
+    public static func isRemovable(_ registration: Registration) -> Bool {
+        registration.kind == .launchdJob
+            && registration.recordPath != nil
+            && !registration.isSystemOwned
+    }
+
+    public func isSelected(_ group: RegistrationGroup) -> Bool {
+        let removable = group.stale.filter(Self.isRemovable)
+        return !removable.isEmpty && removable.allSatisfy { selection.contains($0.id) }
+    }
+
+    public func canSelect(_ group: RegistrationGroup) -> Bool {
+        group.stale.contains(where: Self.isRemovable)
+    }
+
+    public func toggle(_ group: RegistrationGroup) {
+        let removable = group.stale.filter(Self.isRemovable)
+        if isSelected(group) {
+            for item in removable { selection.remove(item.id) }
+        } else {
+            for item in removable { selection.insert(item.id) }
+        }
+    }
+
+    public var canRemoveSelection: Bool { !selectedItems.isEmpty }
+
+    public func removalIntent(requesterIdentity: String) -> PlanIntent? {
+        let targets = selectedItems.compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
+        guard !targets.isEmpty else { return nil }
+        return PlanIntent(
+            type: .uninstall,
+            subjectIdentity: Identity(bundleID: nil, name: "Background jobs"),
+            requesterKind: "ui",
+            requesterIdentity: requesterIdentity,
+            specificTargets: targets
+        )
+    }
+
     private func filtered(_ items: [Registration]) -> [Registration] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
@@ -75,5 +128,8 @@ public final class BackgroundModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         report = await service.registrations()
+        // Anything that has gone is no longer selectable.
+        let present = Set(report.stale.map(\.id))
+        selection.formIntersection(present)
     }
 }

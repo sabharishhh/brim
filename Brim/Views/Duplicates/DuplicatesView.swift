@@ -27,7 +27,12 @@ struct DuplicatesView: View {
             if model.scannedFolder != nil { Divider(); footer }
         }
         .sheet(item: $reviewRequest) { intent in
-            LeftoverRemovalSheet(intent: intent, service: service) {
+            RemovalSheet(
+                intent: intent,
+                service: service,
+                title: "Remove duplicates",
+                subtitle: "\(intent.explicitTargets.count) copies of files you are keeping elsewhere"
+            ) {
                 if let folder = model.scannedFolder {
                     Task { await model.scan(directory: folder, service: service) }
                 }
