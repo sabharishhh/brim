@@ -30,7 +30,12 @@ struct LeftoversView: View {
         .task { await model.loadIfNeeded(service: service) }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .sheet(item: $reviewRequest) { intent in
-            LeftoverRemovalSheet(intent: intent, service: service) {
+            RemovalSheet(
+                intent: intent,
+                service: service,
+                title: "Remove leftovers",
+                subtitle: "\(intent.explicitTargets.count) items nothing on this Mac claims"
+            ) {
                 Task { await model.load(service: service) }
             }
         }
@@ -208,7 +213,11 @@ private struct GroupRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Toggle("", isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
+            // Named for the accessibility tree even though the name is not
+            // drawn. An empty label exposes nothing to press.
+            Toggle("Select \(group.displayName)",
+                   isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
+                .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!group.isFullyActionable)
 
