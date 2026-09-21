@@ -150,6 +150,30 @@ public final class ApplicationsModel: ObservableObject {
     ///
     /// Selecting again while a scan is in flight cancels it, so clicking
     /// down a list does not queue a scan per row.
+    /// Only for tests: stands in for an enumeration.
+    func acceptForTesting(_ applications: [InstalledApplication]) {
+        self.applications = applications
+    }
+
+    /// Selects whichever installed application a dropped file belongs to.
+    ///
+    /// Takes the bundle a path is inside, so dropping an application, or
+    /// anything within one, lands on the same row. Returns false when the
+    /// drop was not an installed application, so the view can say so
+    /// rather than doing nothing.
+    @discardableResult
+    public func selectApplication(at url: URL) -> Bool {
+        let dropped = url.resolvingSymlinksInPath().path
+        let match = applications.first { application in
+            let bundle = application.url.resolvingSymlinksInPath().path
+            return dropped == bundle || dropped.hasPrefix(bundle + "/")
+        }
+        guard let match else { return false }
+        searchText = ""
+        select(match)
+        return true
+    }
+
     public func select(_ application: InstalledApplication?) {
         selected = application
         footprint = nil
