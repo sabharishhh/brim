@@ -480,6 +480,51 @@ public actor BrimService: BrimServiceProtocol {
         return items.sorted { $0.removedAt > $1.removedAt }
     }
 
+    /// Clears Launch Services records that went stale since the last look.
+    ///
+    /// An uninstall retracts the record for the path an app was installed
+    /// at, but a bundle moved to the Trash keeps its name, so macOS
+    /// registers it there — accurately, while it is still recoverable.
+    /// Emptying the Trash removes the file and leaves that record pointing
+    /// at nothing, and macOS does not reliably prune it: a record for
+    /// `~/.Trash/…app` was observed surviving the file by some minutes.
+    /// That is the moment it becomes a leftover, so that is where it is
+    /// cleared.
+    ///
+    /// Called on every Trash change, so it stays cheap: no Launch Services
+    /// lookup at all unless a plan has actually lost a trashed bundle, and
+    /// retracting an already-retracted record is a no-op.
+    @discardableResult
+    public func reconcileRegistrations() async -> [URL] {
+        let fm = FileManager.default
+        var retracted: [URL] = []
+
+        for entry in (try? await ledgerStore.allEntries()) ?? [] {
+            guard let plan = try? await planStore.load(planId: entry.planId),
+                  plan.steps.contains(where: { $0.kind == .unregisterLaunchServices }),
+                  let bundleID = plan.intent.subjectIdentity.bundleID,
+                  let journal = try? await journalStore.load(planId: entry.planId),
+                  let trashedURLs = journal.stepTrashedURLs
+            else { continue }
+
+            let vanished = trashedURLs.values.filter {
+                $0.pathExtension == "app" && !fm.fileExists(atPath: $0.path)
+            }
+            guard !vanished.isEmpty else { continue }
+
+            let registered = Set(
+                LaunchServicesRegistration
+                    .registeredApplicationURLs(forBundleID: bundleID)
+                    .map(\.standardizedFileURL.path)
+            )
+            for url in vanished where registered.contains(url.standardizedFileURL.path) {
+                try? LaunchServicesRegistration.unregister(bundlePath: url.path)
+                retracted.append(url)
+            }
+        }
+        return retracted
+    }
+
     public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
         let scanner = DuplicateScanner()
         return try await scanner.scan(directory: directory)
