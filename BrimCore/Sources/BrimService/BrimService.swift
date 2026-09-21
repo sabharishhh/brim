@@ -692,11 +692,24 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         await executor.setPrivilegedReceiptForgetter(forgetter)
     }
 
+    /// Every mechanism macOS records software in, in one place.
+    ///
+    /// Two of these were wired up and the other seven were written and
+    /// never called, which is the same failure as a step kind nothing
+    /// emits: the code existed, the product did not have the feature.
+    static let everySurface: [any RegistrationSurface] = [
+        LaunchdRegistrationSurface(),
+        BackgroundItemSurface(),
+        AppExtensionSurface(),
+        SystemExtensionSurface(),
+        PrivilegedHelperToolSurface(),
+        BundlePluginSurface(),
+        ShellProfileSurface(),
+        KeychainSurface(),
+    ]
+
     public func registrations() async -> RegistrationReport {
-        let inventory = RegistrationInventory(surfaces: [
-            LaunchdRegistrationSurface(),
-            BackgroundItemSurface()
-        ])
+        let inventory = RegistrationInventory(surfaces: Self.everySurface)
         return RegistrationReport(
             registrations: await inventory.all(in: root),
             coverage: await inventory.coverage(in: root)
@@ -781,10 +794,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // orphaned, and the thing a user actually notices as "I uninstalled
         // this and it is still here". The sweep already enumerates these.
         var staleRegistrationOwners: [String: String] = [:]
-        let inventory = RegistrationInventory(surfaces: [
-            LaunchdRegistrationSurface(),
-            BackgroundItemSurface()
-        ])
+        let inventory = RegistrationInventory(surfaces: Self.everySurface)
         for registration in await inventory.stale(in: root) {
             guard let owner = registration.owningBundleID else { continue }
             staleRegistrationOwners[owner] = registration.evidence

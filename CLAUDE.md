@@ -113,6 +113,13 @@ figure is how cleaning utilities end up lying.
 `unsupported_kind`. `StepVocabularyTests` reads the planner and the
 executor and fails when a kind has no producer or no branch.
 
+**The veto applies to registrations, not only to files.** A suite
+installs one login-item helper and several applications register against
+it. The file veto never sees that, because a registration is a record in
+a database with no file to veto, so `owned(by:...)` takes a claimant list
+and drops anything a surviving application also claims. One way only, as
+Tier S is.
+
 **Never run a vendor's uninstaller.** Find it, reveal it in Finder, and
 let the person decide. Detection is deliberately shallow and matches
 whole words in the file name: a deep search finds every framework
@@ -209,6 +216,17 @@ conversation. Split unrelated changes rather than staging everything.
   though it silently failed. `apply` refuses before the token is spent,
   so quitting and asking again is the whole remedy. Helpers inside the
   bundle count: they have their own identifiers and write just as much.
+- **`cfprefsd` owns preferences, not the file.** Unlinking a plist and
+  leaving the daemon holding the domain means it writes the file straight
+  back out, and the person watches a setting they removed reappear. Clear
+  the domain through `CFPreferencesSetMultiple` first, in both host
+  scopes, then trash the file. Never `.GlobalPreferences`.
+- **`pluginkit -m -v` prints `((null))` for a missing version.** Finding
+  the version by the last opening bracket splits the identifier in the
+  wrong place; balance from the end. Its paths contain spaces and
+  non-ASCII, so the path is everything after the third tab and never the
+  last whitespace-separated field, and the listing ends with a count line
+  that is not an extension.
 - **Two immutable flags, and they are not interchangeable.**
   `UF_IMMUTABLE` is Finder's "Locked" and the owner can clear it.
   `SF_IMMUTABLE` needs root and SIP's permission, and is reported rather

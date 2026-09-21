@@ -43,14 +43,49 @@ public actor RegistrationInventory {
         }
     }
 
-    /// The registrations belonging to one application — the set an uninstall
-    /// must clear in addition to the files.
+    /// The registrations belonging to one application, minus anything a
+    /// surviving application also claims.
+    ///
+    /// The shared-file veto applies to registrations, not only to files.
+    /// Mole learned this the hard way and the specification says it in
+    /// B4 and in `strategy.md`: a suite installs one login-item helper
+    /// and several applications register against it, so uninstalling one
+    /// of them and deregistering the helper breaks the two that remain.
+    /// The file veto never saw these, because a registration is a record
+    /// in a database and has no file to veto.
+    ///
+    /// One way only, exactly as Tier S is. This can take a registration
+    /// out of the set and can never put one in.
     public func owned(
         by identity: Identity,
         bundleURL: URL?,
-        in root: FileSystemRoot
+        in root: FileSystemRoot,
+        alsoClaimedBy otherClaimants: [(identity: Identity, bundleURL: URL?)] = []
     ) async -> [Registration] {
-        await all(in: root).filter { $0.belongs(to: identity, bundleURL: bundleURL) }
+        let everything = await all(in: root)
+        let mine = everything.filter { $0.belongs(to: identity, bundleURL: bundleURL) }
+        guard !otherClaimants.isEmpty else { return mine }
+
+        return mine.filter { registration in
+            !otherClaimants.contains { other in
+                guard other.identity.bundleID != identity.bundleID else { return false }
+                return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
+            }
+        }
+    }
+
+    /// Which surviving applications claim a registration as well, so the
+    /// exclusion can name them rather than saying "shared" and stopping.
+    public func alsoClaiming(
+        _ registration: Registration,
+        besides identity: Identity,
+        among candidates: [(identity: Identity, bundleURL: URL?)]
+    ) -> [Identity] {
+        candidates.compactMap { other in
+            guard other.identity.bundleID != identity.bundleID else { return nil }
+            return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
+                ? other.identity : nil
+        }
     }
 
     /// Registrations pointing at something no longer installed, whichever

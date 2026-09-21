@@ -28,6 +28,23 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         case installerReceipt
         /// A root-owned helper in /Library/PrivilegedHelperTools.
         case privilegedHelper
+        /// One of the many directory-based plug-in surfaces: preference
+        /// panes, screen savers, Quick Look generators, Spotlight
+        /// importers, Audio Units, Internet plug-ins, Services, Automator
+        /// actions, colour pickers, fonts, StartupItems, kernel
+        /// extensions. One kind rather than thirteen, because they differ
+        /// only in which folder they sit in, and the folder is named in
+        /// the row.
+        case bundlePlugin
+        /// A login item from before Background Task Management, held in a
+        /// shared file list.
+        case legacyLoginItem
+        /// A line a tool appended to a shell profile. Reported, never
+        /// edited: silently rewriting somebody's shell configuration is
+        /// not acceptable.
+        case shellProfileLine
+        /// A keychain entry. Reported, never touched.
+        case keychainItem
 
         public var displayName: String {
             switch self {
@@ -39,6 +56,10 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
             case .systemExtension: return "System extension"
             case .installerReceipt: return "Installer receipt"
             case .privilegedHelper: return "Privileged helper"
+            case .bundlePlugin: return "Plug-in"
+            case .legacyLoginItem: return "Login item"
+            case .shellProfileLine: return "Shell profile line"
+            case .keychainItem: return "Keychain item"
             }
         }
     }
@@ -96,13 +117,31 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// uninstall that misses one leaves it forever.
     public var isClearedByMacOS: Bool { kind == .backgroundItem }
 
+    /// Whether Brim will only ever describe this, never act on it.
+    ///
+    /// Two things are in this class and both for the same reason: acting
+    /// would be a worse mistake than leaving them. A keychain entry may
+    /// hold a licence the person paid for, and Reset deliberately
+    /// preserves licence material. A shell profile is a file somebody
+    /// wrote by hand, and editing it silently is not something a cleaning
+    /// tool gets to do. Both are shown with their location so the person
+    /// can act, which is the whole of Brim's job here.
+    public var isReportOnly: Bool {
+        kind == .keychainItem || kind == .shellProfileLine
+    }
+
+    /// A report-only entry is never a thing to sweep, however stale it
+    /// looks. Offering an action that does not exist is worse than not
+    /// mentioning it.
+    public var isActionable: Bool { !isReportOnly && !isSystemOwned }
+
     /// A registration pointing at something no longer on disk.
     public var isStale: Bool { !targetExists }
 
     /// Stale *and* something the user could actually act on. The sweep shows
     /// these; a stale system entry is noise the user cannot do anything
     /// about, and presenting it as actionable would be a lie.
-    public var isActionableStale: Bool { isStale && !isSystemOwned }
+    public var isActionableStale: Bool { isStale && isActionable }
 
     public init(
         kind: Kind,
