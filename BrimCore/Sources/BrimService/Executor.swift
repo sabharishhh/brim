@@ -105,6 +105,16 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unregisterLaunchServices {
+                    // Only the path the app was installed at. A bundle that
+                    // went to the Trash keeps its name, so Launch Services
+                    // registers it there — but that record is *accurate*:
+                    // the app really is in the Trash, and macOS does the same
+                    // for any app dragged there by hand. Retracting it is the
+                    // Trash's lifecycle, not this step's, and racing Launch
+                    // Services to do it here loses: `lsregister -u` exits
+                    // non-zero because the record does not exist yet, and the
+                    // daemon creates it a moment later.
+                    //
                     // Recorded, never fatal — for the same reason as the
                     // privacy reset. The files are already gone; refusing the
                     // whole uninstall over a registration would be the wrong

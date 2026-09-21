@@ -299,6 +299,12 @@ public actor BrimService: BrimServiceProtocol {
             let removedPaths = Set(unregistered.map {
                 URL(fileURLWithPath: $0.target).standardizedFileURL.path
             })
+            // Deliberately *not* including where the bundle went. A record
+            // pointing at the Trash is not a leftover — the app is there,
+            // and it is what macOS records for anything dragged to the bin.
+            // The leftover is a record pointing at a path holding nothing,
+            // which is what emptying the Trash creates and what the Trash
+            // lifecycle has to answer for.
             staleRegistrations = LaunchServicesRegistration
                 .registeredApplicationURLs(forBundleID: bundleID)
                 .filter { removedPaths.contains($0.standardizedFileURL.path) }
@@ -387,6 +393,15 @@ public actor BrimService: BrimServiceProtocol {
             }
         }
         
+        // Put the registration back with the bundle. The uninstall retracted
+        // it deliberately, so restoring the files alone would leave a working
+        // application macOS does not know about — no "Open With", no document
+        // types, until something happens to rescan it.
+        for step in plan.steps where step.executionPhase == .appBundle {
+            guard fm.fileExists(atPath: step.target) else { continue }
+            try? LaunchServicesRegistration.register(bundlePath: step.target)
+        }
+
         // 3. Update journal to mark undone? Or just delete journal?
         try await journalStore.delete(planId: planId)
     }
