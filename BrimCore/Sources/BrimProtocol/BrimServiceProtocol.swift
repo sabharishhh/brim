@@ -41,6 +41,8 @@ public protocol BrimServiceProtocol: Sendable {
     func volumes() async -> [VolumeAccount]
     /// A single sample of what is running and what it is costing.
     func sampleEnergy() async -> EnergySampleResult
+    /// Build caches this Mac has accumulated, with what clearing each costs.
+    func developerCaches() async -> [DeveloperCache]
 }
 
 public extension BrimServiceProtocol {
@@ -58,4 +60,5 @@ public extension BrimServiceProtocol {
     func sampleEnergy() async -> EnergySampleResult {
         EnergySampleResult(samples: [], coverageGaps: 0)
     }
+    func developerCaches() async -> [DeveloperCache] { [] }
 }
