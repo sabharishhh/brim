@@ -9,7 +9,7 @@ import Foundation
 /// Dropbox and Adobe on it at some point tends to keep checking for
 /// updates to all three long after. They also wake the machine on a timer,
 /// which is a battery cost for software you may not even have.
-public struct UpdaterAgent: Sendable, Equatable, Identifiable {
+public struct UpdaterAgent: Sendable, Equatable, Identifiable, Codable {
 
     public let registration: Registration
     /// Who the updater belongs to, in words rather than a reverse domain
