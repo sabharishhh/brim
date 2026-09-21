@@ -13,7 +13,30 @@ enum NavigationItem: String, Hashable, CaseIterable {
     case developer = "Developer"
     case updates = "Updates"
     case history = "History"
-    
+
+    /// The order the person sees, and the only order anything may use.
+    ///
+    /// The sidebar listed these in one order and the View menu numbered
+    /// them from `allCases`, which is a different one. Command-6 opened
+    /// Energy while Energy was the seventh row, Command-7 opened
+    /// Duplicates while Duplicates was the sixth, and History had no
+    /// shortcut at all because the menu took the first nine of a list
+    /// that ended somewhere else. Both read from this now, so there is
+    /// one order rather than two that have to be kept in step.
+    static let primary: [NavigationItem] = [
+        .review, .applications, .leftovers, .background, .storage, .duplicates, .energy,
+    ]
+    static let system: [NavigationItem] = [.developer, .updates, .history]
+    static let displayOrder: [NavigationItem] = primary + system
+
+    /// The number a person types with Command to get here, when there is
+    /// one. Ten sections and nine digits, so the last one has none rather
+    /// than a shortcut nobody would guess.
+    var keyboardDigit: Character? {
+        guard let index = Self.displayOrder.firstIndex(of: self), index < 9 else { return nil }
+        return Character("\(index + 1)")
+    }
+
     var icon: String {
         switch self {
         case .review: return "checkmark.circle"
@@ -70,14 +93,14 @@ struct MainSidebar: View {
         // and to automation while doing nothing.
         List(selection: $selection) {
             Section("Primary") {
-                ForEach([NavigationItem.review, .applications, .leftovers, .background, .storage, .duplicates, .energy], id: \.self) { item in
+                ForEach(NavigationItem.primary, id: \.self) { item in
                     Label(item.rawValue, systemImage: item.icon)
                         .tag(item)
                 }
             }
 
             Section("System") {
-                ForEach([NavigationItem.developer, .updates, .history], id: \.self) { item in
+                ForEach(NavigationItem.system, id: \.self) { item in
                     Label(item.rawValue, systemImage: item.icon)
                         .tag(item)
                 }

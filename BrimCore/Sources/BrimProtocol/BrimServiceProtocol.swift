@@ -62,6 +62,9 @@ public protocol BrimServiceProtocol: Sendable {
     /// looked, worked out by subtracting one snapshot from the one
     /// before it. Nothing watches, and nothing runs at login.
     func whatChanged() async -> InstallHistory
+    /// How each application gets its next version, read from the disk
+    /// with no network request of any kind.
+    func updateReport() async -> UpdateReport
 }
 
 public extension BrimServiceProtocol {
@@ -107,5 +110,8 @@ public extension BrimServiceProtocol {
     /// A service with no history has seen nothing change.
     func whatChanged() async -> InstallHistory {
         InstallHistory(changes: [], snapshots: 0, migrated: [])
+    }
+    func updateReport() async -> UpdateReport {
+        UpdateReport(coverage: [], agents: [], homebrewPresent: false)
     }
 }

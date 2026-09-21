@@ -839,6 +839,71 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
+    /// How every application on this Mac gets its next version.
+    ///
+    /// Read from the disk and nothing else: a Sparkle feed is a string in
+    /// an Info.plist, an App Store purchase is a receipt file, a Homebrew
+    /// cask is a directory in the Caskroom. No request is made, so the
+    /// section renders the same with the network off, and software with
+    /// no route to a new version is the finding worth making.
+    public func updateReport() async -> UpdateReport {
+        let scanner = UpdateSourceScanner()
+        let casks = scanner.installedCasks()
+        let applications = await ApplicationInventory(root: root).installedApplications()
+
+        let coverage = applications.map { application in
+            UpdateCoverage(
+                application: application,
+                sources: scanner.sources(for: application, casks: casks)
+            )
+        }
+
+        // The background updaters, which answer a different question:
+        // who is checking in the background, including for software that
+        // is no longer here.
+        let report = await registrations()
+        let agents = report.registrations.compactMap { registration -> UpdaterAgent? in
+            guard let vendor = UpdaterRecogniser.vendor(for: registration.identifier),
+                  !registration.isSystemOwned
+            else { return nil }
+            return UpdaterAgent(
+                registration: registration,
+                vendor: vendor,
+                productIsInstalled: !registration.isStale
+            )
+        }
+
+        // A vendor updater counts as a route for the application it
+        // belongs to, so an app with Keystone behind it is not reported
+        // as having no way to update.
+        let updatedByVendor = Dictionary(
+            agents.filter(\.productIsInstalled).compactMap { agent -> (String, String)? in
+                guard let owner = agent.registration.owningBundleID else { return nil }
+                return (owner, agent.vendor)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let withVendors = coverage.map { entry -> UpdateCoverage in
+            guard let bundleID = entry.application.identity.bundleID,
+                  let vendor = updatedByVendor[bundleID]
+            else { return entry }
+            return UpdateCoverage(
+                application: entry.application,
+                sources: entry.sources + [.vendorUpdater(vendor: vendor)]
+            )
+        }
+
+        return UpdateReport(
+            coverage: withVendors,
+            agents: agents.sorted {
+                if $0.productIsInstalled != $1.productIsInstalled { return !$0.productIsInstalled }
+                return $0.vendor < $1.vendor
+            },
+            homebrewPresent: scanner.homebrewIsInstalled()
+        )
+    }
+
     /// What is different since the last time Brim looked.
     ///
     /// Empty on a first run, which is the honest answer: there is

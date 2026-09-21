@@ -115,6 +115,18 @@ public actor BrimXPCClient: BrimServiceProtocol {
         return (try? decoder.decode(InstallHistory.self, from: data)) ?? empty
     }
 
+    public func updateReport() async -> UpdateReport {
+        let empty = UpdateReport(coverage: [], agents: [], homebrewPresent: false)
+        guard let data: Data = try? await withProxy({ proxy, reply in
+            proxy.updateReport { data, error in
+                if let error { reply(.failure(error)) }
+                else if let data { reply(.success(data)) }
+                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
+            }
+        }) else { return empty }
+        return (try? decoder.decode(UpdateReport.self, from: data)) ?? empty
+    }
+
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         let data = try encoder.encode(token)
         try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<Void, Error>) -> Void) in

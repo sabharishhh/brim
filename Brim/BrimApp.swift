@@ -48,13 +48,22 @@ import BrimPrivileged
             // "View" would create a second menu of the same name instead.
             CommandGroup(after: .sidebar) {
                 Divider()
-                ForEach(Array(NavigationItem.allCases.prefix(9).enumerated()), id: \.element) { index, item in
-                    Button(item.rawValue) { navigateAction?(item) }
-                        .keyboardShortcut(
-                            KeyEquivalent(Character("\(index + 1)")),
-                            modifiers: .command
-                        )
-                        .disabled(navigateAction == nil)
+                // Numbered from the order the sidebar renders, not from
+                // the enum's declaration order. Those were different, so
+                // Command-6 opened the seventh row.
+                ForEach(NavigationItem.displayOrder, id: \.self) { item in
+                    // Only the ones with a digit get a shortcut. Giving
+                    // the tenth a fallback key would attach something
+                    // nobody expects to a menu item, which is worse than
+                    // it having none.
+                    if let digit = item.keyboardDigit {
+                        Button(item.rawValue) { navigateAction?(item) }
+                            .keyboardShortcut(KeyEquivalent(digit), modifiers: .command)
+                            .disabled(navigateAction == nil)
+                    } else {
+                        Button(item.rawValue) { navigateAction?(item) }
+                            .disabled(navigateAction == nil)
+                    }
                 }
             }
             CommandMenu("Action") {

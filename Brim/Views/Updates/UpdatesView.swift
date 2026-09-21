@@ -3,14 +3,19 @@ import BrimCore
 import BrimProtocol
 import BrimUI
 
-/// What keeps checking for new versions, and whether the software it
-/// checks for is even here.
+/// How each application gets its next version, and what is still checking
+/// for software that has gone.
 ///
-/// Worth its own section because updaters behave differently from other
-/// background jobs. Most installers add one and no uninstaller removes it,
-/// so a Mac that has had Chrome, Dropbox or Adobe on it at any point tends
-/// to go on checking for all three. They also wake the machine on a timer,
-/// which costs battery for software you may no longer have.
+/// This used to list background updaters and nothing else, which answers
+/// "who is checking in the background" and says nothing about the
+/// application in front of you. The more useful question, and T-5.8's, is
+/// whether each application has any route to a new version at all.
+///
+/// Everything here is read from the disk. A Sparkle feed is a string in an
+/// Info.plist, an App Store purchase is a receipt inside the bundle, a
+/// Homebrew cask is a directory in the Caskroom. No request is made, so
+/// this renders identically with the network off and does not have to say
+/// it is offline, because being offline changes nothing.
 struct UpdatesView: View {
     @ObservedObject var model: UpdatesModel
     @SwiftUI.Environment(\.brimService) private var service
@@ -38,29 +43,26 @@ struct UpdatesView: View {
     }
 
     private var summary: String {
-        if model.isLoading { return "Looking for updaters…" }
-        if model.agents.isEmpty { return "Nothing on this Mac is checking for updates in the background." }
-        if model.orphaned.isEmpty {
-            return "\(model.working.count) checking for software you have. None left stranded."
-        }
-        return "\(model.orphaned.count) checking for software that has gone, "
-             + "\(model.working.count) for software you still have"
+        if model.isLoading { return "Reading what each application updates from…" }
+        return model.report.summary
     }
 
     @ViewBuilder
     private var content: some View {
-        if model.isLoading && model.agents.isEmpty {
+        if model.isLoading && model.report.coverage.isEmpty {
             ProgressView("Looking…").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.agents.isEmpty {
+        } else if model.report.coverage.isEmpty && model.agents.isEmpty {
             VStack(spacing: 6) {
                 Image(systemName: "checkmark.circle").font(.largeTitle).foregroundColor(.green)
-                Text("Nothing is checking for updates").font(.headline)
-                Text("No background updater is registered on this Mac.")
+                Text("Nothing to report").font(.headline)
+                Text("No applications and no background updaters were found.")
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
+                strandedSection
+                homebrewSection
                 section(
                     "Checking for software that has gone",
                     "The program each of these launches is not on this Mac any more. They "
@@ -77,6 +79,81 @@ struct UpdatesView: View {
                 )
             }
             .listStyle(.inset)
+        }
+    }
+
+    /// The finding. Software with no route to a new version sits at
+    /// whatever version it is at until somebody notices, which for
+    /// anything that opens a file off the internet is the whole problem.
+    @ViewBuilder
+    private var strandedSection: some View {
+        Section {
+            if model.stranded.isEmpty {
+                Text("Everything here has a way to get its next version.")
+                    .font(.caption).foregroundColor(.secondary)
+            } else {
+                ForEach(model.stranded) { entry in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(entry.application.name).fontWeight(.medium)
+                            if let version = entry.application.version {
+                                Text(version).font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text(ByteText.short(entry.application.bundleSizeBytes))
+                                .font(.caption).foregroundColor(.secondary).monospacedDigit()
+                        }
+                        Text(entry.sentence).font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        } header: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("No way to update itself (\(model.stranded.count))").font(.headline)
+                Text("Nothing checks these for a new version: no App Store receipt, no "
+                     + "Sparkle feed, no Homebrew cask, no updater. They stay where they are "
+                     + "until you replace them by hand.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    /// Software Homebrew installed, which Homebrew should remove.
+    @ViewBuilder
+    private var homebrewSection: some View {
+        if !model.homebrewManaged.isEmpty {
+            Section {
+                ForEach(model.homebrewManaged) { entry in
+                    HStack(spacing: 6) {
+                        Text(entry.application.name).fontWeight(.medium)
+                        Text(entry.homebrewCask ?? "")
+                            .font(.caption).foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(entry.application.name), installed by Homebrew as "
+                        + "\(entry.homebrewCask ?? "a cask")"
+                    )
+                }
+            } header: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Homebrew looks after these (\(model.homebrewManaged.count))")
+                        .font(.headline)
+                    Text("brew upgrade updates them. When you remove one, let Homebrew do it: "
+                         + "deleting the files underneath leaves Homebrew believing it is "
+                         + "still installed.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
