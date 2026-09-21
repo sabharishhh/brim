@@ -69,10 +69,10 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 absoluteByIdentifier[identifier] = url
             }
         }
-        let bundleIDByIdentifier = Dictionary(
-            records.compactMap { record -> (String, String)? in
-                guard let identifier = record.identifier, let bundleID = record.bundleIdentifier else { return nil }
-                return (identifier, bundleID)
+        let recordsByIdentifier = Dictionary(
+            records.compactMap { record -> (String, BTMRecord)? in
+                guard let identifier = record.identifier else { return nil }
+                return (identifier, record)
             },
             uniquingKeysWith: { first, _ in first }
         )
@@ -99,10 +99,15 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 targetExists = true
             }
 
-            // A helper belongs to the app that ships it, so uninstalling the
-            // app clears its login item too.
-            let owningBundleID = record.bundleIdentifier
-                ?? record.parentIdentifier.flatMap { bundleIDByIdentifier[$0] }
+            // A helper belongs to the app that ships it, so uninstalling
+            // the app clears its login item too. The owner is the top of
+            // the chain rather than the item's own identifier: ChatGPT's
+            // dock tile plugin has a bundle id of its own, and attributing
+            // it to itself split one application into two entries that
+            // nothing connected.
+            let owningBundleID = Self.rootOwner(
+                of: record, parents: recordsByIdentifier
+            ) ?? record.bundleIdentifier
 
             let label = record.name
                 ?? record.bundleIdentifier
@@ -120,7 +125,8 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 evidence: targetExists
                     ? "Registered as a background item with macOS"
                         + (record.developerName.map { " by \($0)." } ?? ".")
-                    : "Still listed as a background item, but the application it points to is gone.",
+                    : "The application is gone and macOS has not tidied its list yet. It drops "
+                        + "these by itself the next time anything asks it for the list.",
                 isSystemOwned: Self.isSystemOwned(record, resolved: resolved)
             )
         }
@@ -138,6 +144,25 @@ public struct BackgroundItemSurface: RegistrationSurface {
               let parentURL = parents[parentIdentifier]
         else { return nil }
         return parentURL.appendingPathComponent(relative)
+    }
+
+    /// The bundle identifier of the application at the top of the chain.
+    ///
+    /// A record names its container, which names its container, up to the
+    /// application itself. Following that to the end is what puts an app
+    /// and everything it ships into one entry rather than several unrelated
+    /// ones. Guarded against a cycle, because a malformed store is not
+    /// worth hanging on.
+    static func rootOwner(of record: BTMRecord, parents: [String: BTMRecord]) -> String? {
+        var current = record
+        var seen: Set<String> = []
+        while let parentIdentifier = current.parentIdentifier,
+              !seen.contains(parentIdentifier),
+              let parent = parents[parentIdentifier] {
+            seen.insert(parentIdentifier)
+            current = parent
+        }
+        return current.bundleIdentifier
     }
 
     /// The store records a home directory as `/Users/<uid>`, not as the

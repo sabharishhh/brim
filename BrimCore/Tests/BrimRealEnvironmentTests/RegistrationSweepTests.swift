@@ -34,6 +34,23 @@ final class RegistrationSweepTests: XCTestCase {
         XCTAssertTrue(records.allSatisfy { $0.uuid.count == 36 }, "Each record carries its UUID")
     }
 
+    /// What the Background section actually shows, grouped the way it
+    /// groups it. The complaint was duplicate rows: an app beside its own
+    /// background tasks, and Keystone four times over.
+    func testTheListGroupsByApplication() async throws {
+        let inventory = RegistrationInventory(surfaces: [
+            LaunchdRegistrationSurface(), BackgroundItemSurface()
+        ])
+        let all = await inventory.all(in: root).filter { !$0.isSystemOwned }
+        for group in RegistrationGroup.group(all) {
+            print("GROUP \(group.displayName) [\(group.composition)] clearsItself=\(group.staleClearsItself)")
+            for item in group.items {
+                print("GROUP   \(item.label) | \(item.programPath ?? item.recordPath ?? "no path")")
+            }
+        }
+        XCTAssertFalse(all.isEmpty)
+    }
+
     func testBackgroundItemsParseFromTheRealStore() async throws {
         let surface = BackgroundItemSurface()
         let items = await surface.registrations(in: root)
@@ -51,6 +68,9 @@ final class RegistrationSweepTests: XCTestCase {
         let stale = await inventory.stale(in: root)
 
         print("SWEEP total launchd registrations: \(all.count)")
+        for entry in all where entry.identifier.contains("keystone") {
+            print("SWEEP KEYSTONE \(entry.identifier) | record=\(entry.recordPath ?? "none") | \(entry.evidence)")
+        }
         print("SWEEP stale (program missing): \(stale.count)")
         for entry in stale.prefix(30) {
             print("SWEEP   \(entry.identifier)")

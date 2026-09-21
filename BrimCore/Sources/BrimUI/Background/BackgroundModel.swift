@@ -23,14 +23,28 @@ public final class BackgroundModel: ObservableObject {
 
     public init() {}
 
-    /// Entries pointing at a program that has gone, which the user can do
-    /// something about. Apple ships jobs whose programs are absent by
-    /// design, and those are already filtered out.
-    public var stale: [Registration] { filtered(report.stale) }
+    /// Entries pointing at something that has gone and will stay gone
+    /// until somebody removes them. Apple ships jobs whose programs are
+    /// absent by design, and those are already filtered out.
+    public var stale: [RegistrationGroup] {
+        RegistrationGroup.group(filtered(report.stale)).filter { !$0.staleClearsItself }
+    }
+
+    /// Entries whose owner has gone but which macOS clears by itself.
+    ///
+    /// Kept apart from the ones that need doing something about, because
+    /// putting them together made Brim claim two AppCleaner login items
+    /// were left behind when macOS dropped them a couple of minutes later
+    /// without being asked.
+    public var clearingItself: [RegistrationGroup] {
+        RegistrationGroup.group(filtered(report.stale)).filter(\.staleClearsItself)
+    }
 
     /// Entries still pointing at something real.
-    public var live: [Registration] {
-        filtered(report.live.filter { showsSystemOwned || !$0.isSystemOwned })
+    public var live: [RegistrationGroup] {
+        RegistrationGroup.group(
+            filtered(report.live.filter { showsSystemOwned || !$0.isSystemOwned })
+        )
     }
 
     public var hiddenSystemCount: Int {
@@ -46,6 +60,7 @@ public final class BackgroundModel: ObservableObject {
             $0.label.localizedCaseInsensitiveContains(query)
                 || $0.identifier.localizedCaseInsensitiveContains(query)
                 || ($0.programPath?.localizedCaseInsensitiveContains(query) ?? false)
+                || ($0.recordPath?.localizedCaseInsensitiveContains(query) ?? false)
         }
     }
 
