@@ -41,9 +41,16 @@ final class LeftoversScannerTests: XCTestCase {
         let orphanedURL = root.url(for: .userApplicationSupport).appendingPathComponent("com.old.orphaned")
         try fm.createDirectory(at: orphanedURL, withIntermediateDirectories: true)
         
-        // Truly unclaimed directory
+        // Truly unclaimed directory. With something in it: an empty
+        // folder nobody can name gives back nothing and is left out, so a
+        // fixture that tests attribution has to hold some bytes or it is
+        // testing the noise filter instead.
         let unclaimedURL = root.url(for: .userApplicationSupport).appendingPathComponent("MysteryTool")
         try fm.createDirectory(at: unclaimedURL, withIntermediateDirectories: true)
+        try "mystery".write(
+            to: unclaimedURL.appendingPathComponent("data.bin"),
+            atomically: true, encoding: .utf8
+        )
         
         let scanner = LeftoversScanner(root: root)
         let leftovers = try await scanner.scanLeftovers()
