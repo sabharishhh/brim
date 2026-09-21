@@ -67,6 +67,10 @@ final class ApprovalPolicyTests: XCTestCase {
         XCTAssertTrue(requirement.needsPrompt)
         guard case .humanPresence(let reason) = requirement else { return XCTFail() }
         XCTAssertTrue(reason.contains("cannot be undone"), reason)
+        // macOS prefixes "Brim is trying to", so the reason has to read as
+        // a continuation of that sentence.
+        XCTAssertEqual(reason.first?.isLowercase, true, "Reads as 'Brim is trying to \(reason)'")
+        XCTAssertFalse(reason.hasSuffix("."), "macOS adds its own full stop")
     }
 
     func testClearingPrivacyGrantsPrompts() {
