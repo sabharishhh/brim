@@ -65,9 +65,9 @@ struct LeftoversView: View {
     }
 
     private var summary: String {
-        if model.isScanning { return "Searching every place an owner could be recorded…" }
+        if model.isScanning { return "Checking everywhere an owner could be written down…" }
         return "\(model.orphanedGroups.count) orphaned · \(model.unclaimedGroups.count) unclaimed, "
-             + "grouped by the software that left them"
+             + "gathered up by the software that left them"
     }
 
     @ViewBuilder
@@ -76,7 +76,7 @@ struct LeftoversView: View {
             ProgressView("Searching…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.errorMessage {
             VStack(spacing: 6) {
-                Text("Could not scan").font(.headline).foregroundColor(.red)
+                Text("The scan did not finish").font(.headline).foregroundColor(.red)
                 Text(error).foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,18 +84,18 @@ struct LeftoversView: View {
             List {
                 section(
                     "Orphaned",
-                    "Something recorded an owner and that owner is gone. Pre-selected, "
-                    + "because that is evidence.",
+                    "Something on this Mac named an owner for these, and that owner has gone. "
+                    + "Brim has ticked them, because it can show you why.",
                     model.visible(model.orphanedGroups),
-                    "Nothing here. No registration, receipt or Launch Services record names "
-                    + "software that has since been removed."
+                    "Nothing here. No registration, receipt or Launch Services entry points at "
+                    + "software that has since gone."
                 )
                 section(
                     "Unclaimed",
-                    "No owner found anywhere, and no record of one. A reason to look, not a "
-                    + "reason to delete — so none are pre-selected.",
+                    "Nothing claims these and nothing remembers claiming them. Worth a look, "
+                    + "but not proof of anything, so Brim leaves them unticked.",
                     model.visible(model.unclaimedGroups),
-                    "Nothing unattributable."
+                    "Everything here has an owner."
                 )
             }
             .listStyle(.inset)
@@ -125,7 +125,7 @@ struct LeftoversView: View {
         } header: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("\(title) — \(groups.count)").font(.headline)
+                    Text("\(title) (\(groups.count))").font(.headline)
                     Spacer()
                     if !groups.isEmpty {
                         Button("Select all") { model.selectAll(groups: groups) }
@@ -145,11 +145,11 @@ struct LeftoversView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 if model.selectedItems.isEmpty {
-                    Text("Nothing selected").foregroundColor(.secondary)
+                    Text("Nothing picked yet").foregroundColor(.secondary)
                 } else {
                     Text("\(model.selectedItems.count) locations · ")
                         .foregroundColor(.secondary)
-                    + Text(ByteCountFormatter.string(fromByteCount: model.selectedBytes, countStyle: .file))
+                    + Text(ByteText.short(model.selectedBytes))
                         .fontWeight(.bold).monospacedDigit()
                 }
                 if !model.blockedSelection.isEmpty {
@@ -177,9 +177,9 @@ struct LeftoversView: View {
             VStack(spacing: 6) {
                 Image(systemName: "questionmark.folder")
                     .font(.largeTitle).foregroundColor(.secondary)
-                Text("Select something to see what it is").font(.headline)
-                Text("Brim will show which software left it, how it knows, and what each "
-                     + "location actually holds.")
+                Text("Pick something to find out what it is").font(.headline)
+                Text("Brim will name the software it came from, say how it worked that out, and "
+                     + "tell you what sits in each place.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
@@ -210,7 +210,7 @@ private struct GroupRow: View {
                         Image(systemName: "lock").font(.caption2).foregroundColor(.orange)
                     }
                     Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: group.totalBytes, countStyle: .file))
+                    Text(ByteText.short(group.totalBytes))
                         .font(.caption).foregroundColor(.secondary).monospacedDigit()
                 }
 
@@ -229,8 +229,8 @@ private struct GroupRow: View {
                 .font(.caption2).foregroundColor(.secondary)
 
                 if group.meaningfulBytes > 0 {
-                    Text(ByteCountFormatter.string(fromByteCount: group.meaningfulBytes, countStyle: .file)
-                         + " of this is data the app would have remembered")
+                    Text(ByteText.short(group.meaningfulBytes)
+                         + " of this is what the app would have remembered about you")
                         .font(.caption2).foregroundColor(.orange)
                 }
             }
@@ -268,11 +268,11 @@ private struct LeftoverDetail: View {
                 if group.meaningfulBytes > 0 {
                     callout(
                         "exclamationmark.triangle",
-                        "What you would lose",
-                        ByteCountFormatter.string(fromByteCount: group.meaningfulBytes, countStyle: .file)
-                        + " of this is not rebuilt automatically. "
-                        + ByteCountFormatter.string(fromByteCount: group.regeneratedBytes, countStyle: .file)
-                        + " is cache and temporary files the software recreates by itself.",
+                        "What goes for good",
+                        ByteText.inSentence(group.meaningfulBytes)
+                        + " of this never comes back once you empty the Trash. The other "
+                        + ByteText.inSentence(group.regeneratedBytes)
+                        + " is scratch files the software makes again by itself.",
                         .orange
                     )
                 }
@@ -322,7 +322,7 @@ private struct LeftoverDetail: View {
                         in: Capsule()
                     )
                 Spacer()
-                Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
+                Text(ByteText.short(item.size))
                     .font(.caption).foregroundColor(.secondary).monospacedDigit()
             }
             Text(domain.whatItHolds)

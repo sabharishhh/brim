@@ -40,7 +40,7 @@ struct LeftoverRemovalSheet: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Remove leftovers").font(.title2).fontWeight(.bold)
-                Text("\(intent.explicitTargets.count) items with no owner on this Mac")
+                Text("\(intent.explicitTargets.count) items nothing on this Mac claims")
                     .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
@@ -58,10 +58,10 @@ struct LeftoverRemovalSheet: View {
     private var content: some View {
         switch model.phase {
         case .preparing:
-            ProgressView("Checking each one is still there…")
+            ProgressView("Making sure each one is still where Brim found it…")
         case .failed(let reason):
             VStack(spacing: 6) {
-                Text("Could not continue").font(.headline).foregroundColor(.red)
+                Text("Brim had to stop").font(.headline).foregroundColor(.red)
                 Text(reason).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding()
@@ -72,11 +72,11 @@ struct LeftoverRemovalSheet: View {
                 Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
                     .font(.largeTitle)
                     .foregroundColor(result.success ? .green : .orange)
-                Text(result.success ? "Verified — nothing remains" : "Removed, but not everything is gone")
+                Text(result.success ? "Nothing is left" : "Removed, but something is still there")
                     .font(.headline)
                 Text(result.success
-                     ? "Brim re-checked every location it removed and found none of them still present."
-                     : (result.reason ?? "Some targets are still present."))
+                     ? "Brim went back to every location it touched. All of them are empty."
+                     : (result.reason ?? "Some of it is still on disk."))
                     .foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
             }
             .padding()
@@ -92,7 +92,7 @@ struct LeftoverRemovalSheet: View {
                         )
                         .font(.caption2)
                         .foregroundColor(step.effectiveDisposition == .delete ? .orange : .secondary)
-                        Text(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))
+                        Text(ByteText.short(step.expectedBytes))
                             .font(.caption).foregroundColor(.secondary).monospacedDigit()
                     }
                     Text(step.target)
@@ -110,10 +110,10 @@ struct LeftoverRemovalSheet: View {
             if case .ready = model.phase, let plan = model.plan {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Frees now: ").foregroundColor(.secondary)
-                    + Text(ByteCountFormatter.string(fromByteCount: plan.immediatelyFreedBytes, countStyle: .file))
+                    + Text(ByteText.short(plan.immediatelyFreedBytes))
                         .fontWeight(.bold).monospacedDigit()
                     if plan.trashedBytes > 0 {
-                        Text("\(ByteCountFormatter.string(fromByteCount: plan.trashedBytes, countStyle: .file)) moves to the Trash — recoverable")
+                        Text("\(ByteText.short(plan.trashedBytes)) goes to the Trash, where you can still get it back")
                             .font(.caption).foregroundColor(.secondary)
                     }
                 }

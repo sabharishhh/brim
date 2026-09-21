@@ -75,13 +75,13 @@ struct UninstallSheet: View {
     private var content: some View {
         switch model.phase {
         case .preparing:
-            ProgressView("Finding everything this app has left behind…")
+            ProgressView("Looking for everywhere this app has written…")
 
         case .failed(let reason):
-            message(title: "Could not continue", detail: reason, isError: true)
+            message(title: "Brim had to stop", detail: reason, isError: true)
 
         case .executing:
-            ProgressView("Removing \(application.name)…")
+            ProgressView("Clearing out \(application.name)…")
 
         case .verified(let result):
             verification(result)
@@ -96,9 +96,8 @@ struct UninstallSheet: View {
             if model.clearsPrivacyGrants {
                 Section {
                     Label(
-                        "Accessibility, screen recording and other permissions macOS holds for this app "
-                        + "are cleared first, while the app is still present. After removal they can no "
-                        + "longer be reached.",
+                        "Accessibility, screen recording and the rest get cleared first, while the app "
+                        + "is still here. Once it goes, macOS will not let anyone reach them again.",
                         systemImage: "hand.raised"
                     )
                     .font(.caption)
@@ -111,9 +110,9 @@ struct UninstallSheet: View {
             if model.clearsRegistrations {
                 Section {
                     Label(
-                        "The app's Launch Services registration is retracted after the bundle is "
-                        + "removed, so it stops appearing in \"Open With\" and no longer claims its "
-                        + "document types. Deleting an app does not do this on its own.",
+                        "After the app itself goes, Brim tells macOS to forget it, so it stops turning "
+                        + "up in \"Open With\" and stops claiming your files. Dragging an app to the "
+                        + "Trash never does this.",
                         systemImage: "app.badge.checkmark"
                     )
                     .font(.caption)
@@ -143,7 +142,7 @@ struct UninstallSheet: View {
                             .foregroundColor(step.effectiveDisposition == .delete ? .orange : .secondary)
 
                             Spacer()
-                            Text(ByteCountFormatter.string(fromByteCount: step.expectedBytes, countStyle: .file))
+                            Text(ByteText.short(step.expectedBytes))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .monospacedDigit()
@@ -152,7 +151,7 @@ struct UninstallSheet: View {
                     .padding(.vertical, 1)
                 }
             } header: {
-                Text("\(model.removalSteps.count) \(model.removalSteps.count == 1 ? "location" : "locations") found from the app's identity")
+                Text("\(model.removalSteps.count) \(model.removalSteps.count == 1 ? "place" : "places") Brim traced back to this app")
             }
         }
         .listStyle(.inset)
@@ -164,20 +163,20 @@ struct UninstallSheet: View {
                 .font(.largeTitle)
                 .foregroundColor(result.success ? .green : .orange)
 
-            Text(result.success ? "Verified — nothing remains" : "Removed, but not everything is gone")
+            Text(result.success ? "Nothing is left" : "Removed, but something is still there")
                 .font(.headline)
 
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                 ? "Brim re-checked every location it removed and found none of them still present."
-                 : (result.reason ?? "Some targets are still present."))
+                 ? "Brim went back to every location it touched. All of them are empty."
+                 : (result.reason ?? "Some of it is still on disk."))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
             if result.recoveredBytes > 0 {
-                Text("\(ByteCountFormatter.string(fromByteCount: result.recoveredBytes, countStyle: .file)) freed")
+                Text("\(ByteText.short(result.recoveredBytes)) freed")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .monospacedDigit()
@@ -201,12 +200,12 @@ struct UninstallSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Frees now: ")
                         .foregroundColor(.secondary)
-                    + Text(ByteCountFormatter.string(fromByteCount: plan.immediatelyFreedBytes, countStyle: .file))
+                    + Text(ByteText.short(plan.immediatelyFreedBytes))
                         .fontWeight(.bold)
                         .monospacedDigit()
 
                     if plan.trashedBytes > 0 {
-                        Text("\(ByteCountFormatter.string(fromByteCount: plan.trashedBytes, countStyle: .file)) moves to the Trash — recoverable")
+                        Text("\(ByteText.short(plan.trashedBytes)) goes to the Trash, where you can still get it back")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

@@ -89,15 +89,15 @@ public struct ApprovalPolicy: Sendable, Equatable {
         guard !destructive.isEmpty else {
             return .alreadyGiven(
                 because: plan.isReversible
-                    ? "Everything in this plan can be recovered from the Trash."
-                    : "Nothing in this plan destroys anything that matters."
+                    ? "Everything here can be fished back out of the Trash."
+                    : "Nothing here destroys anything worth stopping you for."
             )
         }
 
         if let lastAuthenticated,
            now.timeIntervalSince(lastAuthenticated) < graceWindow,
            now >= lastAuthenticated {
-            return .alreadyGiven(because: "You confirmed it was you a moment ago.")
+            return .alreadyGiven(because: "You proved it was you a moment ago.")
         }
 
         return .humanPresence(reason: Self.reason(for: destructive, in: plan))
@@ -119,16 +119,16 @@ public struct ApprovalPolicy: Sendable, Equatable {
 
         if grantsCleared && permanentCount > 1 {
             return "remove \(subject) and permanently delete \(permanentCount) items, "
-                 + "including the privacy permissions macOS holds for it — this cannot be undone"
+                 + "along with the privacy permissions macOS holds for it, which cannot be undone"
         }
         if grantsCleared {
-            return "remove \(subject) and clear the privacy permissions macOS holds for it "
-                 + "— this cannot be undone"
+            return "remove \(subject) and clear the privacy permissions macOS holds for it, "
+                 + "which cannot be undone"
         }
         if permanentCount == 1 {
-            return "permanently delete 1 item belonging to \(subject) — this cannot be undone"
+            return "permanently delete 1 item belonging to \(subject), which cannot be undone"
         }
-        return "permanently delete \(permanentCount) items belonging to \(subject) "
-             + "— this cannot be undone"
+        return "permanently delete \(permanentCount) items belonging to \(subject), "
+             + "which cannot be undone"
     }
 }
