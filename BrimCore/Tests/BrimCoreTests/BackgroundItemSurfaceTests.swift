@@ -28,7 +28,7 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     private func surface(_ text: String, homes: [uid_t: String] = [501: "/Users/tester"]) -> BackgroundItemSurface {
-        BackgroundItemSurface(dump: { text }, homeDirectory: { homes[$0] })
+        BackgroundItemSurface(elevation: .permitted, dump: { text }, homeDirectory: { homes[$0] })
     }
 
     func testAnItemWithNoURLIsNotReportedStale() async {
@@ -197,12 +197,64 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     func testAnUnreadableDumpReportsNoCoverageRatherThanNoItems() async {
-        let blind = BackgroundItemSurface(dump: { nil }, homeDirectory: { _ in nil })
+        let blind = BackgroundItemSurface(elevation: .permitted, dump: { nil }, homeDirectory: { _ in nil })
 
         let coverage = await blind.coverage(in: root)
         XCTAssertFalse(coverage.available)
         XCTAssertNotNil(coverage.limitation, "A surface that could not be read must say so")
         let items = await blind.registrations(in: root)
         XCTAssertTrue(items.isEmpty)
+    }
+}
+
+/// `sfltool dumpbtm` raises "Allow administrator access for sfltool?" the
+/// moment it runs. Reaching this surface from a scan therefore put an
+/// authorisation prompt in front of the user seconds after they opened the
+/// app, naming a tool they have never heard of — which is exactly what
+/// happened once this surface was wired into the leftovers search.
+final class BackgroundItemElevationTests: XCTestCase {
+
+    /// Records whether the tool was invoked, across the concurrency boundary
+    /// the surface's injected closure crosses.
+    private final class RunFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func mark() { lock.lock(); value = true; lock.unlock() }
+        var wasRun: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    func testAScanNeverRunsTheToolThatAsksForAdministratorAccess() async {
+        let ran = RunFlag()
+        let surface = BackgroundItemSurface(
+            dump: { ran.mark(); return "fixture" }
+        )
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+
+        _ = await surface.registrations(in: root)
+        _ = await surface.coverage(in: root)
+
+        XCTAssertFalse(ran.wasRun, "sfltool must not run unless someone asked for background items")
+    }
+
+    func testNotReadingIsReportedAsSuchRatherThanAsNothingFound() async {
+        // The distinction `coverage` exists for. "No background items" and
+        // "did not look" are different claims, and only one of them is true.
+        let surface = BackgroundItemSurface(dump: { "fixture" })
+        let coverage = await surface.coverage(in: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")))
+
+        XCTAssertFalse(coverage.available)
+        XCTAssertEqual(coverage.limitation?.contains("administrator access"), true,
+                       coverage.limitation ?? "no limitation given")
+    }
+
+    func testAskingForThemRunsIt() async {
+        let ran = RunFlag()
+        let surface = BackgroundItemSurface(
+            elevation: .permitted,
+            dump: { ran.mark(); return "" }
+        )
+        _ = await surface.registrations(in: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")))
+
+        XCTAssertTrue(ran.wasRun, "The Background view asking for them is the case this is for")
     }
 }

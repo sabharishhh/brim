@@ -8,11 +8,31 @@ import BrimCore
 /// item — often as a bare identifier with no name — and no amount of file
 /// deletion clears it.
 ///
-/// Read through `sfltool dumpbtm`, which needs no privileges. The dump is
-/// injectable so the parsing can be tested against fixtures without invoking
-/// anything.
+/// Read through `sfltool dumpbtm`, **which asks for administrator access**.
+/// macOS puts up "Allow administrator access for sfltool?" with Touch ID the
+/// moment it runs.
+///
+/// That makes this surface unlike every other one: reading it is not free,
+/// and running it inside a scan means an authorisation prompt the user did
+/// not ask for, seconds after opening the app, naming a tool they have never
+/// heard of. So it does not run unless someone asked for it — `.onlyWhenAsked`
+/// is the default, and a scan gets an honest "not read" instead of a prompt.
+///
+/// The dump is injectable so the parsing can be tested against fixtures
+/// without invoking anything.
 public struct BackgroundItemSurface: RegistrationSurface {
+
+    /// Whether this surface may raise the administrator prompt.
+    public enum Elevation: Sendable, Equatable {
+        /// Never run `sfltool`. Coverage reports why, and no prompt appears.
+        case onlyWhenAsked
+        /// The user asked to see background items and is expecting the
+        /// prompt, so running it is what they came for.
+        case permitted
+    }
+
     public let kind: Registration.Kind = .backgroundItem
+    private let elevation: Elevation
 
     /// Produces the raw BTM dump. Defaults to running `sfltool`.
     private let dump: @Sendable () -> String?
@@ -21,14 +41,23 @@ public struct BackgroundItemSurface: RegistrationSurface {
     private let homeDirectory: @Sendable (uid_t) -> String?
 
     public init(
+        elevation: Elevation = .onlyWhenAsked,
         dump: (@Sendable () -> String?)? = nil,
         homeDirectory: (@Sendable (uid_t) -> String?)? = nil
     ) {
+        self.elevation = elevation
         self.dump = dump ?? { Self.runSFLTool() }
         self.homeDirectory = homeDirectory ?? { Self.systemHomeDirectory(for: $0) }
     }
 
     public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+        guard elevation == .permitted else {
+            return .unavailable(
+                kind,
+                "Background items were not read. macOS requires administrator access to list "
+                + "them, and Brim does not ask for that during a scan."
+            )
+        }
         guard let text = dump(), !text.isEmpty else {
             return .unavailable(kind, "Background items could not be read from sfltool.")
         }
@@ -36,6 +65,10 @@ public struct BackgroundItemSurface: RegistrationSurface {
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        // Reporting nothing found would be a lie — `coverage` says it was
+        // not read, which is a different thing and the reason that method
+        // exists.
+        guard elevation == .permitted else { return [] }
         guard let text = dump(), !text.isEmpty else { return [] }
 
         let fm = FileManager.default

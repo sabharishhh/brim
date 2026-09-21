@@ -153,8 +153,11 @@ public actor BrimService: BrimServiceProtocol {
         }
         let success = try await context.evaluatePolicy(
             .deviceOwnerAuthentication,
-            localizedReason: "Confirm this Mac is yours, so Brim can set itself up. "
-                           + "You will not be asked again except before a permanent deletion."
+            // macOS renders this as "Brim is trying to <reason>", so it has
+            // to be a short lowercase verb phrase. The previous wording was
+            // a full sentence and came out as "Brim is trying to Confirm
+            // this Mac is yours, so Brim can set itself up..".
+            localizedReason: "complete first-time setup"
         )
         guard success else {
             throw NSError(domain: "BrimService", code: 403,
