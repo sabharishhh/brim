@@ -28,11 +28,20 @@ struct LeftoversView: View {
             detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
+        .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .sheet(item: $reviewRequest) { intent in
             LeftoverRemovalSheet(intent: intent, service: service) {
                 Task { await model.load(service: service) }
             }
         }
+    }
+
+    /// Backs the Action menu's Remove Selected, so the keyboard reaches the
+    /// same place the button does. Nil when there is nothing to remove,
+    /// which is what greys the menu item out.
+    private var removeSelectedIfPossible: (() -> Void)? {
+        guard model.canRemoveSelection else { return nil }
+        return { reviewRequest = model.removalIntent(requesterIdentity: NSUserName()) }
     }
 
     // MARK: - List

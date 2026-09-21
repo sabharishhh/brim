@@ -21,7 +21,6 @@ final class SectionModels: ObservableObject {
     /// a publisher for a type with no `@Published` properties.
     nonisolated let objectWillChange = ObservableObjectPublisher()
 
-    let review = ReviewQueueViewModel()
     let applications = ApplicationsModel()
     let leftovers = LeftoversModel()
     let background = BackgroundModel()
