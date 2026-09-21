@@ -66,6 +66,36 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         reply(BrimJobHelper.version)
     }
 
+    /// Removes the quarantine, and nothing else.
+    ///
+    /// The one place this daemon deletes rather than sets aside, because
+    /// there is nowhere left to set anything aside to. The path is a
+    /// constant in this binary, never a parameter, so the interface still
+    /// cannot be talked into removing something else.
+    func uninstallSelf(withReply reply: @escaping (String?) -> Void) {
+        let quarantine = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
+        guard FileManager.default.fileExists(atPath: quarantine.path) else {
+            log.info("nothing to clean up on the way out")
+            return reply(nil)
+        }
+        do {
+            try FileManager.default.removeItem(at: quarantine)
+            // The parent is Brim's own folder. Taken away only if Brim is
+            // the only thing that was in it.
+            let parent = quarantine.deletingLastPathComponent()
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: parent.path),
+               contents.isEmpty {
+                try? FileManager.default.removeItem(at: parent)
+            }
+            log.info("removed the quarantine")
+            reply(nil)
+        } catch {
+            log.error("could not remove the quarantine: \(error.localizedDescription)")
+            reply("Brim's helper could not clear the folder it kept set-aside files in: "
+                  + error.localizedDescription)
+        }
+    }
+
     func removeDefunctJob(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
         do {
             let target = try PrivilegedJobRemoval.target(domain: domain, name: name)

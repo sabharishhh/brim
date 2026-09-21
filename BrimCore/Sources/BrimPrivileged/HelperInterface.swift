@@ -21,6 +21,19 @@ import Security
     /// shipped with it, rather than an older copy left by a previous
     /// version.
     func version(withReply reply: @escaping (String) -> Void)
+
+    /// Clears up what only root can, on the way out.
+    ///
+    /// `SMAppService.unregister` is the application's call and takes the
+    /// daemon away, but it cannot touch the quarantine: that directory is
+    /// root owned and holds the job files Brim set aside, so an uninstall
+    /// without this leaves a root-owned folder behind. A product whose
+    /// argument is that it removes every trace does not get to make an
+    /// exception for its own.
+    ///
+    /// Destroys the set-aside files, so it is only ever called when
+    /// somebody has asked for Brim itself to go.
+    func uninstallSelf(withReply reply: @escaping (String?) -> Void)
 }
 
 public enum BrimJobHelper {
@@ -30,7 +43,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "1"
+    public static let version = "2"
 
     public static let teamID = "9LY29YLFG2"
 

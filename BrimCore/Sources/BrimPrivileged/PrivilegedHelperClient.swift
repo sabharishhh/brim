@@ -20,6 +20,9 @@ public final class PrivilegedHelperClient: ObservableObject {
         case ready
         /// Installed, and the person switched it off on purpose.
         case disabledByUser
+        /// Registered, but it is an older Brim's daemon. Talking to it
+        /// would mean trusting rules this version has since changed.
+        case stale(installed: String)
         case unavailable(String)
 
         public var canRemove: Bool { self == .ready }
@@ -63,11 +66,71 @@ public final class PrivilegedHelperClient: ObservableObject {
 
     /// Takes the daemon away again. Removing Brim should not leave a root
     /// daemon behind, and neither should changing your mind.
-    public func uninstall() async {
+    ///
+    /// Two halves, in this order. The daemon clears the quarantine while
+    /// it is still running, because that directory is root owned and
+    /// nothing else can touch it. Then macOS is told to forget the
+    /// daemon. Doing it the other way round leaves the folder behind for
+    /// good.
+    public func uninstall() async -> String? {
+        var complaint: String?
+        if state == .ready {
+            complaint = await askDaemonToCleanUp()
+        }
         connection?.invalidate()
         connection = nil
         try? await service.unregister()
         refresh()
+        return complaint
+    }
+
+    private func askDaemonToCleanUp() async -> String? {
+        await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(returning: error.localizedDescription)
+            } as? BrimJobHelperProtocol
+            guard let proxy else {
+                return continuation.resume(returning: "The helper did not answer.")
+            }
+            proxy.uninstallSelf { complaint in continuation.resume(returning: complaint) }
+        }
+    }
+
+    /// Asks the running daemon what version it is, and refuses to use one
+    /// this copy of Brim does not recognise.
+    ///
+    /// `SMAppService` keeps a daemon registered across an application
+    /// update, so the root process answering can be the one an older Brim
+    /// installed. Its rules about what is safe to remove are that older
+    /// version's rules. The comment on `BrimJobHelper.version` has always
+    /// said the app should replace a stale copy rather than talk to it;
+    /// this is the part that was missing.
+    public func verifyVersion() async {
+        guard state == .ready else { return }
+        let installed: String? = await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { _ in
+                continuation.resume(returning: nil)
+            } as? BrimJobHelperProtocol
+            guard let proxy else { return continuation.resume(returning: nil) }
+            proxy.version { continuation.resume(returning: $0) }
+        }
+
+        guard let installed else { return }
+        guard installed != BrimJobHelper.version else { return }
+
+        log.info("replacing a daemon from an older Brim (\(installed))")
+        connection?.invalidate()
+        connection = nil
+        try? await service.unregister()
+        install()
+        if state == .ready {
+            // Registration succeeded, but macOS may still be running the
+            // old binary until it next starts. Reported rather than
+            // assumed away.
+            state = .stale(installed: installed)
+        }
     }
 
     public func openSettings() {
@@ -104,7 +167,16 @@ public final class PrivilegedHelperClient: ObservableObject {
         // The daemon checks the app, and the app checks the daemon. Either
         // side accepting the other on trust is how a root service ends up
         // talking to something that replaced it.
-        fresh.setCodeSigningRequirement(BrimJobHelper.daemonRequirement())
+        // Compiled first: `setCodeSigningRequirement` raises on a string
+        // it cannot parse rather than returning a failure.
+        let requirement = BrimJobHelper.daemonRequirement()
+        if BrimJobHelper.isWellFormed(requirement) {
+            fresh.setCodeSigningRequirement(requirement)
+        } else {
+            log.error("the daemon requirement will not compile; not connecting")
+            fresh.invalidate()
+            return fresh
+        }
         fresh.invalidationHandler = { [weak self] in
             Task { @MainActor in self?.connection = nil }
         }

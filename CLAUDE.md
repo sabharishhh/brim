@@ -96,6 +96,14 @@ prompt for the whole plan, and a five minute grace window after it. The
 failure to avoid is not an unauthorised deletion, it is a user who has been
 asked so often that they stop reading.
 
+**Tier S is Shared, and it is a veto.** A, B and C are one scale, how
+sure Brim is. S is not on it: it means something else installed on this
+Mac claims the item, so the item leaves the selection and cannot re-enter
+it. The code used to read S as "cryptographically guaranteed" and select
+it, so anybody following the specification and writing `tier: .S` to
+protect a shared component would have marked it for removal.
+`TierSVetoTests` holds the one-way rule.
+
 **Never collapse numbers that mean different things.** Free space, space
 macOS is holding, and space Brim could clear are three facts. One combined
 figure is how cleaning utilities end up lying.
@@ -184,6 +192,17 @@ conversation. Split unrelated changes rather than staging everything.
   Presence goes through the injected `PresenceCheck` so tests can reach
   the approval gate without one. Killing a run mid-prompt leaves
   `System authentication is running` behind for the next one.
+- **An `SMAppService` daemon survives an application update.** The root
+  process answering can be the one an older Brim registered, running that
+  version's rules about what is safe to remove. Check the version on
+  connect and replace a daemon you do not recognise. Bump
+  `BrimJobHelper.version` whenever the interface changes, or an older
+  daemon hangs on a selector it does not implement.
+- **Only root can clear the quarantine.** `/Library/Application
+  Support/Brim/Set aside` is root owned, so `SMAppService.unregister`
+  first and the folder is there for good. The daemon clears it through
+  `uninstallSelf` while it is still running, and only then is it
+  unregistered.
 - **A Swift error loses its sentence crossing XPC.** `localizedDescription`
   is computed, so bridging an error to `NSError` and replying with it
   arrives as `Code=0 "(null)"`. `BrimXPCServer.wire` pins the sentence into
