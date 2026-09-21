@@ -12,6 +12,11 @@ import BrimUI
 struct UninstallSheet: View {
     let application: InstalledApplication
     let service: any BrimServiceProtocol
+    /// Uninstall removes the application and everything it wrote. Reset
+    /// keeps the application and its licence and removes the state, so
+    /// it starts as if new. One sheet for both, because the review and
+    /// the approval are identical and only the plan differs.
+    var intentType: IntentType = .uninstall
     let onFinished: () -> Void
 
     @StateObject private var model = UninstallExecutionModel()
@@ -31,7 +36,7 @@ struct UninstallSheet: View {
             // between uninstalling an application and tidying a folder.
             await model.prepare(
                 intent: PlanIntent(
-                    type: .uninstall,
+                    type: intentType,
                     subjectIdentity: application.identity,
                     requesterKind: "ui",
                     requesterIdentity: NSUserName()
@@ -46,7 +51,7 @@ struct UninstallSheet: View {
             AppIconView(url: application.url, size: 40)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Uninstall \(application.name)")
+                Text("\(intentType == .reset ? "Reset" : "Uninstall") \(application.name)")
                     .font(.title2)
                     .fontWeight(.bold)
                 if let bundleID = application.identity.bundleID {
@@ -78,7 +83,7 @@ struct UninstallSheet: View {
             ProgressView("Looking for everywhere this app has written…")
 
         case .failed(let reason):
-            message(title: "Brim had to stop", detail: reason, isError: true)
+            message(title: "Stopped", detail: reason, isError: true)
 
         case .executing:
             ProgressView("Clearing out \(application.name)…")

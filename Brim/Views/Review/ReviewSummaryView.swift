@@ -86,7 +86,7 @@ struct ReviewSummaryView: View {
                 Text("This Mac").font(.largeTitle).fontWeight(.bold)
                 Text(leftovers.isScanning
                      ? "Having a look…"
-                     : "What software left behind, and what Brim still cannot see.")
+                     : "What software has left behind on this Mac.")
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -109,7 +109,7 @@ struct ReviewSummaryView: View {
             symbol: "lock",
             tint: .orange,
             title: "Full Disk Access required",
-            detail: "Without it Brim misses most of what an app leaves behind, so the numbers "
+            detail: "Without it most of what an application leaves behind is invisible, so the numbers "
                   + "below are undercounts.",
             action: ("Open Settings", { FullDiskAccess.openSettings() })
         )
@@ -170,8 +170,7 @@ struct ReviewSummaryView: View {
                 applications.isLoading
                     ? .working
                     : .counted("\(applications.applications.count) installed", nil),
-                "Pick an app to see everywhere it has written on this Mac, then remove it "
-                + "and watch Brim check its own work."
+                "Everywhere each application has written, and what removing it takes back."
             )
 
             card(
@@ -195,7 +194,7 @@ struct ReviewSummaryView: View {
                     : storage.startupVolume.map {
                         .counted(ByteText.short($0.freeRightNow) + " free right now", nil)
                       } ?? .notChecked("Could not read the volumes."),
-                "How much space is really yours to take back, and how much local snapshots "
+                "How much space can be taken back, and how much local snapshots "
                 + "are holding."
             )
 
