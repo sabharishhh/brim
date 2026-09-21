@@ -23,7 +23,12 @@ public struct FootprintGroup: Identifiable, Equatable, Sendable {
 }
 
 extension EvidenceTier {
-    /// Lower is stronger. S is a cryptographic guarantee, C a heuristic.
+    /// Sort order for the footprint list. Lower comes first.
+    ///
+    /// Shared items lead, because they are the ones a person most needs to
+    /// see: everything else in the list is going, and these are staying.
+    /// This is an ordering, not a confidence ranking; S is not on that
+    /// scale at all.
     var rank: Int {
         switch self {
         case .S: return 0
@@ -35,7 +40,7 @@ extension EvidenceTier {
 
     public var shortLabel: String {
         switch self {
-        case .S: return "Guaranteed"
+        case .S: return "Shared"
         case .A: return "Direct"
         case .B: return "Strong"
         case .C: return "Heuristic"
