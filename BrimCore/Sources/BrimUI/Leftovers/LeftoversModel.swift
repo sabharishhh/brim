@@ -59,6 +59,14 @@ public final class LeftoversModel: ObservableObject {
         !selectedItems.isEmpty && blockedSelection.isEmpty
     }
 
+    /// Scans only if there is nothing to show. Returning to a section is a
+    /// change of view, not a reason to walk the disk again — rescanning is
+    /// what the Rescan button is for.
+    public func loadIfNeeded(service: any BrimServiceProtocol) async {
+        guard all.isEmpty, !isScanning else { return }
+        await load(service: service)
+    }
+
     public func load(service: any BrimServiceProtocol) async {
         self.service = service
         isScanning = true

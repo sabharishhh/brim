@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selection: NavigationItem? = .review
+    /// Owned here so a section change does not throw away a scan. See
+    /// `SectionModels`.
+    @StateObject private var models = SectionModels()
 
     var body: some View {
         NavigationSplitView {
@@ -11,13 +14,13 @@ struct ContentView: View {
             if let selection = selection {
                 switch selection {
                 case .review:
-                    ReviewQueueView(selection: $selection)
+                    ReviewQueueView(selection: $selection, models: models)
                 case .applications:
-                    ApplicationsView()
+                    ApplicationsView(model: models.applications)
                 case .leftovers:
-                    LeftoversView()
+                    LeftoversView(model: models.leftovers)
                 case .history:
-                    RemovalHistoryView()
+                    RemovalHistoryView(model: models.history, recovery: models.recovery)
                 default:
                     Text("\(selection.rawValue) View")
                         .foregroundColor(.secondary)

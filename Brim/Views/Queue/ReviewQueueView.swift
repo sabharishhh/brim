@@ -4,12 +4,15 @@ import BrimUI
 struct ReviewQueueView: View {
     @Binding var navigationSelection: NavigationItem?
 
-    @StateObject private var viewModel = ReviewQueueViewModel()
-    @StateObject private var recovery = RecoveryStatusModel()
-    @StateObject private var fullDiskAccess = FullDiskAccessModel()
+    @ObservedObject private var viewModel: ReviewQueueViewModel
+    @ObservedObject private var recovery: RecoveryStatusModel
+    @ObservedObject private var fullDiskAccess: FullDiskAccessModel
 
-    init(selection: Binding<NavigationItem?>) {
+    init(selection: Binding<NavigationItem?>, models: SectionModels) {
         self._navigationSelection = selection
+        self.viewModel = models.review
+        self.recovery = models.recovery
+        self.fullDiskAccess = models.fullDiskAccess
     }
     @State private var selection = Set<UUID>()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
