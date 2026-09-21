@@ -172,9 +172,8 @@ struct BackgroundView: View {
                         // the one an older Brim installed, and its rules
                         // about what is safe to remove are that version's
                         // rules. Brim will not use it.
-                        Text("The helper already installed is from an older Brim (version "
-                             + "\(installed)). It has been replaced, and macOS will start the "
-                             + "new one next time. Nothing will be removed until it does.")
+                        Text("The installed helper is an older version (\(installed)). It has been "
+                             + "replaced and will start next time. Nothing is removed until then.")
                             .font(.callout).foregroundColor(.orange)
                     }
                 }
