@@ -107,9 +107,9 @@ public actor LeftoversScanner {
                 if case .recordedButGone(let sentence) = verdict {
                     evidence = sentence
                 } else {
-                    evidence = "No application on any mounted volume or readable account "
-                             + "claims this, and macOS has no record of one. Brim cannot say "
-                             + "what put it here."
+                    evidence = "Brim looked on every mounted volume and in every account it can read, and "
+                             + "asked macOS too. Nothing claims this, and nothing remembers claiming "
+                             + "it, so Brim cannot say what put it here."
                 }
 
                 let leftover = Leftover(

@@ -65,7 +65,7 @@ struct ReviewModal: View {
                     .fontWeight(.bold)
                 let permanentCount = plan?.steps.filter { $0.effectiveDisposition == .delete }.count ?? 0
                 if permanentCount > 0 {
-                    Text("\(findings.count) selected \(findings.count == 1 ? "item" : "items") — \(permanentCount) deleted permanently")
+                    Text("\(findings.count) selected \(findings.count == 1 ? "item" : "items"), \(permanentCount) of them deleted for good")
                         .font(.subheadline)
                         .foregroundColor(.orange)
                 } else {
@@ -177,7 +177,7 @@ struct ReviewModal: View {
                     .monospacedDigit()
 
                 if trashedBytes > 0 {
-                    Text("\(ByteCountFormatter.string(fromByteCount: trashedBytes, countStyle: .file)) moves to the Trash — recoverable, and freed when you empty it")
+                    Text("\(ByteCountFormatter.string(fromByteCount: trashedBytes, countStyle: .file)) goes to the Trash. You get the space back when you empty it.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -254,7 +254,7 @@ struct ReviewModal: View {
                     id: finding.id,
                     title: finding.title,
                     steps: [],
-                    excludedReason: reason ?? "Nothing to remove — safety checks excluded this item."
+                    excludedReason: reason ?? "Nothing to remove here. Brim's safety checks held this one back."
                 )
             }
             return PlannedFinding(id: finding.id, title: finding.title, steps: mine, excludedReason: nil)
