@@ -6,6 +6,7 @@ import BrimUI
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
+    @FocusedValue(\.navigateAction) var navigateAction
     
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
     
@@ -26,6 +27,21 @@ import BrimUI
         }
         .defaultSize(width: 1100, height: 700)
         .commands {
+            // Every section reachable from the keyboard, the way a Mac app
+            // is expected to behave. `after: .sidebar` puts these in the
+            // standard View menu next to "Hide Sidebar" — a CommandMenu named
+            // "View" would create a second menu of the same name instead.
+            CommandGroup(after: .sidebar) {
+                Divider()
+                ForEach(Array(NavigationItem.allCases.prefix(9).enumerated()), id: \.element) { index, item in
+                    Button(item.rawValue) { navigateAction?(item) }
+                        .keyboardShortcut(
+                            KeyEquivalent(Character("\(index + 1)")),
+                            modifiers: .command
+                        )
+                        .disabled(navigateAction == nil)
+                }
+            }
             CommandMenu("Action") {
                 Button("Remove Selected") {
                     removeSelectedAction?()
