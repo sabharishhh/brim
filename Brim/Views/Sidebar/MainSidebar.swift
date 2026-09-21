@@ -45,20 +45,23 @@ struct MainSidebar: View {
     @Binding var selection: NavigationItem?
 
     var body: some View {
+        // `.tag` rather than `NavigationLink(value:)`. The link form belongs
+        // to a NavigationStack path; inside a List driven by a selection
+        // binding it produces rows that expose as AXUnknown and ignore an
+        // accessibility press — so the sidebar looked operable to VoiceOver
+        // and to automation while doing nothing.
         List(selection: $selection) {
             Section("Primary") {
                 ForEach([NavigationItem.review, .applications, .leftovers, .background, .storage, .energy], id: \.self) { item in
-                    NavigationLink(value: item) {
-                        Label(item.rawValue, systemImage: item.icon)
-                    }
+                    Label(item.rawValue, systemImage: item.icon)
+                        .tag(item)
                 }
             }
-            
+
             Section("System") {
                 ForEach([NavigationItem.developer, .updates, .history], id: \.self) { item in
-                    NavigationLink(value: item) {
-                        Label(item.rawValue, systemImage: item.icon)
-                    }
+                    Label(item.rawValue, systemImage: item.icon)
+                        .tag(item)
                 }
             }
         }

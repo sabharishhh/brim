@@ -65,3 +65,33 @@ final class LeftoversScannerTests: XCTestCase {
         XCTAssertEqual(unclaimedMatch?.category, .unclaimed)
     }
 }
+
+/// Apple's own data is never the user's to clean up, and the group-container
+/// spelling is the case that slipped through: a container named
+/// `group.com.apple.SHTTS` does not begin with `com.apple.`, so it was being
+/// offered as a leftover. One had been written to under a minute before the
+/// scan that found it.
+final class AppleOwnedFilterTests: XCTestCase {
+
+    func testSystemDataIsNeverOfferedInEitherSpelling() {
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple.Safari"))
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.SHTTS"))
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.gamecenter"))
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple"))
+    }
+
+    func testSeparatelyShippedAppleSoftwareStaysRemovable() {
+        // Logic and Final Cut are bought and uninstalled like anything else,
+        // and their support folders are the largest leftovers on many Macs.
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("com.apple.logic10"))
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("com.apple.FinalCut"))
+    }
+
+    func testThirdPartySoftwareIsUnaffected() {
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("com.figma.Desktop"))
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("group.com.acme.shared"))
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("Codex"))
+        // Not a prefix match on something merely starting with the letters.
+        XCTAssertFalse(LeftoversScanner.isAppleOwned("com.applesauce.jam"))
+    }
+}
