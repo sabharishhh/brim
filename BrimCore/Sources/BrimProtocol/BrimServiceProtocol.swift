@@ -36,6 +36,11 @@ public protocol BrimServiceProtocol: Sendable {
     /// fine when a person pressed a button asking for it, and not fine
     /// during a scan they did not ask for.
     func registrations(includingBackgroundItems: Bool) async -> RegistrationReport
+    /// Space on each local volume, kept as separate figures rather than
+    /// collapsed into one.
+    func volumes() async -> [VolumeAccount]
+    /// A single sample of what is running and what it is costing.
+    func sampleEnergy() async -> EnergySampleResult
 }
 
 public extension BrimServiceProtocol {
@@ -49,4 +54,8 @@ public extension BrimServiceProtocol {
     func isEnrolled() async -> Bool { true }
     func enroll() async throws {}
     func registrations(includingBackgroundItems: Bool) async -> RegistrationReport { .empty }
+    func volumes() async -> [VolumeAccount] { [] }
+    func sampleEnergy() async -> EnergySampleResult {
+        EnergySampleResult(samples: [], coverageGaps: 0)
+    }
 }
