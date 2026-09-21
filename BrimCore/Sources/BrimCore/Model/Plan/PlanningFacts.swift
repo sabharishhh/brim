@@ -72,7 +72,7 @@ public enum VendorUninstallerDetector {
                     path: directory.appendingPathComponent(name).path,
                     reason: "\(bundleURL.lastPathComponent) ships its own uninstaller. Removing "
                           + "the files by hand can leave a licence registered or a system "
-                          + "extension loaded, so Brim will show you theirs rather than guess."
+                          + "extension loaded, so the vendor's uninstaller is shown instead."
                 )
             }
         }

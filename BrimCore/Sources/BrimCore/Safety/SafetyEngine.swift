@@ -71,7 +71,7 @@ public struct SafetyEngine: Sendable {
             switch item.evidence.tier {
             case .S:
                 selection = .excluded(
-                    reason: "Something else on this Mac uses this too, so Brim leaves it alone."
+                    reason: "Shared with other installed software."
                 )
             case .A, .B:
                 selection = searchFinished

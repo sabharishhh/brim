@@ -158,7 +158,7 @@ public struct Planner: Sendable {
                         excludedItems.append(ExcludedItem(
                             target: targetPath,
                             reason: "macOS has locked this at the system level, not you. "
-                                  + "Nothing Brim can do will unlock it, and it is almost "
+                                  + "It cannot be unlocked here, and it is almost "
                                   + "always locked for a reason."
                         ))
                         continue
@@ -172,7 +172,7 @@ public struct Planner: Sendable {
                         target: targetPath,
                         targetFingerprint: fingerprint,
                         tier: item.footprintItem.evidence.tier,
-                        evidence: "In a folder that belongs to the system, so Brim's helper "
+                        evidence: "In a system folder, so the helper "
                                 + "sets it aside where an administrator can still reach it.",
                         expectedBytes: sizeBytes,
                         capability: item.footprintItem.capability,
