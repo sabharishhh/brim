@@ -70,6 +70,10 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// What signs the code this points at, when Brim looked. Nil where the
     /// question does not arise, such as a record with no path at all.
     public let signing: SigningState?
+    /// What it would take to remove the record itself, where the record is
+    /// a file. Offering a removal without asking this is what produced an
+    /// authorization followed by "2 targets still remain".
+    public let capability: Capability
 
     // The record's own location is part of the identity. Google Keystone
     // installs the same job twice, once for the user and once for the
@@ -110,7 +114,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         recordPath: String? = nil,
         evidence: String,
         isSystemOwned: Bool = false,
-        signing: SigningState? = nil
+        signing: SigningState? = nil,
+        capability: Capability = .ok
     ) {
         self.kind = kind
         self.identifier = identifier
@@ -122,6 +127,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         self.evidence = evidence
         self.isSystemOwned = isSystemOwned
         self.signing = signing
+        self.capability = capability
     }
 }
 
