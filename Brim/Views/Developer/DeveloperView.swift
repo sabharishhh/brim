@@ -41,7 +41,7 @@ struct DeveloperView: View {
         .alert(item: $pendingCleanup) { cache in
             Alert(
                 title: Text("Let \(cache.tool) clean up after itself?"),
-                message: Text("Brim will not delete this folder. It will run the tool's own "
+                message: Text("The tool's own cleanup command runs instead of deleting the folder: "
                               + "command, which leaves \(cache.tool) in a state it understands:"
                               + "\n\n\(commandText(cache))"),
                 primaryButton: .default(Text("Run it")) { runCleanup(cache) },
@@ -116,7 +116,7 @@ struct DeveloperView: View {
                       "Clearing these costs time and bandwidth the next time a build "
                       + "reaches for them.")
                 group(.configured, "Set up by hand",
-                      "Not caches. Clearing these loses work or configuration, so Brim shows "
+                      "Not caches. Clearing these loses work or configuration, so they are shown "
                       + "them for the space they take and leaves them to you.")
             }
             .listStyle(.inset)

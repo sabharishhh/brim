@@ -91,7 +91,7 @@ struct EnergyCmd: AsyncParsableCommand {
                 for s in result.samples {
                     currentPids.insert(s.pid)
                     let key = s.bundlePath ?? s.executablePath
-                    let currentScore = s.impactScore
+                    let currentScore = s.energyNanojoules
                     let previousScore = lastObservedScores[s.pid] ?? 0
                     
                     let delta: UInt64
@@ -124,12 +124,18 @@ struct EnergyCmd: AsyncParsableCommand {
             var aggregated: [String: UInt64] = [:]
             for s in result.samples {
                 let key = s.bundlePath ?? s.executablePath
-                aggregated[key, default: 0] += s.impactScore
+                aggregated[key, default: 0] += s.energyNanojoules
             }
             
-            print("Coverage Gaps (Root-owned restricted): \(result.coverageGaps) processes hidden.")
-            for (path, score) in aggregated.sorted(by: { $0.value > $1.value }).prefix(20) {
-                print("Impact Score: \(score) pts - \(path)")
+            let battery = BatteryCapacity.current()
+            print("\(result.coverageGaps) processes could not be read, so this list is short "
+                  + "by that much.")
+            for (path, nanojoules) in aggregated.sorted(by: { $0.value > $1.value }).prefix(20) {
+                let milliwattHours = Double(nanojoules) / 1_000_000_000 / 3.6
+                let share = battery?.sentence(forMilliwattHours: milliwattHours)
+                print(String(format: "%8.1f mWh", milliwattHours)
+                      + (share.map { "  (\($0))" } ?? "")
+                      + "  \(path)")
             }
         }
     }

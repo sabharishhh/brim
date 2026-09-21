@@ -104,7 +104,7 @@ public actor BrimXPCClient: BrimServiceProtocol {
     }
 
     public func whatChanged() async -> InstallHistory {
-        let empty = InstallHistory(changes: [], snapshots: 0, migrated: [])
+        let empty = InstallHistory(changes: [], snapshots: 0)
         guard let data: Data = try? await withProxy({ proxy, reply in
             proxy.whatChanged { data, error in
                 if let error { reply(.failure(error)) }

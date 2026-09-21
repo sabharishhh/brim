@@ -88,7 +88,7 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
                  + "behind, it either fails quietly at every login or keeps running software "
                  + "you thought was gone."
         case .other:
-            return "Brim has no specific knowledge of this location."
+            return "An unrecognised location."
         }
     }
 

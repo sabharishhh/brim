@@ -160,7 +160,7 @@ struct ReviewSummaryView: View {
                         "\(leftovers.orphaned.count) orphaned · \(leftovers.unclaimed.count) unclaimed",
                         unclaimedBytes
                       ),
-                "Files that no installed app claims. For an orphan, Brim can point at the "
+                "Files no installed application claims. An orphan names the "
                 + "record that named its owner. The rest are shown, and left for you to judge."
             )
 
@@ -223,7 +223,7 @@ struct ReviewSummaryView: View {
             card(
                 .energy, "bolt",
                 "Energy",
-                .notChecked("Measured over a couple of seconds, so Brim waits until you open it."),
+                .notChecked("Measured over a couple of seconds when you open it."),
                 "What has been draining the battery, measured rather than guessed at."
             )
         }

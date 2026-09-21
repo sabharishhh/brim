@@ -88,9 +88,9 @@ public struct SystemExtensionSurface: RegistrationSurface {
                 recordPath: nil,
                 evidence: isTerminated
                     ? "A system extension macOS has marked \(state). Only the application "
-                    + "that installed it can withdraw it; Brim will not touch this."
+                    + "that installed it can withdraw it."
                     : "An active system or network extension. Only the application that "
-                    + "installed it can withdraw it, so Brim shows it rather than acting.",
+                    + "installed it can withdraw it.",
                 isSystemOwned: identifier.hasPrefix("com.apple."),
                 capability: .refusedByOS
             ))

@@ -94,7 +94,7 @@ struct OnboardingSheet: View {
             if access.isGranted {
                 status(
                     "checkmark.circle.fill", .green,
-                    "Brim can read everything it needs.",
+                    "Everything needed can be read.",
                     "Nothing more to do here."
                 )
             } else {
@@ -136,7 +136,7 @@ struct OnboardingSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 point(
                     "hand.raised",
-                    "If you can undo it, Brim does not ask.",
+                    "Reversible actions are not confirmed.",
                     "Anything bound for the Trash just goes. You looked at the list, and it is "
                     + "all still there if you change your mind."
                 )

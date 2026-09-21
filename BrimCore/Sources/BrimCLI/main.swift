@@ -112,7 +112,6 @@ struct Changed: AsyncParsableCommand {
             outputJSON([
                 "snapshots": "\(history.snapshots)",
                 "changes": history.changes.map(\.sentence).joined(separator: " "),
-                "migrated": "\(history.migrated.count)",
             ])
             return
         }
@@ -122,13 +121,6 @@ struct Changed: AsyncParsableCommand {
             print("  \(change.sentence)")
         }
 
-        guard !history.migrated.isEmpty else { return }
-        print("")
-        print("\(history.migrated.count) came across from another Mac and have not run here "
-              + "(\(ByteText.short(history.migratedBytes))):")
-        for migrated in history.migrated.prefix(20) {
-            print("  \(migrated.application.name) — \(migrated.verdict.sentence)")
-        }
     }
 }
 

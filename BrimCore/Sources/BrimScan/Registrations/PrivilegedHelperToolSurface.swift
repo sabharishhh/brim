@@ -61,12 +61,9 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
 
             let evidence: String
             if hasDaemon {
-                evidence = "A helper that runs as an administrator, started by a launchd "
-                         + "daemon of the same name. It was installed by an application "
-                         + "asking for administrator rights."
+                evidence = "Runs as an administrator, started by a launchd daemon of the same name."
             } else {
-                evidence = "A helper that runs as an administrator, with no launchd daemon "
-                         + "left to start it. Nothing runs it now, and nothing updates it."
+                evidence = "Runs as an administrator, with no launchd daemon left to start it."
             }
 
             return Registration(

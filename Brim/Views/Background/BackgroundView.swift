@@ -65,8 +65,8 @@ struct BackgroundView: View {
                 // Brim's problem to solve, not something to make anyone
                 // sort their selection by.
                 if model.selectionUsesHelper {
-                    Text("Some of these need an administrator. Brim's helper will set those "
-                         + "aside where you can still get them back.")
+                    Text("Some need an administrator. The helper sets those aside so they "
+                         + "can be restored.")
                         .font(.caption).foregroundColor(.secondary)
                 }
             }
@@ -119,31 +119,24 @@ struct BackgroundView: View {
                 if !model.waitingOnHelper.isEmpty, !helper.state.canRemove { helperSetUpNote }
                 section(
                     "Left behind",
-                    "These point at a program that is not on this Mac any more, and nothing "
-                    + "clears them on its own. Each one either fails quietly every time you "
-                    + "log in, or keeps running something you thought was gone.",
+                    "The program these launch is no longer installed.",
                     model.stale,
-                    "Nothing left over. Every background job here points at software you "
-                    + "still have."
+                    ""
                 )
                 if !model.clearingItself.isEmpty {
                     section(
                         "macOS is catching up",
-                        "The software has gone and macOS has not tidied its own list yet. It "
-                        + "does that by itself the next time anything asks it for the list, "
-                        + "which includes opening Login Items in System Settings. Nothing "
-                        + "here needs doing.",
+                        "Removed software macOS has not dropped from its list yet. "
+                        + "Nothing to do.",
                         model.clearingItself,
                         ""
                     )
                 }
                 section(
                     "Still in use",
-                    "Software you have, running in the background. Here so you can see it, "
-                    + "not because anything is wrong.",
+                    "Installed software running in the background.",
                     model.live,
-                    model.searchText.isEmpty ? "Nothing runs in the background on this Mac."
-                                             : "Nothing matches."
+                    model.searchText.isEmpty ? "" : "Nothing matches."
                 )
             }
             .listStyle(.inset)
@@ -161,11 +154,10 @@ struct BackgroundView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(model.waitingOnHelper.count) of these need an administrator")
                         .fontWeight(.medium)
-                    Text("They sit in a folder that belongs to the system. Brim can set up a "
-                         + "small helper that removes them for you. It only ever touches job "
-                         + "files in the two system launchd folders, it refuses anything of "
-                         + "Apple's, it refuses any job that still runs something on this Mac, "
-                         + "and what it removes is set aside rather than deleted.")
+                    Text("They are in a system folder. A helper can remove them. It touches "
+                         + "only job files in the two system launchd folders, skips Apple's "
+                         + "and any job still in use, and sets aside what it removes rather "
+                         + "than deleting it.")
                         .font(.callout).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if case .waitingForApproval = helper.state {
@@ -199,15 +191,13 @@ struct BackgroundView: View {
         }
     }
 
-    /// What Brim could not read, and what it chose not to.
+    /// What could not be read, and why.
     ///
-    /// These were one banner and it said the wrong thing. The keychain,
-    /// which Brim deliberately does not read, appeared under "Part of
-    /// this list is missing" with a button offering to open Full Disk
-    /// Access. Full Disk Access was already on, so the screen told
-    /// somebody their Mac was misconfigured, pointed them at a switch
-    /// that was already flipped, and would have fixed nothing if it had
-    /// not been. A boundary is not a gap.
+    /// Only genuine gaps. A surface deliberately left alone is not a
+    /// fault and gets no panel: a box explaining something that is not
+    /// there is three lines about nothing, and it appeared with a button
+    /// offering to open Full Disk Access on a Mac where Full Disk Access
+    /// was already granted.
     private var coverageNote: some View {
         Section {
             ForEach(model.faults, id: \.kind) { gap in
@@ -215,7 +205,7 @@ struct BackgroundView: View {
                     Image(systemName: "eye.slash").foregroundColor(.orange)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Part of this list is missing").fontWeight(.medium)
-                        Text(gap.limitation ?? "Brim could not read \(gap.kind.displayName).")
+                        Text(gap.limitation ?? "\(gap.kind.displayName)s could not be read.")
                             .font(.callout).foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -231,44 +221,34 @@ struct BackgroundView: View {
                 .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            ForEach(model.boundaries, id: \.kind) { boundary in
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "hand.raised").foregroundColor(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(boundary.kind.displayName)s are not Brim's to touch")
-                            .fontWeight(.medium)
-                        Text(boundary.limitation ?? "")
-                            .font(.callout).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                }
-                .padding(10)
-                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            }
         }
     }
 
+    /// An empty section is not drawn. A heading, a caption and a row
+    /// saying "None" is three lines about nothing, and the emptyNote is
+    /// kept only for the one case where a search matched nothing and the
+    /// person needs telling why the list went blank.
     @ViewBuilder
     private func section(
         _ title: String, _ caption: String,
         _ groups: [RegistrationGroup], _ emptyNote: String
     ) -> some View {
-        Section {
-            if groups.isEmpty {
-                Text(emptyNote).font(.caption).foregroundColor(.secondary)
-            } else {
-                ForEach(groups) { group in
-                    GroupRow(
-                        group: group,
-                        canSelect: model.canSelect(group),
-                        isSelected: model.isSelected(group),
-                        helperIsReady: helper.state.canRemove,
-                        toggle: { model.toggle(group) }
-                    )
+        if !groups.isEmpty || !emptyNote.isEmpty {
+            Section {
+                if groups.isEmpty {
+                    Text(emptyNote).font(.caption).foregroundColor(.secondary)
+                } else {
+                    ForEach(groups) { group in
+                        GroupRow(
+                            group: group,
+                            canSelect: model.canSelect(group),
+                            isSelected: model.isSelected(group),
+                            helperIsReady: helper.state.canRemove,
+                            toggle: { model.toggle(group) }
+                        )
+                    }
                 }
-            }
-        } header: {
+            } header: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
                     Text("\(title) (\(groups.count))").font(.headline)
@@ -280,8 +260,9 @@ struct BackgroundView: View {
                 }
                 Text(caption).font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
             }
-            .padding(.vertical, 4)
         }
     }
 }

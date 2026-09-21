@@ -32,7 +32,22 @@ public final class EnergyModel: ObservableObject {
         public let cpuNanoseconds: UInt64
         public let wakeups: UInt64
         public let bytesMoved: UInt64
-        public let impact: UInt64
+        /// Energy used across the gap between the two samples, in
+        /// nanojoules. Real, from `ri_energy_nj`, rather than the
+        /// synthetic score this used to carry: that number had no unit,
+        /// so it could be compared against itself and against nothing
+        /// else, and could never become a share of a battery.
+        public let nanojoules: UInt64
+
+        public var milliwattHours: Double { Double(nanojoules) / 1_000_000_000 / 3.6 }
+
+        /// What it is costing right now, in milliwatts, which is the rate
+        /// rather than the amount. Shown as the arithmetic it is: this
+        /// much energy over this long.
+        public func milliwatts(over window: TimeInterval) -> Double {
+            guard window > 0 else { return 0 }
+            return milliwattHours * 3600 / window
+        }
 
         public var id: String { bundlePath ?? executablePath }
     }
@@ -41,6 +56,10 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var isSampling = false
     @Published public private(set) var coverageGaps = 0
     @Published public private(set) var window: TimeInterval = 0
+    /// This Mac's battery, so energy can be said as a share of a full
+    /// charge. Nil on a machine with no battery, where a share of one is
+    /// not a thing that can be said.
+    public let battery: BatteryCapacity? = BatteryCapacity.current()
 
     /// How long to leave between the two samples. Long enough for a busy
     /// process to separate itself from an idle one, short enough that
@@ -79,9 +98,9 @@ public final class EnergyModel: ObservableObject {
             let wakeups = now.wakeups >= then.wakeups ? now.wakeups - then.wakeups : 0
             let io = (now.diskReadBytes &+ now.diskWriteBytes)
                 &- (then.diskReadBytes &+ then.diskWriteBytes)
-            let impact = now.impactScore >= then.impactScore
-                ? now.impactScore - then.impactScore : 0
-            guard impact > 0 else { return nil }
+            let nanojoules = now.energyNanojoules >= then.energyNanojoules
+                ? now.energyNanojoules - then.energyNanojoules : 0
+            guard nanojoules > 0 else { return nil }
 
             return Measured(
                 bundlePath: now.bundlePath,
@@ -89,7 +108,7 @@ public final class EnergyModel: ObservableObject {
                 cpuNanoseconds: cpu,
                 wakeups: wakeups,
                 bytesMoved: io,
-                impact: impact
+                nanojoules: nanojoules
             )
         })
     }
@@ -102,7 +121,7 @@ public final class EnergyModel: ObservableObject {
         let cpuNanoseconds: UInt64
         let wakeups: UInt64
         let bytesMoved: UInt64
-        let impact: UInt64
+        let nanojoules: UInt64
     }
 
     /// Adds up the processes belonging to one application.
@@ -132,10 +151,10 @@ public final class EnergyModel: ObservableObject {
                 cpuNanoseconds: group.reduce(0) { $0 &+ $1.cpuNanoseconds },
                 wakeups: group.reduce(0) { $0 &+ $1.wakeups },
                 bytesMoved: group.reduce(0) { $0 &+ $1.bytesMoved },
-                impact: group.reduce(0) { $0 &+ $1.impact }
+                nanojoules: group.reduce(0) { $0 &+ $1.nanojoules }
             )
         }
-        .sorted { $0.impact > $1.impact }
+        .sorted { $0.nanojoules > $1.nanojoules }
     }
 
     /// The app's name where the process belongs to one, and the executable

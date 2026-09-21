@@ -73,7 +73,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         var parts = [displayName]
         parts.append(items.count == 1 ? "one location" : "\(items.count) locations")
         parts.append(category == .orphaned ? "orphaned" : "unclaimed")
-        if !isFullyActionable { parts.append("Brim cannot remove all of it as it is running") }
+        if !isFullyActionable { parts.append("Partly in use, so it cannot all be removed") }
         if meaningfulBytes > 0 {
             parts.append("some of this is what the application remembered about you")
         }

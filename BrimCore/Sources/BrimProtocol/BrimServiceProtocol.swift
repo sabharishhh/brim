@@ -109,7 +109,7 @@ public extension BrimServiceProtocol {
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
     /// A service with no history has seen nothing change.
     func whatChanged() async -> InstallHistory {
-        InstallHistory(changes: [], snapshots: 0, migrated: [])
+        InstallHistory(changes: [], snapshots: 0)
     }
     func updateReport() async -> UpdateReport {
         UpdateReport(coverage: [], agents: [], homebrewPresent: false)

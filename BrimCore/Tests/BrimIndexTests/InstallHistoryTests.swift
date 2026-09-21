@@ -72,10 +72,7 @@ final class InstallHistoryTests: XCTestCase {
         let changes = try await index.changesSinceLastScan()
         XCTAssertEqual(changes.count, 1)
         XCTAssertEqual(changes[0].kind, .disappeared)
-        XCTAssertTrue(
-            changes[0].sentence.contains("Leftovers"),
-            "A removal is the moment to say where what it left behind is"
-        )
+        XCTAssertTrue(changes[0].sentence.contains("was removed"))
     }
 
     func testAnUpdateIsReportedWithBothVersions() async throws {
@@ -200,99 +197,5 @@ final class InstallHistoryTests: XCTestCase {
         let applied = try manager.appliedMigrations()
         XCTAssertTrue(applied.contains("v1"))
         XCTAssertTrue(applied.contains("v2-install-snapshots"))
-    }
-}
-
-/// Software that came across from another Mac and never ran here.
-final class MigrationHygieneTests: XCTestCase {
-
-    private let systemInstalled = Date(timeIntervalSince1970: 1_000_000)
-
-    private func date(_ offsetDays: Double) -> Date {
-        systemInstalled.addingTimeInterval(offsetDays * 86_400)
-    }
-
-    func testUsedSinceItArrivedIsOrdinarySoftware() {
-        let verdict = MigrationHygiene.judge(
-            addedAt: date(10), lastUsedAt: date(20), systemInstalledAt: systemInstalled
-        )
-        XCTAssertEqual(verdict, .inUse)
-        XCTAssertFalse(verdict.isWorthReviewing)
-    }
-
-    func testLastUsedBeforeItArrivedIsTheMigrationSignature() {
-        // The sharp signal, and the one the specification does not name.
-        // A last-used date earlier than the date the bundle arrived can
-        // only happen when the usage record travelled with it. Observed
-        // on this Mac: IINA arrived on 14 September, last opened 7 August.
-        let arrived = date(10)
-        let usedElsewhere = date(-30)
-        let verdict = MigrationHygiene.judge(
-            addedAt: arrived, lastUsedAt: usedElsewhere, systemInstalledAt: systemInstalled
-        )
-
-        XCTAssertEqual(verdict, .cameAcrossAndNeverRan(lastUsedElsewhere: usedElsewhere))
-        XCTAssertTrue(verdict.isWorthReviewing)
-        XCTAssertTrue(verdict.sentence.contains("never run on this Mac"))
-    }
-
-    func testADayOfSlackAbsorbsSpotlightWritingThemSeparately() {
-        // Both dates are written by Spotlight and not written together,
-        // so a few minutes either way must not read as a migration.
-        let arrived = date(10)
-        let verdict = MigrationHygiene.judge(
-            addedAt: arrived,
-            lastUsedAt: arrived.addingTimeInterval(-600),
-            systemInstalledAt: systemInstalled
-        )
-        XCTAssertEqual(verdict, .inUse)
-    }
-
-    func testNeverOpenedAtAllIsWorthSaying() {
-        let verdict = MigrationHygiene.judge(
-            addedAt: date(10), lastUsedAt: nil, systemInstalledAt: systemInstalled
-        )
-        XCTAssertEqual(verdict, .neverOpened)
-        XCTAssertTrue(verdict.isWorthReviewing)
-    }
-
-    func testSomethingOlderThanTheSystemCameFromSomewhereElse() {
-        let verdict = MigrationHygiene.judge(
-            addedAt: date(-100), lastUsedAt: date(-99), systemInstalledAt: systemInstalled
-        )
-        XCTAssertEqual(verdict, .predatesThisSystem)
-    }
-
-    func testNotEnoughToSayIsNotAnAccusation() {
-        // Spotlight can be switched off for a volume, and a freshly
-        // copied bundle may not be indexed yet. Neither is evidence of
-        // anything, and a row claiming otherwise would be a guess wearing
-        // a fact's clothes.
-        let verdict = MigrationHygiene.judge(
-            addedAt: nil, lastUsedAt: date(5), systemInstalledAt: systemInstalled
-        )
-        guard case .unknown = verdict else {
-            return XCTFail("Expected unknown, got \(verdict)")
-        }
-        XCTAssertFalse(verdict.isWorthReviewing)
-    }
-
-    func testTheHistorySummarySaysWhichSituationItIs() {
-        let first = InstallHistory(changes: [], snapshots: 1, migrated: [])
-        XCTAssertTrue(first.summary.contains("first time"))
-
-        let quiet = InstallHistory(changes: [], snapshots: 2, migrated: [])
-        XCTAssertTrue(quiet.summary.contains("Nothing has been installed"))
-
-        let busy = InstallHistory(
-            changes: [
-                InstallChange(
-                    kind: .appeared, bundleID: "com.a", name: "Alpha",
-                    since: Date(), until: Date()
-                )
-            ],
-            snapshots: 2, migrated: []
-        )
-        XCTAssertTrue(busy.summary.contains("1 thing has changed"))
     }
 }

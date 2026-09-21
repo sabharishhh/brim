@@ -87,8 +87,8 @@ struct EnergyView: View {
     }
 
     private func share(of reading: EnergyModel.Reading) -> Double {
-        let top = Double(model.readings.first?.impact ?? 1)
-        return top > 0 ? Double(reading.impact) / top : 0
+        let top = model.readings.first?.milliwattHours ?? 1
+        return top > 0 ? reading.milliwattHours / top : 0
     }
 
     private func row(_ reading: EnergyModel.Reading, share: Double) -> some View {
@@ -117,9 +117,12 @@ struct EnergyView: View {
                             .background(Color.secondary.opacity(0.15), in: Capsule())
                     }
                     Spacer()
-                    Text(costs(reading)).font(.caption)
+                    Text(rate(reading)).font(.caption)
                         .foregroundColor(.secondary).monospacedDigit()
                 }
+                Text(costs(reading)).font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 GeometryReader { geometry in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Color.accentColor.opacity(0.55))
@@ -146,12 +149,32 @@ struct EnergyView: View {
 
     /// Says what the process actually did, rather than showing a score
     /// nobody can check.
+    /// What it drew while Brim watched, as a rate.
+    ///
+    /// Milliwatts, which is energy over time and is the honest way to
+    /// state a reading taken across a two second window. Deliberately not
+    /// a projection: how long the battery lasts depends on what the
+    /// machine does next, which nobody knows, and a figure in minutes
+    /// reads as a promise.
+    private func rate(_ reading: EnergyModel.Reading) -> String {
+        let milliwatts = reading.milliwatts(over: model.window)
+        guard milliwatts >= 0.1 else { return "barely anything" }
+        return String(format: "%.0f mW", milliwatts)
+    }
+
+    /// The arithmetic, shown rather than hidden: this much energy, over
+    /// this long, is that rate.
     private func costs(_ reading: EnergyModel.Reading) -> String {
-        var parts: [String] = []
+        var parts: [String] = [
+            String(format: "%.2f mWh over %.1fs", reading.milliwattHours, model.window)
+        ]
+        if let share = model.battery?.sentence(forMilliwattHours: reading.milliwattHours) {
+            parts.append(share)
+        }
         let seconds = Double(reading.cpuNanoseconds) / 1_000_000_000
         if seconds >= 0.01 { parts.append(String(format: "%.2fs of processor", seconds)) }
         if reading.wakeups > 0 { parts.append("\(reading.wakeups) wakeups") }
         if reading.bytesMoved > 0 { parts.append(ByteText.short(Int64(reading.bytesMoved)) + " moved") }
-        return parts.isEmpty ? "barely anything" : parts.joined(separator: ", ")
+        return parts.joined(separator: ", ")
     }
 }
