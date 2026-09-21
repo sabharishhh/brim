@@ -19,4 +19,15 @@ public protocol BrimServiceProtocol: Sendable {
     /// Past removals whose contents are still in the Trash, so still restorable.
     func recoverableItems() async throws -> [RecoverableItem]
     func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup]
+    /// Clears registrations that became stale since the last look — chiefly
+    /// when the user empties the Trash. Cheap, idempotent, and safe to call
+    /// on every Trash change.
+    func reconcileRegistrations() async
+}
+
+public extension BrimServiceProtocol {
+    /// Nothing to reconcile by default, so a service that does not track
+    /// registrations — a test stub, or the XPC client until the daemon
+    /// carries this — is not forced to implement it.
+    func reconcileRegistrations() async {}
 }
