@@ -432,6 +432,20 @@ public actor BrimService: BrimServiceProtocol {
     }
 
     public func leftovers() async throws -> [Leftover] {
+        // A registration whose program has gone names an owner that was
+        // recorded present and is not there now — the spec's definition of
+        // orphaned, and the thing a user actually notices as "I uninstalled
+        // this and it is still here". The sweep already enumerates these.
+        var staleRegistrationOwners: [String: String] = [:]
+        let inventory = RegistrationInventory(surfaces: [
+            LaunchdRegistrationSurface(),
+            BackgroundItemSurface()
+        ])
+        for registration in await inventory.stale(in: root) {
+            guard let owner = registration.owningBundleID else { continue }
+            staleRegistrationOwners[owner] = registration.evidence
+        }
+
         // Launch Services is one of the four sources T-5.1 requires be
         // searched for an owner, and the only one that can answer both
         // questions at once: a record whose bundle is still there names an
@@ -439,7 +453,8 @@ public actor BrimService: BrimServiceProtocol {
         // gone *is* the orphan evidence.
         let scanner = LeftoversScanner(
             root: root,
-            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) }
+            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
+            staleRegistrationOwners: staleRegistrationOwners
         )
         var knownPastBundleIDs = Set<String>()
         let entries = try await ledgerStore.allEntries()
