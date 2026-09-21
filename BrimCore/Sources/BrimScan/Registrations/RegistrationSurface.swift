@@ -22,31 +22,6 @@ public protocol RegistrationSurface: Sendable {
     func coverage(in root: FileSystemRoot) async -> RegistrationCoverage
 }
 
-/// Whether a surface was readable, so the UI can distinguish "nothing found"
-/// from "could not look" — Milestone 5's gate requires every feature to
-/// report its own gaps.
-public struct RegistrationCoverage: Equatable, Sendable, Codable {
-    public let kind: Registration.Kind
-    public let available: Bool
-    /// Why the surface is unavailable, in the user's terms.
-    public let limitation: String?
-
-    public init(kind: Registration.Kind, available: Bool, limitation: String? = nil) {
-        self.kind = kind
-        self.available = available
-        self.limitation = limitation
-    }
-
-    public static func available(_ kind: Registration.Kind) -> RegistrationCoverage {
-        RegistrationCoverage(kind: kind, available: true)
-    }
-
-    public static func unavailable(_ kind: Registration.Kind, _ limitation: String) -> RegistrationCoverage {
-        RegistrationCoverage(kind: kind, available: false, limitation: limitation)
-    }
-}
-
-/// Aggregates the surfaces, the way `EvidenceEngine` aggregates evidence.
 public actor RegistrationInventory {
     private let surfaces: [any RegistrationSurface]
 

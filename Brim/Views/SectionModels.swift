@@ -24,6 +24,7 @@ final class SectionModels: ObservableObject {
     let review = ReviewQueueViewModel()
     let applications = ApplicationsModel()
     let leftovers = LeftoversModel()
+    let background = BackgroundModel()
     let history = RemovalHistoryModel()
 
     /// Shared, because the Trash is one thing. Two watchers on two views
