@@ -30,6 +30,10 @@ struct ContentView: View {
                     StorageView(model: models.storage)
                 case .energy:
                     EnergyView(model: models.energy)
+                case .developer:
+                    DeveloperView(model: models.developer)
+                case .updates:
+                    UpdatesView(model: models.updates)
                 case .history:
                     RemovalHistoryView(model: models.history, recovery: models.recovery)
                 default:
