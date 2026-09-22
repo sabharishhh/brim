@@ -11,13 +11,33 @@ final class ApprovalPolicyTests: XCTestCase {
         _ index: Int,
         kind: StepKind = .trashPath,
         disposition: StepDisposition = .trash,
-        cost: CostOfError = .medium
+        cost: CostOfError = .medium,
+        phase: ExecutionPhase = .auxiliary
     ) -> Step {
         Step(
             index: index, kind: kind, target: "/tmp/x\(index)", targetFingerprint: nil,
             tier: .A, evidence: "because", expectedBytes: 10, capability: .ok,
             reversible: disposition == .trash, costOfError: cost,
-            executionPhase: .auxiliary, disposition: disposition
+            executionPhase: phase, disposition: disposition
+        )
+    }
+
+    /// The step every uninstall carries, and the bundle removal beside it.
+    private func privacyGrants() -> Step {
+        Step(
+            index: 0, kind: .resetPrivacyGrants, target: "com.t.app", targetFingerprint: nil,
+            tier: .A, evidence: "clears grants", expectedBytes: 0, capability: .ok,
+            reversible: false, costOfError: .medium,
+            executionPhase: .privacyReset, disposition: .delete
+        )
+    }
+
+    private func bundleRemoval(_ index: Int = 1) -> Step {
+        Step(
+            index: index, kind: .trashPath, target: "/Applications/TestApp.app",
+            targetFingerprint: nil, tier: .A, evidence: "the app", expectedBytes: 100,
+            capability: .ok, reversible: true, costOfError: .medium,
+            executionPhase: .appBundle, disposition: .trash
         )
     }
 
@@ -73,20 +93,63 @@ final class ApprovalPolicyTests: XCTestCase {
         XCTAssertFalse(reason.hasSuffix("."), "macOS adds its own full stop")
     }
 
-    func testClearingPrivacyGrantsPrompts() {
-        // tccutil cannot be walked back, and this is the step that makes an
-        // application uninstall worth one interruption.
-        let grants = Step(
-            index: 0, kind: .resetPrivacyGrants, target: "com.t.app", targetFingerprint: nil,
-            tier: .A, evidence: "clears grants", expectedBytes: 0, capability: .ok,
-            reversible: false, costOfError: .medium,
-            executionPhase: .privacyReset, disposition: .delete
+    func testClearingPrivacyGrantsOnTheirOwnPrompts() {
+        // tccutil cannot be walked back, and here the application stays and
+        // simply loses its permissions, so there is something to lose.
+        let requirement = policy.requirement(
+            for: plan([privacyGrants(), step(1)]), lastAuthenticated: nil
         )
-        let requirement = policy.requirement(for: plan([grants, step(1)]), lastAuthenticated: nil)
         XCTAssertTrue(requirement.needsPrompt)
         guard case .humanPresence(let reason) = requirement else { return XCTFail() }
         XCTAssertTrue(reason.contains("privacy permissions"), reason)
         XCTAssertTrue(reason.contains("TestApp"), "The prompt must name what is being removed")
+    }
+
+    /// Every uninstall of every application with an identifier emits a
+    /// `resetPrivacyGrants` step, and it was counted as worth interrupting
+    /// for, so the product's main action always cost a fingerprint. Nothing
+    /// was being protected: the grant is a permission macOS holds for a
+    /// bundle that is going away in the same plan, it is inert the moment the
+    /// bundle is gone, and declining the prompt would not have kept it,
+    /// because the uninstall proceeds either way.
+    func testAnOrdinaryUninstallDoesNotAskForAFingerprint() {
+        let uninstall = plan([privacyGrants(), bundleRemoval(), step(2)])
+        let requirement = policy.requirement(for: uninstall, lastAuthenticated: nil)
+
+        XCTAssertFalse(
+            requirement.needsPrompt,
+            "Removing an application and the permissions that only meant "
+            + "anything while it was installed is one reversible action"
+        )
+    }
+
+    func testAnUninstallThatAlsoDestroysSomethingStillPrompts() {
+        // The grants are excused; a permanent deletion beside them is not,
+        // so the exemption must not swallow the rest of the plan.
+        let uninstall = plan([
+            privacyGrants(), bundleRemoval(),
+            step(2, disposition: .delete, cost: .high)
+        ])
+        XCTAssertTrue(policy.requirement(for: uninstall, lastAuthenticated: nil).needsPrompt)
+    }
+
+    func testForgettingAReceiptIsNotDescribedAsDeletingAFile() {
+        // pkgutil --forget deletes nothing. Calling it "permanently delete 1
+        // item" in the system prompt is the sort of small inaccuracy that
+        // teaches somebody the prompt is not worth reading.
+        let receipt = Step(
+            index: 0, kind: .forgetReceipt, target: "com.t.pkg", targetFingerprint: nil,
+            tier: .A, evidence: "receipt", expectedBytes: 0, capability: .needsHelper,
+            reversible: false, costOfError: .medium,
+            executionPhase: .registration, disposition: .delete
+        )
+        let requirement = policy.requirement(
+            for: plan([receipt, bundleRemoval()]), lastAuthenticated: nil
+        )
+        XCTAssertTrue(requirement.needsPrompt, "A receipt cannot be rebuilt")
+        guard case .humanPresence(let reason) = requirement else { return XCTFail() }
+        XCTAssertTrue(reason.contains("installer record"), reason)
+        XCTAssertFalse(reason.contains("permanently delete"), reason)
     }
 
     func testRetractingARegistrationIsNotDestruction() {
