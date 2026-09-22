@@ -86,7 +86,14 @@ final class EvidenceSourceTests: XCTestCase {
             evidence.append(contentsOf: try await source.evidence(for: identity, in: root))
         }
         
-        // Load expected manifest
+        // Load expected manifest.
+        //
+        // `Application Support/ClassicApp.app` moved from Tier B to Tier C
+        // here, and that was the point rather than a casualty. It is matched
+        // on the application's name, and the inventory has always rated a
+        // name match C: a golden file is only as good as the behaviour it
+        // was copied from, and this one had copied down a source that called
+        // a name match strong evidence and ticked the row for removal.
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         
