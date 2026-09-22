@@ -14,8 +14,23 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// The bundle identifier, where one was resolved.
     public let identifier: String?
     public let items: [Leftover]
+    /// The key `groupedByOwner()` bucketed this group under.
+    ///
+    /// `id` used to be re-derived from `identifier ?? displayName`, and two
+    /// genuinely different groups only ever share a display name for the
+    /// same reason they needed grouping in the first place: neither carries
+    /// a bundle identifier strong enough to tell them apart on its own.
+    /// Seven distinct broken symlinks all pointing into a removed Docker,
+    /// each its own group with one item, all displaying "Docker.app", all
+    /// landing on the identical re-derived id `"docker.app"` — SwiftUI's
+    /// list identity then treated all seven as one element wearing seven
+    /// costumes, so ticking one toggled all seven and there was no way to
+    /// tell whether they even lived in the same place. `groupKey` is the
+    /// dictionary key `groupedByOwner()` already bucketed under, unique by
+    /// construction, so `id` can no longer collide by accident.
+    public let groupKey: String
 
-    public var id: String { (identifier ?? displayName).lowercased() }
+    public var id: String { groupKey }
 
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.size } }
 
@@ -57,10 +72,11 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         return seen.sorted { !$0.isRegenerated && $1.isRegenerated }
     }
 
-    public init(displayName: String, identifier: String?, items: [Leftover]) {
+    public init(displayName: String, identifier: String?, items: [Leftover], groupKey: String) {
         self.displayName = displayName
         self.identifier = identifier
         self.items = items
+        self.groupKey = groupKey
     }
 
     /// What a screen reader should say for this entry.
@@ -108,14 +124,36 @@ public extension Array where Element == Leftover {
             let name = items
                 .compactMap { $0.potentialOwner?.name }
                 .first { !$0.isEmpty } ?? first.url.deletingPathExtension().lastPathComponent
-            return LeftoverGroup(displayName: name, identifier: identifier, items: items)
+            return LeftoverGroup(displayName: name, identifier: identifier, items: items, groupKey: key)
         }
         .sorted { $0.totalBytes > $1.totalBytes }
     }
 
+    /// Bucketed on the strongest shared thing Brim already knows about the
+    /// owner, not on the leftover's own file name.
+    ///
+    /// A real bundle identifier wins outright. Short of one, `potentialOwner`
+    /// already carries the best name Brim resolved for this item, a broken
+    /// symlink's target, a matched Homebrew cask, and that name is exactly
+    /// what should merge several paths into one piece of software. Falling
+    /// back to the item's own file name only happens when nothing was
+    /// resolved at all, which is the original motivating case: neither
+    /// `Application Support/Codex` nor `Caches/Codex` carries an identifier,
+    /// so both fall through to "codex", their own shared name, and still
+    /// merge correctly. What changed is that seven broken symlinks named
+    /// `docker`, `kubectl`, `cagent` and so on, each pointing into the same
+    /// removed Docker, used to bucket into seven different keys because
+    /// each symlink's own name is different, only to display under the
+    /// identical resolved owner name and collide on `LeftoverGroup.id` as a
+    /// result. Grouping on the resolved name instead merges them honestly,
+    /// into one row saying seven locations, matching what the row already
+    /// claims about being organised by software rather than by path.
     static func groupingKey(for leftover: Leftover) -> String {
         if let bundleID = leftover.potentialOwner?.bundleID, !bundleID.isEmpty {
             return bundleID.lowercased()
+        }
+        if let name = leftover.potentialOwner?.name, !name.isEmpty {
+            return name.lowercased()
         }
         // Strip the extensions macOS appends per domain so the same owner
         // in two places lands in one bucket.

@@ -104,7 +104,14 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
 
     /// A short verdict for the row. Deliberately about consequence rather
     /// than a recommendation: Brim says what is lost, the user decides.
+    ///
+    /// Shown on every location while nothing has been removed yet, so it
+    /// has to read as what *would* happen, not as a claim about the Trash
+    /// right now. The previous wording, "Gone once you empty the Trash",
+    /// read as a present-tense statement about existing Trash contents to
+    /// someone whose Trash was empty at the time, when it was only ever
+    /// describing where a removal goes.
     public var consequence: String {
-        isRegenerated ? "Comes back on its own" : "Gone once you empty the Trash"
+        isRegenerated ? "Comes back on its own" : "Goes to the Trash when removed"
     }
 }

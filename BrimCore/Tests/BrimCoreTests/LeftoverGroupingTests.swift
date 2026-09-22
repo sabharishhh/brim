@@ -52,6 +52,49 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(groups[0].displayName, "Acme Tool", "The human name, not the identifier")
     }
 
+    /// Seven broken symlinks left by an uninstalled Docker, each pointing
+    /// into `Docker.app`, each its own file with its own name (`docker`,
+    /// `kubectl`, `cagent`...), none carrying a bundle identifier. Before
+    /// this fix each one bucketed under its own file name into seven
+    /// single-item groups, all displaying the resolved owner name
+    /// "Docker.app" and all re-deriving the identical `id` from that shared
+    /// display name, so SwiftUI's list treated seven distinct rows as one
+    /// element: selecting one silently selected all seven, and there was no
+    /// way to tell whether they even lived in the same place.
+    func testSeveralUnidentifiedItemsSharingAResolvedOwnerNameMergeIntoOneGroup() {
+        let owner = Identity(bundleID: nil, name: "Docker.app")
+        let leftovers = [
+            leftover("/usr/local/bin/docker", owner: owner, category: .orphaned),
+            leftover("/usr/local/bin/kubectl", owner: owner, category: .orphaned),
+            leftover("/usr/local/bin/cagent", owner: owner, category: .orphaned),
+            leftover("/usr/local/bin/docker-compose", owner: owner, category: .orphaned),
+        ]
+        let groups = leftovers.groupedByOwner()
+
+        XCTAssertEqual(groups.count, 1, "One departed application, one row")
+        XCTAssertEqual(groups[0].items.count, 4)
+        XCTAssertEqual(groups[0].displayName, "Docker.app")
+    }
+
+    /// `id` used to be re-derived from `displayName` after grouping had
+    /// already happened, so a future change to how a name is chosen could
+    /// silently make two distinct groups collide again. Pinning `id` to the
+    /// actual bucket key, unique by construction, holds that shut for good.
+    func testGroupIdenityNeverCollidesAcrossDistinctOwners() {
+        let groups = [
+            leftover("\(home)/Caches/Codex"),
+            leftover("\(home)/Caches/Loki"),
+            leftover(
+                "/usr/local/bin/pythont",
+                owner: Identity(bundleID: nil, name: "PythonT.framework"), category: .orphaned
+            ),
+        ].groupedByOwner()
+
+        XCTAssertEqual(groups.count, 3)
+        let ids = Set(groups.map(\.id))
+        XCTAssertEqual(ids.count, 3, "Every distinct group must have a distinct id")
+    }
+
     func testDifferentSoftwareStaysApart() {
         let groups = [
             leftover("\(home)/Caches/Codex"),
