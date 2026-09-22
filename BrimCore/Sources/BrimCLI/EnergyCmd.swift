@@ -5,6 +5,21 @@ import ServiceManagement
 
 struct EnergyCmd: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "energy", abstract: "Interact with the Brim Energy Sampler")
+
+    /// What the energy agent is called.
+    ///
+    /// This used to be one of the two historical identifiers, which are kept
+    /// only so an upgrade can clear what they left behind. Registering *new*
+    /// work under one of them meant `brim energy --register` installed a
+    /// launch agent, with RunAtLoad and KeepAlive set, under a name that is
+    /// not Brim's. A utility that exists to find background agents nobody
+    /// can account for cannot be installing one.
+    static let agentLabel = "com.sabharishhh.brim.energy"
+
+    /// The name earlier builds registered under. Kept so `--unregister`
+    /// clears an agent installed before the rename, which is the only reason
+    /// either old identifier is allowed to appear anywhere.
+    static let formerAgentLabel = "com.google.Brim.energy"
     
     @Flag(name: [.customShort("r"), .long], help: "Register the energy sampling background agent")
     var register = false
@@ -19,7 +34,7 @@ struct EnergyCmd: AsyncParsableCommand {
         if register {
             var registeredViaSMAppService = false
             if #available(macOS 13.0, *) {
-                let service = SMAppService.agent(plistName: "com.google.Brim.energy.plist")
+                let service = SMAppService.agent(plistName: "\(Self.agentLabel).plist")
                 do {
                     try service.register()
                     registeredViaSMAppService = true
@@ -32,7 +47,7 @@ struct EnergyCmd: AsyncParsableCommand {
                 let fm = FileManager.default
                 let userAgentsDir = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
                 try? fm.createDirectory(at: userAgentsDir, withIntermediateDirectories: true)
-                let destPlist = userAgentsDir.appendingPathComponent("com.google.Brim.energy.plist")
+                let destPlist = userAgentsDir.appendingPathComponent("\(Self.agentLabel).plist")
                 
                 let currentExec = Bundle.main.executablePath ?? CommandLine.arguments[0]
                 let plistContent = """
@@ -41,7 +56,7 @@ struct EnergyCmd: AsyncParsableCommand {
                 <plist version="1.0">
                 <dict>
                     <key>Label</key>
-                    <string>com.google.Brim.energy</string>
+                    <string>\(Self.agentLabel)</string>
                     <key>ProgramArguments</key>
                     <array>
                         <string>\(currentExec)</string>
@@ -60,13 +75,20 @@ struct EnergyCmd: AsyncParsableCommand {
             }
         } else if unregister {
             if #available(macOS 13.0, *) {
-                let service = SMAppService.agent(plistName: "com.google.Brim.energy.plist")
+                let service = SMAppService.agent(plistName: "\(Self.agentLabel).plist")
                 try? await service.unregister()
             }
             let fm = FileManager.default
-            let destPlist = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/com.google.Brim.energy.plist")
-            if fm.fileExists(atPath: destPlist.path) {
-                try? fm.removeItem(at: destPlist)
+            let agents = fm.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/LaunchAgents")
+            // Both names. Anyone who registered before the rename has an
+            // agent on disk under the old one, and leaving it there would be
+            // Brim producing exactly the orphan it reports on.
+            for label in [Self.agentLabel, Self.formerAgentLabel] {
+                let plist = agents.appendingPathComponent("\(label).plist")
+                if fm.fileExists(atPath: plist.path) {
+                    try? fm.removeItem(at: plist)
+                }
             }
             print("Energy agent unregistered.")
         } else if runAgent {
