@@ -4,7 +4,7 @@
 
 **Audience:** an implementing agent or developer working task-by-task from an empty repository.
 
-**Reading order:** §1 (invariants) and §2 (layout) before any code. §3 (frozen contracts) before any task in M1. §12 and §13 are authoritative wherever they conflict with the task catalogue — the catalogue is written first and then cut.
+**Reading order:** §1 (invariants) and §2 (layout) before any code. §3 (frozen contracts) before any task in M1. §13 and §14 are authoritative wherever they conflict with the task catalogue — the catalogue is written first and then cut.
 
 ---
 
@@ -686,9 +686,73 @@ Every task here is an extension of the spine. They parallelise almost completely
 
 ---
 
-## 11. Critical path, parallel work, prototypes, risks
+## 11. Milestone 7 — Complete removal, and what it lets Brim say
 
-### 11.1 Critical path
+Added after M6 was largely built, when a measurement of six real applications showed the removal path missing between four and seven locations each. The full research and the reasoning behind every decision here is `docs/leftover-coverage-and-intelligence-plan.md`; this section is the task catalogue.
+
+**The premise.** Deep uninstall is the product. Leftovers is the same search run backwards, not a separate system, and the two disagreeing is the defect class that produced `7b52119`, `ae25162` and `bdb407d` in a single day. M7 makes removal complete first and derives everything else from it.
+
+### 11.1 The ownership boundary, which governs every task below
+
+> **Brim removes the application's own records. It never removes a document that outlives the application.**
+
+Personalisation is not protection. Bookmarks, preferences, window layouts and sign-in state were all given to the application by the person using it, and every one of them leaves with the application. The discriminator is whether the thing still means anything once the application is gone. Two mechanical tests: a path is in scope only if `LocationInventory` names it with a rule, and a subtree inside application storage that the bundle declares as document scope (`CFBundleDocumentTypes` with an `Editor` role and `LSHandlerRank: Owner`, or `NSUbiquitousContainerIsDocumentScopePublic`, or a container's `Data/Documents`) is archived rather than trashed. A reference to user content is a third class: the record goes, what it names does not.
+
+### T-7.1 · The measured misses (was P1.1 to P1.7)
+- **Objective** Recover what the removal path provably leaves behind today.
+- **Depends on** nothing. Deliberately first, because T-7.2 is weeks and this is days.
+- **Work** `CFBundleName` in `LocationInventorySource.candidates`, with a test holding `LeftoversScanner` and `LocationInventorySource` to one answer for one bundle. `~/.config`, `~/.cache`, `~/.local/{bin,share,state}` and vendor dotfile directories, name-matched, Tier C. `bundleIdentifierPrefix` in caches and application support, which catches `<id>.ShipIt`. Launch Services recent-documents `.sfl4`, with §11.1's guard landed as a test first. Team identifier resolution in `IdentityResolver`. Symlinks pointing into an installed bundle.
+- **Acceptance** The same six applications re-measured, with the before and after written down. VS Code's 143 MB and Claude's 189 MB are in the footprint. A test fails if any scanner resolves a path recorded in a `.sfl4` into a scan target.
+- **Unlocks** the two largest numbers on the board, in days.
+
+### T-7.2 · Capability-derived search (was P2.1 to P2.3)
+- **Objective** Replace category reasoning with the application's own declarations.
+- **Depends on** T-7.1, T-1.2, T-3.1.
+- **Work** `IdentitySurface`: every name a bundle answers to, from `Info.plist`, the signature, and embedded helpers, XPC services and app extensions. `CapabilitySurface`: entitlements and declarations mapped to the record classes that can exist, so `NEProviderClasses` implies a network extension and `com.apple.security.device.camera` implies one TCC entry. Planning consumes both. Unsigned and ad-hoc bundles thin the capability surface to `Info.plist` alone and that is a `RegistrationCoverage` gap, reported as one.
+- **Acceptance** An uninstall reports what it checked *and* what the application declared it had none of, and the two are distinguishable in the report. No app names appear in the implementation. A name-derived match is Tier C whatever produced the name.
+- **Unlocks** negative evidence, which is the only honest way to say a surface is clean.
+
+### T-7.3 · The removal ceiling, reported rather than hidden (was P2.4, P2.5)
+- **Objective** Say what macOS will not allow, once, in the right place.
+- **Depends on** T-7.2, T-3.3.
+- **Work** Three capability tiers as a first-class outcome: removable; removable only destructively (Background Task Management has no per-item API, `sfltool resetbtm` is all-or-nothing and needs a restart); detectable but not removable (a system extension or VPN configuration belonging to a departed application, and TCC entries for a bundle that is already gone, because `tccutil` resolves through Launch Services). Wire `btmReset` to `RestoreListStore`, offered deliberately and never inside an ordinary uninstall.
+- **Acceptance** `StepVocabularyTests` no longer records `btmReset` as a kind nothing emits. A tier-3 outcome names the one action that does work rather than describing what Brim cannot do.
+- **Unlocks** an honest completion claim, and closes the last dead step kind.
+
+### T-7.4 · Leftovers re-derived from the removal engine (was P2.6)
+- **Objective** One engine, two directions.
+- **Depends on** T-7.2.
+- **Work** An orphan search is the identity surface and the location rules run from the record towards the owner instead of from the owner towards the record. Shared tier model, shared rules, one implementation.
+- **Acceptance** A test binds the two directions: for one bundle, what the uninstall would remove and what the sweep attributes to it are the same set.
+- **Unlocks** the end of the drift class that cost three commits in one day.
+
+### T-7.5 · The list a person can actually read (was P3.1 to P3.6)
+- **Objective** 231 rows to roughly 105, every removal citing a file on disk.
+- **Depends on** T-7.4.
+- **Work** Exclude `DiagnosticReports` from the sweep while keeping it in the inventory, so an uninstall still clears an application's crash logs by name. Match Apple's own frameworks and daemons by enumerating `/System/Library` at runtime rather than by a list. Consolidate reverse-DNS names on their first two components. Recognise Brim's own residue and swept-domain directories. Uninstall sheet grouping, reusing the leftovers grouping. Temporal-proximity clustering for residue that genuinely arrived together.
+- **Acceptance** Re-measured on the real machine, not projected. Every reduction names the record that justified it.
+- **Unlocks** a list with a plausible number of rows in it.
+
+### T-7.6 · Plain-language explanation and storage overview (overturns part of C-5)
+- **Objective** The two model uses that restate computed facts rather than assert new ones.
+- **Depends on** T-6.3, T-7.2.
+- **Work** Explain a row from evidence the engine already computed: who owned it, what declared it, when it appeared, what it holds, what returns by itself. Summarise a footprint by what each location is for, from `FootprintProjector` and `LeftoverDomain` figures. One retained `LanguageModelSession`, `prewarm()` on the shared prefix, `@Generable` types so the output is a value and never prose to parse, no streaming. The deterministic renderer from T-6.3 is the floor and remains the fallback whenever the model is unavailable.
+- **Acceptance** Every number and every claim in generated text traces to a computed fact. With Apple Intelligence off, the view renders T-6.3's text and nothing about the interface changes shape.
+- **Unlocks** the copy problem, structurally: prose stops being hardcoded English and becomes a rendering of evidence.
+
+### T-7.7 · Opaque-name classification (still gated)
+- **Objective** Name the ten to fifteen rows nothing deterministic can name.
+- **Depends on** T-7.6.
+- **Work** A `@Generable` enum over candidate owners, abstention meaning the row says nothing extra rather than growing a badge, accuracy measured on real Brim data before it is trusted.
+- **Open question, unanswered** Whether a model-proposed *name* on a row a person may delete crosses C-5's line. Everything else in M7 is independent of the answer.
+
+**M7 done when:** the same six applications are re-measured with nothing left behind that Brim can reach; a removal report distinguishes checked, declared-absent and refused-by-macOS; the leftovers sweep and the uninstall path agree for every bundle under test; and no string in the product describes a limitation where a fact would do.
+
+---
+
+## 12. Critical path, parallel work, prototypes, risks
+
+### 12.1 Critical path
 
 The longest chain of genuinely blocking work. Everything else can be scheduled around it.
 
@@ -702,7 +766,7 @@ T-0.1 → T-0.3/T-0.4 → T-1.1 → T-1.2 → T-1.3 → T-1.4 → T-1.5
 
 Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The single most schedule-critical decision is **T-1.10 (the plan format)**, because every adapter, test and stored record depends on its shape.
 
-### 11.2 Parallelisable
+### 12.2 Parallelisable
 
 | Can run in parallel | With | Condition |
 |---|---|---|
@@ -714,7 +778,7 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 | T-6.4 (accessibility) | All UI work | Continuous, not a phase |
 | Golden tests (T-3.9) | Each new source | Written with the source, not after |
 
-### 11.3 Architecture decisions that must be prototyped before commitment
+### 12.3 Architecture decisions that must be prototyped before commitment
 
 | Decision | Spike | If the spike fails |
 |---|---|---|
@@ -727,7 +791,7 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 | BTM output is parseable and stable | deferred | The background view degrades to launchd plus `SMAppService`; the guided reset still ships |
 | APFS clone detection | deferred | Duplicates ship without clone-aware savings and say so |
 
-### 11.4 Major technical risks
+### 12.4 Major technical risks
 
 | # | Risk | Severity | Response |
 |---|---|---|---|
@@ -740,7 +804,7 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 | R-7 | Single-maintainer stall | High | Every task finishable in under three days; fixture corpus means development does not require a specific machine; open engine so the work survives |
 | R-8 | Scope creep back into "cleaner" | Medium, insidious | Volume I's rejected list is a commitment. Every proposed feature must answer: what evidence does it act on, and how is the result verified |
 
-### 11.5 Definition of done, by milestone
+### 12.5 Definition of done, by milestone
 
 - **M0** — CI green; fixtures deterministic; S-1 to S-5 written up; any scope change from S-3 recorded here.
 - **M1** — Uninstall completes end-to-end from app and CLI on the fixture tree and a real disposable app; the CLI cannot act without human approval; plan readable before it runs; verification reports a measured delta including honest zeroes; undo works; History records both runs with correct requester.
@@ -752,7 +816,7 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 
 ---
 
-## 12. Challenge: what to cut
+## 13. Challenge: what to cut
 
 A plan written once is a plan written optimistically. Six things above are premature or unnecessary.
 
@@ -763,13 +827,15 @@ Volume II describes the plan as "signed, content-addressed", implying a per-inst
 Volume II named an artifact graph, and it is the right *conceptual* model. Building it as a runtime object is not: footprints are per-identity projections, evidence relations are rows, and a whole-machine graph engine would be built, maintained and never fully traversed. Keep the relational model in the index and the word "graph" in the documentation. Delete the planned `Graph` type. This removes an entire subsystem from M1.
 
 **C-3 · Nine upfront spikes — reduced to five.**
-Clone detection, snapshot accounting, energy counters, BTM parsing and root-trash behaviour do not gate the architecture; they gate individual M3 and M5 features. Running them in M0 spends the riskiest weeks answering questions that cannot change the spine. Moved to just-in-time, each with a written fallback (§11.3). Root-trash behaviour folds into S-3.
+Clone detection, snapshot accounting, energy counters, BTM parsing and root-trash behaviour do not gate the architecture; they gate individual M3 and M5 features. Running them in M0 spends the riskiest weeks answering questions that cannot change the spine. Moved to just-in-time, each with a written fallback (§12.3). Root-trash behaviour folds into S-3.
 
 **C-4 · Rate limiting and abuse shaping on the service (was T-4.7) — cut.**
 A local single-user service reached only by signature-verified callers does not need rate limits. Shape anomalies are still *logged* via the journal, which costs nothing, but there is no throttling subsystem. This was security theatre standing in for the control that actually matters, which is the approval gate.
 
-**C-5 · The optional on-device model — out of V1.**
+**C-5 · The optional on-device model — out of V1. *Partly overturned by M7; see below.***
 Volume I already made it optional, off by default and availability-gated. Everything it would do is presentation over facts the deterministic renderer (T-6.3) already produces. Shipping it in V1 adds an availability matrix, a second explanation path to test, and a feature that is unavailable on ineligible hardware and in unsupported regions. Deterministic explanations ship; the model is the first V1.1 feature, behind the boundary already built in T-4.2.
+
+*Amended when M7 was written.* The cut was aimed at a model **asserting** something, a name or a judgement on a row somebody is about to delete, and that aim was right. It caught two uses it should not have. Explaining a row and summarising a footprint by what each location is for restate facts the engine already computed and establish none, so they carry none of the risk the cut was defending against, and they fix a problem the deterministic path has proven bad at: hardcoded English drifts into describing Brim's limitations instead of the user's disk. Those two move into V1 as T-7.6, on the explicit condition that T-6.3's renderer stays the floor, so an ineligible Mac loses nothing but polish. **Naming an unattributed folder stays cut** and stays the one open question in T-7.7. The availability matrix argument survives the amendment and is the reason the fallback is a requirement rather than a nicety.
 
 **C-6 · The treemap — out of V1.**
 Volume I called it a supporting view, not a headline. The three-number storage account (T-5.3) is what makes the feature credible; the treemap is what makes it look like DaisyDisk. It is the single largest piece of custom drawing in the product and it can be added without touching anything else. Defer.
@@ -780,9 +846,9 @@ Volume I called it a supporting view, not a headline. The three-number storage a
 
 ---
 
-## 13. Final V1 sequence
+## 14. Final V1 sequence
 
-Authoritative. Reflects §12.
+Authoritative. Reflects §13.
 
 | # | Milestone | Contents | Gate to proceed |
 |---|---|---|---|
@@ -792,8 +858,9 @@ Authoritative. Reflects §12.
 | 3 | **Evidence** | T-3.1 to T-3.9 | A real suite application plans correctly; shared veto protects a sibling; background view beats System Settings |
 | 4 | **Agents** | T-4.1 to T-4.6 (T-4.7 cut) | Identical uninstall from three adapters; all bypass attempts fail closed |
 | 5 | **Features** | T-5.1, T-5.2, T-5.3, T-5.4, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9 — parallel, ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
-| 6 | **Product** | T-6.1 to T-6.8, minus the model layer (C-5) and the treemap (C-6) | Accessibility complete; budgets met including Brim's own cost; self-removal verified; update path works |
+| 6 | **Product** | T-6.1 to T-6.8, minus the treemap (C-6) | Accessibility complete; budgets met including Brim's own cost; self-removal verified; update path works |
+| 7 | **Complete removal** | T-7.1 to T-7.6; T-7.7 gated | Six applications re-measured with nothing reachable left behind; checked, declared-absent and refused-by-macOS are distinguishable in a report; sweep and uninstall agree per bundle |
 
-**Not in V1, deliberately:** the on-device model layer; the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; HTTP transport for MCP; fleet or MDM features; and every item on Volume I's rejected list.
+**Not in V1, deliberately:** a model that asserts an attribution rather than restating one (T-7.7, gated); the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; HTTP transport for MCP; fleet or MDM features; and every item on Volume I's rejected list.
 
 **The first three commits, in order:** `Package.swift` with the module graph and the compiler-enforced purity of `BrimCore`; the fixture generator; `FileSystemRoot`. Nothing else can be trusted until those exist.
