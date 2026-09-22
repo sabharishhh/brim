@@ -37,11 +37,18 @@ public actor LeftoversScanner {
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
-        let activeIdentities = await gatherActiveAppIdentities()
+        let (activeIdentities, bundleNames) = await gatherActiveAppIdentities()
         let receiptBundleIDs = await gatherInstallerReceipts()
-        
+
         let activeBundleIDs = Set(activeIdentities.compactMap { $0.bundleID })
+        // The bundle's own `CFBundleName` as well as what the icon says,
+        // because an application's support folder is named after the
+        // former. Visual Studio Code calls itself Code in its
+        // `Info.plist` and writes a hundred and thirty megabytes to
+        // `Application Support/Code`, and the sweep was offering all of
+        // it up while the application was installed and running.
         let activeNames = Set(activeIdentities.map { $0.name.lowercased() })
+            .union(bundleNames.map { $0.lowercased() })
         let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
         
@@ -65,10 +72,21 @@ public actor LeftoversScanner {
 
         for domain in domainsToScan {
             let dir = root.url(for: domain)
-            let items = scanDirectoryLevel1(dir)
-            for item in items {
+            // A vendor folder puts its children on the queue in place of
+            // itself, so the walk is one level deep and only where there
+            // is a reason to go deeper.
+            var queue: [(url: URL, vendor: String?)] =
+                scanDirectoryLevel1(dir).map { ($0, nil) }
+            var cursor = 0
+            while cursor < queue.count {
+                let (item, vendor) = queue[cursor]
+                cursor += 1
                 let name = item.lastPathComponent
-                
+                /// The name to reason about: `Chrome` inside `Google` is
+                /// `Google Chrome`, which is what the application is
+                /// actually called and the only spelling that matches it.
+                let qualified = vendor.map { "\($0) \(name)" } ?? name
+
                 // Apple's own data is never the user's to clean up, and the
                 // prefix check has to survive the group-container spelling:
                 // a group container is named `group.com.apple.SHTTS`, which
@@ -88,18 +106,40 @@ public actor LeftoversScanner {
                 // remove /Library/Application Support/Apple would be a
                 // serious thing to get wrong.
                 if Self.isSystemOwnedByName(name, in: domain) { continue }
-                
-                if isItemActive(item: item, in: domain, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
+
+                // A link is judged by what it points at, never by its
+                // name, and that answer arrives before any of the rest.
+                switch Self.symlink(item) {
+                case .some(.resolved):
+                    continue
+                case .some(.dangling(let target)):
+                    leftovers.append(Self.brokenLink(item, pointingAt: target))
+                    continue
+                case nil:
+                    break
+                }
+
+                if isItemActive(item: item, in: domain, vendor: vendor, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
                     continue
                 }
-                
+
+                // A folder shared between one vendor's products answers
+                // nothing about any of them. Its children do.
+                if vendor == nil,
+                   let children = vendorFolderChildren(
+                       item, in: domain, activeNames: activeNames
+                   ) {
+                    queue.append(contentsOf: children.map { ($0, name) })
+                    continue
+                }
+
                 let ownerID = extractOwnerIdentifier(from: item, in: domain)
 
                 // The whole search, in one place: an item is only a leftover
                 // once every source that could name an owner has come back
                 // without one. The identifier and the directory name are both
                 // tried, because not every domain is named after the bundle.
-                let verdict = [ownerID, name]
+                let verdict = [ownerID, name, qualified]
                     .map(search.ownership(of:))
                     .reduce(Ownership.unattributable) { strongest, next in
                         switch (strongest, next) {
@@ -118,7 +158,7 @@ public actor LeftoversScanner {
                 // between a row that says "2BBY89MBSN.dev.warp" and one
                 // that says Warp.
                 let cask = Self.matchingOrphanedCask(
-                    ownerID: ownerID, name: name, among: homebrewOrphans
+                    ownerID: ownerID, name: qualified, among: homebrewOrphans
                 )
 
                 let category: Leftover.Category
@@ -147,7 +187,14 @@ public actor LeftoversScanner {
                 // which is how a real finding gets missed. An empty
                 // folder that *is* named stays, because then it is
                 // evidence of something.
-                if size == 0, category != .orphaned { continue }
+                //
+                // Only folders. This used to drop anything measuring
+                // zero, and a file's size was being measured with a
+                // directory enumerator, which answers zero for every
+                // file there is. Preference plists went straight through
+                // it, which is to say the most ordinary leftover on a
+                // Mac was the one thing the sweep could not report.
+                if size == 0, category != .orphaned, Self.isDirectory(item) { continue }
 
                 let leftover = Leftover(
                     url: item,
@@ -156,7 +203,7 @@ public actor LeftoversScanner {
                     potentialOwner: Identity(
                         bundleID: ownerID.contains(".") ? ownerID : nil,
                         name: cask?.capitalized
-                            ?? Self.readableName(ownerID: ownerID, url: item)
+                            ?? Self.readableName(ownerID: ownerID, url: item, qualified: qualified)
                     ),
                     evidence: evidence,
                     capability: capability(for: item, in: domain),
@@ -218,9 +265,124 @@ public actor LeftoversScanner {
             && !identifier.hasPrefix("com.apple.FinalCut")
     }
 
+    // MARK: - Symbolic links
+
+    enum LinkVerdict {
+        /// Points at something that is there, so it belongs to whatever
+        /// that is.
+        case resolved
+        /// Points at something that has gone.
+        case dangling(target: URL)
+    }
+
+    /// What a symbolic link is, decided by its target rather than its name.
+    ///
+    /// `/usr/local/bin` is almost entirely links into application
+    /// bundles, and a name match there answers nothing: `code` is Visual
+    /// Studio Code's, `python3` is the framework's, `kubectl` is
+    /// Docker's. Where the link points answers it exactly.
+    ///
+    /// A link whose target is still there is that target's business and
+    /// not a leftover. A link whose target has gone is among the
+    /// cleanest leftovers there is: a command still on the PATH that
+    /// cannot run. Several of them on the machine this was written on,
+    /// left by an uninstalled Docker and Zed, and Brim reported none of
+    /// them, because a link measures zero bytes and the sweep was
+    /// throwing away everything that measured zero.
+    static func symlink(_ url: URL) -> LinkVerdict? {
+        let manager = FileManager.default
+        guard let destination = try? manager.destinationOfSymbolicLink(atPath: url.path) else {
+            return nil
+        }
+        let target = destination.hasPrefix("/")
+            ? URL(fileURLWithPath: destination)
+            : url.deletingLastPathComponent().appendingPathComponent(destination)
+        let resolved = target.standardizedFileURL
+        return manager.fileExists(atPath: resolved.path)
+            ? .resolved
+            : .dangling(target: resolved)
+    }
+
+    static func brokenLink(_ url: URL, pointingAt target: URL) -> Leftover {
+        let owner = ownerOfPath(target)
+        return Leftover(
+            url: url,
+            size: 0,
+            category: .orphaned,
+            potentialOwner: Identity(bundleID: nil, name: owner ?? url.lastPathComponent),
+            evidence: owner.map {
+                "This command points into \($0), which is not installed."
+            } ?? "This command points at \(target.path), which is not there.",
+            capability: .ok,
+            lastAccessed: nil
+        )
+    }
+
+    /// The application or framework a path runs through, if any.
+    ///
+    /// `/Applications/Docker.app/Contents/Resources/bin/docker` is
+    /// Docker's whatever the command at the end is called, and saying
+    /// Docker is the difference between a row somebody understands and a
+    /// row saying `kubectl.docker`.
+    static func ownerOfPath(_ url: URL) -> String? {
+        for component in url.pathComponents {
+            if component.hasSuffix(".app") || component.hasSuffix(".framework") {
+                return component
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Vendor folders
+
+    /// Domains where one folder can hold several products.
+    ///
+    /// Settings and saved state are keyed by identifier, one file each,
+    /// so there is nothing below them to descend into. Support, caches
+    /// and logs are where a vendor makes a folder of its own and puts
+    /// each product inside it.
+    static let nestable: Set<FileSystemRoot.Domain> = [
+        .userApplicationSupport, .systemApplicationSupport,
+        .userCaches, .systemCaches,
+        .userLogs, .systemLogs,
+        .sharedUser, .sharedApplicationSupport,
+    ]
+
+    /// The children to judge in place of this folder, when the folder is
+    /// one vendor's and holds more than one product.
+    ///
+    /// The evidence for calling something a vendor folder is narrow on
+    /// purpose: an installed application is called `<this folder> <something
+    /// else>`. `Google` qualifies while Google Chrome is installed,
+    /// because "Google" is how Chrome's name begins and is not the whole
+    /// of it. `Obsidian` never qualifies, so its subfolders of profile
+    /// data are never offered up one by one. Getting that backwards
+    /// turns a single honest row into many wrong ones.
+    ///
+    /// Without this, `~/Library/Application Support/Google/DeadProduct`
+    /// is invisible: the sweep sees `Google`, finds Chrome behind it,
+    /// and walks away from everything else in there.
+    func vendorFolderChildren(
+        _ url: URL, in domain: FileSystemRoot.Domain, activeNames: Set<String>
+    ) -> [URL]? {
+        guard Self.nestable.contains(domain), Self.isDirectory(url) else { return nil }
+        let name = url.lastPathComponent.lowercased()
+        guard !name.isEmpty else { return nil }
+        let prefix = name + " "
+        guard activeNames.contains(where: { $0.hasPrefix(prefix) && $0.count > prefix.count })
+        else { return nil }
+        let children = scanDirectoryLevel1(url)
+        return children.isEmpty ? nil : children
+    }
+
+    static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+    }
+
     private func isItemActive(
         item: URL,
         in domain: FileSystemRoot.Domain,
+        vendor: String?,
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
@@ -228,7 +390,14 @@ public actor LeftoversScanner {
     ) -> Bool {
         let name = item.lastPathComponent
         let lowerName = name.lowercased()
-        
+
+        // Inside a vendor folder the application's real name is the two
+        // put together, and some installers write it with a dot instead.
+        if let vendor {
+            if activeNames.contains("\(vendor) \(name)".lowercased()) { return true }
+            if activeBundleIDs.contains("\(vendor).\(name)") { return true }
+        }
+
         switch domain {
         case .userGroupContainers, .userApplicationScripts:
             if activeGroupContainers.contains(name) { return true }
@@ -316,7 +485,11 @@ public actor LeftoversScanner {
 
     /// Something a person can read, instead of a team identifier and a
     /// reverse-DNS name.
-    static func readableName(ownerID: String, url: URL) -> String {
+    static func readableName(ownerID: String, url: URL, qualified: String? = nil) -> String {
+        // Inside a vendor folder the vendor is half the name, and
+        // dropping it leaves a row saying "Chrome" beside one saying
+        // "Updater" with nothing to connect them.
+        if let qualified, qualified != url.lastPathComponent { return qualified }
         let candidate = ownerID.isEmpty
             ? url.deletingPathExtension().lastPathComponent : ownerID
         // The last meaningful component: dev.warp becomes Warp,
@@ -372,14 +545,28 @@ public actor LeftoversScanner {
         try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
     }
 
+    /// What removing this would give back.
+    ///
+    /// A directory enumerator over a plain file yields nothing and
+    /// answers zero, which is how every preference plist on the machine
+    /// came back weightless. A file is asked for its own size, and a
+    /// symbolic link is worth nothing and is never followed: measuring
+    /// through one credits a command with the size of the application it
+    /// points at.
     private func calculateSize(url: URL) -> Int64 {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
+        let values = try? url.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
+        )
+        if values?.isSymbolicLink == true { return 0 }
+        if values?.isDirectory == false { return Int64(values?.fileSize ?? 0) }
+
         guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: keys) else {
             let attrs = try? fm.attributesOfItem(atPath: url.path)
             return (attrs?[.size] as? Int64) ?? 0
         }
-        
+
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
             let res = try? fileURL.resourceValues(forKeys: Set(keys))
@@ -390,10 +577,19 @@ public actor LeftoversScanner {
         return total
     }
     
-    private func gatherActiveAppIdentities() async -> [Identity] {
+    /// Every installed application's identity, plus the name each
+    /// bundle uses for itself internally.
+    ///
+    /// `Identity.name` is the bundle's file name, `VisualStudioCode.app`
+    /// becomes "VisualStudioCode". Its `CFBundleName` is what it names
+    /// its own support folder after, and Visual Studio Code's is
+    /// "Code". Reading only the file name left `Application Support/Code`
+    /// looking unclaimed while the application sat in `/Applications`.
+    private func gatherActiveAppIdentities() async -> (identities: [Identity], bundleNames: [String]) {
         var identities = [Identity]()
+        var bundleNames = [String]()
         let fm = FileManager.default
-        
+
         // 1. Applications
         let appDirs = [
             root.url(for: .applications),
@@ -425,12 +621,17 @@ public actor LeftoversScanner {
                     if fileURL.pathExtension == "app" {
                         let identity = await resolver.resolve(bundleURL: fileURL)
                         identities.append(identity)
+                        if let bundle = Bundle(url: fileURL),
+                           let bundleName = bundle.infoDictionary?["CFBundleName"] as? String,
+                           !bundleName.isEmpty {
+                            bundleNames.append(bundleName)
+                        }
                     }
                 }
             }
         }
-        
-        return identities
+
+        return (identities, bundleNames)
     }
     
     private func gatherInstallerReceipts() async -> Set<String> {
