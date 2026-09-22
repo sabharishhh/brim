@@ -69,16 +69,30 @@ final class BrimMCPTests: XCTestCase {
         let req = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"plan\", \"arguments\": {\"bundleID\": \"com.apple.fake\", \"specificTarget\": \"/etc/passwd\"}}}\n"
         inPipe.fileHandleForWriting.write(req.data(using: .utf8)!)
         
-        // Wait for response
-        Thread.sleep(forTimeInterval: 0.5)
-        
+        // Read until the answer arrives rather than sleeping a fixed half
+        // second and hoping. This passed on its own and failed in a full
+        // run, because a subprocess planning a footprint does not get the
+        // machine to itself while the rest of the suite is running: the
+        // half second ran out, the pipe was still empty, and the test
+        // reported that Brim had failed to reject a path it rejects
+        // perfectly well. A deadline that waits for the thing it is waiting
+        // for costs nothing when the answer is quick.
+        var output = ""
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            let chunk = outPipe.fileHandleForReading.availableData
+            if chunk.isEmpty { break }
+            output += String(data: chunk, encoding: .utf8) ?? ""
+            if output.contains("\"id\":1") || output.contains("is not in the footprint") { break }
+        }
+
         process.terminate()
         process.waitUntilExit()
-        
-        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        
-        XCTAssertTrue(output.contains("is not in the footprint"), "Should reject out of footprint specificTarget")
+
+        XCTAssertTrue(
+            output.contains("is not in the footprint"),
+            "Should reject out of footprint specificTarget. Got: \(output)"
+        )
     }
 
 }
