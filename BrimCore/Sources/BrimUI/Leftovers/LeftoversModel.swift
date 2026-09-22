@@ -165,6 +165,17 @@ public final class LeftoversModel: ObservableObject {
         refreshInspected()
     }
 
+    /// Bumps whenever rows are added or taken away.
+    ///
+    /// What the list animates on. `withAnimation` around a mutation does not
+    /// reliably reach SwiftUI when the mutation happens in an async context,
+    /// which is exactly where a removal finishes: the rows changed and the
+    /// transaction did not travel with them, so they blinked out. A value
+    /// the view can watch works wherever the change came from, and an `Int`
+    /// costs nothing to compare against on every pass, which mapping a
+    /// hundred and fifty-seven group identities would not.
+    @Published public private(set) var revision = 0
+
     /// Re-points the open detail at the rebuilt group, or closes it.
     ///
     /// `inspected` holds a value, not a reference, so removing one of an
@@ -186,6 +197,7 @@ public final class LeftoversModel: ObservableObject {
         orphanedGroups = orphaned.groupedByOwner()
         unclaimedGroups = unclaimed.groupedByOwner()
         settle()
+        revision &+= 1
     }
 
     /// The one place the selection's consequences are worked out. Called
