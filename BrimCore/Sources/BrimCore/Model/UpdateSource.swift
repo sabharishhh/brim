@@ -129,22 +129,26 @@ public struct UpdateReport: Equatable, Sendable, Codable {
         agents.filter { !$0.productIsInstalled }
     }
 
+    /// The line under the Updates heading.
+    ///
+    /// Written as counts rather than as complaints. "10 applications have no
+    /// way to update themselves" states a dead end and hands the reader
+    /// nothing to do with it, and the same fact read as "10 you update
+    /// yourself" is a short list of things to keep an eye on.
     public var summary: String {
-        let stranded = withoutAnyUpdateSource.count
+        let manual = withoutAnyUpdateSource.count
+        let automatic = coverage.count - manual
         let orphaned = orphanedAgents.count
+
         var parts: [String] = []
-        if stranded > 0 {
-            parts.append("\(stranded) \(stranded == 1 ? "application has" : "applications have") "
-                       + "no way to update \(stranded == 1 ? "itself" : "themselves")")
-        }
+        if automatic > 0 { parts.append("\(automatic) update themselves") }
+        if manual > 0 { parts.append("\(manual) you update yourself") }
         if orphaned > 0 {
-            parts.append("\(orphaned) background \(orphaned == 1 ? "updater is" : "updaters are") "
-                       + "still checking for software that is gone")
+            parts.append("\(orphaned) \(orphaned == 1 ? "updater" : "updaters") "
+                       + "\(orphaned == 1 ? "checks" : "check") for software that has gone")
         }
-        guard !parts.isEmpty else {
-            return "Everything here has a way to get its next version."
-        }
-        return parts.joined(separator: ", and ") + "."
+        guard !parts.isEmpty else { return "Nothing installed to check." }
+        return parts.joined(separator: " · ")
     }
 }
 

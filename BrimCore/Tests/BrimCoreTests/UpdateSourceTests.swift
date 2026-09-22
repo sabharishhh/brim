@@ -207,12 +207,19 @@ final class UpdateSourceTests: XCTestCase {
         )
 
         XCTAssertEqual(report.withoutAnyUpdateSource.count, 1)
-        XCTAssertTrue(report.summary.contains("no way to update"))
+
+        // Counts, not complaints. "1 application has no way to update
+        // itself" states a dead end on the opening screen and hands the
+        // reader nothing to do with it; the same fact split into what
+        // updates itself and what they update is a short list to keep an
+        // eye on.
+        XCTAssertEqual(report.summary, "1 update themselves · 1 you update yourself")
+        XCTAssertFalse(report.summary.contains("no way"))
     }
 
     func testTheSummarySaysNothingWhenThereIsNothingToSay() {
         let report = UpdateReport(coverage: [], agents: [], homebrewPresent: true)
-        XCTAssertTrue(report.summary.contains("has a way to get its next version"))
+        XCTAssertEqual(report.summary, "Nothing installed to check.")
     }
 
     private static func repositoryRoot() -> URL {

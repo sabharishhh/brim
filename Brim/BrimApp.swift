@@ -77,7 +77,7 @@ import BrimPrivileged
                 Button("About Brim") {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
-                Button("Uninstall Brim...") {
+                Button("Uninstall Brim…") {
                     showSelfUninstall = true
                 }
             }
