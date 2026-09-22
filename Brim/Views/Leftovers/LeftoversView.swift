@@ -294,7 +294,7 @@ private struct LeftoverDetail: View {
                 // after an authorization that was never going to work.
                 if let obstacle = group.sharedObstacle,
                    let why = RemovalCapability.explanation(obstacle) {
-                    callout("lock", "Brim cannot remove this", why, .orange)
+                    blockedCallout(why, revealing: group.items.map(\.url))
                 }
 
                 // Why Brim thinks this is a leftover at all — the sentence
@@ -341,6 +341,39 @@ private struct LeftoverDetail: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// What is stopping this, and the one thing that gets somebody past it.
+    ///
+    /// Finder can remove these; Brim, running as the person, cannot. So the
+    /// button hands the whole group over at once and with every file
+    /// **selected**, rather than opening the folder and leaving somebody to
+    /// find nine names among twenty-seven. `activateFileViewerSelecting`
+    /// highlights a broken symbolic link the same as anything else, which
+    /// is the case that matters here and the one worth having checked.
+    private func blockedCallout(_ why: String, revealing urls: [URL]) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "lock").foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Brim cannot remove this").fontWeight(.medium)
+                Text(why).font(.callout).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(urls.count == 1
+                     ? "Finder can, and will ask you for a password."
+                     : "Finder can, and will ask you once for all \(urls.count).")
+                    .font(.callout).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(urls.count == 1 ? "Show in Finder" : "Show all \(urls.count) in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                }
+                .controlSize(.small)
+            }
+            Spacer()
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
     }
 
     private func callout(_ symbol: String, _ title: String, _ body: String, _ tint: Color) -> some View {
