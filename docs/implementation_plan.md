@@ -107,7 +107,7 @@ No `deleteRecursive`. No `runShellCommand`. No step takes a caller-supplied comm
   "engineVersion": "core-1.0.0+evidence-3",     // evidence engine revision
   "osVersion": "26.5.2",
   "intent": { "kind": "uninstall", "subject": "identity:bundle:com.example.App" },
-  "requester": { "kind": "app|cli|mcp|intent", "identity": "signed-identity-string" },
+  "requester": { "kind": "ui|intent", "identity": "signed-identity-string" },   // "app|cli|mcp|intent" until the CLI and MCP server were removed
   "steps": [
     {
       "index": 0,
@@ -231,7 +231,7 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 
 ## 5. Milestone 1 — The vertical slice
 
-**Goal:** uninstall one application end-to-end, from two different adapters, with the approval gate real and the result verified. No helper, no XPC transport, no privileged paths. Everything else in Brim is an extension of this spine.
+**Goal:** uninstall one application end-to-end, with the approval gate real and the result verified. No helper, no XPC transport, no privileged paths. Everything else in Brim is an extension of this spine.
 
 ### T-1.1 · Core model types
 - **Objective** The vocabulary the whole system speaks.
@@ -308,14 +308,14 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 - **Depends on** T-1.10, T-1.5.
 - **Work** Implement `BrimServiceProtocol` (§3.4) as an actor. Wire inspect/plan/explain/requestApproval/apply/verify/history/capabilities. **All parameters and returns are value types**, ready to cross a process boundary in M2. A `ServiceClient` abstraction with a direct implementation now and an XPC implementation later.
 - **Acceptance** A test exercising the protocol only — no direct Core access — can drive a complete uninstall on the fixture tree.
-- **Unlocks** both adapters; the M2 extraction.
+- **Unlocks** the app; the M2 extraction.
 
 ### T-1.12 · Approval gate and token store
 - **Objective** The boundary that makes agents safe, built before any agent exists.
 - **Depends on** T-1.11.
 - **Work** `requestApproval` records a pending request and signals the UI. Human approval in the app mints an `ApprovalToken` (§3.3). In-memory store, single use, consumed on apply, expiry enforced, requester bound. No API path produces a token.
 - **Acceptance** Tests prove: apply without a token fails; with an expired token fails; with a token for a different plan hash fails; with a replayed token fails; with a token minted for a different requester fails. A grep test asserts no function in the codebase returns `ApprovalToken` except the UI-triggered mint.
-- **Unlocks** the CLI, and all of M4.
+- **Unlocks** everything that applies a plan. Nothing reaches the executor without passing through here.
 
 ### T-1.13 · Race-immune operations library
 - **Objective** Build the safe primitives now, so no unsafe ones ever exist to be used.
@@ -350,14 +350,15 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 - **Depends on** T-1.11, T-1.12.
 - **Work** `NavigationSplitView`: sidebar with Applications and History only; content list of applications; inspector showing the footprint grouped by tier with the evidence sentence in each row; a plan document sheet; the approval control; the verification result; History list. Standard components only — the platform material comes free.
 - **Acceptance** A human can uninstall a fixture app and read why every item was included.
-- **Unlocks** approval for every other adapter.
+- **Unlocks** approval. It is the only place in Brim one can be given.
 
-### T-1.18 · CLI v1
-- **Objective** Prove the adapter model with a second client on day one.
-- **Depends on** T-1.11, T-1.12.
-- **Work** `brim apps`, `brim footprint <identity>`, `brim plan uninstall <identity>`, `brim approve-request <planHash>`, `brim apply <planHash> --token <t>`, `brim verify <planHash>`, `brim history`. `--json` on everything, stable exit codes, `--dry-run`.
-- **Acceptance** The CLI can complete an uninstall **only** after a human approves in the app. A scripted attempt to apply without approval fails with a clear, non-guessable error.
-- **Unlocks** M4 with almost no additional work.
+### T-1.18 · CLI v1 · Dropped
+Built, shipped outside the app bundle, and removed. It was the only part of
+Brim that registered a launch agent, which a utility whose whole subject is
+software running when nobody asked it to should not do. What it was for,
+proving the gate holds for a client with no window, is now held by
+`ApprovalGateTests` directly, which is a better place for it than a second
+executable.
 
 ### T-1.19 · Shadow-root dry run
 - **Objective** Run the entire pipeline against a copy, for tests and for a user-facing preview.
@@ -366,7 +367,7 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 - **Acceptance** A full uninstall in dry-run mode changes nothing outside the shadow root, and produces a `VerificationResult` comparable to the real one.
 - **Unlocks** safe development; regression tests that execute rather than simulate.
 
-**M1 done when:** on both the fixture tree and a real machine with a disposable app, an uninstall completes from the app and from the CLI; the CLI cannot act without human approval; the plan is readable before it runs; the verification reports a measured delta; undo works; History records both runs with the correct requester. **No privileged paths, no helper, no XPC yet.**
+**M1 done when:** on both the fixture tree and a real machine with a disposable app, an uninstall completes from the app; a service with no window cannot act at all; the plan is readable before it runs; the verification reports a measured delta; undo works; History records the run with the correct requester. **No privileged paths, no helper, no XPC yet.**
 
 ---
 
@@ -515,15 +516,18 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 
 ## 8. Milestone 4 — Agent surfaces
 
-**Goal:** three adapters over one API. Nearly free, because the gate already exists.
+**Goal:** one read-only agent surface over the API, and the tests that prove
+no surface can approve anything. Two of the three adapters this milestone was
+written for have since been removed; the gate they were designed around is
+what remains, and it is the part that mattered.
 
 ### T-4.1 to T-4.4 · Dropped
 Brim shipped an MCP server and a command line tool. Both were removed, along
 with the requester-labelling and untrusted-string work that existed to make
 them safe. Neither was broken; neither was the product. The approval gate
 that was designed around them stays exactly as it is, because the rule it
-enforces — that nothing outside Brim's own process has a method that mints
-approval — is what makes the app safe to give root to, adapters or not.
+enforces, that nothing outside Brim's own process has a method that mints
+approval, is what makes the app safe to give root to, adapters or not.
 
 ### T-4.5 · App Intents
 - **Objective** Apple's own agent surface, safely.
@@ -534,12 +538,12 @@ approval — is what makes the app safe to give root to, adapters or not.
 
 ### T-4.6 · Agent safety test suite
 - **Objective** The capability table, enforced by tests rather than by intent.
-- **Depends on** T-4.1, T-4.2.
-- **Work** Tests for: approval attempted through every adapter; token replay, expiry, wrong plan, wrong requester; a plan mutated after approval; an injected filename attempting to steer a tool result; a model-shaped input naming an out-of-plan target.
+- **Depends on** T-1.12, T-4.5.
+- **Work** Tests for: approval attempted from a service with no consent source; token replay, expiry, wrong plan, wrong requester; a plan mutated after approval; an injected filename attempting to steer a tool result; a model-shaped input naming an out-of-plan target.
 - **Acceptance** All fail closed, with reasons recorded in the journal.
 - **Unlocks** the strongest differentiator in the product.
 
-**M4 done when:** the same uninstall completes identically from the app, the CLI and an MCP host, with the approval window raised in all three cases, and every bypass attempt in T-4.6 fails.
+**M4 done when:** App Intents can report and cannot remove, no service without a window can mint a token, and every bypass attempt in T-4.6 fails.
 
 ---
 
@@ -568,18 +572,19 @@ Every task here is an extension of the spine. They parallelise almost completely
 - **Acceptance** On a machine with local snapshots, the pinned figure is non-zero and the reclaimable figure excludes it. A deletion that frees nothing is explained rather than reported as success.
 - **Unlocks** the category's most credible feature.
 
-### T-5.4 · Duplicates
-- **Objective** Honest savings, cheaply computed.
-- **Depends on** T-1.3, deferred spike on clone detection.
-- **Work** Size class, then a sparse fingerprint over head, tail and length, then a full hash only for survivors. Hardware-accelerated SHA-256 is the default. **Disable caching on large one-shot passes** so the scan does not evict the user's working set. Exclude clone-linked pairs from the savings total and label them as already sharing storage.
-- **Acceptance** A cloned file pair is reported as duplicates with zero recoverable bytes. A 100 GB pass leaves the page cache measurably intact compared to a naive read.
-- **Unlocks** the commodity feature, done better.
+### T-5.4 · Duplicates · Dropped
+Built and removed. A byte-for-byte file finder has nothing to do with what
+software leaves behind, it asked the person to pick a folder when nothing else
+in the app does, and `strategy.md` listed duplicates under "Deliberately not
+doing" the entire time it shipped. The clone-detection spike it depended on is
+dropped with it.
 
 ### T-5.5 · Energy sampler
 - **Objective** Real joules, accumulated.
 - **Depends on** T-2.3, deferred spike on energy counters.
-- **Work** Sample `proc_pid_rusage` with `RUSAGE_INFO_V6` at a low cadence; persist deltas; aggregate by coalition where available and by bundle path otherwise. Opt-in persistent agent registered via `SMAppService`, **listed by Brim in its own background-items view**. Root-owned processes read through the helper when available, marked as a coverage gap otherwise.
-- **Acceptance** Energy accumulates across app restarts. Coverage gaps are displayed, not hidden. Turning the feature off removes the agent completely.
+- **Work** Sample `proc_pid_rusage` with `RUSAGE_INFO_V6` **when the panel is open and not otherwise**. Aggregate by coalition where available and by bundle path otherwise. Root-owned processes read through the helper when available, marked as a coverage gap otherwise.
+- **Acceptance** Coverage gaps are displayed, not hidden. Closing Brim leaves nothing running.
+- **Amended.** This task specified an opt-in persistent agent registered via `SMAppService` that accumulated energy across restarts, and a ledger was built for it. Nothing ever read the ledger back, and a utility whose subject is software running when nobody asked it to should not register an agent to watch a battery. The ledger, the insight model and the battery projection are removed; `EnergySampler` reads what is true now, on demand.
 - **Unlocks** the sentence no competitor can produce.
 
 ### T-5.6 · Energy view
@@ -739,19 +744,18 @@ T-0.1 → T-0.3/T-0.4 → T-1.1 → T-1.2 → T-1.3 → T-1.4 → T-1.5
       → T-1.6 → T-1.7 → T-1.9 → T-1.10 → T-1.11 → T-1.12
       → T-1.13 → T-1.14 → T-1.15 → T-1.16
       → T-2.1 → T-2.2 → T-2.3 → T-2.4
-      → T-3.4 → T-4.1 → release
+      → T-3.4 → T-4.5 → release
 ```
 
-Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The single most schedule-critical decision is **T-1.10 (the plan format)**, because every adapter, test and stored record depends on its shape.
+Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The single most schedule-critical decision is **T-1.10 (the plan format)**, because every test and stored record depends on its shape.
 
 ### 12.2 Parallelisable
 
 | Can run in parallel | With | Condition |
 |---|---|---|
 | All five M0 spikes | Each other, and T-0.3/T-0.4 | Independent by construction |
-| T-1.17 (app) and T-1.18 (CLI) | Each other | After T-1.11 freezes the protocol |
 | Every evidence source in T-3.1 | Each other | The source protocol exists from T-1.6 |
-| T-5.3, T-5.4, T-5.5, T-5.7, T-5.8 | Each other | All are consumers of the spine |
+| T-5.3, T-5.5, T-5.7, T-5.8 | Each other | All are consumers of the spine |
 | T-2.9 (signing pipeline) | Most of M1 | Deliberately early — see risk R-6 |
 | T-6.4 (accessibility) | All UI work | Continuous, not a phase |
 | Golden tests (T-3.9) | Each new source | Written with the source, not after |
@@ -766,8 +770,7 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 | AppKit table bridging at scale | S-4 | Lists are paginated; the density rule changes |
 | Three-bundle notarisation | S-5 | Bundle layout changes before any feature depends on it |
 | Per-process energy counters are real and usable | deferred | Energy becomes a CPU-time-weighted **estimate**, labelled as one, or is cut from V1 |
-| BTM output is parseable and stable | deferred | The background view degrades to launchd plus `SMAppService`; the guided reset still ships |
-| APFS clone detection | deferred | Duplicates ship without clone-aware savings and say so |
+| BTM output is parseable and stable | deferred | The background view degrades to launchd plus `SMAppService`. It held; `BTMStore` reads the archives directly and the guided reset that was the other half of this row is dropped |
 
 ### 12.4 Major technical risks
 
@@ -785,10 +788,10 @@ Everything in M5 hangs off T-1.10 and T-2.3 and is off the critical path. The si
 ### 12.5 Definition of done, by milestone
 
 - **M0** — CI green; fixtures deterministic; S-1 to S-5 written up; any scope change from S-3 recorded here.
-- **M1** — Uninstall completes end-to-end from app and CLI on the fixture tree and a real disposable app; the CLI cannot act without human approval; plan readable before it runs; verification reports a measured delta including honest zeroes; undo works; History records both runs with correct requester.
+- **M1** — Uninstall completes end-to-end from the app on the fixture tree and a real disposable app; a service with no window cannot act at all; plan readable before it runs; verification reports a measured delta including honest zeroes; undo works; History records the run with correct requester.
 - **M2** — Service out of process; both boundaries authenticate by signature; helper exists with the §3.5 vocabulary and re-validates independently; the four security tests pass in CI; a notarised build installs on a clean machine.
 - **M3** — A complex real application (a suite, a security tool, a pkg-installed product) plans correctly; the shared veto demonstrably protects a sibling app; the background view shows more than System Settings.
-- **M4** — The same uninstall completes identically from app, CLI and an MCP host, with the approval window raised in all three; every bypass attempt fails closed.
+- **M4** — App Intents report and cannot remove; no service without a window mints a token; every bypass attempt fails closed.
 - **M5** — Each feature reports its own coverage gaps honestly; no feature claims bytes it cannot deliver.
 - **M6** — Accessibility complete; performance budgets met and published including Brim's own cost; self-removal verified; an update from the previous release installs and self-verifies.
 
@@ -811,7 +814,7 @@ Clone detection, snapshot accounting, energy counters, BTM parsing and root-tras
 A local single-user service reached only by signature-verified callers does not need rate limits. Shape anomalies are still *logged* via the journal, which costs nothing, but there is no throttling subsystem. This was security theatre standing in for the control that actually matters, which is the approval gate.
 
 **C-5 · The optional on-device model — out of V1. *Partly overturned by M7; see below.***
-Volume I already made it optional, off by default and availability-gated. Everything it would do is presentation over facts the deterministic renderer (T-6.3) already produces. Shipping it in V1 adds an availability matrix, a second explanation path to test, and a feature that is unavailable on ineligible hardware and in unsupported regions. Deterministic explanations ship; the model is the first V1.1 feature, behind the boundary already built in T-4.2.
+Volume I already made it optional, off by default and availability-gated. Everything it would do is presentation over facts the deterministic renderer (T-6.3) already produces. Shipping it in V1 adds an availability matrix, a second explanation path to test, and a feature that is unavailable on ineligible hardware and in unsupported regions. Deterministic explanations ship; the model is the first V1.1 feature, behind the approval boundary built in T-1.12.
 
 *Amended when M7 was written.* The cut was aimed at a model **asserting** something, a name or a judgement on a row somebody is about to delete, and that aim was right. It caught two uses it should not have. Explaining a row and summarising a footprint by what each location is for restate facts the engine already computed and establish none, so they carry none of the risk the cut was defending against, and they fix a problem the deterministic path has proven bad at: hardcoded English drifts into describing Brim's limitations instead of the user's disk. Those two move into V1 as T-7.6, on the explicit condition that T-6.3's renderer stays the floor, so an ineligible Mac loses nothing but polish. **Naming an unattributed folder stays cut** and stays the one open question in T-7.7. The availability matrix argument survives the amendment and is the reason the fallback is a requirement rather than a nicety.
 
@@ -831,14 +834,14 @@ Authoritative. Reflects §13.
 | # | Milestone | Contents | Gate to proceed |
 |---|---|---|---|
 | 0 | **Ground** | T-0.1 to T-0.4; spikes S-1 to S-5 | Fixtures deterministic; five spike findings written; S-3's scope implications recorded |
-| 1 | **Spine** | T-1.1 to T-1.19, minus the graph component (C-2) and plan signing (C-1) | Uninstall end-to-end from app and CLI, human approval enforced, verified delta, undo, History |
+| 1 | **Spine** | T-1.1 to T-1.19, minus the graph component (C-2), plan signing (C-1) and the CLI (T-1.18) | Uninstall end-to-end from the app, human approval enforced, verified delta, undo, History |
 | 2 | **Trust boundary** | T-2.1 to T-2.9 | Out-of-process service, mutual signature authentication, helper with closed vocabulary and independent re-validation, four security tests in CI, notarised build |
 | 3 | **Evidence** | T-3.1 to T-3.9 | A real suite application plans correctly; shared veto protects a sibling; background view beats System Settings |
-| 4 | **Agents** | T-4.1 to T-4.6 (T-4.7 cut) | Identical uninstall from three adapters; all bypass attempts fail closed |
-| 5 | **Features** | T-5.1, T-5.2, T-5.3, T-5.4, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9 — parallel, ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
+| 4 | **Agents** | T-4.5 and T-4.6 (T-4.1 to T-4.4 dropped, T-4.7 cut) | A read-only agent surface that cannot remove anything; all bypass attempts fail closed |
+| 5 | **Features** | T-5.1, T-5.2, T-5.3, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9, parallel and ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
 | 6 | **Product** | T-6.1 to T-6.8, minus the treemap (C-6) | Accessibility complete; budgets met including Brim's own cost; self-removal verified; update path works |
 | 7 | **Complete removal** | T-7.1 to T-7.6; T-7.7 gated | Six applications re-measured with nothing reachable left behind; checked, declared-absent and refused-by-macOS are distinguishable in a report; sweep and uninstall agree per bundle |
 
-**Not in V1, deliberately:** a model that asserts an attribution rather than restating one (T-7.7, gated); the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; HTTP transport for MCP; fleet or MDM features; and every item on Volume I's rejected list.
+**Not in V1, deliberately:** a model that asserts an attribution rather than restating one (T-7.7, gated); the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; any adapter that is not the app itself; fleet or MDM features; and every item on Volume I's rejected list.
 
 **The first three commits, in order:** `Package.swift` with the module graph and the compiler-enforced purity of `BrimCore`; the fixture generator; `FileSystemRoot`. Nothing else can be trusted until those exist.
