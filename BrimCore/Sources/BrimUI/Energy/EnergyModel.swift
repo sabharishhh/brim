@@ -12,12 +12,10 @@ import BrimProtocol
 /// what is costing you something now, which is the only question worth
 /// asking.
 ///
-/// What the panel shows is two different facts and they are kept apart on
-/// purpose. **Right now** is a rate, in milliwatts, measured across the gap.
-/// **Since counting started** is an amount, in milliwatt-hours, accumulated
-/// in the ledger. Printing both as "mWh" in two adjacent lists, which is
-/// what it used to do, made three rows look duplicated and left nobody able
-/// to say which number meant what.
+/// It reports applications and nothing else. A list that also named the
+/// services underneath them offered four suspects for one event, three of
+/// which nobody can act on, and put `powerd` under "keeping this Mac awake"
+/// for doing its job correctly.
 @MainActor
 public final class EnergyModel: ObservableObject {
 
@@ -118,9 +116,6 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var isSampling = false
     @Published public private(set) var coverageGaps = 0
     @Published public private(set) var window: TimeInterval = 0
-    /// Energy per application since counting started, which survives both
-    /// the application restarting and Brim restarting.
-    @Published public private(set) var totals: EnergyTotals?
     /// This Mac's battery, so energy can be said as a share of a full
     /// charge. Nil on a machine with no battery, where a share of one is
     /// not a thing that can be said.
@@ -140,95 +135,93 @@ public final class EnergyModel: ObservableObject {
 
     // MARK: - What the panel is made of
 
-    /// Things the person launched, which is what they can act on.
-    public var yours: [Reading] { readings.filter { $0.identity.kind.isActionable } }
-
-    /// macOS running itself. Separated rather than hidden: it is often the
-    /// largest share of the reading, and a list that mixes "quit Figma"
-    /// with "Spotlight is indexing" invites somebody to try to stop the
-    /// second one.
-    public var macOS: [Reading] { readings.filter { !$0.identity.kind.isActionable } }
-
-    public var totalMilliwatts: Double {
-        readings.reduce(0) { $0 + $1.milliwatts(over: window) }
+    /// Applications, and nothing else.
+    ///
+    /// The panel used to carry a second list of macOS services beside this
+    /// one. It was accurate and it was a mistake. `powerd` appeared under
+    /// "Keeping this Mac awake" holding an assertion named "Prevent sleep
+    /// while display is on", which is macOS working correctly: the display
+    /// is on because somebody is using the Mac, and it goes when they stop.
+    /// Read by someone who does not already know that, it says an internal
+    /// process is stopping their Mac from ever sleeping, which is alarming
+    /// and false.
+    ///
+    /// The same is true of the whole services list. `coreaudiod` is busy
+    /// because Music is playing; `WindowServer` is busy because there are
+    /// pixels. Naming them beside the app that caused them offers a person
+    /// four suspects for one event, three of which they cannot act on and
+    /// none of which they can tell apart.
+    ///
+    /// An application Apple ships is still an application: Music, Safari and
+    /// Mail are things a person opened and can close. The line is not who
+    /// wrote it, it is whether there is a window to quit.
+    public var applications: [Reading] {
+        readings.filter { $0.identity.kind.isActionable }
     }
 
     public func milliwatts(of readings: [Reading]) -> Double {
         readings.reduce(0) { $0 + $1.milliwatts(over: window) }
     }
 
-    /// The single busiest thing, for the card at the top.
-    public var busiest: Reading? { readings.first }
+    /// The busiest application, which is the one the panel leads with.
+    public var busiest: Reading? { applications.first }
+
+    /// One application against the busiest, for the bar beside it.
+    public func share(of reading: Reading) -> Double {
+        let top = applications.first?.nanojoules ?? 0
+        return top > 0 ? Double(reading.nanojoules) / Double(top) : 0
+    }
+
+    /// How the Mac is coping, from Apple's public interfaces.
+    @Published public private(set) var condition: SystemCondition =
+        SystemCondition(thermal: .normal, power: nil, lowPowerMode: false)
+
+    /// Only what an application is holding. macOS holds its own whenever the
+    /// screen is on or audio is routed, and those follow from whatever asked
+    /// for them rather than causing anything.
+    public var appsKeepingMacAwake: [PowerAssertions.Held] {
+        assertions.held.filter(\.isYours)
+    }
 
     /// The reading as facts, for the deterministic sentence today and for
     /// the model to narrate under T-7.6.
     public var insight: EnergyInsight {
         EnergyInsight(
             windowSeconds: window,
-            totalMilliwatts: totalMilliwatts,
-            yoursMilliwatts: milliwatts(of: yours),
-            systemMilliwatts: milliwatts(of: macOS),
+            totalMilliwatts: milliwatts(of: applications),
+            yoursMilliwatts: milliwatts(of: applications),
+            systemMilliwatts: 0,
             busiestName: busiest?.name,
             busiestMilliwatts: busiest.map { $0.milliwatts(over: window) } ?? 0,
-            busiestIsSystem: busiest.map { !$0.identity.kind.isActionable } ?? false,
+            busiestIsSystem: false,
             busiestBehaviour: busiest.map { $0.dominantCost(over: window).sentence },
             busiestIsBrimItself: busiest?.identity.bundlePath.map {
                 $0 == Bundle.main.bundleURL.path
             } ?? false,
-            unreadableProcesses: coverageGaps,
+            unreadableProcesses: 0,
             batteryMilliwattHours: battery?.designMilliwattHours
         )
     }
 
-    // MARK: - Totals
+    // MARK: - Why there is no running total
 
-    /// Totals, classified the same way the live readings are, so the two
-    /// halves of the panel agree about what a thing is.
-    public struct Total: Identifiable, Sendable, Equatable {
-        public let identity: RunningProcessIdentity
-        public let milliwattHours: Double
-        /// Namespaced away from the live list. See `Reading.id`.
-        public var id: String { "total:" + identity.groupKey }
-        public var name: String { identity.displayName }
-    }
-
-    public var accumulated: [Total] {
-        guard let totals else { return [] }
-        return totals.accumulated.map { entry in
-            Total(
-                identity: RunningProcessIdentity.of(
-                    bundlePath: entry.isApplication ? entry.key : nil,
-                    executablePath: entry.key
-                ),
-                milliwattHours: entry.milliwattHours
-            )
-        }
-        .sorted { $0.milliwattHours > $1.milliwattHours }
-    }
-
-    public var accumulatedTotalMilliwattHours: Double {
-        accumulated.reduce(0) { $0 + $1.milliwattHours }
-    }
-
-    /// Everything measured since counting started, as a share of a full
-    /// charge.
-    ///
-    /// The number people can hold on to. A column of four-digit milliwatt
-    /// hours, 2428 against 1926 against 1473, is arithmetic nobody asked
-    /// for: it has no anchor, no familiar unit, and the differences between
-    /// the rows are the only information in it. A share of a charge answers
-    /// the question the panel is for.
-    public var accumulatedShareOfACharge: Double? {
-        guard let battery, battery.designMilliwattHours > 0 else { return nil }
-        return accumulatedTotalMilliwattHours / battery.designMilliwattHours
-    }
-
-    /// One total as a share of everything measured, which is what the bar
-    /// beside it draws.
-    public func share(of total: Total) -> Double {
-        let sum = accumulatedTotalMilliwattHours
-        return sum > 0 ? total.milliwattHours / sum : 0
-    }
+    // There was a "Since <date>" card here and it has gone, because it was
+    // measuring something other than what it said.
+    //
+    // `EnergyLedger.accumulating` credits a process's entire counter the
+    // first time it sees that process: "First time this process has been
+    // seen. Its counter is what it has spent since it started, all of which
+    // is energy this application used." For a daemon running since boot that
+    // is days of energy, filed under a heading that named the moment Brim
+    // first looked. `contactsd` read 2428 mWh on this Mac against a label
+    // saying "Since Sep 21, 2026 at 8:23 PM".
+    //
+    // The honest version would need Brim to have been watching the whole
+    // time, and Brim does not watch. It has no agent, no timer and no
+    // background job, on purpose: a utility that exists to find software
+    // running when nobody asked it to cannot leave something running when
+    // nobody asked it to. A reading is taken when a person presses the
+    // button, and it describes the seconds it was taken over.
 
     // MARK: - Sampling
 
@@ -249,8 +242,8 @@ public final class EnergyModel: ObservableObject {
 
         let before = Dictionary(first.samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         coverageGaps = second.coverageGaps
-        totals = await service.energyTotals()
         assertions = PowerAssertions.current()
+        condition = SystemCondition.current()
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so
