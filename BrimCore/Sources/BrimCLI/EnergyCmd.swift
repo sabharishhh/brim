@@ -128,8 +128,13 @@ struct EnergyCmd: AsyncParsableCommand {
             }
             
             let battery = BatteryCapacity.current()
-            print("\(result.coverageGaps) processes could not be read, so this list is short "
-                  + "by that much.")
+            // Printed only when there is something to say. It used to print
+            // unconditionally, so a complete reading opened with "0 processes
+            // could not be read, so this list is short by that much."
+            if result.coverageGaps > 0 {
+                print("Not counting \(result.coverageGaps) processes owned by the system, "
+                      + "whose energy macOS reports only to their own user.")
+            }
             for (path, nanojoules) in aggregated.sorted(by: { $0.value > $1.value }).prefix(20) {
                 let milliwattHours = Double(nanojoules) / 1_000_000_000 / 3.6
                 let share = battery?.sentence(forMilliwattHours: milliwattHours)
