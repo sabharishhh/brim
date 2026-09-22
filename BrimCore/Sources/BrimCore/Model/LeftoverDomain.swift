@@ -21,6 +21,9 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     case container
     case groupContainer
     case launchAgent
+    /// The per-user, per-boot folders under `/var/folders`, which macOS hands
+    /// out through `confstr` and which hold real application data.
+    case darwinPerUser
     case other
 
     /// Derives the domain from where the item sits. Order matters: several
@@ -30,6 +33,13 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         func inLibrary(_ component: String) -> Bool {
             path.contains("/Library/\(component)/")
         }
+
+        // `LocationInventory` has scanned `darwinUserCache` and
+        // `darwinUserTemp` for some time and this classifier did not know
+        // them, so everything found there arrived in the list badged "Other"
+        // over the sentence "An unrecognised location." Brim recognised it
+        // well enough to go looking; only the description did not.
+        if isDarwinPerUser(path) { return .darwinPerUser }
 
         if inLibrary("Caches") { return .cache }
         if inLibrary("Application Support") { return .applicationSupport }
@@ -41,6 +51,23 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         if inLibrary("Containers") { return .container }
         if inLibrary("LaunchAgents") || inLibrary("LaunchDaemons") { return .launchAgent }
         return .other
+    }
+
+    /// Recognised by shape rather than by a stored path.
+    ///
+    /// There is no path to hard-code: macOS answers `confstr` with a
+    /// different `/var/folders/<xx>/<yyyy>` per user and per boot, and the
+    /// fixture root uses stand-ins under the same prefix. Matching the
+    /// structure covers both, and covers a path recorded on a previous boot.
+    static func isDarwinPerUser(_ path: String) -> Bool {
+        guard let range = path.range(of: "/var/folders/") else { return false }
+        let rest = path[range.upperBound...]
+        // The real shape is `<xx>/<yyyy>/C/…` or `/T/…`. The fixture root's
+        // stand-ins are `DarwinUserCache` and `DarwinUserTemp`.
+        if rest.hasPrefix("DarwinUserCache") || rest.hasPrefix("DarwinUserTemp") { return true }
+        let parts = rest.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count >= 3 else { return false }
+        return parts[2] == "C" || parts[2] == "T"
     }
 
     /// A short name for the column and the group header.
@@ -55,6 +82,7 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         case .container: return "Sandbox container"
         case .groupContainer: return "Shared container"
         case .launchAgent: return "Background job"
+        case .darwinPerUser: return "Working files"
         case .other: return "Other"
         }
     }
@@ -87,8 +115,12 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
             return "A standing instruction for macOS to run something in the background. Left "
                  + "behind, it either fails quietly at every login or keeps running software "
                  + "you thought was gone."
+        case .darwinPerUser:
+            return "Scratch space macOS hands each application privately, under /var/folders. "
+                 + "The app writes it again when it needs it. Nothing lists this folder, which "
+                 + "is why what is in it outlasts the software by months."
         case .other:
-            return "An unrecognised location."
+            return "A location outside the folders macOS sets aside for applications."
         }
     }
 
@@ -96,7 +128,7 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     /// fact for deciding, and the one the flat list never showed.
     public var isRegenerated: Bool {
         switch self {
-        case .cache, .logs, .savedState: return true
+        case .cache, .logs, .savedState, .darwinPerUser: return true
         case .applicationSupport, .preferences, .webData, .container,
              .groupContainer, .launchAgent, .other: return false
         }

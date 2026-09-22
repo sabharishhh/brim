@@ -33,8 +33,14 @@ public final class LeftoversModel: ObservableObject {
     /// One entry per piece of software rather than one per path. The list
     /// was unreadable per-path: the same tool appeared several times with
     /// nothing connecting the rows.
-    public var orphanedGroups: [LeftoverGroup] { orphaned.groupedByOwner() }
-    public var unclaimedGroups: [LeftoverGroup] { unclaimed.groupedByOwner() }
+    ///
+    /// Published rather than computed. As computed properties these grouped
+    /// two hundred and fifty items from scratch on every read, and they are
+    /// read several times per body evaluation: once for the summary line,
+    /// once per section, and again inside `visible`. Grouping is pure, so the
+    /// answer only changes when the arrays do, which is where it is done now.
+    @Published public private(set) var orphanedGroups: [LeftoverGroup] = []
+    @Published public private(set) var unclaimedGroups: [LeftoverGroup] = []
 
     /// Which group's detail is open. The list answers "what is here"; the
     /// detail answers "what is this and what do I lose".
@@ -117,12 +123,21 @@ public final class LeftoversModel: ObservableObject {
             let found = try await service.leftovers()
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
+            orphanedGroups = orphaned.groupedByOwner()
+            unclaimedGroups = unclaimed.groupedByOwner()
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
             selection = Set(orphaned.filter { $0.capability == .ok }.map(\.id))
             inspected = nil
             errorMessage = nil
         } catch {
+            // A failed sweep must not leave the last run's rows on screen
+            // looking like this one's answer.
+            orphaned = []
+            unclaimed = []
+            orphanedGroups = []
+            unclaimedGroups = []
+            selection = []
             errorMessage = error.localizedDescription
         }
     }

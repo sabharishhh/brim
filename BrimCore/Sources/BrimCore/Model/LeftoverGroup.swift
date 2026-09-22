@@ -107,13 +107,53 @@ public extension Array where Element == Leftover {
     /// `Application Support/Codex` with `Caches/Codex`, since neither
     /// carries an identifier and both are named for the same tool.
     func groupedByOwner() -> [LeftoverGroup] {
+        // Every name a leftover answers to, joined up.
+        //
+        // Keying on the single strongest name split software that resolves
+        // unevenly. Warp appeared twice on a real Mac, once from
+        // `Application Scripts/2BBY89MBSN.dev.warp` and once from
+        // `Group Containers/2BBY89MBSN.dev.warp`. Both resolved the owner
+        // name "Warp"; only one of them also resolved a bundle identifier.
+        // The identifier wins the key, so one landed under the identifier
+        // and the other under "warp", and the list showed one product as two
+        // rows of one location each, both called Warp.
+        //
+        // Joining them is the whole fix: a leftover carrying both an
+        // identifier and a name is evidence that those two names are the same
+        // software, so anything filed under either belongs in one group.
+        var parent: [String: String] = [:]
+
+        func find(_ key: String) -> String {
+            var root = key
+            while let next = parent[root], next != root { root = next }
+            var walk = key
+            while let next = parent[walk], next != root {
+                parent[walk] = root
+                walk = next
+            }
+            return root
+        }
+
+        func union(_ a: String, _ b: String) {
+            let rootA = find(a), rootB = find(b)
+            if rootA != rootB { parent[rootB] = rootA }
+        }
+
+        for leftover in self {
+            let keys = Self.groupingKeys(for: leftover)
+            for key in keys where parent[key] == nil { parent[key] = key }
+            guard let first = keys.first else { continue }
+            for other in keys.dropFirst() { union(first, other) }
+        }
+
         var order: [String] = []
         var buckets: [String: [Leftover]] = [:]
 
         for leftover in self {
-            let key = Self.groupingKey(for: leftover)
-            if buckets[key] == nil { order.append(key) }
-            buckets[key, default: []].append(leftover)
+            guard let key = Self.groupingKeys(for: leftover).first else { continue }
+            let root = find(key)
+            if buckets[root] == nil { order.append(root) }
+            buckets[root, default: []].append(leftover)
         }
 
         return order.compactMap { key -> LeftoverGroup? in
@@ -148,19 +188,34 @@ public extension Array where Element == Leftover {
     /// result. Grouping on the resolved name instead merges them honestly,
     /// into one row saying seven locations, matching what the row already
     /// claims about being organised by software rather than by path.
-    static func groupingKey(for leftover: Leftover) -> String {
+    /// Every name this one leftover answers to, strongest first.
+    ///
+    /// More than one, because a leftover that resolves both an identifier and
+    /// a name is the evidence that ties those two names together. The file's
+    /// own name is only a key when nothing was resolved at all, which is the
+    /// original case: neither `Application Support/Codex` nor `Caches/Codex`
+    /// carries an identifier, so both fall through to "codex" and merge.
+    static func groupingKeys(for leftover: Leftover) -> [String] {
+        var keys: [String] = []
         if let bundleID = leftover.potentialOwner?.bundleID, !bundleID.isEmpty {
-            return bundleID.lowercased()
+            keys.append(bundleID.lowercased())
         }
         if let name = leftover.potentialOwner?.name, !name.isEmpty {
-            return name.lowercased()
+            keys.append(name.lowercased())
         }
+        guard keys.isEmpty else { return keys }
+
         // Strip the extensions macOS appends per domain so the same owner
         // in two places lands in one bucket.
         var name = leftover.url.lastPathComponent
         for suffix in [".plist", ".savedState", ".binarycookies"] where name.hasSuffix(suffix) {
             name = String(name.dropLast(suffix.count))
         }
-        return name.lowercased()
+        return [name.lowercased()]
+    }
+
+    /// The single strongest key, kept for callers that want one answer.
+    static func groupingKey(for leftover: Leftover) -> String {
+        groupingKeys(for: leftover).first ?? leftover.url.lastPathComponent.lowercased()
     }
 }

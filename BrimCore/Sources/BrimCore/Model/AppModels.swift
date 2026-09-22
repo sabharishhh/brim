@@ -36,6 +36,32 @@ public enum EvidenceTier: String, Codable, Equatable, Sendable, CaseIterable {
 }
 
 /// Represents a single piece of evidence found on disk.
+/// Who a path belongs to, when the path itself says so.
+///
+/// An app extension, a helper, a login item and a broken symlink all live
+/// inside somebody's bundle, and that enclosing bundle is the thing a person
+/// recognises. `NotificationService` means nothing; `Prime Video` does.
+///
+/// One implementation, in `BrimCore`, because both the sweep and the
+/// registrations list need the same answer and had each grown their own.
+public enum EnclosingBundle {
+
+    /// The name of the innermost enclosing bundle, without its extension.
+    public static func name(of url: URL) -> String? {
+        guard let component = component(of: url) else { return nil }
+        return (component as NSString).deletingPathExtension
+    }
+
+    /// The bundle's full component, extension included.
+    public static func component(of url: URL) -> String? {
+        for component in url.pathComponents
+        where component.hasSuffix(".app") || component.hasSuffix(".framework") {
+            return component
+        }
+        return nil
+    }
+}
+
 public struct Evidence: Codable, Equatable, Sendable {
     public let url: URL
     public let tier: EvidenceTier
