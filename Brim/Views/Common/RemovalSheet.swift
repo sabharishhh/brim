@@ -139,9 +139,19 @@ struct RemovalSheet: View {
         HStack {
             if case .ready = model.phase, let plan = model.plan {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Frees now: ").foregroundColor(.secondary)
-                    + Text(ByteText.short(plan.immediatelyFreedBytes))
-                        .fontWeight(.bold).monospacedDigit()
+                    // Zero is a real answer here and a common one. A set of
+                    // broken symlinks takes no space at all, so "Frees now:
+                    // Empty" is accurate and reads like a fault. Saying what
+                    // is being removed instead keeps the honest number and
+                    // stops it looking like nothing is going to happen.
+                    if plan.immediatelyFreedBytes > 0 {
+                        Text("Frees now: ").foregroundColor(.secondary)
+                        + Text(ByteText.short(plan.immediatelyFreedBytes))
+                            .fontWeight(.bold).monospacedDigit()
+                    } else {
+                        Text("Frees no space: these take up none")
+                            .foregroundColor(.secondary)
+                    }
                     if plan.trashedBytes > 0 {
                         Text("\(ByteText.short(plan.trashedBytes)) goes to the Trash, where you can still get it back")
                             .font(.caption).foregroundColor(.secondary)
