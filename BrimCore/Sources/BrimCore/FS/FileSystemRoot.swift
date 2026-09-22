@@ -15,6 +15,13 @@ public struct FileSystemRoot: Sendable {
         case userLibrary
         case userPreferences
         case userApplicationSupport
+        /// The shared file list macOS keeps of the documents an application
+        /// most recently opened, one `<identifier>.sfl4` per application.
+        ///
+        /// It is a record about the application and it names the person's
+        /// own files. The record goes with the application; what it points
+        /// at is never touched. `RecordedPathTests` holds that line.
+        case userRecentDocuments
         case userCaches
         case userSavedApplicationState
         case userLogs
@@ -138,6 +145,11 @@ public struct FileSystemRoot: Sendable {
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Preferences")
         case .userApplicationSupport:
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Application Support")
+        case .userRecentDocuments:
+            return rootURL.appendingPathComponent(
+                "Users/\(userName)/Library/Application Support/com.apple.sharedfilelist"
+                + "/com.apple.LSSharedFileList.ApplicationRecentDocuments"
+            )
         case .userCaches:
             return rootURL.appendingPathComponent("Users/\(userName)/Library/Caches")
         case .userSavedApplicationState:
