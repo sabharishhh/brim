@@ -5,8 +5,15 @@ import BrimProtocol
 
 private actor LeftoversStub: BrimServiceProtocol {
     let items: [Leftover]
-    init(_ items: [Leftover]) { self.items = items }
-    func leftovers() async throws -> [Leftover] { items }
+    let failure: Error?
+    init(_ items: [Leftover], failure: Error? = nil) {
+        self.items = items
+        self.failure = failure
+    }
+    func leftovers() async throws -> [Leftover] {
+        if let failure { throw failure }
+        return items
+    }
 
     func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
     func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
@@ -41,6 +48,40 @@ private func leftover(
 
 @MainActor
 final class LeftoversModelTests: XCTestCase {
+
+    /// The grouped lists are stored now rather than recomputed on read, so
+    /// they have to be reassigned everywhere the flat lists are. Grouping two
+    /// hundred and fifty leftovers ran several times per body evaluation when
+    /// it was a computed property, which is why it moved; the price of moving
+    /// it is that a stale group list is now possible and was not before.
+    func testTheGroupedListsNeverLagBehindTheFlatOnes() async {
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([
+            leftover("Codex", .orphaned), leftover("Codex", .orphaned),
+            leftover("Loki", .unclaimed)
+        ]))
+
+        XCTAssertEqual(model.orphanedGroups, model.orphaned.groupedByOwner())
+        XCTAssertEqual(model.unclaimedGroups, model.unclaimed.groupedByOwner())
+
+        // And again after a second, different load.
+        await model.load(service: LeftoversStub([leftover("Warp", .unclaimed)]))
+        XCTAssertTrue(model.orphanedGroups.isEmpty, "The previous run's orphans are not this run's")
+        XCTAssertEqual(model.unclaimedGroups, model.unclaimed.groupedByOwner())
+    }
+
+    func testAFailedScanClearsTheLastRunRatherThanLeavingItOnScreen() async {
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([leftover("Codex", .orphaned)]))
+        XCTAssertFalse(model.orphanedGroups.isEmpty)
+
+        await model.load(service: LeftoversStub([], failure: Nope.no))
+
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertTrue(model.orphanedGroups.isEmpty, "A failed sweep shows no rows, not old rows")
+        XCTAssertTrue(model.all.isEmpty)
+        XCTAssertTrue(model.selection.isEmpty, "Nothing stays ticked from a run that did not happen")
+    }
 
     func testOnlyOrphansArePreSelected() async {
         // The whole point of the two-category model. An unclaimed item is

@@ -214,8 +214,12 @@ struct BackgroundView: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "eye.slash").foregroundColor(.orange)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Part of this list is missing").fontWeight(.medium)
-                        Text(gap.limitation ?? "\(gap.kind.displayName)s could not be read.")
+                        // Names the surface rather than announcing a hole.
+                        // "Part of this list is missing" told somebody there
+                        // was a problem without saying which one, and the
+                        // sentence underneath already says the rest.
+                        Text("\(gap.kind.displayName)s are not in this list").fontWeight(.medium)
+                        Text(gap.limitation ?? "\(gap.kind.displayName)s were not read on this pass.")
                             .font(.callout).foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -259,15 +263,18 @@ struct BackgroundView: View {
                     },
                     BrimTableColumn(
                         id: "signer", title: "Signed by", width: 130, minWidth: 90,
-                        compare: { ($0.signedBy ?? "") < ($1.signedBy ?? "") }
+                        compare: { $0.signerDescription < $1.signerDescription }
                     ) { group in
-                        Text(group.signedBy ?? "—").foregroundColor(.secondary).lineLimit(1)
+                        Text(group.signerDescription).foregroundColor(.secondary).lineLimit(1)
                     },
                     BrimTableColumn(
                         id: "path", title: "Location", minWidth: 200,
-                        compare: { ($0.location ?? "") < ($1.location ?? "") }
+                        compare: { ($0.location ?? "\u{10FFFF}") < ($1.location ?? "\u{10FFFF}") }
                     ) { group in
-                        Text(group.location ?? "—")
+                        // A background-tasks record can carry no path at all,
+                        // which is a fact about the record rather than a
+                        // blank Brim has nothing to say about.
+                        Text(group.location ?? "Recorded without a path")
                             .foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
                     },
                 ],
