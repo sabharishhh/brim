@@ -32,10 +32,19 @@ final class StepVocabularyTests: XCTestCase {
             .appendingPathComponent("BrimCore/Sources/BrimCore/Model/Plan/Planner.swift")
         let text = try String(contentsOf: planner, encoding: .utf8)
 
-        // Two are not the planner's to emit. Archiving is driven by the
-        // intent, and a background reset is a guided flow of its own: it
-        // is not part of uninstalling one application, and it cannot be
-        // planned without a captured restore list.
+        // Three are not this planner's to emit, and they are not equal.
+        //
+        // `archivePath` is driven by the intent and `delegateToolCleanup` is
+        // produced by `BrimService.planToolCleanup`, so both have a producer
+        // and reach the executor in the shipping app.
+        //
+        // `btmReset` has neither. `BTMRestoreCapture`, `RestoreListStore` and
+        // the executor branch all exist and are covered by tests, but nothing
+        // in the product captures a list, builds a plan around one or offers
+        // the reset, so the whole feature is reachable only from the test
+        // suite. That is the decoration this file was written to catch, and
+        // it is recorded here rather than excused: T-7.3 wires it up, and
+        // this exemption comes out when it does.
         let notThePlanners: Set<StepKind> = [.btmReset, .archivePath, .delegateToolCleanup]
 
         for kind in StepKind.allCases where !notThePlanners.contains(kind) {

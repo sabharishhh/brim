@@ -113,14 +113,19 @@ public struct AppDetailView: View {
         isLoading = true
         error = nil
         do {
-            // Need to resolve Identity first
-            // We use a dummy IdentityResolver with a dummy root for the real app,
-            // but we can just construct an Identity if we parse Info.plist, or just use the bundle URL directly.
-            // Wait, we need an Identity to pass to inspect().
-            // Identity requires bundleIdentifier.
+            // A bundle with no identifier is not searchable, and standing in
+            // the literal string "unknown" for one was worse than useless: it
+            // became the identifier the footprint search ran on, so anything
+            // on disk actually called "unknown" would have been gathered up
+            // and offered for removal as this application's.
             let bundle = Bundle(url: appURL)
-            let bundleId = bundle?.bundleIdentifier ?? "unknown"
-            
+            guard let bundleId = bundle?.bundleIdentifier else {
+                self.error = "\(appName) carries no bundle identifier, so there is nothing "
+                           + "to search the disk for."
+                isLoading = false
+                return
+            }
+
             let id = Identity(
                 bundleID: bundleId,
                 teamID: nil,

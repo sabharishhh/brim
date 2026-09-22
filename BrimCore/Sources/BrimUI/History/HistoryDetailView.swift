@@ -21,7 +21,10 @@ public struct HistoryDetailView: View {
                 Text(entry.createdAt, style: .time)
             }
             
-            Text("Target: \(entry.intent.subjectIdentity.bundleID ?? "unknown")")
+            // Not every subject has an identifier. Its name is still a fact,
+            // where the word "unknown" was not.
+            Text("Target: " + (entry.intent.subjectIdentity.bundleID
+                               ?? entry.intent.subjectIdentity.name))
             
             Text("Steps")
                 .font(.headline)
