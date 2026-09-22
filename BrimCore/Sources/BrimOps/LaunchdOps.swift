@@ -15,14 +15,14 @@ extension SafeOps {
         try task.run()
         task.waitUntilExit()
         
-        // It's acceptable for unload to fail if it was already unloaded, but we log it.
-        // Actually, launchctl bootout might be better, but unload works universally.
-        if task.terminationStatus != 0 {
-            // Read output to log or debug
-            // let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            // let output = String(data: data, encoding: .utf8)
-            // print("Unload failed: \(output ?? "")")
-        }
+        // A non-zero status is ignored on purpose: a job that was already
+        // unloaded is the common case and is not a failure. The comment here
+        // used to say "we log it", above an empty branch holding a
+        // commented-out `print`, which said nothing was logged at all. It is
+        // still nothing, and now it says so. Whether a genuine unload failure
+        // should reach the journal is a real question, and a separate one
+        // from removing debug output: launchd keeping a job alive after its
+        // plist is gone is the B2 failure mode in `docs/deep-uninstall.md`.
     }
     public static func loadLaunchdJob(path: String) throws {
         let task = Process()

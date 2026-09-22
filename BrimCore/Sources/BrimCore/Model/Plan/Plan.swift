@@ -61,13 +61,19 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
         self.mtime = mtime
     }
     
+    /// Equal when the file is the same file, allowing 10ms of drift in the
+    /// modification time because a date that has been through JSON is not
+    /// the date that went in.
+    ///
+    /// This used to print on every mismatch. An `==` is not the place: it
+    /// runs for comparisons that are not safety decisions, it has no plan or
+    /// step to name, and the one caller where a mismatch means something,
+    /// `BrimService.apply` re-planning and comparing, already builds a
+    /// message naming the step, the target and both fingerprints, and throws
+    /// it as `ApplyError.validationFailed`.
     public static func == (lhs: TargetFingerprint, rhs: TargetFingerprint) -> Bool {
         let timeDiff = abs(lhs.mtime.timeIntervalSince1970 - rhs.mtime.timeIntervalSince1970)
-        if lhs.dev != rhs.dev || lhs.ino != rhs.ino || timeDiff > 0.01 {
-            print("TARGET FINGERPRINT MISMATCH: dev=\(lhs.dev == rhs.dev) ino=\(lhs.ino == rhs.ino) diff=\(timeDiff)")
-            return false
-        }
-        return true
+        return lhs.dev == rhs.dev && lhs.ino == rhs.ino && timeDiff <= 0.01
     }
 }
 

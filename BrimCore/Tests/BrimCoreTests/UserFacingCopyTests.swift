@@ -60,7 +60,10 @@ final class UserFacingCopyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         var found: [(String, String)] = []
-        for directory in ["Brim/Views", "BrimCore/Sources/BrimUI"] {
+        // `Brim` rather than `Brim/Views`, which left `BrimApp.swift` out:
+        // the self-uninstall confirmation and its failure alert are as much
+        // copy as anything in a view, and nothing was reading them.
+        for directory in ["Brim", "BrimCore/Sources/BrimUI"] {
             let base = root.appendingPathComponent(directory)
             guard let walk = FileManager.default.enumerator(
                 at: base, includingPropertiesForKeys: nil
