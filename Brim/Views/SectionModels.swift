@@ -25,7 +25,6 @@ final class SectionModels: ObservableObject {
     let leftovers = LeftoversModel()
     let background = BackgroundModel()
     let storage = StorageModel()
-    let duplicates = DuplicatesModel()
     let energy = EnergyModel()
     let developer = DeveloperModel()
     let updates = UpdatesModel()

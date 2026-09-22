@@ -16,13 +16,11 @@ public protocol BrimServiceProtocol: Sendable {
     func verify(planId: UUID) async throws -> VerificationResult
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
-    func dumpBTM() async throws -> String
     /// Applications installed on this machine, for the Applications view.
     func installedApplications() async throws -> [InstalledApplication]
     func leftovers() async throws -> [Leftover]
     /// Past removals whose contents are still in the Trash, so still restorable.
     func recoverableItems() async throws -> [RecoverableItem]
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup]
     /// Clears registrations that became stale since the last look — chiefly
     /// when the user empties the Trash. Cheap, idempotent, and safe to call
     /// on every Trash change.
@@ -66,7 +64,6 @@ public protocol BrimServiceProtocol: Sendable {
     /// with no network request of any kind.
     func updateReport() async -> UpdateReport
     /// Energy per application, accumulated across restarts.
-    func energyTotals() async -> EnergyTotals
     /// Checks for newer versions. Reaches the network, so only ever on a
     /// press.
     func checkForUpdates() async -> [AvailableUpdate]
@@ -123,9 +120,6 @@ public extension BrimServiceProtocol {
     }
     func updateReport() async -> UpdateReport {
         UpdateReport(coverage: [], agents: [], homebrewPresent: false)
-    }
-    func energyTotals() async -> EnergyTotals {
-        EnergyTotals(accumulated: [], since: Date(), coverageGaps: 0)
     }
     func checkForUpdates() async -> [AvailableUpdate] { [] }
     func installUpdate(_ update: AvailableUpdate) async -> String? {
