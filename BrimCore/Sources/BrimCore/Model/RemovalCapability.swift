@@ -24,8 +24,13 @@ public enum RemovalCapability {
         if access(parent, W_OK) == 0 {
             // The directory allows it. A restricted flag on the item
             // itself still wins, and no permission overrides that one.
+            //
+            // `lstat`, because the flags that matter are the ones on the
+            // thing being unlinked. `stat` follows a symbolic link and
+            // answers about the target, which for a broken link fails
+            // outright and skipped this check entirely.
             var info = stat()
-            if stat(path, &info) == 0, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
+            if lstat(path, &info) == 0, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
                 return .refusedByOS
             }
             return .ok
@@ -40,6 +45,35 @@ public enum RemovalCapability {
         // permission bits.
         case EPERM: return .needsFullDiskAccess
         default: return .needsHelper
+        }
+    }
+
+    /// Why a whole folder refuses, for a refusal that covers several
+    /// things at once.
+    ///
+    /// `explanation` is written about one item, which is right on a row and
+    /// wrong in a summary: fourteen commands in one directory produced
+    /// fourteen copies of "This sits in a folder that belongs to the
+    /// system, so removing it needs an administrator", and pluralising the
+    /// sentence around it left "This sits ... removing it ... They are all
+    /// in /usr/local/bin". Anchoring the sentence on the folder instead
+    /// makes one wording correct for one item and for fourteen.
+    ///
+    /// Nil where the folder is not the reason. A restricted flag belongs to
+    /// the item, and saying the directory is at fault would send somebody
+    /// after the wrong thing.
+    public static func folderExplanation(_ capability: Capability, folder: String) -> String? {
+        switch capability {
+        case .ok:
+            return nil
+        case .needsHelper:
+            return "\(folder) belongs to the system, so removing anything in it needs an "
+                 + "administrator."
+        case .needsFullDiskAccess:
+            return "\(folder) is one macOS keeps private. Brim needs Full Disk Access to "
+                 + "change what is in it."
+        case .refusedByOS:
+            return nil
         }
     }
 

@@ -313,7 +313,9 @@ public actor LeftoversScanner {
             evidence: owner.map {
                 "This command points into \($0), which is not installed."
             } ?? "This command points at \(target.path), which is not there.",
-            capability: .ok,
+            // Asked, not assumed. These sit in `/usr/local/bin` more often
+            // than anywhere else, and that directory belongs to root.
+            capability: RemovalCapability.forDeleting(url.path),
             lastAccessed: nil
         )
     }
@@ -529,12 +531,22 @@ public actor LeftoversScanner {
     /// either, since TCC is judged on the responsible application rather
     /// than the effective user. Reported honestly so the UI can explain it
     /// instead of failing.
+    ///
+    /// Everything else asks the permissions, which is the question the old
+    /// default answer of `.ok` was assuming away. Fourteen broken commands
+    /// in `/usr/local/bin` were offered, ticked, planned, authorized and
+    /// then refused by the kernel, because that directory is `root:wheel`
+    /// and `drwxr-xr-x` and unlinking a name edits the directory holding
+    /// it. The person got a wall of text after the fact saying each one
+    /// needed an administrator, which `RemovalCapability` could have said
+    /// before anything was promised. Same incident as the two Keystone jobs
+    /// in `/Library/LaunchAgents`, in a different module.
     private func capability(for url: URL, in domain: FileSystemRoot.Domain) -> Capability {
         switch domain {
         case .userContainers, .userGroupContainers:
             return hasFullDiskAccess ? .ok : .needsFullDiskAccess
         default:
-            return .ok
+            return RemovalCapability.forDeleting(url.path)
         }
     }
 
