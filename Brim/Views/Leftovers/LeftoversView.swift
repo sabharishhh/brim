@@ -359,10 +359,24 @@ private struct LeftoverDetail: View {
             Text(domain.whatItHolds)
                 .font(.callout).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(item.url.path)
-                .font(.caption).foregroundColor(.secondary)
-                .textSelection(.enabled)
-                .truncationMode(.middle).lineLimit(1)
+            HStack(spacing: 6) {
+                Text(item.url.path)
+                    .font(.caption).foregroundColor(.secondary)
+                    .textSelection(.enabled)
+                    .truncationMode(.middle).lineLimit(1)
+                Spacer()
+                // Answers "is this really where it says it is" directly,
+                // rather than asking someone to trust a path string. Finder
+                // shows a broken symlink with its own overlay, so this
+                // works exactly the same for the dangling ones.
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help("Show in Finder")
+            }
             if item.capability == .needsFullDiskAccess {
                 Label("Needs Full Disk Access", systemImage: "lock")
                     .font(.caption2).foregroundColor(.orange)
