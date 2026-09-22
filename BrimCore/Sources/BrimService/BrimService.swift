@@ -731,10 +731,14 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func registrations() async -> RegistrationReport {
         let inventory = RegistrationInventory(surfaces: Self.everySurface)
-        return RegistrationReport(
-            registrations: await inventory.all(in: root),
-            coverage: await inventory.coverage(in: root)
-        )
+        // Both questions at once. These were two sequential awaits, and
+        // every surface answers them from the same read: asking what
+        // `pluginkit` holds and then asking whether `pluginkit` answered
+        // ran the subprocess twice, and the same doubling applied to the
+        // Background Task Management store and every directory walk.
+        async let registrations = inventory.all(in: root)
+        async let coverage = inventory.coverage(in: root)
+        return RegistrationReport(registrations: await registrations, coverage: await coverage)
     }
 
     /// Names what is still there and what stopped it going.
