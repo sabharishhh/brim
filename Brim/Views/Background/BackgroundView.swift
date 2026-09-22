@@ -54,10 +54,14 @@ struct BackgroundView: View {
                 title: "Remove background jobs",
                 subtitle: intent.explicitTargets.count == 1
                     ? "One job file, unloaded and then moved to the Trash"
-                    : "\(intent.explicitTargets.count) job files, unloaded and then moved to the Trash"
-            ) {
-                Task { await model.load(service: service) }
-            }
+                    : "\(intent.explicitTargets.count) job files, unloaded and then moved to the Trash",
+                onRemoved: { paths in
+                    withAnimation(.easeOut(duration: 0.22)) { model.forget(paths: paths) }
+                },
+                onFinished: {
+                    Task { await model.load(service: service) }
+                }
+            )
         }
     }
 

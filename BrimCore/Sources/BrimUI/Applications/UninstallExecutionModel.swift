@@ -106,6 +106,14 @@ public final class UninstallExecutionModel: ObservableObject {
              + "releases them when the snapshot expires or when it needs the room."
     }
 
+    /// Told the moment a removal is proved, with the paths that went.
+    ///
+    /// Not when the sheet is dismissed. The list behind it used to wait for
+    /// Done and then rescan the whole Mac to discover what had changed,
+    /// which it already knew, so a row the person had just watched be
+    /// removed sat there for another four hundred milliseconds.
+    public var onRemoved: (@MainActor (Set<String>) -> Void)?
+
     /// One authorization for the whole plan, then apply, then verify.
     public func authorize(requesterIdentity: String) async {
         guard let service, let plan, case .ready = phase else { return }
@@ -124,9 +132,17 @@ public final class UninstallExecutionModel: ObservableObject {
         // swallowed, because an unverified removal is the thing this product
         // exists to avoid.
         do {
-            phase = .verified(try await service.verify(planId: plan.planId))
+            let result = try await service.verify(planId: plan.planId)
+            phase = .verified(result)
+            // Whatever the check proved gone, said straight away. What is
+            // still there stays on screen, because it is still there.
+            let planned = plan.steps.filter { $0.kind.targetIsPath }.map(\.target)
+            onRemoved?(result.removedPaths(from: planned))
         } catch {
             phase = .appliedButUnverified(error.localizedDescription)
+            // The removal ran and only the proof failed, so the list cannot
+            // be told anything about what went. It refreshes on dismissal,
+            // which is the one case where waiting is the honest answer.
         }
     }
 }
