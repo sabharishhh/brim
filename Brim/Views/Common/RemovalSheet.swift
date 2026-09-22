@@ -34,6 +34,10 @@ struct RemovalSheet: View {
             footer
         }
         .frame(minWidth: 560, idealWidth: 640, minHeight: 400, idealHeight: 480)
+        // Checking, then the list, then removing, then the result. Four
+        // states that replaced each other instantly, which read as the
+        // sheet flickering rather than as it working.
+        .animation(.easeOut(duration: 0.18), value: model.phase)
         .task { await model.prepare(intent: intent, service: service) }
     }
 

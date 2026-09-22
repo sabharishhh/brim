@@ -24,9 +24,19 @@ struct ApplicationsView: View {
     @State private var dropComplaint: String?
 
     var body: some View {
-        HSplitView {
+        // Not an HSplitView. That is NSSplitView behind a SwiftUI face, and
+        // it lays out with constraints: scrolling either pane re-measured
+        // its content, the hosting view reported a new size to the split
+        // view, and AppKit ran `-[NSWindow layoutIfNeeded]` over the whole
+        // window on every frame. Profiling the leftovers list found half
+        // the main thread going into that one loop, and the two panes were
+        // dragging each other down through it. The panes here have fixed
+        // widths and nothing was ever dragged.
+        HStack(spacing: 0) {
             applicationList
                 .frame(minWidth: 260, idealWidth: 300, maxWidth: 380)
+
+            Divider()
 
             detail
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
