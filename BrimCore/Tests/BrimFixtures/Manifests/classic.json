@@ -28,8 +28,8 @@
     },
     {
       "relativePath": "Library/Group Containers/TEAMID1234.com.brim.classic",
-      "tier": "B",
-      "description": "Container keyed to the developer's Team ID"
+      "tier": "C",
+      "description": "Sits under this developer's team identifier. The application does not declare it, so Brim will not tick it for you."
     }
   ]
 }
