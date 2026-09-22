@@ -286,6 +286,17 @@ private struct LeftoverDetail: View {
                     }
                 }
 
+                // What is stopping this, before anything about what it is.
+                //
+                // The checkbox on this group will not tick and the lock
+                // beside its name does not say why. Without this the person
+                // clicks, nothing happens, and the only explanation arrives
+                // after an authorization that was never going to work.
+                if let obstacle = group.sharedObstacle,
+                   let why = RemovalCapability.explanation(obstacle) {
+                    callout("lock", "Brim cannot remove this", why, .orange)
+                }
+
                 // Why Brim thinks this is a leftover at all — the sentence
                 // the flat list computed and then discarded.
                 callout(
@@ -383,9 +394,19 @@ private struct LeftoverDetail: View {
                 .buttonStyle(.borderless)
                 .help("Show in Finder")
             }
-            if item.capability == .needsFullDiskAccess {
-                Label("Needs Full Disk Access", systemImage: "lock")
+            // Every obstacle, not only the one that had a label written
+            // for it. A broken command in a root-owned folder used to show
+            // nothing at all here and nothing on its checkbox either.
+            //
+            // And only when the group did not already say it. Docker leaves
+            // seven broken commands in one folder for one reason, and the
+            // callout above plus seven copies of the same orange sentence
+            // is the wall this was meant to stop being.
+            if group.sharedObstacle == nil,
+               let why = RemovalCapability.explanation(item.capability) {
+                Label(why, systemImage: "lock")
                     .font(.caption2).foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(11)
