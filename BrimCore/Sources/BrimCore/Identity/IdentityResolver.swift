@@ -55,6 +55,10 @@ public actor IdentityResolver {
         let bundle = Bundle(url: bundleURL)
         let bundleID = bundle?.bundleIdentifier
         let version = bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
+        // The name the bundle uses for itself, which is what it names its
+        // support and cache folders after and is not always its file name.
+        let declaredName = (bundle?.infoDictionary?["CFBundleName"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
         
         var teamID: String? = nil
         var cdHashString: String? = nil
@@ -97,6 +101,7 @@ public actor IdentityResolver {
             bundleID: bundleID,
             teamID: teamID,
             name: name,
+            bundleName: declaredName,
             version: version,
             isSandboxed: isSandboxed,
             groupContainers: groupContainers,
