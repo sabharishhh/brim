@@ -20,6 +20,14 @@ struct RemovalSheet: View {
     let service: any BrimServiceProtocol
     let title: String
     let subtitle: String
+    /// Told the moment the check proves what went, with those paths.
+    ///
+    /// The list behind this sheet used to learn nothing until Done was
+    /// pressed, and then rescan the whole Mac. A row somebody had just
+    /// watched be removed stayed on screen through both.
+    var onRemoved: ((Set<String>) -> Void)?
+    /// Dismissal. Still here for the case the check could not run, where a
+    /// fresh scan really is the only way to know.
     let onFinished: () -> Void
 
     @StateObject private var model = UninstallExecutionModel()
@@ -38,7 +46,10 @@ struct RemovalSheet: View {
         // states that replaced each other instantly, which read as the
         // sheet flickering rather than as it working.
         .animation(.easeOut(duration: 0.18), value: model.phase)
-        .task { await model.prepare(intent: intent, service: service) }
+        .task {
+            model.onRemoved = { paths in onRemoved?(paths) }
+            await model.prepare(intent: intent, service: service)
+        }
     }
 
     /// Both outcomes that leave the work done, so the button reads "Done"
@@ -59,7 +70,11 @@ struct RemovalSheet: View {
             }
             Spacer()
             Button(isFinished ? "Done" : "Cancel") {
-                if isFinished { onFinished() }
+                // Only when the check could not run. When it could, the list
+                // was told at verification and has already caught up, so
+                // rescanning here would be four hundred milliseconds spent
+                // rediscovering what it knows.
+                if case .appliedButUnverified = model.phase { onFinished() }
                 dismiss()
             }
             .keyboardShortcut(.escape, modifiers: [])

@@ -56,6 +56,24 @@ public final class BackgroundModel: ObservableObject {
 
     public init() {}
 
+    /// Drops the job files a removal proved gone, right now.
+    ///
+    /// Same reason as the leftovers list: `verify` re-observed every path
+    /// and said which survived, so rescanning every registration surface to
+    /// rediscover that is work the answer has already been given for. A job
+    /// that is still there stays on screen, because it is still there.
+    public func forget(paths: Set<String>) {
+        guard !paths.isEmpty else { return }
+        let surviving = report.registrations.filter {
+            guard let record = $0.recordPath else { return true }
+            return !paths.contains(record)
+        }
+        guard surviving.count != report.registrations.count else { return }
+        report = RegistrationReport(registrations: surviving, coverage: report.coverage)
+        selection.formIntersection(Set(report.stale.map(\.id)))
+        regroup()
+    }
+
     /// The three lists, worked out once per scan and once per keystroke.
     ///
     /// They were computed properties, and that was the second half of the
