@@ -88,12 +88,18 @@ final class EvidenceSourceTests: XCTestCase {
         
         // Load expected manifest.
         //
-        // `Application Support/ClassicApp.app` moved from Tier B to Tier C
-        // here, and that was the point rather than a casualty. It is matched
-        // on the application's name, and the inventory has always rated a
-        // name match C: a golden file is only as good as the behaviour it
-        // was copied from, and this one had copied down a source that called
-        // a name match strong evidence and ticked the row for removal.
+        // Two rows moved from Tier B to Tier C here, and that was the point
+        // rather than a casualty. A golden file is only as good as the
+        // behaviour it was copied from, and this one had copied down two
+        // sources that called weak evidence strong and ticked the row for
+        // removal.
+        //
+        // `Application Support/ClassicApp.app` is matched on the
+        // application's name, and the inventory has always rated a name
+        // match C. `Group Containers/TEAMID1234.com.brim.classic` is matched
+        // on the team identifier, which belongs to the developer rather than
+        // to one of their applications: Microsoft puts one string on Word,
+        // Teams, OneDrive and Visual Studio Code alike.
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         
