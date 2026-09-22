@@ -9,8 +9,8 @@ public struct ApprovalToken: Codable, Equatable, Sendable {
     /// Binds to exactly one plan. A plan edited after approval no longer
     /// matches, and `apply` refuses it.
     public let planHash: String
-    /// Binds to who asked. A token minted for the app does not let the CLI
-    /// apply the same plan.
+    /// Binds to who asked. A token minted for one requester does not let a
+    /// different one apply the same plan.
     public let requester: String
     public let issuedAt: Date
     /// Minutes, not hours. Presence is a claim about now.
@@ -69,10 +69,10 @@ public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
 ///
 /// The service will not mint a token unless something inside its own
 /// process can put the decision in front of a person. Brim's app installs
-/// one of these at launch, after it has shown the review sheet. The CLI,
-/// the MCP host and anything holding an XPC client never do, so for them
-/// there is no route from a plan to a token at all: not a check they might
-/// pass, an absence of the machinery.
+/// one of these at launch, after it has shown the review sheet. Nothing
+/// holding an XPC client ever does, so from outside the app there is no
+/// route from a plan to a token at all: not a check something might pass,
+/// an absence of the machinery.
 public struct ConsentSource: Sendable {
     /// Puts the decision in front of the person and reports what they said.
     public let ask: @Sendable (ApprovalRequestReceipt) async -> Bool
