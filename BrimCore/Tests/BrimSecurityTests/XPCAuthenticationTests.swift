@@ -68,6 +68,32 @@ final class XPCAuthenticationTests: XCTestCase {
         )
     }
 
+    /// The other direction, which was the one left unheld.
+    ///
+    /// This test's neighbour bound the two copies of the *application*
+    /// requirement together and stopped there, so the daemon half drifted
+    /// unnoticed. `BrimPeer.daemon` named `com.sabharishhh.brim.daemon`,
+    /// which was the full-service root daemon deleted in 0de063c; the daemon
+    /// Brim actually ships is signed `com.sabharishhh.brim.jobhelper`, which
+    /// `BrimJobHelper.daemonRequirement` had right the whole time. Verified
+    /// against the built binary, the requirement as written could not be
+    /// satisfied by anything Brim produces, which is the identical failure
+    /// mode as the original `com.google.Brim` string.
+    func testThePrivilegedHelperAgreesAboutWhichDaemonIsBrims() {
+        XCTAssertEqual(
+            BrimJobHelper.daemonRequirement(),
+            MutualAuthentication.requirement(for: .daemon),
+            "The two copies of the daemon requirement name different identifiers, so one "
+            + "of them pins something nothing is signed as."
+        )
+    }
+
+    /// The requirement has to name the service the daemon actually listens
+    /// on, because that is the name the signature carries.
+    func testTheDaemonIsPinnedToTheNameItIsSignedWith() {
+        XCTAssertEqual(BrimPeer.daemon.signingIdentifier, BrimJobHelper.machServiceName)
+    }
+
     // MARK: - Enforcement
 
     func testAPeerThatCannotSatisfyTheRequirementIsRejected() async throws {

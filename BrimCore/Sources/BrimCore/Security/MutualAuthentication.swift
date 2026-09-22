@@ -14,7 +14,21 @@ public enum BrimPeer: String, Sendable, CaseIterable {
     public var signingIdentifier: String {
         switch self {
         case .application: return "com.sabharishhh.brim"
-        case .daemon: return "com.sabharishhh.brim.daemon"
+        // The job helper, because it is the only daemon Brim ships. This
+        // said `com.sabharishhh.brim.daemon`, which named the full-service
+        // root daemon deleted in 0de063c and which nothing has been signed
+        // as since. Checked against the built binary rather than argued
+        // about, the way this file's own comment says to:
+        //
+        //     codesign --verify -R='… identifier "com.sabharishhh.brim.daemon" …' BrimJobHelper
+        //     test-requirement: code failed to satisfy specified code requirement(s)
+        //
+        // which is the same failure as the original `com.google.Brim`, with
+        // a different wrong name. `BrimJobHelper.daemonRequirement` had the
+        // right one all along, and `XPCAuthenticationTests` held the two
+        // copies together for the application direction and not for this
+        // one, so only half of the pair was protected.
+        case .daemon: return "com.sabharishhh.brim.jobhelper"
         }
     }
 }
