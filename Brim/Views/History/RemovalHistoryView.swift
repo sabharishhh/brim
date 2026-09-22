@@ -126,13 +126,23 @@ struct RemovalHistoryView: View {
 
             Spacer()
 
+            // Only where it would do something. This was a Button on every
+            // row with `.disabled(!record.canUndo)`, and on this Mac the
+            // header read "39 removals, 0 can be undone": thirty-nine
+            // bezels, tint colours, hover regions and focus rings drawn per
+            // frame for thirty-nine controls that did nothing. It is the
+            // single reason this list was rough to scroll, and a disabled
+            // control on every row is what the Background footer already
+            // refuses to do.
+            //
+            // The row says why instead, which it was saying anyway: "No
+            // longer in the Trash", or "Deleted permanently".
             if model.undoingPlanIds.contains(record.id) {
                 ProgressView().controlSize(.small)
-            } else {
+            } else if record.canUndo {
                 Button("Undo") {
                     Task { await model.undo(record) }
                 }
-                .disabled(!record.canUndo)
             }
         }
         .padding(.vertical, 4)
