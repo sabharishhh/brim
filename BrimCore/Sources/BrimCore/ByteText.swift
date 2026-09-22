@@ -8,9 +8,9 @@ import Foundation
 /// around it rather than a replacement.
 ///
 /// Lives in `BrimCore` because a size is spoken in every layer: the model
-/// writes sentences containing one, the CLI prints them, and the views
-/// show them. One spelling means one place, and `ByteTextConsistencyTests`
-/// fails if the raw formatter reappears anywhere else.
+/// writes sentences containing one and the views show them. One spelling
+/// means one place, and `ByteTextConsistencyTests` fails if the raw
+/// formatter reappears anywhere else.
 public enum ByteText {
 
     /// For a size shown on its own, in a column or beside a name.

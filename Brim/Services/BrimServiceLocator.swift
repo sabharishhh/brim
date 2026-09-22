@@ -27,10 +27,10 @@ enum BrimServiceLocator {
     /// Gives the service the one thing that lets it mint an approval: a
     /// window, in front of a person.
     ///
-    /// This is what separates the app from every other client. The CLI and
-    /// an MCP host run the same code and hold the same kind of service
-    /// object, and neither of them installs this, so neither of them can
-    /// turn a plan into a token however they are driven.
+    /// This is what separates the app from every other client. Anything
+    /// else holding a service object runs the same code and holds the same
+    /// kind of object, and installs no consent source, so it cannot turn a
+    /// plan into a token however it is driven.
     ///
     /// The answer is already a yes by the time it gets here: Brim's review
     /// sheets show the whole plan and the person pressed the button that

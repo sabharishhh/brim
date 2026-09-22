@@ -147,10 +147,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// variable: `XCTestConfigurationFilePath` is set by Xcode's runner but
     /// not by SwiftPM's, so `swift test` would otherwise demand a fingerprint
     /// for every plan it applies on a Mac with working Touch ID.
-    static let isAutomatedRun: Bool = {
-        if NSClassFromString("XCTestCase") != nil { return true }
-        return ProcessInfo.processInfo.environment["BRIM_MCP_TEST"] != nil
-    }()
+    ///
+    /// There was a second way in, an environment variable belonging to the
+    /// MCP server's test harness. That server is gone and nothing sets the
+    /// variable any more, so what was left was an approval shortcut a debug
+    /// build would honour for anything able to set a variable.
+    static let isAutomatedRun: Bool = NSClassFromString("XCTestCase") != nil
     #endif
 
     /// When the owner enrolled, and when presence was last proved. Persisted,
@@ -162,9 +164,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// and carrying no authority of their own.
     private var pendingApprovals: [UUID: ApprovalRequestReceipt] = [:]
 
-    /// The only thing in this process that can ask a person. Nil in the
-    /// CLI, in an MCP host, and in any process that is not Brim's app,
-    /// which is why none of them can approve anything.
+    /// The only thing in this process that can ask a person. Nil in any
+    /// process that is not Brim's app, which is why nothing outside the
+    /// app can approve anything.
     private var consent: ConsentSource?
 
     /// How presence is proved. Nil means the real thing, which is a system
@@ -234,10 +236,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// The old version minted a token here whenever `ApprovalPolicy`
     /// decided the plan was reversible, which is almost every plan. In the
     /// app that was defensible, because the review sheet had already been
-    /// read and confirmed. From the CLI and from an MCP host there is no
-    /// review sheet, so a caller could plan, request and apply without a
-    /// person ever being involved. That is the one thing the product
-    /// promises cannot happen.
+    /// read and confirmed. Anywhere else there is no review sheet, so a
+    /// caller could plan, request and apply without a person ever being
+    /// involved. That is the one thing the product promises cannot happen.
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
