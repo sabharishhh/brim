@@ -19,6 +19,15 @@ public final class UninstallExecutionModel: ObservableObject {
         case executing
         /// Applied, and re-checked afterwards.
         case verified(VerificationResult)
+        /// Applied, but the re-check itself could not run.
+        ///
+        /// Its own case because it used to share `failed`, which the sheet
+        /// draws in red under the heading "Stopped". A person whose removal
+        /// had in fact gone through, and whose verification pass then failed
+        /// for its own reasons, was told the whole thing had been stopped.
+        /// The removal is not undone by a failed check and the sheet has to
+        /// say which of the two happened.
+        case appliedButUnverified(String)
         case failed(String)
     }
 
@@ -32,7 +41,7 @@ public final class UninstallExecutionModel: ObservableObject {
     public var isBusy: Bool {
         switch phase {
         case .preparing, .executing: return true
-        case .ready, .verified, .failed: return false
+        case .ready, .verified, .appliedButUnverified, .failed: return false
         }
     }
 
@@ -117,7 +126,7 @@ public final class UninstallExecutionModel: ObservableObject {
         do {
             phase = .verified(try await service.verify(planId: plan.planId))
         } catch {
-            phase = .failed("Removed, but verification could not run: \(error.localizedDescription)")
+            phase = .appliedButUnverified(error.localizedDescription)
         }
     }
 }

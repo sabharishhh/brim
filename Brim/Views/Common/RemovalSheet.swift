@@ -37,9 +37,14 @@ struct RemovalSheet: View {
         .task { await model.prepare(intent: intent, service: service) }
     }
 
+    /// Both outcomes that leave the work done, so the button reads "Done"
+    /// and the caller is told to refresh either way. A check that could not
+    /// run does not put anything back.
     private var isFinished: Bool {
-        if case .verified = model.phase { return true }
-        return false
+        switch model.phase {
+        case .verified, .appliedButUnverified: return true
+        default: return false
+        }
     }
 
     private var header: some View {
@@ -72,12 +77,24 @@ struct RemovalSheet: View {
             .padding()
         case .executing:
             ProgressView("Removing…")
+        case .appliedButUnverified(let reason):
+            VStack(spacing: 6) {
+                Image(systemName: "checkmark.seal")
+                    .font(.largeTitle).foregroundColor(.secondary)
+                Text("Removed, but not checked").font(.headline)
+                Text("The removal ran. Brim then went back to confirm each location was "
+                     + "clear and the check itself could not finish: \(reason) "
+                     + "Nothing has been undone.")
+                    .foregroundColor(.secondary).multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .padding()
         case .verified(let result):
             VStack(spacing: 10) {
                 Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
                     .font(.largeTitle)
                     .foregroundColor(result.success ? .green : .orange)
-                Text(result.success ? "Nothing is left" : "Removed, but something is still there")
+                Text(result.success ? "Nothing is left" : "Something is still there")
                     .font(.headline)
                 Text(result.success
                      ? "Every location was checked again. All of them are empty."
