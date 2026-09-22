@@ -41,7 +41,8 @@ public struct BTMListView: View {
             } else {
                 List(viewModel.records, id: \.record.uuid) { enriched in
                     VStack(alignment: .leading) {
-                        Text(enriched.identity?.name ?? enriched.record.name ?? "Unknown")
+                        Text(enriched.identity?.name ?? enriched.record.name
+                             ?? "Recorded without a name")
                             .font(.headline)
                         if let bundleID = enriched.identity?.bundleID ?? enriched.record.bundleIdentifier {
                             Text(bundleID).font(.caption).foregroundColor(.secondary)
@@ -49,7 +50,7 @@ public struct BTMListView: View {
                         Text("UUID: \(enriched.record.uuid)")
                             .font(.caption2)
                             .foregroundColor(.gray)
-                        Text("Type: \(enriched.record.type ?? "Unknown")")
+                        Text("Type: \(enriched.record.type ?? "not stated in the record")")
                             .font(.caption2)
                         if let url = enriched.record.url {
                             Text("Path: \(url.path)")

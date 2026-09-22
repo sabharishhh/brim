@@ -26,7 +26,7 @@ struct ContentView: View {
                 case .review:
                     ReviewSummaryView(navigationSelection: $selection, models: models)
                 case .applications:
-                    ApplicationsView(model: models.applications)
+                    ApplicationsView(model: models.applications, access: models.fullDiskAccess)
                 case .leftovers:
                     LeftoversView(model: models.leftovers)
                 case .background:

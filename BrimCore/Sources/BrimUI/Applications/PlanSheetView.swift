@@ -134,8 +134,15 @@ public struct PlanSheetView: View {
         executionState = .executing
         Task {
             do {
-                BrimClient.shared.service = service // Ensure service is set
-                let v = try await BrimClient.shared.execute(plan: plan, requesterIdentity: identity.bundleID ?? "unknown")
+                BrimClient.shared.service = service
+                // The requester is whoever asked for the removal, and that is
+                // the person at this window. It used to pass the identifier
+                // of the application being removed, falling back to the
+                // literal string "unknown", so the ledger recorded the
+                // subject as the requester and sometimes recorded nobody.
+                let v = try await BrimClient.shared.execute(
+                    plan: plan, requesterIdentity: NSUserName()
+                )
                 self.result = v
                 self.executionState = .done
             } catch {
