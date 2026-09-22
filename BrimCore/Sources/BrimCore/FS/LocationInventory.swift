@@ -108,6 +108,13 @@ public struct LocationInventory: Sendable {
         // genuine part of that application's footprint; it is only
         // useless as an answer to "what has been left behind".
         .darwinUserTemp,
+        // Held back from the sweep rather than judged worthless. An
+        // orphaned recent-documents record is a real leftover, but the
+        // directory holds about fifty of Apple's own alongside the third
+        // party ones, and the leftovers list is already long enough to be
+        // the thing people complain about. It joins the sweep when there is
+        // something to tell Apple's records apart from everybody else's.
+        .userRecentDocuments,
     ]
 
     public let locations: [Location]
@@ -184,6 +191,19 @@ public struct LocationInventory: Sendable {
         Location(domain: .userSavedApplicationState, rule: .bundleIdentifierPrefix,
                  describes: "saved windows",
                  sentence: "The windows and documents macOS reopens for this application."),
+        // Keyed exactly on the bundle identifier, and missing from all six
+        // footprints measured on this Mac because no location named the
+        // directory it lives in.
+        //
+        // This one is a list of the person's own files and it still goes.
+        // The record belongs to the application; the documents it names
+        // belong to the person and outlive it. Delete the record, never
+        // what it points at. `RecordedPathTests` went in before this row
+        // did, which is the only order in which that guard means anything.
+        Location(domain: .userRecentDocuments, rule: .bundleIdentifierFile("sfl4"),
+                 describes: "recently opened documents",
+                 sentence: "The list macOS keeps of documents this application opened. The "
+                         + "list goes; the documents stay where they are."),
         Location(domain: .userHTTPStorages, rule: .bundleIdentifierPrefix,
                  describes: "stored web data",
                  sentence: "Cookies and web storage macOS keeps for this application."),
