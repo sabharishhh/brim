@@ -4,8 +4,8 @@ import BrimProtocol
 import BrimUI
 import BrimPrivileged
 
-/// What macOS runs on your behalf, and what it is still being told to run
-/// for software that is no longer here.
+/// What your software runs in the background, and what macOS is still being
+/// told to run for software that is no longer here.
 ///
 /// This is the surface the whole product grew out of. Remove an app without
 /// deregistering it and System Settings goes on listing its background item,
@@ -15,6 +15,11 @@ import BrimPrivileged
 /// Two lists, because they call for different things. A job pointing at a
 /// program that has gone is a loose end. A job pointing at something real is
 /// simply what your Mac is doing, and is here so you can see it.
+///
+/// Apple's own registrations are not in either list and there is no longer a
+/// switch to add them. They were 1,398 rows of the 1,421 on this Mac, every
+/// launchd job among them Apple's, and nothing in that list could be removed
+/// or was worth reading. `BackgroundModel` holds the measurement.
 struct BackgroundView: View {
     @ObservedObject var model: BackgroundModel
     @SwiftUI.Environment(\.brimService) private var service
@@ -91,9 +96,6 @@ struct BackgroundView: View {
                     Text(summary).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()
-                Toggle("Include macOS", isOn: $model.showsSystemOwned)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
                 Button("Rescan") { Task { await model.load(service: service) } }
                     .disabled(model.isLoading)
             }
@@ -341,14 +343,7 @@ struct BackgroundView: View {
                 }
             } header: {
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text("\(title) (\(groups.count))").font(.headline)
-                    Spacer()
-                    if title == "Still in use", model.hiddenSystemCount > 0 {
-                        Text("\(model.hiddenSystemCount) from macOS hidden")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                }
+                Text("\(title) (\(groups.count))").font(.headline)
                 Text(caption).font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -401,11 +396,6 @@ private struct GroupRow: View {
                 // saying they were about the same application.
                 HStack(spacing: 6) {
                     Text(group.displayName).fontWeight(.semibold)
-                    if group.isSystemOwned {
-                        Text("macOS").font(.caption2)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
-                    }
                     Spacer()
                     if let team = group.signedBy {
                         Text(team).font(.caption2).foregroundColor(.secondary)

@@ -4,8 +4,16 @@ import BrimCore
 import BrimProtocol
 import BrimPrivileged
 
-/// Backs the Background section: what macOS runs on your behalf, and what
-/// it is still being told to run for software that has gone.
+/// Backs the Background section: what your software runs in the background,
+/// and what macOS is still being told to run for software that has gone.
+///
+/// **Your software, not macOS's.** The section used to carry a switch that
+/// added Apple's own registrations to the list. On this Mac that is 1,398
+/// rows against 23: 905 launchd jobs, every one of them Apple's, and 484 of
+/// the 490 app extensions. None of it can be removed, none of it should be,
+/// and none of it is what somebody opens an uninstaller to look at. Turning
+/// the switch on beachballed the window, and the list it drew after that was
+/// 1,193 rows of `AccessibilitySettingsSearchExtension` and `AVConference`.
 ///
 /// One load, everything in it. This used to arrive in two stages, because
 /// login items came from `sfltool` and cost an administrator prompt, so
@@ -17,10 +25,26 @@ public final class BackgroundModel: ObservableObject {
 
     @Published public private(set) var report: RegistrationReport = .empty
     @Published public private(set) var isLoading = false
-    @Published public var searchText = ""
-    @Published public var showsSystemOwned = false
+    @Published public var searchText = "" { didSet { regroup() } }
     /// Which loose ends are picked for removal, by registration id.
     @Published public var selection: Set<String> = []
+
+    /// Entries pointing at something that has gone and will stay gone
+    /// until somebody removes them. Apple ships jobs whose programs are
+    /// absent by design, and those are already filtered out.
+    @Published public private(set) var stale: [RegistrationGroup] = []
+
+    /// Entries whose owner has gone but which macOS clears by itself.
+    ///
+    /// Kept apart from the ones that need doing something about, because
+    /// putting them together made Brim claim two AppCleaner login items
+    /// were left behind when macOS dropped them a couple of minutes later
+    /// without being asked.
+    @Published public private(set) var clearingItself: [RegistrationGroup] = []
+
+    /// Entries still pointing at something real, and belonging to software
+    /// somebody installed.
+    @Published public private(set) var live: [RegistrationGroup] = []
 
     private var service: (any BrimServiceProtocol)?
 
@@ -32,42 +56,28 @@ public final class BackgroundModel: ObservableObject {
 
     public init() {}
 
-    /// Entries pointing at something that has gone and will stay gone
-    /// until somebody removes them. Apple ships jobs whose programs are
-    /// absent by design, and those are already filtered out.
-    public var stale: [RegistrationGroup] {
-        RegistrationGroup.group(filtered(report.stale)).filter { !$0.staleClearsItself }
-    }
-
-    /// Entries whose owner has gone but which macOS clears by itself.
+    /// The three lists, worked out once per scan and once per keystroke.
     ///
-    /// Kept apart from the ones that need doing something about, because
-    /// putting them together made Brim claim two AppCleaner login items
-    /// were left behind when macOS dropped them a couple of minutes later
-    /// without being asked.
-    public var clearingItself: [RegistrationGroup] {
-        RegistrationGroup.group(filtered(report.stale)).filter(\.staleClearsItself)
-    }
-
-    /// Entries still pointing at something real.
-    public var live: [RegistrationGroup] {
-        RegistrationGroup.group(
-            filtered(report.live.filter { showsSystemOwned || !$0.isSystemOwned })
-        )
+    /// They were computed properties, and that was the second half of the
+    /// freeze. One SwiftUI body pass reads `live` four times and `stale`
+    /// three, and each read filtered every registration and regrouped the
+    /// survivors from scratch: 12ms each, 73ms a pass, for an answer that
+    /// had not changed between the first read and the seventh. Typing in
+    /// the search field paid it again on every character. Holding the
+    /// answer is what a model is for.
+    private func regroup() {
+        live = RegistrationGroup.group(matching(report.live.filter { !$0.isSystemOwned }))
+        let gone = RegistrationGroup.group(matching(report.stale))
+        stale = gone.filter { !$0.staleClearsItself }
+        clearingItself = gone.filter(\.staleClearsItself)
     }
 
     /// Above this many rows a grouped card list stops being readable and
-    /// starts being a wall. macOS's own registrations number in the
-    /// hundreds, and nobody scrolls through those looking for something;
-    /// they sort and search. Below it the cards earn their space.
+    /// starts being a wall. Below it the cards earn their space.
     public static let tableThreshold = 200
 
     /// Whether the list on screen is large enough to want a real table.
     public var needsTable: Bool { live.count >= Self.tableThreshold }
-
-    public var hiddenSystemCount: Int {
-        showsSystemOwned ? 0 : report.live.filter(\.isSystemOwned).count
-    }
 
     public var gaps: [RegistrationCoverage] { report.gaps }
 
@@ -130,7 +140,7 @@ public final class BackgroundModel: ObservableObject {
 
     /// Jobs that need the daemon and are waiting on it being set up.
     public var waitingOnHelper: [Registration] {
-        filtered(report.stale).filter(Self.needsTheHelper)
+        matching(report.stale).filter(Self.needsTheHelper)
     }
 
     /// Connects the daemon to the service, so a plan containing a
@@ -175,7 +185,7 @@ public final class BackgroundModel: ObservableObject {
     /// it is running. Surfaced rather than discovered on failure, the same
     /// way the leftovers list handles a container it cannot reach.
     public var blocked: [Registration] {
-        filtered(report.stale).filter {
+        matching(report.stale).filter {
             $0.kind == .launchdJob && !$0.isSystemOwned && $0.capability != .ok
         }
     }
@@ -221,7 +231,7 @@ public final class BackgroundModel: ObservableObject {
         )
     }
 
-    private func filtered(_ items: [Registration]) -> [Registration] {
+    private func matching(_ items: [Registration]) -> [Registration] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
         return items.filter {
@@ -247,6 +257,7 @@ public final class BackgroundModel: ObservableObject {
         self.service = service
         isLoading = true
         report = await service.registrations()
+        regroup()
         // Anything that has gone is no longer selectable.
         let present = Set(report.stale.map(\.id))
         selection.formIntersection(present)
