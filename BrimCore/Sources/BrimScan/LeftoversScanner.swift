@@ -37,7 +37,7 @@ public actor LeftoversScanner {
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
-        let (activeIdentities, bundleNames) = await gatherActiveAppIdentities()
+        let activeIdentities = await gatherActiveAppIdentities()
         let receiptBundleIDs = await gatherInstallerReceipts()
 
         let activeBundleIDs = Set(activeIdentities.compactMap { $0.bundleID })
@@ -47,8 +47,12 @@ public actor LeftoversScanner {
         // `Info.plist` and writes a hundred and thirty megabytes to
         // `Application Support/Code`, and the sweep was offering all of
         // it up while the application was installed and running.
-        let activeNames = Set(activeIdentities.map { $0.name.lowercased() })
-            .union(bundleNames.map { $0.lowercased() })
+        //
+        // Read off `Identity` rather than gathered again here. This scanner
+        // learned about `CFBundleName` first and kept the knowledge to
+        // itself, so the uninstall path went on not knowing and failed to
+        // remove the same folder this one correctly refused to offer.
+        let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
         
@@ -624,17 +628,17 @@ public actor LeftoversScanner {
         return total
     }
     
-    /// Every installed application's identity, plus the name each
-    /// bundle uses for itself internally.
+    /// Every installed application's identity.
     ///
-    /// `Identity.name` is the bundle's file name, `VisualStudioCode.app`
-    /// becomes "VisualStudioCode". Its `CFBundleName` is what it names
-    /// its own support folder after, and Visual Studio Code's is
-    /// "Code". Reading only the file name left `Application Support/Code`
-    /// looking unclaimed while the application sat in `/Applications`.
-    private func gatherActiveAppIdentities() async -> (identities: [Identity], bundleNames: [String]) {
+    /// Each one carries both names it answers to. `Identity.name` is the
+    /// bundle's file name, so `Visual Studio Code.app` becomes "Visual
+    /// Studio Code"; `Identity.bundleName` is its `CFBundleName`, which is
+    /// what it names its own support folder after, and Visual Studio
+    /// Code's is "Code". Reading only the file name left `Application
+    /// Support/Code` looking unclaimed while the application sat in
+    /// `/Applications`.
+    private func gatherActiveAppIdentities() async -> [Identity] {
         var identities = [Identity]()
-        var bundleNames = [String]()
         let fm = FileManager.default
 
         // 1. Applications
@@ -666,19 +670,13 @@ public actor LeftoversScanner {
                 let urls = enumerator.compactMap { $0 as? URL }
                 for fileURL in urls {
                     if fileURL.pathExtension == "app" {
-                        let identity = await resolver.resolve(bundleURL: fileURL)
-                        identities.append(identity)
-                        if let bundle = Bundle(url: fileURL),
-                           let bundleName = bundle.infoDictionary?["CFBundleName"] as? String,
-                           !bundleName.isEmpty {
-                            bundleNames.append(bundleName)
-                        }
+                        identities.append(await resolver.resolve(bundleURL: fileURL))
                     }
                 }
             }
         }
 
-        return (identities, bundleNames)
+        return identities
     }
     
     private func gatherInstallerReceipts() async -> Set<String> {

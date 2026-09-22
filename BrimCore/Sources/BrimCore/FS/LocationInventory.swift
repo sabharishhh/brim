@@ -151,6 +151,24 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemCaches, rule: .bundleIdentifier,
                  describes: "caches for every user",
                  sentence: "A cache folder for every user, keyed to the bundle identifier."),
+        // Caches and Logs had an identifier rule and no name rule at all,
+        // so a folder an application named after itself was not so much
+        // missed as never looked for. Antigravity keeps 7 MB in
+        // `Caches/Antigravity` and Claude 2.8 MB in `Logs/Claude`, and
+        // neither appeared in its own uninstall. A name is a name, so these
+        // are Tier C and Brim will not tick them for anybody.
+        Location(domain: .userCaches, rule: .applicationName,
+                 describes: "caches",
+                 sentence: "A cache folder named after the application rather than its "
+                         + "identifier."),
+        Location(domain: .userLogs, rule: .applicationName,
+                 describes: "logs",
+                 sentence: "A log folder named after the application rather than its "
+                         + "identifier."),
+        Location(domain: .userApplicationSupport, rule: .applicationName,
+                 describes: "supporting files",
+                 sentence: "Application Support named after the application rather than its "
+                         + "identifier."),
         Location(domain: .userSavedApplicationState, rule: .bundleIdentifierPrefix,
                  describes: "saved windows",
                  sentence: "The windows and documents macOS reopens for this application."),
