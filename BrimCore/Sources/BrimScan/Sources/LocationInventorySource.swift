@@ -130,6 +130,11 @@ public struct LocationInventorySource: EvidenceSource {
             // Code is "Visual Studio Code" on disk and "Code" to itself,
             // and its 143 MB of support files are under the second.
             return identity.searchNames
+        case .applicationNameLowercased:
+            var seen = Set<String>()
+            return identity.searchNames
+                .map { $0.lowercased() }
+                .filter { seen.insert($0).inserted }
         case .identifierInsideBundle:
             return []
         }
