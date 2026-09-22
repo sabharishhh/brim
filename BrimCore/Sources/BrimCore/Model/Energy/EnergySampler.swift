@@ -95,16 +95,21 @@ public actor EnergySampler {
             
             var pathBuffer = [CChar](repeating: 0, count: 4096)
             let pathRet = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-            let path: String
-            if pathRet > 0 {
-                path = pathBuffer.withUnsafeBufferPointer { ptr in
-                    let u8ptr = ptr.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: Int(pathRet)) { $0 }
-                    return String(decoding: UnsafeBufferPointer(start: u8ptr, count: Int(pathRet)), as: UTF8.self)
-                }
-            } else {
-                path = "unknown"
+            // A process whose path cannot be read is a gap, not a row. It
+            // used to fall back to the literal string "unknown", which the
+            // grouping then turned into an application called Unknown sitting
+            // in the energy list with real joules against it. Energy that
+            // cannot be attributed is energy Brim does not list, and the
+            // count of them is shown beside the total instead.
+            guard pathRet > 0 else {
+                gaps += 1
+                continue
             }
-            
+            let path = pathBuffer.withUnsafeBufferPointer { ptr in
+                let u8ptr = ptr.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: Int(pathRet)) { $0 }
+                return String(decoding: UnsafeBufferPointer(start: u8ptr, count: Int(pathRet)), as: UTF8.self)
+            }
+
             var ru = rusage_info_v6()
             let ret = withUnsafeMutablePointer(to: &ru) { ptr in
                 return ptr.withMemoryRebound(to: (rusage_info_t?).self, capacity: 1) { reboundPtr in

@@ -12,6 +12,10 @@ import BrimUI
 /// labelled with the mechanism that found it.
 struct ApplicationsView: View {
     @ObservedObject var model: ApplicationsModel
+    /// Shared with the rest of the window, so a footprint that came up short
+    /// can name the setting that would complete it instead of only saying it
+    /// came up short.
+    @ObservedObject var access: FullDiskAccessModel
     @SwiftUI.Environment(\.brimService) private var service
     @State private var uninstalling: InstalledApplication?
     @State private var resetting: InstalledApplication?
@@ -56,7 +60,7 @@ struct ApplicationsView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
                     Text(model.isLoading
-                         ? "Scanning..."
+                         ? "Scanning…"
                          : "\(model.applications.count) installed")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -197,7 +201,7 @@ struct ApplicationsView: View {
             VStack(spacing: 6) {
                 Text("Select an application")
                     .font(.headline)
-                Text("Everywhere it has written, and how each item was found.")
+                Text("Everything it has put on this Mac, and how Brim found each one.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -285,14 +289,35 @@ struct ApplicationsView: View {
                 // A total short by an unknown amount has to say so. Without
                 // Full Disk Access every container reads as empty, and a
                 // quietly wrong number is worse than a refused one.
+                //
+                // What it must not do is stop there. The earlier wording ran
+                // "could not be read, so this is at least that much and
+                // probably more", which named a limit, guessed at its size,
+                // and gave the person nothing to do about it. Brim knows why
+                // the read failed and knows the one setting that fixes it,
+                // so it says that instead.
                 if footprint.unreadableEntries > 0 {
-                    Label(
-                        "\(footprint.unreadableEntries) "
-                        + (footprint.unreadableEntries == 1 ? "item" : "items")
-                        + " could not be read, so this is at least that much and probably more.",
-                        systemImage: "eye.slash"
-                    )
+                    let count = footprint.unreadableEntries
+                    let items = count == 1 ? "item" : "items"
+                    let fullDiskAccessIsOn = access.isGranted
+                    Label {
+                        Text(fullDiskAccessIsOn
+                             ? "\(count) \(items) here are protected by macOS and are not "
+                             + "counted in this total."
+                             : "\(count) \(items) sit behind Full Disk Access. Switch it on "
+                             + "and Brim measures them too.")
+                    } icon: {
+                        Image(systemName: fullDiskAccessIsOn ? "lock" : "eye.slash")
+                    }
                     .font(.caption).foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    if !fullDiskAccessIsOn {
+                        Button("Open Full Disk Access") {
+                            FullDiskAccess.openSettings()
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
                 }
             }
             .font(.subheadline)
@@ -304,7 +329,11 @@ struct ApplicationsView: View {
                 + "\(model.footprintGroups.count) discovery mechanisms. "
                 + "The app itself is \(ByteText.short(application.bundleSizeBytes))."
                 + (footprint.unreadableEntries > 0
-                   ? " \(footprint.unreadableEntries) items could not be read." : "")
+                   ? (access.isGranted
+                      ? " \(footprint.unreadableEntries) items are protected by macOS and are "
+                      + "not in this total."
+                      : " \(footprint.unreadableEntries) items sit behind Full Disk Access.")
+                   : "")
             )
             .accessibilityValue(ByteText.short(footprint.totalSizeBytes) + " in total")
         }
