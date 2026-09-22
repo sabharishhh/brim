@@ -88,7 +88,13 @@ public final class BackgroundModel: ObservableObject {
         let gone = RegistrationGroup.group(matching(report.stale))
         stale = gone.filter { !$0.staleClearsItself }
         clearingItself = gone.filter(\.staleClearsItself)
+        revision &+= 1
     }
+
+    /// What the list animates on. See `LeftoversModel.revision`: a
+    /// transaction opened around an async mutation does not reliably reach
+    /// SwiftUI, so the view watches a value instead.
+    @Published public private(set) var revision = 0
 
     /// Above this many rows a grouped card list stops being readable and
     /// starts being a wall. Below it the cards earn their space.
