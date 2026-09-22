@@ -188,7 +188,11 @@ struct ApplicationsView: View {
             }
         }
         .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
+        // `.ignore`, not `.combine`: there is a written label right below,
+        // so merging the children only to throw the result away is work for
+        // nothing on every row of a long list.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel(
             "\(application.name). "
             + (application.version.map { "Version \($0). " } ?? "")
