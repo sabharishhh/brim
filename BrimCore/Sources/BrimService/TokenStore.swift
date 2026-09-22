@@ -50,10 +50,10 @@ public actor TokenStore {
 
     /// Why a token was refused, said plainly.
     ///
-    /// These reach a person through the CLI, where the whole message is
-    /// the error. "Error Domain=TokenError Code=0" tells someone holding a
-    /// token that something went wrong and nothing about what, which is
-    /// how a refusal gets mistaken for a bug and worked around.
+    /// A refusal is the whole message a person gets. "Error
+    /// Domain=TokenError Code=0" tells someone holding a token that
+    /// something went wrong and nothing about what, which is how a refusal
+    /// gets mistaken for a bug and worked around.
     public enum TokenError: LocalizedError, Equatable {
         case notFound
         case expired

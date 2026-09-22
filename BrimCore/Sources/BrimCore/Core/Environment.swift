@@ -1,7 +1,7 @@
 import Foundation
 
 /// The dependency injection container for BrimCore.
-/// This ensures the CLI, tests, and the real app can wire up the exact same core logic
+/// This ensures tests and the real app wire up the exact same core logic
 /// without hardcoded dependencies.
 public struct Environment: Sendable {
     public let root: FileSystemRoot
