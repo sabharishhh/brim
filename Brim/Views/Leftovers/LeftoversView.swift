@@ -48,7 +48,7 @@ struct LeftoversView: View {
         // signal, and checking costs one `lstat` per row Brim removed and
         // nothing at all when it has removed none.
         .onChange(of: recovery.items) { _, _ in
-            withAnimation(.easeOut(duration: 0.22)) { model.reconcileWithDisk() }
+            model.reconcileWithDisk()
         }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .sheet(item: $reviewRequest) { intent in
@@ -60,8 +60,11 @@ struct LeftoversView: View {
                 onRemoved: { paths in
                     // The rows go the instant the check proves they are
                     // gone, with the sheet still open behind them, because
-                    // that is when it became true.
-                    withAnimation(.easeOut(duration: 0.22)) { model.forget(paths: paths) }
+                    // that is when it became true. The animation comes from
+                    // the list watching `revision`, not from wrapping this
+                    // call: this runs in an async context and a transaction
+                    // opened here does not reliably travel with the change.
+                    model.forget(paths: paths)
                 },
                 onFinished: {
                     Task { await model.load(service: service) }
@@ -141,6 +144,12 @@ struct LeftoversView: View {
                 )
             }
             .listStyle(.inset)
+            // Rows leaving and arriving are worth seeing happen. Keyed to a
+            // counter the model bumps when the grouping changes, so it fires
+            // for a removal, for a restore and for a rescan, and for nothing
+            // else: not for ticking a box, not for typing in the search
+            // field, and never for a scroll.
+            .animation(.easeOut(duration: 0.22), value: model.revision)
         }
     }
 
