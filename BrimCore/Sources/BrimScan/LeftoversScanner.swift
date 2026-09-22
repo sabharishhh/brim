@@ -70,7 +70,50 @@ public actor LeftoversScanner {
         // installer receipt and every command line tool were invisible.
         let domainsToScan = LocationInventory.sweepDomains
 
-        for domain in domainsToScan {
+        // One task per domain. Each walk reads a different directory tree
+        // and writes nothing the others can see: the ownership search, the
+        // active-application sets and the Homebrew list are all values,
+        // fixed before the walk starts, and the scanner's own stored
+        // properties are all `let`. So the domains are independent by
+        // construction rather than by inspection, which is the only reason
+        // this is safe to run in parallel.
+        //
+        // Sequentially this was the slowest thing in the app: 654ms of
+        // directory enumeration and size accounting, with `Application
+        // Support` and the caches dominating while the small domains
+        // waited their turn. Sorted afterwards, so the answer does not
+        // depend on which domain finished first.
+        let found = await withTaskGroup(of: [Leftover].self) { group in
+            for domain in domainsToScan {
+                group.addTask { [self] in
+                    walkDomain(domain, search, activeBundleIDs, activeNames,
+                               activeGroupContainers, activeTeamIDs)
+                }
+            }
+            var collected: [Leftover] = []
+            for await batch in group { collected.append(contentsOf: batch) }
+            return collected
+        }
+        leftovers = found
+
+        // Sorted by size descending. Access time is carried on each item and
+        // may be used to order them, but never to argue that something is
+        // disposable: nothing having read a file lately says nothing about
+        // whether its owner is gone.
+        return leftovers.sorted { $0.size > $1.size }
+    }
+
+    /// Everything one domain holds that nothing installed claims.
+    nonisolated private func walkDomain(
+        _ domain: FileSystemRoot.Domain,
+        _ search: OwnershipSearch,
+        _ activeBundleIDs: Set<String>,
+        _ activeNames: Set<String>,
+        _ activeGroupContainers: Set<String>,
+        _ activeTeamIDs: Set<String>
+    ) -> [Leftover] {
+        var leftovers: [Leftover] = []
+        do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
             // itself, so the walk is one level deep and only where there
@@ -212,12 +255,7 @@ public actor LeftoversScanner {
                 leftovers.append(leftover)
             }
         }
-        
-        // Sorted by size descending. Access time is carried on each item and
-        // may be used to order them, but never to argue that something is
-        // disposable: nothing having read a file lately says nothing about
-        // whether its owner is gone.
-        return leftovers.sorted { $0.size > $1.size }
+        return leftovers
     }
     
     /// Whether a directory belongs to macOS itself.
@@ -361,7 +399,7 @@ public actor LeftoversScanner {
     /// Without this, `~/Library/Application Support/Google/DeadProduct`
     /// is invisible: the sweep sees `Google`, finds Chrome behind it,
     /// and walks away from everything else in there.
-    func vendorFolderChildren(
+    nonisolated func vendorFolderChildren(
         _ url: URL, in domain: FileSystemRoot.Domain, activeNames: Set<String>
     ) -> [URL]? {
         guard Self.nestable.contains(domain), Self.isDirectory(url) else { return nil }
@@ -378,7 +416,7 @@ public actor LeftoversScanner {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
     }
 
-    private func isItemActive(
+    private nonisolated func isItemActive(
         item: URL,
         in domain: FileSystemRoot.Domain,
         vendor: String?,
@@ -449,7 +487,7 @@ public actor LeftoversScanner {
         }
     }
     
-    private func scanDirectoryLevel1(_ url: URL) -> [URL] {
+    private nonisolated func scanDirectoryLevel1(_ url: URL) -> [URL] {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) else {
             return []
@@ -498,7 +536,7 @@ public actor LeftoversScanner {
         return String(last).capitalized
     }
 
-    private func extractOwnerIdentifier(from url: URL, in domain: FileSystemRoot.Domain) -> String {
+    private nonisolated func extractOwnerIdentifier(from url: URL, in domain: FileSystemRoot.Domain) -> String {
         let name = url.lastPathComponent
         if domain == .userPreferences && name.hasSuffix(".plist") {
             return String(name.dropLast(6))
@@ -541,7 +579,7 @@ public actor LeftoversScanner {
     /// needed an administrator, which `RemovalCapability` could have said
     /// before anything was promised. Same incident as the two Keystone jobs
     /// in `/Library/LaunchAgents`, in a different module.
-    private func capability(for url: URL, in domain: FileSystemRoot.Domain) -> Capability {
+    private nonisolated func capability(for url: URL, in domain: FileSystemRoot.Domain) -> Capability {
         switch domain {
         case .userContainers, .userGroupContainers:
             return hasFullDiskAccess ? .ok : .needsFullDiskAccess
@@ -550,7 +588,7 @@ public actor LeftoversScanner {
         }
     }
 
-    private func lastAccessed(of url: URL) -> Date? {
+    private nonisolated func lastAccessed(of url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
     }
 
@@ -562,7 +600,7 @@ public actor LeftoversScanner {
     /// symbolic link is worth nothing and is never followed: measuring
     /// through one credits a command with the size of the application it
     /// points at.
-    private func calculateSize(url: URL) -> Int64 {
+    private nonisolated func calculateSize(url: URL) -> Int64 {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
         let values = try? url.resourceValues(

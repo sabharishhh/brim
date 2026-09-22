@@ -23,9 +23,20 @@ struct LeftoversView: View {
     @State private var reviewRequest: PlanIntent?
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 300, idealWidth: 380, maxWidth: 560)
-            detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        // Not an HSplitView, which is what this was and what made both
+        // panes jittery. NSSplitView lays out with constraints, so
+        // scrolling either pane re-measured its SwiftUI content, the
+        // hosting view handed a new size to the split view, and AppKit ran
+        // `-[NSWindow layoutIfNeeded]` across the whole window. A profile
+        // of eight seconds of scrolling put 25.7% of the main thread in
+        // that call and another 25.1% in the view-tree layout under it,
+        // with the text of both panes being re-resolved each time. The two
+        // panes were coupled through the window, which is why scrolling one
+        // made the other stutter.
+        HStack(spacing: 0) {
+            list.frame(width: 380)
+            Divider()
+            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
@@ -187,6 +198,13 @@ struct LeftoversView: View {
     private var detail: some View {
         if let group = model.inspected {
             LeftoverDetail(group: group)
+                // Keyed on the group, so moving between entries crossfades
+                // instead of cutting. Scoped to the identity rather than
+                // applied to the pane, because an unscoped animation makes
+                // every scroll and every tick animate too, which is how an
+                // app ends up feeling slower for having been animated.
+                .id(group.id)
+                .transition(.opacity)
         } else {
             VStack(spacing: 6) {
                 Image(systemName: "questionmark.folder")
@@ -275,14 +293,28 @@ private struct GroupRow: View {
 private struct LeftoverDetail: View {
     let group: LeftoverGroup
 
+    /// A `List`, not a `ScrollView` wrapping a `VStack`.
+    ///
+    /// A vertical `ScrollView` proposes its own width and a *nil* height, so
+    /// the stack inside has to work out its ideal height, and every
+    /// `.fixedSize(horizontal: false, vertical: true)` in it re-measures its
+    /// text to answer. There are a dozen of those here. Profiling eight
+    /// seconds of scrolling this pane put half the main thread in
+    /// `GraphHost.flushTransactions`, a quarter in `-[NSWindow
+    /// layoutIfNeeded]`, and another eighth in `ResolvedTextFilter`, and
+    /// none of the samples contained any of Brim's own code: no view body
+    /// was re-running, SwiftUI was re-measuring the same text on every
+    /// frame.
+    ///
+    /// `List` is `NSTableView` underneath. It measures a row once, caches
+    /// the height, and reuses the view, which is the whole difference.
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        List {
+            Group {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(group.displayName).font(.title2).fontWeight(.bold)
                     if let identifier = group.identifier {
                         Text(identifier).font(.caption).foregroundColor(.secondary)
-                            .textSelection(.enabled)
                     }
                 }
 
@@ -334,13 +366,22 @@ private struct LeftoverDetail: View {
                 Divider()
 
                 Text("Where it is").font(.headline)
-                ForEach(group.items) { item in
-                    location(item)
-                }
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+            .listRowBackground(Color.clear)
+
+            // One row per location, so each is measured once and reused
+            // rather than re-measured with the rest of the pane.
+            ForEach(group.items) { item in
+                location(item)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                    .listRowBackground(Color.clear)
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     /// What is stopping this, and the one thing that gets somebody past it.
@@ -410,9 +451,15 @@ private struct LeftoverDetail: View {
                 .font(.callout).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
+                // Not selectable. `.textSelection(.enabled)` builds a
+                // second, separately measured text element behind the
+                // visible one, and six of those in a scrolling pane showed
+                // up as `ResolvedTextFilter.updateValue` taking an eighth of
+                // the main thread. The button beside it does the job the
+                // selection was there for, and the row already reads the
+                // path aloud as its accessibility value.
                 Text(item.url.path)
                     .font(.caption).foregroundColor(.secondary)
-                    .textSelection(.enabled)
                     .truncationMode(.middle).lineLimit(1)
                 Spacer()
                 // Answers "is this really where it says it is" directly,
@@ -445,6 +492,20 @@ private struct LeftoverDetail: View {
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        // One element, not nine. Composed the way the background rows
+        // already are: a reader was handed a kind, a consequence, a size, a
+        // sentence and a path as five unrelated fragments, and rebuilding
+        // that many nodes was 8.9% of the main thread while scrolling.
+        // `.ignore`, not `.combine`. Combining walks every child element and
+        // merges them, which is more work than building them; ignoring
+        // throws them away and uses the label below. The rest of the app
+        // composes rows this way for the same reason.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(SpokenText.sentences([
+            domain.title, domain.consequence, domain.whatItHolds
+        ]))
+        .accessibilityValue(item.url.path)
     }
 }
 

@@ -53,6 +53,12 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
         }
+        // A section change is a change of view, and it should read as one.
+        // Scoped to the selection so nothing inside a panel inherits it:
+        // an animation applied to the whole detail column animates every
+        // scroll and every checkbox underneath it, which costs frames and
+        // makes the app feel slower rather than smoother.
+        .animation(.easeOut(duration: 0.16), value: selection)
         // An ideal as well as a minimum. Without a concrete ideal the
         // content reports that it will take any width, `.defaultSize` is
         // ignored, and the window opens at whatever the display allows.
