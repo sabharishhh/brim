@@ -11,6 +11,13 @@ import BrimProtocol
 /// enormous and anything started a minute ago look idle. The delta says
 /// what is costing you something now, which is the only question worth
 /// asking.
+///
+/// What the panel shows is two different facts and they are kept apart on
+/// purpose. **Right now** is a rate, in milliwatts, measured across the gap.
+/// **Since counting started** is an amount, in milliwatt-hours, accumulated
+/// in the ledger. Printing both as "mWh" in two adjacent lists, which is
+/// what it used to do, made three rows look duplicated and left nobody able
+/// to say which number meant what.
 @MainActor
 public final class EnergyModel: ObservableObject {
 
@@ -23,10 +30,7 @@ public final class EnergyModel: ObservableObject {
     /// over and over and left nobody able to answer "what is using my
     /// battery", which is a question about an app.
     public struct Reading: Identifiable, Sendable, Equatable {
-        public let name: String
-        public let bundlePath: String?
-        /// One executable from the group, for the rows with no bundle.
-        public let executablePath: String
+        public let identity: RunningProcessIdentity
         /// How many processes were rolled up here.
         public let processCount: Int
         public let cpuNanoseconds: UInt64
@@ -39,6 +43,10 @@ public final class EnergyModel: ObservableObject {
         /// else, and could never become a share of a battery.
         public let nanojoules: UInt64
 
+        public var name: String { identity.displayName }
+        public var bundlePath: String? { identity.bundlePath }
+        public var executablePath: String { identity.executablePath }
+
         public var milliwattHours: Double { Double(nanojoules) / 1_000_000_000 / 3.6 }
 
         /// What it is costing right now, in milliwatts, which is the rate
@@ -49,7 +57,61 @@ public final class EnergyModel: ObservableObject {
             return milliwattHours * 3600 / window
         }
 
-        public var id: String { bundlePath ?? executablePath }
+        /// Namespaced, because this list sits in the same `List` as the
+        /// totals and their keys are the same paths. Two `ForEach`es whose
+        /// ids collide across sections make SwiftUI treat the rows as one
+        /// element: three rows of this list rendered as totals rows, with
+        /// the totals' numbers, and the bug looked like duplicated data
+        /// rather than like conflated identity. The same defect had already
+        /// been fixed twice elsewhere in this product.
+        public var id: String { "now:" + identity.groupKey }
+
+        /// What the process actually did, which is what makes a figure
+        /// checkable rather than a score to be taken on trust.
+        public var processorSeconds: Double { Double(cpuNanoseconds) / 1_000_000_000 }
+
+        /// The one thing most responsible for this row's cost.
+        ///
+        /// Not a weighted score. Activity Monitor's Energy Impact combines
+        /// these with coefficients out of `/usr/share/pmenergy`, and the
+        /// best public analysis of it concludes it over-weights wakeups
+        /// enough to invert the ranking against real power. Brim already
+        /// has real joules, so it does not need a proxy; what it needs is
+        /// to say which behaviour the joules came from.
+        public func dominantCost(over window: TimeInterval) -> Cost {
+            // A wakeup costs roughly 200 microseconds of equivalent work,
+            // which is the coefficient Apple's own tables use. Comparing on
+            // that footing is the only honest way to rank the two.
+            let wakeupEquivalent = Double(wakeups) * 0.0002
+
+            // "Often" has to mean often. Ranking the two costs against each
+            // other and stopping there labelled a row with five wakeups in
+            // two seconds as "waking up often", because five wakeups still
+            // outweighed a processor time of nearly zero. Every row in the
+            // list said the same thing, which is the same as saying nothing.
+            let perSecond = window > 0 ? Double(wakeups) / window : 0
+            let wakesOften = perSecond >= 20
+
+            if processorSeconds >= wakeupEquivalent && processorSeconds > 0.005 { return .processor }
+            if wakesOften { return .wakeups }
+            if processorSeconds > 0.001 { return .processor }
+            if bytesMoved > 0 { return .disk }
+            return .unclear
+        }
+
+        public enum Cost: String, Sendable, Equatable {
+            case processor, wakeups, disk, unclear
+
+            /// Said as the behaviour, not the counter.
+            public var sentence: String {
+                switch self {
+                case .processor: return "Working steadily"
+                case .wakeups: return "Waking up often"
+                case .disk: return "Reading and writing"
+                case .unclear: return "Mixed activity"
+                }
+            }
+        }
     }
 
     @Published public private(set) var readings: [Reading] = []
@@ -63,6 +125,9 @@ public final class EnergyModel: ObservableObject {
     /// charge. Nil on a machine with no battery, where a share of one is
     /// not a thing that can be said.
     public let battery: BatteryCapacity? = BatteryCapacity.current()
+    /// What is holding sleep off. The one thing in this panel that neither
+    /// System Settings nor Activity Monitor says plainly.
+    @Published public private(set) var assertions: PowerAssertions = .notRead
 
     /// How long to leave between the two samples. Long enough for a busy
     /// process to separate itself from an idle one, short enough that
@@ -72,6 +137,100 @@ public final class EnergyModel: ObservableObject {
     public init() {}
 
     public var measured: Int { readings.count }
+
+    // MARK: - What the panel is made of
+
+    /// Things the person launched, which is what they can act on.
+    public var yours: [Reading] { readings.filter { $0.identity.kind.isActionable } }
+
+    /// macOS running itself. Separated rather than hidden: it is often the
+    /// largest share of the reading, and a list that mixes "quit Figma"
+    /// with "Spotlight is indexing" invites somebody to try to stop the
+    /// second one.
+    public var macOS: [Reading] { readings.filter { !$0.identity.kind.isActionable } }
+
+    public var totalMilliwatts: Double {
+        readings.reduce(0) { $0 + $1.milliwatts(over: window) }
+    }
+
+    public func milliwatts(of readings: [Reading]) -> Double {
+        readings.reduce(0) { $0 + $1.milliwatts(over: window) }
+    }
+
+    /// The single busiest thing, for the card at the top.
+    public var busiest: Reading? { readings.first }
+
+    /// The reading as facts, for the deterministic sentence today and for
+    /// the model to narrate under T-7.6.
+    public var insight: EnergyInsight {
+        EnergyInsight(
+            windowSeconds: window,
+            totalMilliwatts: totalMilliwatts,
+            yoursMilliwatts: milliwatts(of: yours),
+            systemMilliwatts: milliwatts(of: macOS),
+            busiestName: busiest?.name,
+            busiestMilliwatts: busiest.map { $0.milliwatts(over: window) } ?? 0,
+            busiestIsSystem: busiest.map { !$0.identity.kind.isActionable } ?? false,
+            busiestBehaviour: busiest.map { $0.dominantCost(over: window).sentence },
+            busiestIsBrimItself: busiest?.identity.bundlePath.map {
+                $0 == Bundle.main.bundleURL.path
+            } ?? false,
+            unreadableProcesses: coverageGaps,
+            batteryMilliwattHours: battery?.designMilliwattHours
+        )
+    }
+
+    // MARK: - Totals
+
+    /// Totals, classified the same way the live readings are, so the two
+    /// halves of the panel agree about what a thing is.
+    public struct Total: Identifiable, Sendable, Equatable {
+        public let identity: RunningProcessIdentity
+        public let milliwattHours: Double
+        /// Namespaced away from the live list. See `Reading.id`.
+        public var id: String { "total:" + identity.groupKey }
+        public var name: String { identity.displayName }
+    }
+
+    public var accumulated: [Total] {
+        guard let totals else { return [] }
+        return totals.accumulated.map { entry in
+            Total(
+                identity: RunningProcessIdentity.of(
+                    bundlePath: entry.isApplication ? entry.key : nil,
+                    executablePath: entry.key
+                ),
+                milliwattHours: entry.milliwattHours
+            )
+        }
+        .sorted { $0.milliwattHours > $1.milliwattHours }
+    }
+
+    public var accumulatedTotalMilliwattHours: Double {
+        accumulated.reduce(0) { $0 + $1.milliwattHours }
+    }
+
+    /// Everything measured since counting started, as a share of a full
+    /// charge.
+    ///
+    /// The number people can hold on to. A column of four-digit milliwatt
+    /// hours, 2428 against 1926 against 1473, is arithmetic nobody asked
+    /// for: it has no anchor, no familiar unit, and the differences between
+    /// the rows are the only information in it. A share of a charge answers
+    /// the question the panel is for.
+    public var accumulatedShareOfACharge: Double? {
+        guard let battery, battery.designMilliwattHours > 0 else { return nil }
+        return accumulatedTotalMilliwattHours / battery.designMilliwattHours
+    }
+
+    /// One total as a share of everything measured, which is what the bar
+    /// beside it draws.
+    public func share(of total: Total) -> Double {
+        let sum = accumulatedTotalMilliwattHours
+        return sum > 0 ? total.milliwattHours / sum : 0
+    }
+
+    // MARK: - Sampling
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         guard readings.isEmpty, !isSampling else { return }
@@ -91,6 +250,7 @@ public final class EnergyModel: ObservableObject {
         let before = Dictionary(first.samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         coverageGaps = second.coverageGaps
         totals = await service.energyTotals()
+        assertions = PowerAssertions.current()
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so
@@ -141,19 +301,24 @@ public final class EnergyModel: ObservableObject {
     static func group(_ measured: [Measured]) -> [Reading] {
         var order: [String] = []
         var buckets: [String: [Measured]] = [:]
+        var identities: [String: RunningProcessIdentity] = [:]
 
         for item in measured {
-            let key = item.bundlePath ?? item.executablePath
-            if buckets[key] == nil { order.append(key) }
+            let identity = RunningProcessIdentity.of(
+                bundlePath: item.bundlePath, executablePath: item.executablePath
+            )
+            let key = identity.groupKey
+            if buckets[key] == nil {
+                order.append(key)
+                identities[key] = identity
+            }
             buckets[key, default: []].append(item)
         }
 
         return order.compactMap { key -> Reading? in
-            guard let group = buckets[key], let first = group.first else { return nil }
+            guard let group = buckets[key], let identity = identities[key] else { return nil }
             return Reading(
-                name: Self.name(bundlePath: first.bundlePath, executablePath: first.executablePath),
-                bundlePath: first.bundlePath,
-                executablePath: first.executablePath,
+                identity: identity,
                 processCount: group.count,
                 cpuNanoseconds: group.reduce(0) { $0 &+ $1.cpuNanoseconds },
                 wakeups: group.reduce(0) { $0 &+ $1.wakeups },
@@ -162,15 +327,5 @@ public final class EnergyModel: ObservableObject {
             )
         }
         .sorted { $0.nanojoules > $1.nanojoules }
-    }
-
-    /// The app's name where the process belongs to one, and the executable
-    /// name otherwise. A bare executable name is right for a daemon and
-    /// wrong for an app somebody recognises by its icon.
-    static func name(bundlePath: String?, executablePath: String) -> String {
-        if let bundlePath {
-            return URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent
-        }
-        return URL(fileURLWithPath: executablePath).lastPathComponent
     }
 }
