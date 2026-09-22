@@ -76,6 +76,14 @@ struct UninstallSheet: View {
         return false
     }
 
+    /// One sheet serves both jobs, and every sentence in it used to be
+    /// written for the uninstall. Resetting an application showed a progress
+    /// line saying it was being cleared out, finished on "Nothing is left"
+    /// about an application that is still installed on purpose, and offered
+    /// a button reading "Authorize & Uninstall" that did not uninstall
+    /// anything.
+    private var isReset: Bool { intentType == .reset }
+
     @ViewBuilder
     private var content: some View {
         switch model.phase {
@@ -85,8 +93,20 @@ struct UninstallSheet: View {
         case .failed(let reason):
             message(title: "Stopped", detail: reason, isError: true)
 
+        case .appliedButUnverified(let reason):
+            message(
+                title: isReset ? "Reset, but not checked" : "Removed, but not checked",
+                detail: "The plan ran. Brim then went back to confirm every location was "
+                      + "clear and the check itself could not finish: \(reason) "
+                      + "Nothing has been undone. Open \(application.name) in the "
+                      + "Applications list to look again.",
+                isError: false
+            )
+
         case .executing:
-            ProgressView("Clearing out \(application.name)…")
+            ProgressView(isReset
+                        ? "Putting \(application.name) back to how it started…"
+                        : "Clearing out \(application.name)…")
 
         case .verified(let result):
             verification(result)
@@ -168,13 +188,16 @@ struct UninstallSheet: View {
                 .font(.largeTitle)
                 .foregroundColor(result.success ? .green : .orange)
 
-            Text(result.success ? "Nothing is left" : "Removed, but something is still there")
+            Text(headline(for: result))
                 .font(.headline)
 
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                 ? "Brim went back to every location it touched. All of them are empty."
+                 ? (isReset
+                    ? "Brim went back to every location it cleared. The settings and state are "
+                    + "gone and \(application.name) is still installed."
+                    : "Brim went back to every location it touched. All of them are empty.")
                  : (result.reason ?? "Some of it is still on disk."))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -197,6 +220,11 @@ struct UninstallSheet: View {
         }
         .padding()
         .accessibilityElement(children: .combine)
+    }
+
+    private func headline(for result: VerificationResult) -> String {
+        guard result.success else { return "Something is still there" }
+        return isReset ? "Back to how it started" : "Nothing is left"
     }
 
     private func message(title: String, detail: String, isError: Bool) -> some View {
@@ -232,7 +260,7 @@ struct UninstallSheet: View {
             }
 
             if !isFinished {
-                Button("Authorize & Uninstall") {
+                Button(isReset ? "Approve and reset" : "Approve and uninstall") {
                     Task { await model.authorize(requesterIdentity: NSUserName()) }
                 }
                 .buttonStyle(.borderedProminent)
