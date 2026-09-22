@@ -64,6 +64,39 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         return teams.count == 1 ? teams.first : nil
     }
 
+    /// What the "Signed by" column shows, which is never blank.
+    ///
+    /// `signedBy` is deliberately strict: it answers only when every item
+    /// agrees on one team, and returns nothing for unsigned code, a broken
+    /// signature, a team that has changed underneath macOS, and a group whose
+    /// items disagree. The column used to render all four of those as a dash,
+    /// so a background item signed by nobody looked exactly like one Brim had
+    /// not got to. Each of those states already carries its own sentence.
+    public var signerDescription: String {
+        if let signedBy { return signedBy }
+
+        let verdicts = items.compactMap(\.signing).filter {
+            if case .notChecked = $0 { return false }
+            return true
+        }
+        guard !verdicts.isEmpty else { return "No code to read" }
+        if let trouble = verdicts.first(where: \.isTrouble) { return trouble.shortDescription }
+
+        // Everything left is valid, so the two remaining cases are a
+        // signature that carries no team identifier and a group whose items
+        // carry more than one. Both are different from "unsigned" and from
+        // "not examined", which is the distinction the dash lost.
+        var teams: Set<String> = []
+        for verdict in verdicts {
+            if case .valid(let team) = verdict, let team { teams.insert(team) }
+        }
+        switch teams.count {
+        case 0: return "Signed"
+        case 1: return teams.first ?? "Signed"
+        default: return "Several teams"
+        }
+    }
+
     /// One line saying what this application has registered, so the group
     /// header carries the shape of the list underneath it.
     public var composition: String {
@@ -133,6 +166,20 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
             $0.programPath?.hasSuffix(".app") == true && !$0.label.isEmpty
         }
         if let fromBundle { return fromBundle.label }
+
+        // An app extension is not its own application and its label is not a
+        // name anybody knows. Prime Video's notification service listed
+        // itself as "NotificationService", IINA's as "OpenInIINA", WhatsApp's
+        // two as "Intents" and "ServiceExtension". None of those records
+        // points at a `.app`, because each points at the `.appex` inside one,
+        // so the check above missed them and the shortest-label tiebreak
+        // named the group after the plug-in. The enclosing bundle is right
+        // there in the path.
+        let enclosing = items
+            .compactMap { $0.programPath ?? $0.recordPath }
+            .compactMap { EnclosingBundle.name(of: URL(fileURLWithPath: $0)) }
+            .first
+        if let enclosing { return enclosing }
 
         let shortest = items.map(\.label).filter { !$0.isEmpty }.min { $0.count < $1.count }
         return shortest ?? key

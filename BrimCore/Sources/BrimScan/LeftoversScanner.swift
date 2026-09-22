@@ -324,13 +324,10 @@ public actor LeftoversScanner {
     /// Docker's whatever the command at the end is called, and saying
     /// Docker is the difference between a row somebody understands and a
     /// row saying `kubectl.docker`.
+    /// Reads through to `BrimCore`, so the sweep and the registrations list
+    /// cannot drift on who owns a path.
     static func ownerOfPath(_ url: URL) -> String? {
-        for component in url.pathComponents {
-            if component.hasSuffix(".app") || component.hasSuffix(".framework") {
-                return component
-            }
-        }
-        return nil
+        EnclosingBundle.component(of: url)
     }
 
     // MARK: - Vendor folders

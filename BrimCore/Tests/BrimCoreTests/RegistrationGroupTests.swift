@@ -21,6 +21,44 @@ final class RegistrationGroupTests: XCTestCase {
         )
     }
 
+    /// Every app extension on this Mac headed its own group with its own
+    /// label: "NotificationService" for Prime Video's, "OpenInIINA" for
+    /// IINA's, "Intents" and "ServiceExtension" for WhatsApp's. None of those
+    /// records points at a `.app`, because each points at the `.appex` inside
+    /// one, so the app-bundle check missed them and the shortest-label
+    /// tiebreak named the group after the plug-in. A person scanning that
+    /// list cannot tell what any of them is.
+    func testAnExtensionIsNamedAfterTheApplicationItLivesIn() {
+        let groups = RegistrationGroup.group([
+            item(.appExtension, "NotificationService", owner: "com.amazon.aiv.AIVApp.NotificationService",
+                 program: "/Applications/Prime Video.app/Contents/PlugIns/NotificationService.appex")
+        ])
+
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].displayName, "Prime Video")
+    }
+
+    func testTheApplicationsOwnNameStillWinsOverThePath() {
+        // Where a record does point at the bundle, its label is the better
+        // name: it is what the developer called the product, not what the
+        // folder is called.
+        let groups = RegistrationGroup.group([
+            item(.backgroundItem, "Visual Studio Code", owner: "com.microsoft.VSCode",
+                 program: "/Applications/Code.app"),
+            item(.appExtension, "Helper", owner: "com.microsoft.VSCode",
+                 program: "/Applications/Code.app/Contents/PlugIns/Helper.appex")
+        ])
+
+        XCTAssertEqual(groups[0].displayName, "Visual Studio Code")
+    }
+
+    func testARecordWithNoPathAtAllKeepsItsLabel() {
+        let groups = RegistrationGroup.group([
+            item(.backgroundItem, "com.example.agent", owner: "com.example.agent")
+        ])
+        XCTAssertEqual(groups[0].displayName, "com.example.agent")
+    }
+
     func testAnAppAndItsBackgroundTasksAreOneEntry() {
         // Visual Studio Code was listed twice, once as itself and once as
         // "Visual Studio Code - background tasks", with nothing on screen

@@ -95,6 +95,42 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(ids.count, 3, "Every distinct group must have a distinct id")
     }
 
+    /// Warp appeared as two rows on a real Mac, each saying "1 location",
+    /// both called Warp: `Application Scripts/2BBY89MBSN.dev.warp` and
+    /// `Group Containers/2BBY89MBSN.dev.warp`. One resolved a bundle
+    /// identifier as well as the name and the other resolved only the name,
+    /// so the stronger key put them in different buckets. The leftover that
+    /// carries both is itself the evidence that the two names are one
+    /// product.
+    func testOneProductThatResolvesUnevenlyIsStillOneRow() {
+        let withIdentifier = Identity(bundleID: "dev.warp.Warp", name: "Warp")
+        let nameOnly = Identity(bundleID: nil, name: "Warp")
+
+        let groups = [
+            leftover("\(home)/Group Containers/2BBY89MBSN.dev.warp", owner: withIdentifier),
+            leftover("\(home)/Application Scripts/2BBY89MBSN.dev.warp", owner: nameOnly)
+        ].groupedByOwner()
+
+        XCTAssertEqual(groups.count, 1, "One product, however unevenly it resolved")
+        XCTAssertEqual(groups[0].items.count, 2)
+        XCTAssertEqual(groups[0].displayName, "Warp")
+        XCTAssertEqual(groups[0].identifier, "dev.warp.Warp", "The stronger name survives the merge")
+    }
+
+    func testJoiningOwnerNamesDoesNotChainUnrelatedSoftwareTogether() {
+        // The join is transitive by design, so the guard is that a name only
+        // links what actually carries it.
+        let groups = [
+            leftover("\(home)/Caches/A", owner: Identity(bundleID: "com.a.app", name: "Alpha")),
+            leftover("\(home)/Caches/B", owner: Identity(bundleID: "com.b.app", name: "Beta")),
+            leftover("\(home)/Caches/C", owner: Identity(bundleID: nil, name: "Beta"))
+        ].groupedByOwner()
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(Set(groups.map(\.displayName)), ["Alpha", "Beta"])
+        XCTAssertEqual(groups.first { $0.displayName == "Beta" }?.items.count, 2)
+    }
+
     func testDifferentSoftwareStaysApart() {
         let groups = [
             leftover("\(home)/Caches/Codex"),
@@ -145,6 +181,36 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "\(home)/Group Containers/x")), .groupContainer)
         XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "\(home)/Containers/x")), .container)
         XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "/tmp/x")), .other)
+    }
+
+    /// `LocationInventory` has scanned `darwinUserCache` and `darwinUserTemp`
+    /// since they were added, and this classifier did not know them, so every
+    /// real find there reached the list badged "Other" above the sentence "An
+    /// unrecognised location." Seen on this Mac: AppCleaner's 50 KB under
+    /// `/private/var/folders/…/C/net.freemacsoft.AppCleaner`. Two places
+    /// reading one fact, and only one of them had been told.
+    func testTheDarwinPerUserFoldersAreRecognisedAndNotCalledUnrecognised() {
+        let cache = URL(fileURLWithPath:
+            "/private/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/C/net.freemacsoft.AppCleaner")
+        let temp = URL(fileURLWithPath:
+            "/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/com.example.tool")
+
+        XCTAssertEqual(LeftoverDomain.of(cache), .darwinPerUser)
+        XCTAssertEqual(LeftoverDomain.of(temp), .darwinPerUser)
+        XCTAssertFalse(LeftoverDomain.darwinPerUser.whatItHolds.contains("unrecognised"))
+
+        // The fixture root's stand-ins answer the same way, or a test tree
+        // and the real machine disagree about the same folder.
+        XCTAssertEqual(
+            LeftoverDomain.of(URL(fileURLWithPath: "/tmp/root/private/var/folders/DarwinUserCache/x")),
+            .darwinPerUser
+        )
+    }
+
+    func testSomethingGenuinelyElsewhereIsStillOther() {
+        XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "/usr/local/bin/tool")), .other)
+        // Two components under /var/folders is not the per-user shape.
+        XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "/var/folders/zz/zyxvpxvq6csfxvn_n00000sm")), .other)
     }
 
     func testGroupContainersAreNotMistakenForContainers() {
