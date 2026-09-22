@@ -117,6 +117,77 @@ public final class LeftoversModel: ObservableObject {
         !selectedItems.isEmpty && blockedSelection.isEmpty
     }
 
+    /// Rows Brim removed, kept so they can come back if the person does.
+    ///
+    /// Dropping a row is not the end of the story. Everything here went to
+    /// the Trash, and the Trash is a place people take things out of again.
+    /// Restoring one in Finder puts the file back exactly where it was, and
+    /// a list that had already forgotten it would go on claiming it was
+    /// gone until the next full scan.
+    private var removedButRecoverable: [Leftover] = []
+
+    /// Drops what a removal proved gone, right now.
+    ///
+    /// The scan is not re-run. `verify` re-observed every path with `lstat`
+    /// and said which ones survived, so the list already has its answer and
+    /// walking the whole Mac again to rediscover it is four hundred
+    /// milliseconds of making somebody wait for news they have been given.
+    /// Anything still on disk stays on screen, because it is still there.
+    public func forget(paths: Set<String>) {
+        guard !paths.isEmpty else { return }
+        let going = all.filter { paths.contains($0.url.path) }
+        guard !going.isEmpty else { return }
+
+        removedButRecoverable.append(contentsOf: going)
+        orphaned.removeAll { paths.contains($0.url.path) }
+        unclaimed.removeAll { paths.contains($0.url.path) }
+        selection.subtract(going.map(\.id))
+        regroup()
+        refreshInspected()
+    }
+
+    /// Puts back anything that has reappeared on disk.
+    ///
+    /// Called when the Trash changes. Restoring from Finder writes the file
+    /// back to the path it came from, so the question is simply whether it
+    /// is there again, which is one `lstat` per row Brim removed and
+    /// nothing at all once that list is empty.
+    public func reconcileWithDisk() {
+        guard !removedButRecoverable.isEmpty else { return }
+        let back = removedButRecoverable.filter { PathExistence.exists(at: $0.url) }
+        guard !back.isEmpty else { return }
+
+        let returning = Set(back.map(\.id))
+        removedButRecoverable.removeAll { returning.contains($0.id) }
+        orphaned.append(contentsOf: back.filter { $0.category == .orphaned })
+        unclaimed.append(contentsOf: back.filter { $0.category == .unclaimed })
+        regroup()
+        refreshInspected()
+    }
+
+    /// Re-points the open detail at the rebuilt group, or closes it.
+    ///
+    /// `inspected` holds a value, not a reference, so removing one of an
+    /// application's locations left the pane showing the group as it was:
+    /// the removed path still listed, under a heading claiming it was
+    /// there. Closing the pane outright would be wrong too, because the
+    /// other locations are still the thing the person was reading about.
+    private func refreshInspected() {
+        guard let open = inspected else { return }
+        inspected = (orphanedGroups + unclaimedGroups).first { $0.id == open.id }
+    }
+
+    /// The one place the two arrays become the two grouped lists.
+    ///
+    /// `load` used to do this inline, so anything else that changed the
+    /// arrays had to remember to redo the grouping and the selection by
+    /// hand. Removing a row is exactly that kind of change.
+    private func regroup() {
+        orphanedGroups = orphaned.groupedByOwner()
+        unclaimedGroups = unclaimed.groupedByOwner()
+        settle()
+    }
+
     /// The one place the selection's consequences are worked out. Called
     /// after a batch of changes, never inside the loop making them.
     private func settle() {
@@ -129,6 +200,11 @@ public final class LeftoversModel: ObservableObject {
     /// change of view, not a reason to walk the disk again — rescanning is
     /// what the Rescan button is for.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
+        // Coming back to the section is not a reason to walk the disk, but
+        // it is a reason to catch up on anything restored from the Trash
+        // while the person was elsewhere, which the view could not see
+        // because it was not on screen to be told.
+        reconcileWithDisk()
         guard all.isEmpty, !isScanning else { return }
         await load(service: service)
     }
@@ -142,12 +218,13 @@ public final class LeftoversModel: ObservableObject {
             let found = try await service.leftovers()
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
-            orphanedGroups = orphaned.groupedByOwner()
-            unclaimedGroups = unclaimed.groupedByOwner()
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
             selection = Set(orphaned.filter { $0.capability == .ok }.map(\.id))
-            settle()
+            // A fresh scan is the truth, so nothing is being held back for
+            // a restore that the scan itself would have found.
+            removedButRecoverable = []
+            regroup()
             inspected = nil
             errorMessage = nil
         } catch {
@@ -155,10 +232,9 @@ public final class LeftoversModel: ObservableObject {
             // looking like this one's answer.
             orphaned = []
             unclaimed = []
-            orphanedGroups = []
-            unclaimedGroups = []
             selection = []
-            settle()
+            removedButRecoverable = []
+            regroup()
             errorMessage = error.localizedDescription
         }
     }

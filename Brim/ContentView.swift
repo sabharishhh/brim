@@ -28,7 +28,7 @@ struct ContentView: View {
                 case .applications:
                     ApplicationsView(model: models.applications, access: models.fullDiskAccess)
                 case .leftovers:
-                    LeftoversView(model: models.leftovers)
+                    LeftoversView(model: models.leftovers, recovery: models.recovery)
                 case .background:
                     BackgroundView(model: models.background)
                 case .storage:

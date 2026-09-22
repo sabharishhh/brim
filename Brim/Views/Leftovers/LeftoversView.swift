@@ -18,6 +18,9 @@ import BrimUI
 /// what each location is actually for.
 struct LeftoversView: View {
     @ObservedObject var model: LeftoversModel
+    /// The Trash, shared with the Review banner and the History list because
+    /// the Trash is one thing and two watchers would poll it twice.
+    @ObservedObject var recovery: RecoveryStatusModel
     @SwiftUI.Environment(\.brimService) private var service
 
     @State private var reviewRequest: PlanIntent?
@@ -39,16 +42,31 @@ struct LeftoversView: View {
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
+        .task { await recovery.start(service: service) }
+        // Putting something back in Finder puts the file back where it was,
+        // so the row belongs back in the list. The Trash changing is the
+        // signal, and checking costs one `lstat` per row Brim removed and
+        // nothing at all when it has removed none.
+        .onChange(of: recovery.items) { _, _ in
+            withAnimation(.easeOut(duration: 0.22)) { model.reconcileWithDisk() }
+        }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .sheet(item: $reviewRequest) { intent in
             RemovalSheet(
                 intent: intent,
                 service: service,
                 title: "Remove leftovers",
-                subtitle: "\(intent.explicitTargets.count) items nothing on this Mac claims"
-            ) {
-                Task { await model.load(service: service) }
-            }
+                subtitle: "\(intent.explicitTargets.count) items nothing on this Mac claims",
+                onRemoved: { paths in
+                    // The rows go the instant the check proves they are
+                    // gone, with the sheet still open behind them, because
+                    // that is when it became true.
+                    withAnimation(.easeOut(duration: 0.22)) { model.forget(paths: paths) }
+                },
+                onFinished: {
+                    Task { await model.load(service: service) }
+                }
+            )
         }
     }
 
