@@ -81,7 +81,7 @@ struct LeftoversView: View {
     private var summary: String {
         if model.isScanning { return "Checking everywhere an owner could be written down…" }
         return "\(model.orphanedGroups.count) orphaned · \(model.unclaimedGroups.count) unclaimed, "
-             + "gathered up by the software that left them"
+             + "grouped by the software that left them"
     }
 
     @ViewBuilder
@@ -90,7 +90,7 @@ struct LeftoversView: View {
             ProgressView("Searching…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.errorMessage {
             VStack(spacing: 6) {
-                Text("The scan did not finish").font(.headline).foregroundColor(.red)
+                Text("The scan stopped early").font(.headline).foregroundColor(.red)
                 Text(error).foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -98,16 +98,15 @@ struct LeftoversView: View {
             List {
                 section(
                     "Orphaned",
-                    "Something on this Mac named an owner for these, and that owner has gone. "
-                    + "Ticked by default.",
+                    "A record on this Mac names the software these belong to, and that "
+                    + "software is no longer installed. Ticked for you.",
                     model.visible(model.orphanedGroups),
-                    "Nothing here. No registration, receipt or Launch Services entry points at "
-                    + "software that has since gone."
+                    "Nothing here. No record on this Mac points at software that has gone."
                 )
                 section(
                     "Unclaimed",
-                    "Nothing claims these and nothing remembers claiming them. Worth a look, "
-                    + "but not proof. Untick or tick each one yourself.",
+                    "No installed application claims these, and no record says one ever "
+                    + "did. Worth reading through. Tick the ones you want removed.",
                     model.visible(model.unclaimedGroups),
                     "Everything here has an owner."
                 )
@@ -192,9 +191,9 @@ struct LeftoversView: View {
             VStack(spacing: 6) {
                 Image(systemName: "questionmark.folder")
                     .font(.largeTitle).foregroundColor(.secondary)
-                Text("Pick something to find out what it is").font(.headline)
-                Text("Brim will name the software it came from, say how it worked that out, and "
-                     + "tell you what sits in each place.")
+                Text("Select an entry").font(.headline)
+                Text("Brim names the software it belongs to, what each location holds, and "
+                     + "what you lose by removing it.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
@@ -296,14 +295,21 @@ private struct LeftoverDetail: View {
                     group.category == .orphaned ? .accentColor : .secondary
                 )
 
+                // The second sentence only exists when there is a second
+                // quantity. With nothing regenerable, `ByteText` returns the
+                // word "nothing" and the sentence came out as "The other
+                // nothing is scratch files the software makes again by
+                // itself."
                 if group.meaningfulBytes > 0 {
                     callout(
                         "exclamationmark.triangle",
                         "What goes for good",
                         ByteText.inSentence(group.meaningfulBytes)
-                        + " of this never comes back once you empty the Trash. The other "
-                        + ByteText.inSentence(group.regeneratedBytes)
-                        + " is scratch files the software makes again by itself.",
+                        + " of this never comes back once you empty the Trash."
+                        + (group.regeneratedBytes > 0
+                           ? " The other " + ByteText.inSentence(group.regeneratedBytes)
+                             + " is scratch files the software makes again by itself."
+                           : ""),
                         .orange
                     )
                 }

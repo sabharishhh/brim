@@ -192,10 +192,14 @@ struct UpdatesView: View {
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Cannot be checked (\(model.stranded.count))").font(.headline)
-                    Text("These have no App Store receipt, Sparkle feed, Homebrew cask or "
-                         + "updater, so there is no way to tell whether a newer version "
-                         + "exists.")
+                    // The finding is about the applications, not about Brim.
+                    // "Cannot be checked" made a fact worth knowing, that
+                    // this software will never update itself, read as a hole
+                    // in the product.
+                    Text("You update these yourself (\(model.stranded.count))").font(.headline)
+                    Text("No App Store receipt, no Sparkle feed, no Homebrew cask and no "
+                         + "updater running alongside them. Nothing will tell you when a new "
+                         + "version comes out, so check the developer's site now and again.")
                         .font(.caption).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

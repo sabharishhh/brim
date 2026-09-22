@@ -72,17 +72,23 @@ public struct ScanCompleteness: Sendable, Equatable, Codable {
     public var isComplete: Bool { unreadable.isEmpty && timedOut.isEmpty }
 
     /// What the person is told, or nil when there is nothing to tell.
+    ///
+    /// Both sentences have to carry the same two things: what is missing, and
+    /// what to do about it. An earlier pair said only the first, and ended on
+    /// "so nothing is selected for you", which reads as an apology for work
+    /// Brim did not do rather than as a list of everything it did.
     public var explanation: String? {
         guard !isComplete else { return nil }
         if !timedOut.isEmpty {
             let count = timedOut.count
-            return "\(count) \(count == 1 ? "place" : "places") took too long to read, so "
-                 + "Brim stopped looking there. Anything found elsewhere is still shown, "
-                 + "and nothing is selected for you, because the search was not finished."
+            return "\(count) \(count == 1 ? "place" : "places") took longer to read than the "
+                 + "scan allows. Everything else is listed below. Run the scan again to "
+                 + "include \(count == 1 ? "it" : "them")."
         }
         let count = unreadable.count
-        return "\(count) \(count == 1 ? "place" : "places") could not be read. What is listed "
-             + "is what Brim could see, so nothing is selected for you."
+        return "\(count) \(count == 1 ? "place" : "places") on this Mac \(count == 1 ? "is" : "are") "
+             + "closed to Brim. Everything else is listed below, and Full Disk Access opens "
+             + "the rest."
     }
 
     public func merging(_ other: ScanCompleteness) -> ScanCompleteness {

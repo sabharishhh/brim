@@ -58,8 +58,8 @@ struct DuplicatesView: View {
     private var summary: String {
         if model.isScanning { return "Reading the files that share a size…" }
         guard let folder = model.scannedFolder else {
-            return "Pick a folder to look through. The whole of any file that "
-                 + "shares a size with another, so a folder beats a whole disk."
+            return "Pick a folder to look through. One folder at a time is quicker and "
+                 + "easier to act on than a whole disk."
         }
         if model.groups.isEmpty { return "Nothing duplicated in \(folder.lastPathComponent)." }
         return "\(model.groups.count) sets in \(folder.lastPathComponent) · "
@@ -71,15 +71,15 @@ struct DuplicatesView: View {
         if model.isScanning {
             VStack(spacing: 8) {
                 ProgressView()
-                Text("Files of the same size are compared by their ends first, and only the "
-                     + "survivors are read in full.")
+                Text("Large folders take a moment. Files are ruled out cheaply first, so "
+                     + "only the ones that really might match are read all the way through.")
                     .font(.caption).foregroundColor(.secondary)
                     .multilineTextAlignment(.center).frame(maxWidth: 340)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.errorMessage {
             VStack(spacing: 6) {
-                Text("The scan did not finish").font(.headline).foregroundColor(.red)
+                Text("The scan stopped early").font(.headline).foregroundColor(.red)
                 Text(error).foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,9 +87,9 @@ struct DuplicatesView: View {
             VStack(spacing: 6) {
                 Image(systemName: "doc.on.doc").font(.largeTitle).foregroundColor(.secondary)
                 Text("Choose a folder").font(.headline)
-                Text("Files that share a size are compared, then only the ones that "
-                     + "still look alike. Nothing is read twice and the scan does not push "
-                     + "your own files out of the disk cache.")
+                Text("Pick a folder and Brim finds the files in it that are byte for byte "
+                     + "the same, whatever they are called. Copies that already share their "
+                     + "storage on disk are listed too, marked as freeing nothing.")
                     .foregroundColor(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
             }

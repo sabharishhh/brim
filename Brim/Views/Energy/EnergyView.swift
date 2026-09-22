@@ -54,7 +54,11 @@ struct EnergyView: View {
         var text = "\(model.measured) apps busy over \(Int(model.window.rounded())) seconds"
         if processes > model.measured { text += ", across \(processes) processes" }
         if model.coverageGaps > 0 {
-            text += ", \(model.coverageGaps) could not be read"
+            // These are processes belonging to root or to another account.
+            // macOS reports their energy only to a process running as that
+            // user, so the reason is worth naming instead of leaving a bare
+            // count of things Brim missed.
+            text += ", not counting \(model.coverageGaps) owned by the system"
         }
         return text
     }

@@ -28,7 +28,7 @@ public enum SigningState: Equatable, Sendable, Codable {
             guard let team else { return "Signed, and the signature checks out." }
             return "Signed by \(team), and the signature checks out."
         case .teamChanged(let recorded, let found):
-            let now = found.map { "by \($0)" } ?? "by nobody Brim can name"
+            let now = found.map { "by \($0)" } ?? "without a team identifier"
             return "macOS recorded this as \(recorded) and the code here is signed \(now). "
                  + "Something replaced it after macOS agreed to run it."
         case .invalid(let reason):
@@ -37,6 +37,22 @@ public enum SigningState: Equatable, Sendable, Codable {
             return "Nothing signs this, so macOS cannot tell who wrote it."
         case .notChecked(let why):
             return why
+        }
+    }
+
+    /// Two or three words for a table cell, where the sentence will not fit.
+    ///
+    /// A column that falls back to a dash when there is no team name says
+    /// the same nothing for code that is unsigned, code whose signature is
+    /// broken, and code Brim was not able to examine. Those are three
+    /// different answers and the column has room to tell them apart.
+    public var shortDescription: String {
+        switch self {
+        case .valid(let team): return team ?? "Signed"
+        case .teamChanged(_, let found): return found.map { "Now \($0)" } ?? "Replaced"
+        case .invalid: return "Signature broken"
+        case .unsigned: return "Unsigned"
+        case .notChecked: return "No code to read"
         }
     }
 

@@ -69,8 +69,8 @@ struct OnboardingSheet: View {
                 point(
                     "checkmark.seal",
                     "It checks its own work.",
-                    "After a removal Brim goes back to every place it touched and tells you "
-                    + "what it found there. It does not take its own word for it."
+                    "After a removal Brim goes back to every place it touched, looks again, "
+                    + "and tells you what is there now."
                 )
                 point(
                     "arrow.uturn.backward",
@@ -101,10 +101,10 @@ struct OnboardingSheet: View {
                 status(
                     "lock.fill", .orange,
                     "Full Disk Access is off.",
-                    "Brim still runs without it and still finds things. It just cannot see "
-                    + "inside containers or read the login item list, and it will say so "
-                    + "wherever that changes an answer, rather than showing you a zero it "
-                    + "never earned."
+                    "Brim works without it and finds plenty. Turning it on adds two things: "
+                    + "what applications keep inside their containers, and the list of login "
+                    + "items macOS runs at startup. Where a number would change, Brim says so "
+                    + "on the spot."
                 )
 
                 Button {

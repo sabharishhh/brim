@@ -41,17 +41,13 @@ struct DeveloperView: View {
         .alert(item: $pendingCleanup) { cache in
             Alert(
                 title: Text("Let \(cache.tool) clean up after itself?"),
-                message: Text("The tool's own cleanup command runs instead of deleting the folder: "
-                              + "command, which leaves \(cache.tool) in a state it understands:"
-                              + "\n\n\(commandText(cache))"),
+                message: Text("Brim runs the tool's own command rather than deleting the folder, "
+                              + "which leaves \(cache.tool) in a state it understands:"
+                              + "\n\n\(cache.cleanupCommand ?? "")"),
                 primaryButton: .default(Text("Run it")) { runCleanup(cache) },
                 secondaryButton: .cancel()
             )
         }
-    }
-
-    private func commandText(_ cache: DeveloperCache) -> String {
-        cache.cleanupCommand ?? "unknown"
     }
 
     private func runCleanup(_ cache: DeveloperCache) {
@@ -89,7 +85,7 @@ struct DeveloperView: View {
 
     private var summary: String {
         if model.isScanning { return "Measuring what the build tools have kept…" }
-        if model.caches.isEmpty { return "No build caches Brim recognises on this Mac." }
+        if model.caches.isEmpty { return "No build caches on this Mac." }
         return "\(ByteText.short(model.totalBytes)) across \(model.caches.count) caches, "
              + "of which \(ByteText.short(model.recoverableBytes)) comes back on its own"
     }
@@ -101,9 +97,10 @@ struct DeveloperView: View {
         } else if model.caches.isEmpty {
             VStack(spacing: 6) {
                 Image(systemName: "hammer").font(.largeTitle).foregroundColor(.secondary)
-                Text("Nothing to show").font(.headline)
-                Text("Brim did not find any of the build caches it knows about. It only lists "
-                     + "ones it has been taught, rather than guessing from folder names.")
+                Text("Nothing for the build tools to give back").font(.headline)
+                Text("Xcode, npm, Go, Cargo, pip, Homebrew and Gradle keep their caches in "
+                     + "known places, and all of those are empty or absent here. They fill up "
+                     + "again as you build, so it is worth another look later.")
                     .foregroundColor(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: 380)
             }
@@ -116,7 +113,7 @@ struct DeveloperView: View {
                       "Clearing these costs time and bandwidth the next time a build "
                       + "reaches for them.")
                 group(.configured, "Set up by hand",
-                      "Not caches. Clearing these loses work or configuration, so they are shown "
+                      "Not caches. Clearing these loses work or configuration, so Brim lists "
                       + "them for the space they take and leaves them to you.")
             }
             .listStyle(.inset)
@@ -190,7 +187,11 @@ struct DeveloperView: View {
                 .accessibilityHidden(true)
 
             HStack(spacing: 8) {
-                if cache.cleanupID != nil {
+                // Gated on the command, not on the identifier. The two are
+                // separate fields and the button needs both, so offering it
+                // on the identifier alone put up a control that showed an
+                // empty command and then did nothing when pressed.
+                if cache.cleanupID != nil, cache.cleanupCommand != nil {
                     Button("Let \(cache.tool) clean it") { pendingCleanup = cache }
                         .buttonStyle(.link).font(.caption)
                 }

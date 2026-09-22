@@ -85,15 +85,26 @@ struct ReviewSummaryView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("This Mac").font(.largeTitle).fontWeight(.bold)
                 Text(leftovers.isScanning
-                     ? "Having a look…"
-                     : "What software has left behind on this Mac.")
+                     ? "Looking…"
+                     : "Everything software has left on this Mac.")
                     .foregroundColor(.secondary)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(ByteText.short(unclaimedBytes))
-                    .font(.title).fontWeight(.semibold).monospacedDigit()
-                Text("unattributed").font(.caption).foregroundColor(.secondary)
+            // Not drawn until there is a measurement behind it. While the
+            // sweep was running `leftovers.all` is empty, so this rendered a
+            // large, confident "Empty" over the word "unattributed" as the
+            // first thing anybody saw on opening Brim, seconds before the
+            // real figure replaced it. A zero nobody has measured is the one
+            // number this product must never print.
+            if !leftovers.isScanning {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(ByteText.short(unclaimedBytes))
+                        .font(.title).fontWeight(.semibold).monospacedDigit()
+                    Text("unattributed").font(.caption).foregroundColor(.secondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isStaticText)
+                .accessibilityLabel("\(ByteText.short(unclaimedBytes)) unattributed")
             }
         }
     }
@@ -166,10 +177,16 @@ struct ReviewSummaryView: View {
         let built: [(NavigationItem, ReviewRanking.Finding, AnyView)] = [
             (
                 .leftovers,
+                // Counted in groups, which is what the Leftovers screen
+                // shows. This card counted raw locations, so the summary
+                // promised "18 orphaned, 235 unclaimed" and the screen one
+                // click away showed 7 and 217. Both numbers were right about
+                // different things and the person could only see that one of
+                // them was wrong.
                 ReviewRanking.Finding(
                     area: "leftovers", bytes: unclaimedBytes,
-                    count: leftovers.orphaned.count,
-                    confidence: leftovers.orphaned.isEmpty ? .possible : .named,
+                    count: leftovers.orphanedGroups.count,
+                    confidence: leftovers.orphanedGroups.isEmpty ? .possible : .named,
                     isWorking: leftovers.isScanning
                 ),
                 AnyView(card(
@@ -177,11 +194,11 @@ struct ReviewSummaryView: View {
                     leftovers.isScanning
                         ? .working
                         : .counted(
-                            "\(leftovers.orphaned.count) orphaned · "
-                            + "\(leftovers.unclaimed.count) unclaimed",
+                            "\(leftovers.orphanedGroups.count) orphaned · "
+                            + "\(leftovers.unclaimedGroups.count) unclaimed",
                             unclaimedBytes
                           ),
-                    "Files no installed application claims."
+                    "Folders and files left behind by software that is no longer here."
                 ))
             ),
             (
@@ -196,7 +213,7 @@ struct ReviewSummaryView: View {
                     developer.isScanning
                         ? .working
                         : .counted("\(developer.caches.count) build caches", developer.totalBytes),
-                    "Caches, simulators and derived data that build tools pile up over time."
+                    "Space your build tools are holding, and what clearing each one costs."
                 ))
             ),
             (
@@ -215,8 +232,7 @@ struct ReviewSummaryView: View {
                             : "\(background.stale.count) left over, "
                               + "\(background.live.count) running",
                             nil),
-                    "Background jobs and login items, including ones left by software "
-                    + "that is gone."
+                    "What macOS has been told to run at login and in the background."
                 ))
             ),
             (
@@ -229,7 +245,7 @@ struct ReviewSummaryView: View {
                 AnyView(card(
                     .updates, "arrow.triangle.2.circlepath", "Updates",
                     updates.isLoading ? .working : .counted(updates.report.summary, nil),
-                    "How each application gets its next version."
+                    "Which applications update themselves, and which you update by hand."
                 ))
             ),
             (
@@ -243,7 +259,7 @@ struct ReviewSummaryView: View {
                     applications.isLoading
                         ? .working
                         : .counted("\(applications.applications.count) installed", nil),
-                    "Everywhere each application has written, and what removing it takes back."
+                    "Every application installed, and everything each one has put on this Mac."
                 ))
             ),
             (
@@ -257,8 +273,8 @@ struct ReviewSummaryView: View {
                         ? .working
                         : storage.startupVolume.map {
                             .counted(ByteText.short($0.freeRightNow) + " free right now", nil)
-                          } ?? .notChecked("Could not read the volumes."),
-                    "How much space can be taken back, and how much local snapshots are holding."
+                          } ?? .notChecked("Full Disk Access is needed to read the volumes."),
+                    "Free space, and what is being held back from it."
                 ))
             ),
             (
@@ -266,8 +282,8 @@ struct ReviewSummaryView: View {
                 ReviewRanking.Finding(area: "energy", confidence: .informational),
                 AnyView(card(
                     .energy, "bolt", "Energy",
-                    .notChecked("Measured over a couple of seconds when you open it."),
-                    "What has been using the battery."
+                    .note("Open it to take a reading."),
+                    "Which applications have been using the battery."
                 ))
             ),
         ]
@@ -282,7 +298,13 @@ struct ReviewSummaryView: View {
     private enum Status {
         case working
         case counted(String, Int64?)
+        /// Something is genuinely in the way and the person can clear it.
         case notChecked(String)
+        /// How this section works, which is not a problem and must not be
+        /// drawn as one. Energy takes its reading when you open it, and
+        /// saying so in orange behind a question mark made an ordinary
+        /// design decision look like a fault on the opening screen.
+        case note(String)
         case notBuilt
     }
 
@@ -320,10 +342,14 @@ struct ReviewSummaryView: View {
         .accessibilityHint("Opens \(title)")
     }
 
+    /// Whether the icon is drawn in the accent colour, which is to say
+    /// whether the section is ready to be used. A section explaining how it
+    /// works is ready; one that is blocked is not.
     private func isAvailable(_ status: Status) -> Bool {
-        if case .counted = status { return true }
-        if case .working = status { return true }
-        return false
+        switch status {
+        case .counted, .working, .note: return true
+        case .notChecked, .notBuilt: return false
+        }
     }
 
     @ViewBuilder
@@ -350,6 +376,11 @@ struct ReviewSummaryView: View {
             // Not the same as zero, and saying zero here would be a lie.
             Label(why, systemImage: "questionmark.circle")
                 .font(.caption).foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 1)
+        case .note(let text):
+            Text(text)
+                .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 1)
         case .notBuilt:

@@ -224,7 +224,13 @@ final class LocationInventorySourceTests: XCTestCase {
         XCTAssertTrue(found.evidence.isEmpty, "The plug-in walk should have been skipped")
         XCTAssertFalse(found.completeness.isComplete)
         XCTAssertFalse(found.completeness.timedOut.isEmpty)
-        XCTAssertTrue(found.completeness.explanation?.contains("took too long") ?? false)
+
+        // The sentence has to carry two things, not one. Saying only that a
+        // place went unread leaves somebody holding a shortfall with nothing
+        // to do about it, so it also names what would fix it.
+        let explanation = found.completeness.explanation ?? ""
+        XCTAssertTrue(explanation.contains("longer"), explanation)
+        XCTAssertTrue(explanation.lowercased().contains("again"), explanation)
     }
 
     func testTheCheapChecksStillRunWhenTimeIsShort() throws {
