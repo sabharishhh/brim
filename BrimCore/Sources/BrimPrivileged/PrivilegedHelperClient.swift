@@ -12,6 +12,22 @@ import os
 public final class PrivilegedHelperClient: ObservableObject {
 
     public enum State: Equatable, Sendable {
+        /// Brim has not asked macOS yet, and on purpose.
+        ///
+        /// Asking is not free and it is not private. Reading
+        /// `SMAppService.status` makes `smd` open the bundle, build a
+        /// background-item configuration out of the daemon plist inside it,
+        /// and ask Background Task Management for that item's disposition.
+        /// On a Mac where the daemon has never been registered, BTM has no
+        /// record of it, and being asked about an item it has never seen is
+        /// what makes macOS announce a new background item. With no record
+        /// there is no stored name either, so the notification reads
+        /// "(null) can run in the background".
+        ///
+        /// Brim was doing that three times on every launch without anybody
+        /// having asked for the helper, which is precisely the kind of
+        /// unexplained background registration this product exists to find.
+        case notAsked
         /// Never installed, or the user removed it.
         case notInstalled
         /// Installed, but the person has not allowed it yet in System
@@ -28,23 +44,58 @@ public final class PrivilegedHelperClient: ObservableObject {
         public var canRemove: Bool { self == .ready }
     }
 
-    @Published public private(set) var state: State = .notInstalled
+    @Published public private(set) var state: State = .notAsked
 
     private let log = Logger(subsystem: "com.sabharishhh.brim", category: "helper")
     private var connection: NSXPCConnection?
 
-    public init() { refresh() }
+    /// Deliberately does nothing. See `State.notAsked`.
+    public init() {}
 
     private var service: SMAppService {
         SMAppService.daemon(plistName: "\(BrimJobHelper.machServiceName).plist")
     }
 
+    /// Whether this copy of Brim actually ships the daemon it would register.
+    ///
+    /// A local question with a local answer, and it tells `notFound` apart
+    /// from a missing file. `SMAppService` answers `notFound` when Background
+    /// Task Management holds no record for the item, which is the ordinary
+    /// state of a daemon nobody has installed. Reporting that as "the daemon
+    /// is missing from this copy of Brim" was wrong on every Mac where the
+    /// helper had simply never been set up, which is all of them until
+    /// somebody sets it up.
+    private var daemonIsInTheBundle: Bool {
+        guard let plists = Bundle.main.url(
+            forResource: nil, withExtension: nil, subdirectory: "Contents/Library/LaunchDaemons"
+        ) ?? Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/LaunchDaemons") as URL?
+        else { return false }
+        let plist = plists.appendingPathComponent("\(BrimJobHelper.machServiceName).plist")
+        return FileManager.default.fileExists(atPath: plist.path)
+    }
+
+    /// Reads the status once, and only where somebody is about to act on it.
+    ///
+    /// Call this from a view that shows helper state or from a flow that is
+    /// about to need the daemon. Do not call it at launch.
+    public func refreshIfNeeded() {
+        guard state == .notAsked else { return }
+        refresh()
+    }
+
+    /// Reads the status, whatever it was before. For the points where the
+    /// answer can genuinely have changed: after installing, after the person
+    /// comes back from System Settings, and before handing the daemon work.
     public func refresh() {
         switch service.status {
         case .notRegistered: state = .notInstalled
         case .enabled: state = .ready
         case .requiresApproval: state = .waitingForApproval
-        case .notFound: state = .unavailable("The daemon is missing from this copy of Brim.")
+        case .notFound:
+            state = daemonIsInTheBundle
+                ? .notInstalled
+                : .unavailable("This copy of Brim does not include the helper.")
         @unknown default:
             // A status this build of Brim predates. Say what it means for the
             // person rather than that Brim did not recognise the value.
@@ -77,6 +128,14 @@ public final class PrivilegedHelperClient: ObservableObject {
     /// daemon. Doing it the other way round leaves the folder behind for
     /// good.
     public func uninstall() async -> String? {
+        // Ask macOS here whatever the cached state says. This is the one
+        // moment the answer has to be current: `state` starts at `notAsked`
+        // now, and skipping the daemon's own cleanup because Brim had not
+        // looked yet would leave the root-owned quarantine folder on the
+        // disk for good, which is the exact failure this product exists to
+        // point at in other people's software.
+        refresh()
+
         var complaint: String?
         if state == .ready {
             complaint = await askDaemonToCleanUp()
