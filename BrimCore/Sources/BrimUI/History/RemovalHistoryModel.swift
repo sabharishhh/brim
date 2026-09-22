@@ -22,6 +22,54 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
             ? "No longer in the Trash"
             : "Deleted permanently"
     }
+
+    /// When it happened, written once.
+    ///
+    /// The row used to build this with `Text(date, format: .dateTime...)`,
+    /// which constructs and applies a `Date.FormatStyle` every time the row
+    /// is drawn. Date formatting is among the slowest things in Foundation,
+    /// and thirty-nine rows doing it on every frame of a scroll is the
+    /// whole reason this panel felt heavy. A record's date does not change.
+    public let occurred: String
+
+    /// What a screen reader says, also written once, for the same reason:
+    /// the row was assembling this string on every pass.
+    public let spoken: String
+
+    public init(plan: Plan, recoverable: RecoverableItem?) {
+        self.plan = plan
+        self.recoverable = recoverable
+
+        self.occurred = Self.dateStyle.format(plan.createdAt)
+
+        // Moved here verbatim from the view, which was assembling it on
+        // every pass. The wording is not incidental: gluing the reason on
+        // with `?? ""` once read out as "Figma, 3 items, 40 MB. , cannot be
+        // undone", and saying "items" for a removal of one disagreed with
+        // the row beside it.
+        let count = plan.steps.count
+        let items = "\(count) \(count == 1 ? "item" : "items")"
+        var parts = [
+            "\(plan.intent.subjectIdentity.name), \(items), "
+            + ByteText.short(plan.expectedTotalBytes)
+        ]
+        let reason = recoverable != nil
+            ? nil
+            : (plan.isReversible ? "No longer in the Trash" : "Deleted permanently")
+        if recoverable != nil {
+            parts.append("Can be undone")
+        } else if let reason, !reason.isEmpty {
+            parts.append("\(reason), so it cannot be undone")
+        } else {
+            parts.append("Cannot be undone")
+        }
+        self.spoken = parts.joined(separator: ". ") + "."
+    }
+
+    /// Built once for the whole process rather than per row. A
+    /// `Date.FormatStyle` is cheap to reuse and expensive to construct.
+    private static let dateStyle = Date.FormatStyle.dateTime
+        .month().day().hour().minute()
 }
 
 /// Backs the History view: what was removed, and what can still be put back.

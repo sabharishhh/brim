@@ -110,7 +110,10 @@ struct RemovalHistoryView: View {
                     Text(ByteText.short(record.bytes))
                         .monospacedDigit()
                     Text("·")
-                    Text(record.plan.createdAt, format: .dateTime.month().day().hour().minute())
+                    // Formatted once, when the record was made. Doing it
+                    // here meant building a `Date.FormatStyle` per row per
+                    // frame, which is what made this list heavy to scroll.
+                    Text(record.occurred)
 
                     if let reason = record.unavailableReason {
                         Text("·")
@@ -133,27 +136,14 @@ struct RemovalHistoryView: View {
             }
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(spokenLabel(for: record))
+        // `.ignore`, not `.combine`: there is a written label, so merging
+        // the children first is work whose result is thrown away.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(record.spoken)
     }
 
-    /// One sentence per fact, assembled rather than concatenated.
-    ///
-    /// The previous version glued the reason on with `?? ""`, so a record
-    /// that cannot be undone and carries no stored reason was read out as
-    /// "Figma, 3 items, 40 MB. , cannot be undone." It also said "items" for
-    /// a removal of one, while the row beside it said "item".
-    private func spokenLabel(for record: RemovalRecord) -> String {
-        let items = "\(record.itemCount) \(record.itemCount == 1 ? "item" : "items")"
-        var parts = ["\(record.name), \(items), \(ByteText.short(record.bytes))"]
-
-        if record.canUndo {
-            parts.append("Can be undone")
-        } else if let reason = record.unavailableReason, !reason.isEmpty {
-            parts.append("\(reason), so it cannot be undone")
-        } else {
-            parts.append("Cannot be undone")
-        }
-        return parts.joined(separator: ". ") + "."
-    }
+    // `spokenLabel` moved to `RemovalRecord`, where it is built once when
+    // the record is made rather than on every pass of every row. The
+    // wording, and the incident behind it, travelled with it.
 }
