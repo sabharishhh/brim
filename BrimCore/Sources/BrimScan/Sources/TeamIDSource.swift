@@ -1,5 +1,8 @@
 import Foundation
+import os
 import BrimCore
+
+private let log = BrimLog.make("scan")
 
 public struct TeamIDSource: EvidenceSource {
     public init() {}
@@ -14,8 +17,22 @@ public struct TeamIDSource: EvidenceSource {
             root.url(for: .systemLibrary).appendingPathComponent("Group Containers")
         ]
         
+        // **This should be a coverage gap, not a log line.** A Group
+        // Containers folder Brim cannot read is the "did not look is not
+        // nothing found" case exactly, and returning an empty array for it
+        // is the kind of unmeasured zero `RegistrationCoverage` and
+        // `ScanCompleteness` exist to prevent. It is a log line because
+        // `EvidenceSource` has nowhere to put the answer: only
+        // `LocationInventorySource` carries a `findings` method returning
+        // `ScanCompleteness`, and widening the protocol touches every source.
+        // Until that happens this reads as a clean result and is not one.
         for dir in containerDirs {
-            guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { print("TeamIDSource: Failed to read \(dir.path)"); continue }
+            guard let contents = try? fm.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: nil
+            ) else {
+                log.debug("could not read \(dir.path)")
+                continue
+            }
             for url in contents {
                 let name = url.lastPathComponent
                 if name == teamID || name.hasPrefix("\(teamID).") {

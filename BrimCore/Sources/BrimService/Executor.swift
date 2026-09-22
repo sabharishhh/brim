@@ -1,6 +1,9 @@
 import Foundation
+import os
 import BrimCore
 import BrimOps
+
+private let log = BrimLog.make("executor")
 
 public actor Executor {
     private let journalStore: JournalStore
@@ -311,7 +314,15 @@ public actor Executor {
             do {
                 try await journalStore.write(entry: journal)
             } catch {
-                print("Warning: Failed to write journal entry for step \(step.index): \(error)")
+                // Swallowed so a write failure cannot abort a removal the
+                // person asked for, which means this is the only trace of
+                // it. The journal is what reconciles a crash mid-apply, so
+                // one that stopped being written is the first thing to look
+                // for when a relaunch cannot make sense of an open run.
+                // One literal: `OSLogMessage` is built by the compiler from
+                // an interpolated string, so a concatenation will not type
+                // check here.
+                log.error("could not write the journal at step \(step.index): \(error.localizedDescription)")
             }
         }
         

@@ -261,11 +261,10 @@ public struct SafeOps {
         if renameatx_np(AT_FDCWD, sourcePath, parentFd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
             let err = errno
             if err == EEXIST {
-                // DEBUG
-                print("EEXIST for \(destPath). Let's see what's in there:")
-                if let enumerator = FileManager.default.enumerator(atPath: parentURL.path) {
-                    for item in enumerator { print(item) }
-                }
+                // Something is already at the destination. This used to
+                // print the destination and then enumerate the whole parent
+                // directory to standard out, which for a move into the Trash
+                // is a listing of the person's Trash in the system log.
                 throw SafeOpsError.pathOccupied
             }
             if err == EXDEV {

@@ -1,4 +1,8 @@
 import Foundation
+import os
+import BrimCore
+
+private let log = BrimLog.make("presence")
 
 /// What Brim remembers about the person at the machine.
 ///
@@ -79,7 +83,7 @@ public actor PresenceStore {
         } catch {
             // Losing this costs one extra prompt, never correctness, so it
             // must not fail an operation the user asked for.
-            print("Warning: could not persist presence: \(error)")
+            log.notice("could not persist presence: \(error.localizedDescription)")
         }
     }
 }

@@ -22,7 +22,7 @@ public struct SMAppServiceSource: EvidenceSource {
             guard fm.fileExists(atPath: appURL.path) else { continue }
             
             let lsDir = appURL.appendingPathComponent("Contents/Library/LaunchServices")
-            print("SMAppServiceSource checking \(lsDir.path)"); if let contents = try? fm.contentsOfDirectory(at: lsDir, includingPropertiesForKeys: nil) {
+            if let contents = try? fm.contentsOfDirectory(at: lsDir, includingPropertiesForKeys: nil) {
                 for fileURL in contents {
                     results.append(Evidence(
                         url: fileURL,

@@ -1,10 +1,13 @@
 import Foundation
+import os
 import BrimCore
 import LocalAuthentication
 import BrimScan
 import BrimProtocol
 import BrimOps
 import BrimIndex
+
+private let log = BrimLog.make("service")
 
 /// The in-process implementation of the BrimService.
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
@@ -476,7 +479,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         
         // Ensure steps match exactly (count, targets, and fingerprints)
         guard plan.steps.count == revalidatedPlan.steps.count else {
-            let msg = "Step count mismatch: expected \(plan.steps.count), found \(revalidatedPlan.steps.count)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+            throw ApplyError.validationFailed(
+                "Step count mismatch: expected \(plan.steps.count), "
+                + "found \(revalidatedPlan.steps.count)"
+            )
         }
         
         for i in 0..<plan.steps.count {
@@ -484,15 +490,21 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let newStep = revalidatedPlan.steps[i]
             
             guard originalStep.target == newStep.target else {
-                let msg = "Target mismatch at step \(i): expected \(originalStep.target), found \(newStep.target)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+                throw ApplyError.validationFailed(
+                    "Target mismatch at step \(i): expected \(originalStep.target), "
+                    + "found \(newStep.target)"
+                )
             }
-            
+
+            // One guard, not the two that were here. They tested the same
+            // thing, so the first always threw and the second, which is the
+            // one that says what the fingerprints actually were, never ran.
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
-                let msg = "Fingerprint mismatch at step \(i) for \(originalStep.target)"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
-            }
-            
-            guard originalStep.targetFingerprint == newStep.targetFingerprint else {
-                let msg = "Fingerprint mismatch at step \(i) for target \(originalStep.target): original \(String(describing: originalStep.targetFingerprint)), new \(String(describing: newStep.targetFingerprint))"; print("VALIDATION FAILED: \(msg)"); throw ApplyError.validationFailed(msg)
+                throw ApplyError.validationFailed(
+                    "Fingerprint mismatch at step \(i) for target \(originalStep.target): "
+                    + "original \(String(describing: originalStep.targetFingerprint)), "
+                    + "new \(String(describing: newStep.targetFingerprint))"
+                )
             }
         }
         
@@ -532,7 +544,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" { continue }
             var statBuf = stat()
             if lstat(step.target, &statBuf) == 0 { // 0 means it exists (symlink or real file)
-                print("VERIFY FOUND LEFTOVER TARGET: \(step.target) (Step \(step.index) - \(step.kind))")
                 pathsRemaining.insert(step.target)
             }
         }
@@ -837,7 +848,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         do {
             try await index.recordInstalled(observations)
         } catch {
-            print("Could not write the install snapshot: \(error.localizedDescription)")
+            // History is snapshots and subtraction, so a snapshot that was
+            // not written is a comparison that will silently be made against
+            // the wrong pair later.
+            log.error("could not write the install snapshot: \(error.localizedDescription)")
         }
     }
 

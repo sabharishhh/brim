@@ -1,9 +1,12 @@
 import Foundation
+import os
 import SwiftUI
 import BrimProtocol
 import BrimCore
 import BrimUI
 import BrimPrivileged
+
+private let log = BrimLog.make("app")
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
@@ -12,6 +15,13 @@ import BrimPrivileged
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
     
     @State private var showSelfUninstall = false
+
+    /// What went wrong removing Brim, when something did.
+    ///
+    /// This has to reach the person rather than a log. They pressed a
+    /// button called "Uninstall Brim", and the two ways it fails are both
+    /// ones where the window staying open is the only clue they get.
+    @State private var selfUninstallProblem: String?
 
     var body: some Scene {
         WindowGroup {
@@ -27,6 +37,17 @@ import BrimPrivileged
                          + "background agents and everything it has written. Any job files "
                          + "Brim set aside for you go with it, so restore anything you still "
                          + "want first.")
+                }
+                .alert(
+                    "Brim has not removed itself",
+                    isPresented: Binding(
+                        get: { selfUninstallProblem != nil },
+                        set: { if !$0 { selfUninstallProblem = nil } }
+                    )
+                ) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(selfUninstallProblem ?? "")
                 }
         }
         // The widest section needs the sidebar (200) plus a two pane split
@@ -97,7 +118,22 @@ import BrimPrivileged
         // an uninstaller that leaves a root-owned folder on the disk is
         // the exact failure this product exists to point at.
         if let complaint = await helper.uninstall() {
-            print("The helper did not clean up after itself: \(complaint)")
+            log.error("the helper did not clean up after itself: \(complaint)")
+            // `uninstall` unregisters the daemon whether or not its own
+            // cleanup worked, and only the running daemon can clear a folder
+            // owned by root, so at this point the folder is there for good.
+            // Removing Brim now would take away the only thing that knows,
+            // which is the failure this product exists to point at in other
+            // people's software.
+            selfUninstallProblem =
+                "The helper that runs as an administrator could not clear its own folder "
+                + "before it was unregistered, so \(BrimJobHelper.quarantineDirectory) is "
+                + "still on the disk and belongs to root. Removing it now needs an "
+                + "administrator, which Finder will ask for.\n\n"
+                + "Brim is untouched, so nothing else has been removed. Asking again will "
+                + "remove Brim, but it will not remove that folder.\n\n"
+                + complaint
+            return
         }
 
         do {
@@ -108,7 +144,8 @@ import BrimPrivileged
             // Quit immediately after applying the uninstall
             NSApplication.shared.terminate(nil)
         } catch {
-            print("Failed to self-uninstall: \(error)")
+            log.error("could not remove Brim: \(error.localizedDescription)")
+            selfUninstallProblem = "Brim could not remove itself. \(error.localizedDescription)"
         }
     }
 }
