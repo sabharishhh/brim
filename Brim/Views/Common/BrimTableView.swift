@@ -41,12 +41,17 @@ struct BrimTableColumn<Item: Identifiable & Equatable> {
 /// carry.
 ///
 /// SwiftUI's `List` builds a view per row and keeps them. That is fine at
-/// eighty rows and not fine at fourteen hundred, which is what the
-/// Background section holds once macOS's own registrations are included.
-/// `NSTableView` reuses a handful of views however long the list is, which
-/// is the whole reason to drop down to it.
+/// eighty rows and not fine at several hundred. `NSTableView` reuses a
+/// handful of views however long the list is, which is the whole reason to
+/// drop down to it.
 ///
-/// Three things here exist because of specific failures:
+/// It is reached above `BackgroundModel.tableThreshold` and nothing on this
+/// machine reaches it any more: the list that did was macOS's own
+/// registrations, and the Background section does not show those. It stays
+/// for the Mac that has two hundred pieces of third-party software
+/// registering things, which is a real Mac even if it is not this one.
+///
+/// Four things here exist because of specific failures:
 ///
 /// **The window used to open at half the display width** whatever
 /// `.defaultSize` asked for, and clearing every piece of saved state made
@@ -60,6 +65,12 @@ struct BrimTableColumn<Item: Identifiable & Equatable> {
 /// full pass for any unrelated state change, so scrolling a long list
 /// stuttered against its own redraws. The rows are reloaded when the rows
 /// change, and not otherwise.
+///
+/// **Sorting made that check useless.** The comparison was against the rows
+/// on screen, and sorting rearranges those, so once a column heading had
+/// been clicked every update compared a sorted array with an unsorted one,
+/// decided the rows had changed, and reloaded. `source` holds what SwiftUI
+/// handed over and is what an update is judged against.
 ///
 /// **Sorting, type-select and a context menu** are what makes a table a
 /// table rather than a list with lines in it. Column widths are persisted
@@ -112,13 +123,24 @@ struct BrimTableView<Item: Identifiable & Equatable>: NSViewRepresentable {
         coordinator.tableView.autosaveName = autosaveName
         coordinator.tableView.autosaveTableColumns = true
 
-        // Only when the rows actually changed. A reload for every
-        // unrelated state change loses the scroll position and makes a
-        // long list fight its own redraws.
-        let changed = coordinator.items.map(\.id) != items.map(\.id)
-            || coordinator.items != items
-        coordinator.items = items
-        if changed {
+        // Only when the rows actually changed. A reload for every unrelated
+        // state change loses the scroll position and makes a long list fight
+        // its own redraws.
+        //
+        // Compared against what SwiftUI last handed over rather than against
+        // the rows on screen, because sorting rearranges those. Comparing the
+        // sorted copy with the unsorted input made every single update look
+        // like a change, so as soon as anybody clicked a column heading the
+        // table reloaded itself on every unrelated redraw and threw away the
+        // scroll position each time.
+        //
+        // One comparison, not two. `Array` checks for a shared buffer before
+        // it looks at any element, so an unchanged list that the model handed
+        // back unchanged costs a pointer. Mapping the ids first threw that
+        // away and allocated two arrays of them to find out nothing had
+        // happened.
+        if coordinator.source != items {
+            coordinator.source = items
             coordinator.applySort()
             coordinator.tableView.reloadData()
         }
@@ -140,7 +162,11 @@ struct BrimTableView<Item: Identifiable & Equatable>: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
         var parent: BrimTableView
+        /// The rows on screen, in the order they are drawn.
         var items: [Item] = []
+        /// The rows as SwiftUI last handed them over, before a sort
+        /// rearranged them. What an update is compared against.
+        var source: [Item] = []
         var columns: [BrimTableColumn<Item>] = []
         /// The column being sorted by, and which way.
         private var sortColumn: String?
@@ -172,6 +198,7 @@ struct BrimTableView<Item: Identifiable & Equatable>: NSViewRepresentable {
         init(_ parent: BrimTableView) {
             self.parent = parent
             self.items = parent.items
+            self.source = parent.items
             self.columns = parent.columns
             super.init()
         }
@@ -198,12 +225,15 @@ struct BrimTableView<Item: Identifiable & Equatable>: NSViewRepresentable {
             }
         }
 
+        /// Sorted from what SwiftUI gave, never from what is already on
+        /// screen, so the order depends on the heading that is selected now
+        /// and not on the sequence of headings somebody clicked to get here.
         func applySort() {
             guard let sortColumn,
                   let column = columns.first(where: { $0.id == sortColumn }),
                   let compare = column.compare
-            else { return }
-            items.sort { ascending ? compare($0, $1) : compare($1, $0) }
+            else { items = source; return }
+            items = source.sorted { ascending ? compare($0, $1) : compare($1, $0) }
         }
 
         func updateSelection(_ wanted: Set<Item.ID>) {

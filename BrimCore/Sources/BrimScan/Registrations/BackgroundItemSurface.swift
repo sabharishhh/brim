@@ -200,9 +200,34 @@ public struct BackgroundItemSurface: RegistrationSurface {
 
     /// Apple's own background items are not leftovers and are not the user's
     /// to remove, however they look.
+    ///
+    /// Three fields can name the owner and any one of them can be the only
+    /// one filled in. Stocks registers a background app refresh item with
+    /// no bundle identifier and no URL at all: its own identifier is
+    /// `4096.com.apple.stocks` and its parent's is `2.com.apple.stocks`.
+    /// Reading only `bundleIdentifier` therefore put Apple's Stocks in a
+    /// list whose whole subject is the user's own software.
     static func isSystemOwned(_ record: BTMRecord, resolved: URL?) -> Bool {
-        if let bundleID = record.bundleIdentifier, bundleID.hasPrefix("com.apple.") { return true }
+        let named = [record.bundleIdentifier, record.identifier, record.parentIdentifier]
+        if named.contains(where: { $0.map { bundleIdentifier(in: $0).hasPrefix("com.apple.") } == true }) {
+            return true
+        }
         guard let path = resolved?.resolvingSymlinksInPath().path else { return false }
         return ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
+    }
+
+    /// The bundle identifier inside a Background Task Management identifier.
+    ///
+    /// The store prefixes each one with the record's type: `2.` for an
+    /// application, `8192.` for its background tasks, `128.` for a dock tile
+    /// plugin, `4096.` for background app refresh. Only a leading run of
+    /// digits is stripped, so an identifier that carries no prefix, and one
+    /// whose first component merely starts with a digit, come back whole.
+    static func bundleIdentifier(in identifier: String) -> String {
+        guard let dot = identifier.firstIndex(of: "."),
+              dot != identifier.startIndex,
+              identifier[identifier.startIndex..<dot].allSatisfy(\.isNumber)
+        else { return identifier }
+        return String(identifier[identifier.index(after: dot)...])
     }
 }
