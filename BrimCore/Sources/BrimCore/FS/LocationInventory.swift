@@ -29,6 +29,15 @@ public struct LocationInventory: Sendable {
         case bundleIdentifierPrefix
         /// A file or folder named exactly the application's name.
         case applicationName
+        /// A file or folder named the application's name in lower case.
+        ///
+        /// The convention outside `~/Library` is a lowercased name:
+        /// `~/.local/share/claude`, `~/.config/gh`. Most Macs have a
+        /// case-insensitive volume and would match these by accident, which
+        /// is worse than not matching them, because the accident stops on a
+        /// case-sensitive volume and the developers most likely to have one
+        /// are the people whose `~/.cache` is measured in gigabytes.
+        case applicationNameLowercased
         /// A bundle in this folder whose own `Info.plist` declares the
         /// identifier. The only way to attribute an audio plug-in, whose
         /// file name says nothing at all.
@@ -69,7 +78,7 @@ public struct LocationInventory: Sendable {
             case .bundleIdentifier, .bundleIdentifierFile, .bundleIdentifierPrefix,
                  .identifierInsideBundle:
                 return .B
-            case .applicationName:
+            case .applicationName, .applicationNameLowercased:
                 return .C
             }
         }
@@ -115,6 +124,16 @@ public struct LocationInventory: Sendable {
         // the thing people complain about. It joins the sweep when there is
         // something to tell Apple's records apart from everybody else's.
         .userRecentDocuments,
+        // Held back for the same reason and a sharper one. These folders
+        // belong overwhelmingly to command line tools that are very much
+        // still installed: `~/.config/git`, `~/.config/gh`, `~/.cache/uv`.
+        // A tool has no application bundle, so the sweep's test for whether
+        // something is still owned cannot see it, and every one of them
+        // would be offered as a leftover. The uninstall path searches here
+        // because it starts from an application that is genuinely going;
+        // the sweep cannot until it can recognise a command line tool.
+        .userDotConfig, .userDotCache, .userDotLocalShare,
+        .userDotLocalState, .userDotLocalBin,
     ]
 
     public let locations: [Location]
@@ -351,6 +370,36 @@ public struct LocationInventory: Sendable {
                  describes: "a per-boot cache",
                  sentence: "A cache in the per-user folder macOS makes fresh each boot. "
                          + "Nothing else enumerates these."),
+        // Outside `~/Library` entirely, which is where cross-platform
+        // software actually keeps its data. A tool written for Linux first
+        // looks in `~/.config` and `~/.local/share` because that is where
+        // its other builds look, and rewriting that for macOS is work
+        // almost nobody does. Nothing in Brim read `$HOME` directly, so
+        // Claude's 189 MB under `~/.local/share/claude` was invisible to
+        // every evidence source at once.
+        //
+        // Lower case on purpose. The convention here is a lowercased name,
+        // and a case-insensitive volume would paper over the difference
+        // until somebody ran Brim on a case-sensitive one.
+        Location(domain: .userDotConfig, rule: .applicationNameLowercased,
+                 describes: "settings",
+                 sentence: "Settings kept the way cross-platform software keeps them, outside "
+                         + "the Library folder. Matched on the name alone."),
+        Location(domain: .userDotCache, rule: .applicationNameLowercased,
+                 describes: "caches",
+                 sentence: "A cache kept outside the Library folder. Matched on the name "
+                         + "alone."),
+        Location(domain: .userDotLocalShare, rule: .applicationNameLowercased,
+                 describes: "stored data",
+                 sentence: "Data kept outside the Library folder, which for this kind of "
+                         + "software is usually the bulk of it. Matched on the name alone."),
+        Location(domain: .userDotLocalState, rule: .applicationNameLowercased,
+                 describes: "saved state",
+                 sentence: "State kept outside the Library folder. Matched on the name alone."),
+        Location(domain: .userDotLocalBin, rule: .applicationNameLowercased,
+                 describes: "command line tools",
+                 sentence: "A command installed outside the Library folder. Matched on the "
+                         + "name alone."),
         Location(domain: .darwinUserTemp, rule: .bundleIdentifier,
                  describes: "per-boot temporary files",
                  sentence: "Temporary files in the per-user folder macOS makes fresh each boot."),

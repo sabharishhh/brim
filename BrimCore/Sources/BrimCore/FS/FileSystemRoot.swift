@@ -115,6 +115,19 @@ public struct FileSystemRoot: Sendable {
         /// per-user, per-boot directory that nothing else enumerates.
         case darwinUserCache
         case darwinUserTemp
+
+        // The convention macOS never adopted and most cross-platform
+        // software follows anyway. Software written for Linux first keeps
+        // its real data here because that is where its other builds already
+        // look, and porting to `~/Library` is work nobody does. Nothing in
+        // Brim looked at `$HOME` directly, so the largest single thing any
+        // of these applications had on this Mac, 189 MB under
+        // `~/.local/share/claude`, was invisible to every evidence source.
+        case userDotConfig
+        case userDotCache
+        case userDotLocalShare
+        case userDotLocalState
+        case userDotLocalBin
     }
 
     /// Whether a domain can only be matched on a name, which makes
@@ -129,7 +142,12 @@ public struct FileSystemRoot: Sendable {
         case .usrLocalBin, .usrLocalEtc, .usrLocalOpt,
              .usrLocalSbin, .usrLocalShare, .usrLocalVar,
              .darwinUserCache, .darwinUserTemp,
-             .sharedUser, .sharedApplicationSupport:
+             .sharedUser, .sharedApplicationSupport,
+             // Nothing under `$HOME` carries a bundle identifier. A folder
+             // there is linked to an application by a shared name and
+             // nothing else, which is the definition of Tier C.
+             .userDotConfig, .userDotCache, .userDotLocalShare,
+             .userDotLocalState, .userDotLocalBin:
             return true
         default:
             return false
@@ -240,6 +258,11 @@ public struct FileSystemRoot: Sendable {
             return rootURL.appendingPathComponent("Users/Shared/Library/Application Support")
         case .darwinUserCache:        return Self.darwinDirectory(_CS_DARWIN_USER_CACHE_DIR, in: rootURL)
         case .darwinUserTemp:         return Self.darwinDirectory(_CS_DARWIN_USER_TEMP_DIR, in: rootURL)
+        case .userDotConfig:          return home(".config")
+        case .userDotCache:           return home(".cache")
+        case .userDotLocalShare:      return home(".local/share")
+        case .userDotLocalState:      return home(".local/state")
+        case .userDotLocalBin:        return home(".local/bin")
         }
     }
 
