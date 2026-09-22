@@ -138,6 +138,16 @@ public final class BackgroundModel: ObservableObject {
     /// section loads, because the daemon can be set up or taken away
     /// between one visit and the next.
     public func connectHelper(service: any BrimServiceProtocol) async {
+        // Only where the daemon would have something to do. Asking macOS
+        // about it on a Mac with no privileged jobs to remove costs an XPC
+        // round trip, a signature check, and a background-item notification
+        // nobody asked for. `waitingOnHelper` is derived from the scan that
+        // has just finished, so by here it is a settled answer.
+        guard !waitingOnHelper.isEmpty else {
+            await service.usePrivilegedRemover(nil)
+            await service.usePrivilegedReceiptForgetter(nil)
+            return
+        }
         helper.refresh()
         // Before trusting it with anything: an SMAppService daemon stays
         // registered across an application update, so the root process
@@ -224,18 +234,28 @@ public final class BackgroundModel: ObservableObject {
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         self.service = service
-        await connectHelper(service: service)
-        guard report.registrations.isEmpty, !isLoading else { return }
-        await load(service: service)
+        if report.registrations.isEmpty, !isLoading {
+            // `load` connects the helper itself, once it knows whether there
+            // is anything for it to do.
+            await load(service: service)
+        } else {
+            await connectHelper(service: service)
+        }
     }
 
     public func load(service: any BrimServiceProtocol) async {
         self.service = service
         isLoading = true
-        defer { isLoading = false }
         report = await service.registrations()
         // Anything that has gone is no longer selectable.
         let present = Set(report.stale.map(\.id))
         selection.formIntersection(present)
+        isLoading = false
+
+        // After the scan, not before it. Connecting first meant
+        // `waitingOnHelper` was always empty at the point the decision was
+        // made, so the question "is there privileged work here" could not be
+        // answered and macOS was asked about the daemon regardless.
+        await connectHelper(service: service)
     }
 }
