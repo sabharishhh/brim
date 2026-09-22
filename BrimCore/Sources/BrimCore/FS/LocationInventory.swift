@@ -139,16 +139,28 @@ public struct LocationInventory: Sendable {
                  describes: "preferences for every user",
                  sentence: "Preferences set for every user on this Mac, keyed to the bundle "
                          + "identifier."),
-        Location(domain: .userApplicationSupport, rule: .bundleIdentifier,
+        // Prefixed rather than exact, and the difference is an updater.
+        // An application installed by any route can switch to updating
+        // itself afterwards, and Squirrel leaves `<identifier>.ShipIt` in
+        // Caches. An exact rule walks straight past it, and three of the
+        // six applications measured on this Mac were carrying one. The same
+        // shape catches a helper that keeps its own folder under the
+        // application's identifier, which is the ordinary case for anything
+        // shipping an XPC service.
+        //
+        // The prefix is the identifier and a dot, so `com.example.app` does
+        // not reach `com.example.applet`, and it is still an identifier
+        // match, so it is still Tier B.
+        Location(domain: .userApplicationSupport, rule: .bundleIdentifierPrefix,
                  describes: "supporting files",
                  sentence: "Application Support keyed to the bundle identifier."),
-        Location(domain: .systemApplicationSupport, rule: .bundleIdentifier,
+        Location(domain: .systemApplicationSupport, rule: .bundleIdentifierPrefix,
                  describes: "supporting files for every user",
                  sentence: "Application Support for every user, keyed to the bundle identifier."),
-        Location(domain: .userCaches, rule: .bundleIdentifier,
+        Location(domain: .userCaches, rule: .bundleIdentifierPrefix,
                  describes: "caches",
                  sentence: "A cache folder keyed to the bundle identifier."),
-        Location(domain: .systemCaches, rule: .bundleIdentifier,
+        Location(domain: .systemCaches, rule: .bundleIdentifierPrefix,
                  describes: "caches for every user",
                  sentence: "A cache folder for every user, keyed to the bundle identifier."),
         // Caches and Logs had an identifier rule and no name rule at all,
