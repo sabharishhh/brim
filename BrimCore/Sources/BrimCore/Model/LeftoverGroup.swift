@@ -60,6 +60,23 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// blocked must not look actionable.
     public var isFullyActionable: Bool { items.allSatisfy { $0.capability == .ok } }
 
+    /// The one thing stopping the whole group, when one thing is stopping
+    /// all of it.
+    ///
+    /// Said once here rather than on every row. Fourteen broken commands in
+    /// `/usr/local/bin` share a single answer, and repeating it fourteen
+    /// times is how the refusal that came *after* the attempt became nine
+    /// hundred characters nobody could read. The group is also where a
+    /// person can act on it: the checkbox that will not tick is this one.
+    ///
+    /// Nil when the group is removable, and nil when its items are blocked
+    /// for different reasons, which the rows then have to say themselves.
+    public var sharedObstacle: Capability? {
+        let obstacles = Set(items.map(\.capability))
+        guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
+        return only
+    }
+
     public var lastAccessed: Date? { items.compactMap(\.lastAccessed).max() }
 
     /// The domains this software touched, strongest meaning first, for the
