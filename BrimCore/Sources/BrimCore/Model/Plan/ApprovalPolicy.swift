@@ -35,9 +35,42 @@ extension Step {
 }
 
 extension Plan {
+    /// Whether this plan takes the application bundle itself away.
+    public var removesTheApplicationBundle: Bool {
+        steps.contains { $0.executionPhase == .appBundle }
+    }
+
     /// The steps that make this plan worth authenticating for, if any.
+    ///
+    /// Plan-aware rather than step-local, because one step changes meaning
+    /// depending on what runs beside it.
     public var stepsWarrantingHumanPresence: [Step] {
-        steps.filter(\.warrantsHumanPresence)
+        let theApplicationIsLeaving = intent.type == .uninstall && removesTheApplicationBundle
+
+        return steps.filter { step in
+            guard step.warrantsHumanPresence else { return false }
+
+            // A privacy grant is a permission macOS holds *for a bundle*. Let
+            // it go along with the bundle and nothing is lost that anybody
+            // could want back: the grant is inert without the application,
+            // macOS asks again from scratch if the application ever returns,
+            // and declining the prompt would not keep anything either, since
+            // the application is being removed regardless.
+            //
+            // This step is emitted for every uninstall of every application
+            // that has an identifier, which is very nearly all of them, so
+            // treating it as prompt-worthy made a fingerprint the price of
+            // the product's main action. That is the failure this whole file
+            // exists to prevent, arrived at by being careful rather than by
+            // being careless.
+            //
+            // Clearing grants on their own is a different matter and still
+            // asks, because there the permissions are the only thing changing
+            // and the application stays behind without them.
+            if step.kind == .resetPrivacyGrants && theApplicationIsLeaving { return false }
+
+            return true
+        }
     }
 }
 
@@ -115,20 +148,44 @@ public struct ApprovalPolicy: Sendable, Equatable {
     static func reason(for destructive: [Step], in plan: Plan) -> String {
         let subject = plan.intent.subjectIdentity.name
         let grantsCleared = destructive.contains { $0.kind == .resetPrivacyGrants }
-        let permanentCount = destructive.filter { $0.effectiveDisposition == .delete }.count
+        let receipts = destructive.filter { $0.kind == .forgetReceipt }.count
+        // Receipts are counted separately below. Rolling them into "items"
+        // said "permanently delete 1 item" about a step that deletes no file
+        // at all, which is the kind of small inaccuracy that teaches somebody
+        // the prompt is not worth reading.
+        let permanentCount = destructive
+            .filter { $0.effectiveDisposition == .delete && $0.kind != .forgetReceipt }
+            .count
 
-        if grantsCleared && permanentCount > 1 {
-            return "remove \(subject) and permanently delete \(permanentCount) items, "
-                 + "along with the privacy permissions macOS holds for it, which cannot be undone"
+        var clauses: [String] = []
+        if permanentCount == 1 {
+            clauses.append("permanently delete 1 item belonging to \(subject)")
+        } else if permanentCount > 1 {
+            clauses.append("permanently delete \(permanentCount) items belonging to \(subject)")
+        }
+        if receipts > 0 {
+            clauses.append(
+                receipts == 1
+                    ? "discard the installer record for \(subject)"
+                    : "discard \(receipts) installer records for \(subject)"
+            )
         }
         if grantsCleared {
-            return "remove \(subject) and clear the privacy permissions macOS holds for it, "
-                 + "which cannot be undone"
+            clauses.append("clear the privacy permissions macOS holds for \(subject)")
         }
-        if permanentCount == 1 {
-            return "permanently delete 1 item belonging to \(subject), which cannot be undone"
+
+        guard !clauses.isEmpty else {
+            // Nothing recognised, which should not happen, but a prompt that
+            // names nothing is worse than a general one.
+            return "make a change to \(subject) that cannot be undone"
         }
-        return "permanently delete \(permanentCount) items belonging to \(subject), "
-             + "which cannot be undone"
+
+        let joined: String
+        switch clauses.count {
+        case 1: joined = clauses[0]
+        case 2: joined = "\(clauses[0]) and \(clauses[1])"
+        default: joined = clauses.dropLast().joined(separator: ", ") + ", and " + clauses[clauses.count - 1]
+        }
+        return joined + ", which cannot be undone"
     }
 }
