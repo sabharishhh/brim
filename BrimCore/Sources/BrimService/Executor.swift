@@ -147,9 +147,12 @@ public actor Executor {
             // Unregistering is exempt for the opposite reason: its target is
             // a path, but the whole point is that the bundle is already gone
             // while its registration is not.
+            // `PathExistence`, not `fileExists`: the latter follows a
+            // symlink, so a step to remove a broken one was recorded as
+            // `already_gone` while the link stayed on the disk.
             if step.kind.targetIsPath,
                step.kind != .unregisterLaunchServices,
-               !fm.fileExists(atPath: step.target) {
+               !PathExistence.exists(atPath: step.target) {
                 journal.stepOutcomes[step.index] = "already_gone"
                 continue
             }
