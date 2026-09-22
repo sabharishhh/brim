@@ -54,6 +54,15 @@ full suite before committing.
 
 ## Product rules
 
+**Two things, done properly.** Brim tells people what software has left on
+their Mac and proves it is gone when they remove it. Everything else in the
+app earns its place by serving one of those or it does not ship. A duplicate
+file finder, a command line tool, an MCP server and a machine-wide
+Background Task Management reset were all built and all removed, not because
+any of them was broken but because none of them was this. The failure mode
+for a utility is not missing a feature, it is becoming the kind of cleaning
+app whose feature list is its argument.
+
 **Evidence, never assertion.** Every row a user might act on says how Brim
 knows. "Orphaned" is a claim and has to name the record that orphaned it.
 
@@ -74,8 +83,11 @@ thing.
 **Approval comes from a person, in Brim's window, or not at all.**
 `requestApproval` returns a receipt and cannot approve anything. The only
 mint is `BrimService.grantApproval`, reached through `ApprovalGranting`,
-which is not on `BrimServiceProtocol` and has no XPC message, so the CLI
-and an MCP host have no method to call rather than a check to argue with.
+which is not on `BrimServiceProtocol` and has no XPC message, so nothing
+reaching Brim from outside its own process has a method to call rather
+than a check to argue with. Brim shipped a command line tool and an MCP
+server once; they are gone, and this rule is why neither could ever have
+approved anything.
 A service only mints if a `ConsentSource` was installed in its own
 process, which the app does and nothing else does. Tokens live in memory
 for five minutes: two processes cannot share one, and that is the point.
@@ -346,11 +358,34 @@ conversation. Split unrelated changes rather than staging everything.
 - **Section minimum widths ratchet the window.** A split view asking for
   more than the window has grows it, `NSSplitView Subview Frames` saves the
   new size, and nothing shrinks it back.
-- **A greedy `NSViewRepresentable` overrides `.defaultSize` silently.**
-  `BrimTableView` made the window open at half the display width no matter
-  what the scene asked for, and clearing every piece of saved state made no
-  difference. If a window ignores its default size, suspect a hosted AppKit
-  view before suspecting restoration.
+- **A greedy `NSViewRepresentable` overrides `.defaultSize` silently.** A
+  hosted `NSTableView` made the window open at half the display width no
+  matter what the scene asked for, and clearing every piece of saved state
+  made no difference. If a window ignores its default size, suspect a
+  hosted AppKit view before suspecting restoration.
+- **An ideal size on the root view is measured, and measuring it walks
+  everything.** `.frame(idealWidth:idealHeight:)` on the content of a
+  `WindowGroup` makes SwiftUI size the entire tree to answer, and hand that
+  to AppKit as an intrinsic size, so every scroll in every panel ran a
+  window-wide constraint solve. Profiling put 43% of the main thread in
+  `GraphHost.flushTransactions`, 25% in `-[NSWindow layoutIfNeeded]` and
+  14% in `ViewGraphRootValueUpdater._sizeThatFits`, with no Brim frames on
+  the stack at all: nothing was re-running, everything was being
+  re-measured. `.defaultSize` on the scene sets the opening size without
+  any of that. A minimum is a constant and costs nothing.
+- **`ScrollView { VStack }` proposes a nil height.** So the stack works out
+  its ideal height and every `.fixedSize(horizontal: false, vertical: true)`
+  inside re-measures its text to answer, on every pass. A `List` measures a
+  row once and caches it.
+- **`.accessibilityElement(children: .combine)` costs more than the
+  children.** Combining walks and merges every child element. Where a row
+  carries a written `.accessibilityLabel`, `.ignore` does less and says the
+  same thing.
+- **Formatters belong outside the body.** `Text(date, format: .dateTime…)`
+  builds a `Date.FormatStyle` every time the row draws, and
+  `RelativeDateTimeFormatter()` is expensive to construct. Thirty-nine
+  history rows formatting a date per frame is what made that list heavy.
+  Format once, when the value is made.
 
 ## Build and run
 

@@ -37,10 +37,8 @@ private actor AppsStub: BrimServiceProtocol {
     func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
     func history() async throws -> [Plan] { [] }
     func undo(planId: UUID) async throws { throw Stub.no }
-    func dumpBTM() async throws -> String { "" }
     func leftovers() async throws -> [Leftover] { [] }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum Stub: Error { case no }
@@ -175,10 +173,8 @@ final class ApplicationsModelTests: XCTestCase {
             func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
             func history() async throws -> [Plan] { [] }
             func undo(planId: UUID) async throws { throw Stub.no }
-            func dumpBTM() async throws -> String { "" }
             func leftovers() async throws -> [Leftover] { [] }
             func recoverableItems() async throws -> [RecoverableItem] { [] }
-            func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
         }
 
         let model = ApplicationsModel()
@@ -257,10 +253,8 @@ private actor StubInventoryService: BrimServiceProtocol {
     func explain(planId: UUID) async throws -> String { throw Nope.no }
     func history() async throws -> [Plan] { [] }
     func undo(planId: UUID) async throws { throw Nope.no }
-    func dumpBTM() async throws -> String { "" }
     func leftovers() async throws -> [Leftover] { [] }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum Nope: Error { case no }

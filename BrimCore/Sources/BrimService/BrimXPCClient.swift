@@ -168,16 +168,6 @@ public actor BrimXPCClient: BrimServiceProtocol {
         }
     }
 
-    public func dumpBTM() async throws -> String {
-        return try await withProxy { (proxy: BrimXPCProtocol, reply: @escaping @Sendable (Result<String, Error>) -> Void) in
-            proxy.dumpBTM { result, error in
-                if let error = error { reply(.failure(error)) }
-                else if let result = result { reply(.success(result)) }
-                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
-            }
-        }
-    }
-
     public func leftovers() async throws -> [Leftover] {
         let resultData: Data = try await withProxy { proxy, reply in
             proxy.leftovers { data, error in
@@ -209,16 +199,5 @@ public actor BrimXPCClient: BrimServiceProtocol {
             }
         }
         return try decoder.decode([RecoverableItem].self, from: resultData)
-    }
-
-    public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
-        let resultData: Data = try await withProxy { proxy, reply in
-            proxy.scanDuplicates(directoryURLString: directory.path) { data, error in
-                if let error = error { reply(.failure(error)) }
-                else if let data = data { reply(.success(data)) }
-                else { reply(.failure(NSError(domain: "BrimXPC", code: 3, userInfo: nil))) }
-            }
-        }
-        return try decoder.decode([DuplicateGroup].self, from: resultData)
     }
 }

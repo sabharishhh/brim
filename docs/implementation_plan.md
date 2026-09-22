@@ -16,7 +16,7 @@ These are checked at every task. A task that violates one is wrong even if it pa
 2. **Nothing acts on a path handed to it.** Every mutation targets a step in a plan, and the component performing it re-derives its own authorisation.
 3. **The pipeline has no bypass:** observe → plan → approve → apply → verify. There is no code path that mutates the filesystem outside it, including in tests (tests use the shadow root, not a side door).
 4. **Approve is human-only.** No function, verb, tool, intent or model output can produce an approval token. The only producer is a user action in Brim's own window.
-5. **Every adapter is thin.** App, CLI, MCP and Intents contain presentation and argument parsing. Zero logic. If an adapter needs a new behaviour, it goes in the service.
+5. **Every adapter is thin.** The app contains presentation only. Zero logic. If an adapter needs a new behaviour, it goes in the service. Brim shipped a CLI and an MCP server once; both were removed to keep the product one thing.
 6. **Everything crossing a process boundary is a value type.** Codable/NSSecureCoding, no references, no closures beyond reply handlers. This holds from day one even while the service runs in-process, or the XPC extraction in M2 becomes a rewrite.
 7. **Filesystem-derived strings are untrusted.** Paths, display names, plist values and process names are data. They are never concatenated into a command, never executed, and are delimited and labelled wherever they reach a model.
 8. **Trash, not unlink,** wherever the filesystem permits.
@@ -50,8 +50,6 @@ brim/
 │   ├── BrimProtocol/        # service + helper wire types. value types only
 │   ├── BrimService/         # service implementation. owns the index
 │   ├── BrimHelperCore/      # helper logic. links BrimCore + BrimOps
-│   ├── BrimCLI/             # executable
-│   └── BrimMCP/             # executable, stdio
 ├── Tests/
 │   ├── BrimFixtures/        # fixture-tree generator + expected-evidence manifests
 │   ├── BrimCoreTests/
@@ -95,7 +93,6 @@ The complete set of things Brim can do. Adding a step kind is a deliberate act r
 | `clearImmutableFlag` | user or root | yes | explicit confirmation required |
 | `delegateToolCleanup` | user | no | runs a named tool's own cleanup; exact command shown pre-approval |
 | `revealVendorUninstaller` | none | n/a | opens Finder. Brim never runs it |
-| `btmReset` | root | partially | guided reset, requires a captured restore list |
 | `unregisterLaunchServices` | user | yes | `lsregister -u` on one bundle path, after the bundle is gone. Never `-kill -r` |
 
 No `deleteRecursive`. No `runShellCommand`. No step takes a caller-supplied command string.
@@ -382,7 +379,7 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 - **Depends on** M1 complete, S-2.
 - **Work** Move `BrimService` into an XPC service bundle inside the app. Add the XPC `ServiceClient` implementation behind the existing abstraction. An actor wrapper around `NSXPCConnection` to satisfy strict concurrency. Interface whitelisting for collection types. Invalidation and reconnection handling.
 - **Acceptance** All M1 tests pass unchanged against the XPC client. Killing the service mid-request surfaces a clean error and reconnects.
-- **Unlocks** the CLI and MCP running without the app in the foreground.
+- **Unlocks** the service running without the app in the foreground.
 
 ### T-2.2 · Mutual code-signing requirements
 - **Objective** Only Brim's own signed components can reach the service or the helper.
@@ -500,9 +497,10 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 ### T-3.8 · Background and login items surface
 - **Objective** The clearest gap in the platform, made usable.
 - **Depends on** T-3.2, T-3.3.
-- **Work** A view listing every item with its owner, path, signing state and whether the owner still exists. Targeted removal where a backing file exists (unload then remove). The guided `btmReset` flow: capture a complete restore list, show it, reset, then walk the user through re-enabling.
-- **Acceptance** A reset cannot be initiated without a captured restore list. The restore list is persisted to History before the reset runs.
+- **Work** A view listing every item with its owner, path, signing state and whether the owner still exists. Targeted removal where a backing file exists (unload then remove).
+- **Acceptance** A job pointing at a program that has gone can be removed; one pointing at something real cannot be removed by accident.
 - **Unlocks** a headline feature.
+- **Dropped** the guided `btmReset` flow. `sfltool resetbtm` deregisters every login item on the Mac at once, and the case it would have fixed does not exist: `backgroundtaskmanagementd` collects records for deleted apps by itself, which the Background view already reports as "macOS is catching up". The step, the restore list, the capture and the store were all removed.
 
 ### T-3.9 · Evidence golden tests per OS version
 - **Objective** Notice when Apple changes the ground.
@@ -519,33 +517,13 @@ Each spike is timeboxed to two days, produces `docs/spikes/S-n.md` with the find
 
 **Goal:** three adapters over one API. Nearly free, because the gate already exists.
 
-### T-4.1 · MCP server
-- **Objective** Any local agent host can drive Brim.
-- **Depends on** T-2.1, T-1.12.
-- **Work** `BrimMCP` executable, stdio transport only, shipped inside the app bundle. Tools mapping one-to-one onto the service verbs: `inspect`, `plan`, `explain`, `request_approval`, `apply`, `verify`, `history`. Structured results only — no free-form prose that could be mistaken for instructions. Log to stderr, never stdout. **No HTTP transport, now or later.**
-- **Acceptance** A host can complete an uninstall only via the approval gate. A test asserts no network listener is opened by the process.
-- **Unlocks** the agent-native claim.
-
-### T-4.2 · Untrusted-string discipline
-- **Objective** Filenames are an attack surface; treat them as one.
-- **Depends on** T-4.1.
-- **Work** A boundary type that tags filesystem-derived strings. Delimited and labelled wherever they reach a model or a tool result. Model and agent output may reference plan steps by index; a target path emitted by a model that is not already in the plan is rejected before it reaches any API.
-- **Acceptance** A fixture directory whose name contains imperative text produces a tool result in which that text is visibly quoted as data. A test attempts to apply a step naming a path absent from the plan and is refused.
-- **Unlocks** shipping an agent interface on a tool with root access.
-
-### T-4.3 · Requester identity and agent labelling
-- **Objective** "What did the agent do" must be answerable.
-- **Depends on** T-1.16.
-- **Work** Propagate `RequesterID` from every adapter into plans, tokens and ledger entries. Display agent-originated entries distinctly in History.
-- **Acceptance** A CLI-originated and an MCP-originated plan are distinguishable in History after a relaunch.
-- **Unlocks** accountability; anomaly review.
-
-### T-4.4 · CLI completion
-- **Objective** The composable surface, with no destructive primitive to compose.
-- **Depends on** T-1.18.
-- **Work** Complete verb set, documented JSON schema, stable exit codes, shell completions, `--dry-run` everywhere. Audit the verb list: nothing accepts a path to delete.
-- **Acceptance** A grep test asserts no CLI verb takes a filesystem path as a mutation target.
-- **Unlocks** scripting, power users, agent hosts without MCP.
+### T-4.1 to T-4.4 · Dropped
+Brim shipped an MCP server and a command line tool. Both were removed, along
+with the requester-labelling and untrusted-string work that existed to make
+them safe. Neither was broken; neither was the product. The approval gate
+that was designed around them stays exactly as it is, because the rule it
+enforces — that nothing outside Brim's own process has a method that mints
+approval — is what makes the app safe to give root to, adapters or not.
 
 ### T-4.5 · App Intents
 - **Objective** Apple's own agent surface, safely.
@@ -715,8 +693,8 @@ Personalisation is not protection. Bookmarks, preferences, window layouts and si
 ### T-7.3 · The removal ceiling, reported rather than hidden (was P2.4, P2.5)
 - **Objective** Say what macOS will not allow, once, in the right place.
 - **Depends on** T-7.2, T-3.3.
-- **Work** Three capability tiers as a first-class outcome: removable; removable only destructively (Background Task Management has no per-item API, `sfltool resetbtm` is all-or-nothing and needs a restart); detectable but not removable (a system extension or VPN configuration belonging to a departed application, and TCC entries for a bundle that is already gone, because `tccutil` resolves through Launch Services). Wire `btmReset` to `RestoreListStore`, offered deliberately and never inside an ordinary uninstall.
-- **Acceptance** `StepVocabularyTests` no longer records `btmReset` as a kind nothing emits. A tier-3 outcome names the one action that does work rather than describing what Brim cannot do.
+- **Work** Three capability tiers as a first-class outcome: removable; removable only destructively (Background Task Management has no per-item API, `sfltool resetbtm` is all-or-nothing, which is why Brim does not offer it); detectable but not removable (a system extension or VPN configuration belonging to a departed application, and TCC entries for a bundle that is already gone, because `tccutil` resolves through Launch Services). Background Task Management needs no action of its own: macOS collects records for deleted applications itself.
+- **Acceptance** A tier-3 outcome names the one action that does work rather than describing what Brim cannot do.
 - **Unlocks** an honest completion claim, and closes the last dead step kind.
 
 ### T-7.4 · Leftovers re-derived from the removal engine (was P2.6)

@@ -116,10 +116,6 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var isSampling = false
     @Published public private(set) var coverageGaps = 0
     @Published public private(set) var window: TimeInterval = 0
-    /// This Mac's battery, so energy can be said as a share of a full
-    /// charge. Nil on a machine with no battery, where a share of one is
-    /// not a thing that can be said.
-    public let battery: BatteryCapacity? = BatteryCapacity.current()
     /// What is holding sleep off. The one thing in this panel that neither
     /// System Settings nor Activity Monitor says plainly.
     @Published public private(set) var assertions: PowerAssertions = .notRead
@@ -183,32 +179,13 @@ public final class EnergyModel: ObservableObject {
         assertions.held.filter(\.isYours)
     }
 
-    /// The reading as facts, for the deterministic sentence today and for
-    /// the model to narrate under T-7.6.
-    public var insight: EnergyInsight {
-        EnergyInsight(
-            windowSeconds: window,
-            totalMilliwatts: milliwatts(of: applications),
-            yoursMilliwatts: milliwatts(of: applications),
-            systemMilliwatts: 0,
-            busiestName: busiest?.name,
-            busiestMilliwatts: busiest.map { $0.milliwatts(over: window) } ?? 0,
-            busiestIsSystem: false,
-            busiestBehaviour: busiest.map { $0.dominantCost(over: window).sentence },
-            busiestIsBrimItself: busiest?.identity.bundlePath.map {
-                $0 == Bundle.main.bundleURL.path
-            } ?? false,
-            unreadableProcesses: 0,
-            batteryMilliwattHours: battery?.designMilliwattHours
-        )
-    }
 
     // MARK: - Why there is no running total
 
     // There was a "Since <date>" card here and it has gone, because it was
     // measuring something other than what it said.
     //
-    // `EnergyLedger.accumulating` credits a process's entire counter the
+    // A running total would credit a process's entire counter the
     // first time it sees that process: "First time this process has been
     // seen. Its counter is what it has spent since it started, all of which
     // is energy this application used." For a daemon running since boot that

@@ -7,7 +7,6 @@ enum NavigationItem: String, Hashable, CaseIterable {
     case background = "Background"
     case storage = "Storage"
     case energy = "Energy"
-    case duplicates = "Duplicates"
     
     // Developer & System
     case developer = "Developer"
@@ -17,14 +16,12 @@ enum NavigationItem: String, Hashable, CaseIterable {
     /// The order the person sees, and the only order anything may use.
     ///
     /// The sidebar listed these in one order and the View menu numbered
-    /// them from `allCases`, which is a different one. Command-6 opened
-    /// Energy while Energy was the seventh row, Command-7 opened
-    /// Duplicates while Duplicates was the sixth, and History had no
-    /// shortcut at all because the menu took the first nine of a list
-    /// that ended somewhere else. Both read from this now, so there is
-    /// one order rather than two that have to be kept in step.
+    /// them from `allCases`, which is a different one, so the shortcuts
+    /// opened the wrong rows and the last section had none at all. Both
+    /// read from this now, so there is one order rather than two that have
+    /// to be kept in step.
     static let primary: [NavigationItem] = [
-        .review, .applications, .leftovers, .background, .storage, .duplicates, .energy,
+        .review, .applications, .leftovers, .background, .storage, .energy,
     ]
     static let system: [NavigationItem] = [.developer, .updates, .history]
     static let displayOrder: [NavigationItem] = primary + system
@@ -44,7 +41,6 @@ enum NavigationItem: String, Hashable, CaseIterable {
         case .leftovers: return "trash"
         case .background: return "gearshape.2"
         case .storage: return "internaldrive"
-        case .duplicates: return "doc.on.doc"
         case .energy: return "bolt.fill"
         case .developer: return "hammer"
         case .updates: return "arrow.triangle.2.circlepath"

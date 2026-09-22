@@ -134,7 +134,6 @@ final class PlanStepOrderingTests: XCTestCase {
         // id resolved as a relative path silently points at the working
         // directory.
         XCTAssertFalse(StepKind.resetPrivacyGrants.targetIsPath)
-        XCTAssertFalse(StepKind.btmReset.targetIsPath)
         XCTAssertTrue(StepKind.trashPath.targetIsPath)
         XCTAssertTrue(StepKind.unregisterLaunchServices.targetIsPath)
     }
