@@ -28,7 +28,10 @@ public struct FootprintProjector: Sendable {
         let items = await Task.detached {
             var localItems = [FootprintItem]()
             for evidence in evidenceList {
-                guard fm.fileExists(atPath: evidence.url.path) else { continue }
+                // The path itself, not what it points at. `fileExists`
+                // follows a symlink, so every broken one Brim had just
+                // found was dropped here and never reached the plan.
+                guard PathExistence.exists(at: evidence.url) else { continue }
                 
                 let measured = Self.measure(at: evidence.url, fm: fm)
 

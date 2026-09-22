@@ -635,7 +635,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             .filter { $0.effectiveDisposition == .trash && $0.kind != .unloadLaunchdJob }
             .compactMap { step -> String? in
                 guard let trashed = trashedURLs[step.index] else { return nil }
-                return fm.fileExists(atPath: trashed.path) ? nil : step.target
+                return PathExistence.exists(at: trashed) ? nil : step.target
             }
         guard missing.isEmpty else {
             throw UndoError.noLongerInTrash(targets: missing)
@@ -669,7 +669,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // application macOS does not know about — no "Open With", no document
         // types, until something happens to rescan it.
         for step in plan.steps where step.executionPhase == .appBundle {
-            guard fm.fileExists(atPath: step.target) else { continue }
+            guard PathExistence.exists(atPath: step.target) else { continue }
             try? LaunchServicesRegistration.register(bundlePath: step.target)
         }
 
@@ -1070,7 +1070,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
             // Only count steps whose trashed copy survives; a partially
             // emptied Trash makes the plan unrestorable, not half-restorable.
-            let survivors = trashedURLs.filter { fm.fileExists(atPath: $0.value.path) }
+            let survivors = trashedURLs.filter { PathExistence.exists(at: $0.value) }
             guard survivors.count == trashedURLs.count else { continue }
 
             let bytes = plan.steps
