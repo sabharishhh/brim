@@ -165,7 +165,7 @@ struct Updates: AsyncParsableCommand {
             .sorted { $0.application.name < $1.application.name }
         print("Has a route (\(covered.count)):")
         for entry in covered {
-            print("  \(entry.application.name) — \(entry.sentence)")
+            print("  \(entry.application.name): \(entry.sentence)")
         }
     }
 }

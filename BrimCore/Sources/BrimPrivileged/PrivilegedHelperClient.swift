@@ -45,7 +45,11 @@ public final class PrivilegedHelperClient: ObservableObject {
         case .enabled: state = .ready
         case .requiresApproval: state = .waitingForApproval
         case .notFound: state = .unavailable("The daemon is missing from this copy of Brim.")
-        @unknown default: state = .unavailable("macOS gave an answer Brim does not know.")
+        @unknown default:
+            // A status this build of Brim predates. Say what it means for the
+            // person rather than that Brim did not recognise the value.
+            state = .unavailable("This version of macOS reports the helper differently. "
+                                 + "Updating Brim should settle it.")
         }
     }
 

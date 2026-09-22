@@ -56,7 +56,7 @@ struct RemovalHistoryView: View {
     }
 
     private var subtitle: String {
-        if model.isLoading { return "Loading..." }
+        if model.isLoading { return "Loading…" }
         let undoable = model.records.filter(\.canUndo).count
         if model.records.isEmpty { return "Nothing removed yet" }
         return "\(model.records.count) \(model.records.count == 1 ? "removal" : "removals") · \(undoable) can be undone"
@@ -82,7 +82,7 @@ struct RemovalHistoryView: View {
             VStack(spacing: 6) {
                 Text("No removals yet")
                     .font(.headline)
-                Text("Anything you remove from the Review Queue appears here.")
+                Text("Everything you remove with Brim is listed here, newest first.")
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -134,10 +134,26 @@ struct RemovalHistoryView: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(record.name), \(record.itemCount) items, "
-            + ByteText.short(record.bytes)
-            + ". " + (record.canUndo ? "Can be undone." : (record.unavailableReason ?? "") + ", cannot be undone.")
-        )
+        .accessibilityLabel(spokenLabel(for: record))
+    }
+
+    /// One sentence per fact, assembled rather than concatenated.
+    ///
+    /// The previous version glued the reason on with `?? ""`, so a record
+    /// that cannot be undone and carries no stored reason was read out as
+    /// "Figma, 3 items, 40 MB. , cannot be undone." It also said "items" for
+    /// a removal of one, while the row beside it said "item".
+    private func spokenLabel(for record: RemovalRecord) -> String {
+        let items = "\(record.itemCount) \(record.itemCount == 1 ? "item" : "items")"
+        var parts = ["\(record.name), \(items), \(ByteText.short(record.bytes))"]
+
+        if record.canUndo {
+            parts.append("Can be undone")
+        } else if let reason = record.unavailableReason, !reason.isEmpty {
+            parts.append("\(reason), so it cannot be undone")
+        } else {
+            parts.append("Cannot be undone")
+        }
+        return parts.joined(separator: ". ") + "."
     }
 }
