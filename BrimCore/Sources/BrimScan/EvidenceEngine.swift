@@ -53,21 +53,34 @@ public struct EvidenceEngine: Sendable {
             }
         }
         
-        // Deduplicate and resolve tier conflicts
-        // If two sources find the same URL, keep the one with the strongest tier.
-        var bestEvidenceByPath = [String: Evidence]()
-        
+        // Deduplicate and resolve tier conflicts.
+        //
+        // Keyed on the file itself rather than on the string naming it.
+        // Almost every Mac has a case-insensitive volume, so
+        // `/usr/local/bin/Code` and `/usr/local/bin/code` are one file, and
+        // two sources that spell it differently were producing two rows: one
+        // from a name match, one from following the symbolic link, each with
+        // its own tier and its own sentence. A plan that offers to remove
+        // the same file twice is wrong twice over, because the second row
+        // says something is there that is not.
+        //
+        // `dev` and `ino` are what `TargetFingerprint` already uses to decide
+        // whether a plan is still pointing at what it was built against, so
+        // this is the same notion of sameness the executor holds.
+        var bestEvidenceByFile = [String: Evidence]()
+
         for e in rawEvidence {
-            let path = e.url.standardized.path
-            if let existing = bestEvidenceByPath[path] {
+            let key = Self.identity(of: e.url)
+            if let existing = bestEvidenceByFile[key] {
                 // Tier comparison: S > A > B > C
                 if isStronger(e.tier, than: existing.tier) {
-                    bestEvidenceByPath[path] = e
+                    bestEvidenceByFile[key] = e
                 }
             } else {
-                bestEvidenceByPath[path] = e
+                bestEvidenceByFile[key] = e
             }
         }
+        let bestEvidenceByPath = bestEvidenceByFile
         
         // Sort deterministically (alphabetically by path)
         let sortedEvidence = bestEvidenceByPath.values.sorted { $0.url.path < $1.url.path }
@@ -93,5 +106,22 @@ public struct EvidenceEngine: Sendable {
     private func isStronger(_ t1: EvidenceTier, than t2: EvidenceTier) -> Bool {
         let weight: [EvidenceTier: Int] = [.S: 4, .A: 3, .B: 2, .C: 1]
         return weight[t1]! > weight[t2]!
+    }
+
+    /// What makes two pieces of evidence the same thing.
+    ///
+    /// The volume's own answer where it has one, read with `lstat` so a
+    /// symbolic link is itself rather than whatever it points at. A link and
+    /// its target are two files and both can be residue; the same file under
+    /// two spellings is one.
+    ///
+    /// Falls back to the path for anything that cannot be stated, which
+    /// includes a path that no longer exists by the time the merge runs.
+    static func identity(of url: URL) -> String {
+        var info = stat()
+        guard lstat(url.standardized.path, &info) == 0 else {
+            return url.standardized.path
+        }
+        return "\(info.st_dev):\(info.st_ino)"
     }
 }
