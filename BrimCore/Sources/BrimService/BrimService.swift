@@ -743,16 +743,52 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// it did not say which two, or why, and the answer in the case that
     /// produced it was that both sat in a root-owned directory and no
     /// amount of retrying would have helped. A count is not a finding.
+    ///
+    /// Then it went the other way. Naming every item and repeating its
+    /// reason produced, for fourteen broken commands in one directory,
+    /// fourteen copies of the same sentence in a single paragraph: nine
+    /// hundred characters of which eight hundred were duplicates, clipped
+    /// mid-word by the panel it was shown in. One reason held for all
+    /// fourteen and the shape of the text hid that completely.
+    ///
+    /// So: the reason once, the place once, and then the names. Somebody
+    /// reading it learns what went wrong in the first line and which things
+    /// it happened to in the last.
     static func whyTheseRemain(_ paths: Set<String>) -> String {
-        let named = paths.sorted().map { path -> String in
-            let name = (path as NSString).lastPathComponent
-            if let why = RemovalCapability.explanation(RemovalCapability.forDeleting(path)) {
-                return "\(name): \(why)"
-            }
-            return "\(name) is still at \(path)."
+        let opening = paths.count == 1
+            ? "One thing is still there."
+            : "\(paths.count) things are still there."
+
+        // Grouped by the folder and the reason, because together they are
+        // what somebody can act on. Fourteen names sharing one answer is
+        // one paragraph, not fourteen.
+        var order: [String] = []
+        var names: [String: [String]] = [:]
+        for path in paths.sorted() {
+            let folder = (path as NSString).deletingLastPathComponent
+            let capability = RemovalCapability.forDeleting(path)
+            let key = "\(folder)\u{0}\(capability.rawValue)"
+            if names[key] == nil { order.append(key) }
+            names[key, default: []].append((path as NSString).lastPathComponent)
         }
-        let opening = paths.count == 1 ? "One thing is still there." : "\(paths.count) things are still there."
-        return ([opening] + named).joined(separator: " ")
+
+        let paragraphs = order.flatMap { key -> [String] in
+            let parts = key.components(separatedBy: "\u{0}")
+            let folder = parts[0]
+            let capability = Capability(rawValue: parts[1]) ?? .ok
+            let these = names[key] ?? []
+
+            // The folder is the subject wherever the folder is the reason,
+            // so one sentence is right for one item and for fourteen. What
+            // is left over is per item, and there the item is the subject.
+            let reason = RemovalCapability.folderExplanation(capability, folder: folder)
+                ?? RemovalCapability.explanation(capability)
+                ?? "Brim could not remove \(these.count == 1 ? "it" : "them") and macOS did not "
+                    + "say why."
+            return [reason, these.joined(separator: ", ")]
+        }
+
+        return ([opening] + paragraphs).joined(separator: "\n\n")
     }
 
     /// A one step plan that runs a tool's own cleanup.

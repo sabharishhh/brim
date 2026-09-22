@@ -90,26 +90,45 @@ struct RemovalSheet: View {
             }
             .padding()
         case .verified(let result):
-            VStack(spacing: 10) {
-                Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
-                    .font(.largeTitle)
-                    .foregroundColor(result.success ? .green : .orange)
-                Text(result.success ? "Nothing is left" : "Something is still there")
-                    .font(.headline)
-                Text(result.success
-                     ? "Every location was checked again. All of them are empty."
-                     : (result.reason ?? "Some of it is still on disk."))
-                    .foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+            // Scrolling, and left aligned when it is an explanation rather
+            // than a result. A refusal naming fourteen things ran past the
+            // bottom of this panel and was clipped mid-word, with no way to
+            // read the rest: the one case where the text matters most was
+            // the one case it could not be read in.
+            ScrollView {
+                VStack(spacing: 10) {
+                    Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(result.success ? .green : .orange)
+                    Text(result.success ? "Nothing is left" : "Some of it is still there")
+                        .font(.headline)
 
-                if let explanation = model.spaceExplanation {
-                    Label(explanation, systemImage: "clock.arrow.circlepath")
-                        .font(.caption).foregroundColor(.orange)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal)
+                    if result.success {
+                        Text("Every location was checked again. All of them are empty.")
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    } else {
+                        Text(result.reason ?? "Some of it is still on disk.")
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                    }
+
+                    if let explanation = model.spaceExplanation {
+                        Label(explanation, systemImage: "clock.arrow.circlepath")
+                            .font(.caption).foregroundColor(.orange)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                    }
                 }
+                .padding()
             }
-            .padding()
         case .ready:
             List(model.removalSteps, id: \.index) { step in
                 VStack(alignment: .leading, spacing: 2) {
