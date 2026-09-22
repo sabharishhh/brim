@@ -152,9 +152,17 @@ final class UninstallExecutionModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .failed("User cancelled authentication."))
     }
 
-    func testAFailedVerificationSaysTheRemovalHappenedAnyway() async {
-        // The distinction matters: the files are gone but the check could not
-        // run, which is different from the removal having failed.
+    /// The files are gone and the check could not run, which is a different
+    /// outcome from the removal having failed.
+    ///
+    /// This was already the intent, and the wording carried it: the phase
+    /// was `.failed("Removed, but verification could not run: …")`. The
+    /// sheets then drew every `.failed` in red under the heading "Stopped",
+    /// so somebody whose uninstall had gone through was told it had been
+    /// stopped, with the sentence that said otherwise underneath it. A
+    /// distinction that only exists inside a string is a distinction the
+    /// interface cannot act on, so it has its own case now.
+    func testAFailedVerificationIsNotReportedAsAFailedRemoval() async {
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
         let stub = UninstallStub(plan: plan, verifyError: Oops.no)
         let model = UninstallExecutionModel()
@@ -162,10 +170,30 @@ final class UninstallExecutionModelTests: XCTestCase {
         await model.prepare(intent: intent, service: stub)
         await model.authorize(requesterIdentity: "tester")
 
-        guard case .failed(let message) = model.phase else {
-            return XCTFail("Expected failure, got \(model.phase)")
+        guard case .appliedButUnverified(let reason) = model.phase else {
+            return XCTFail("Expected appliedButUnverified, got \(model.phase)")
         }
-        XCTAssertTrue(message.hasPrefix("Removed, but verification could not run"), message)
+        XCTAssertEqual(reason, "no", "The underlying reason travels, unwrapped")
+
+        let counts = await stub.counts()
+        XCTAssertEqual(counts.applies, 1, "The removal did happen")
+    }
+
+    func testAnApprovalThatFailsIsAFailureAndAppliesNothing() async {
+        // The other side of the case above: here nothing ran, so this one
+        // really is `.failed` and the sheet's red heading is correct.
+        let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
+        let stub = UninstallStub(plan: plan, applyError: Oops.no)
+        let model = UninstallExecutionModel()
+
+        await model.prepare(intent: intent, service: stub)
+        await model.authorize(requesterIdentity: "tester")
+
+        guard case .failed = model.phase else {
+            return XCTFail("Expected failed, got \(model.phase)")
+        }
+        let counts = await stub.counts()
+        XCTAssertEqual(counts.verifies, 0, "Nothing to verify when nothing was applied")
     }
 
     func testBookkeepingStepsAreNotCountedAsLocations() async {
