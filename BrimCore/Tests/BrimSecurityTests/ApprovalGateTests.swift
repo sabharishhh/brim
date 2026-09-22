@@ -5,15 +5,15 @@ import Foundation
 @testable import BrimService
 @testable import BrimFixtures
 
-/// The gate that makes an agent safe.
+/// The gate that makes Brim safe to give root to.
 ///
 /// `requestApproval` used to mint a token outright whenever `ApprovalPolicy`
 /// judged the plan reversible, which is nearly every plan. Inside the app
 /// that was defensible: the review sheet had been read and a person had
-/// pressed the button. From the CLI or an MCP host there is no review
-/// sheet, so plan, request, apply ran end to end with nobody involved. The
-/// product's whole claim is that this cannot happen, so it is tested here
-/// rather than asserted in a document.
+/// pressed the button. Anywhere else there is no review sheet, so plan,
+/// request, apply ran end to end with nobody involved. The product's whole
+/// claim is that this cannot happen, so it is tested here rather than
+/// asserted in a document.
 final class ApprovalGateTests: XCTestCase {
 
     /// Counts how many times the gate asked for a fingerprint, without
@@ -86,8 +86,8 @@ final class ApprovalGateTests: XCTestCase {
     }
 
     func testAServiceWithNobodyToAskCannotApprove() async throws {
-        // This is the CLI and the MCP host. They run the same code and hold
-        // the same kind of object; what they do not have is a window.
+        // Any process that is not Brim's app. It runs the same code and
+        // holds the same kind of object; what it has not got is a window.
         let (service, gen, rootURL, _) = try makeService(consent: nil)
         defer { gen.destroy() }
         let plan = try await plan(from: service, in: rootURL)
@@ -216,9 +216,9 @@ final class ApprovalGateTests: XCTestCase {
 
     /// The app's own configuration, with the debug shortcut switched off.
     ///
-    /// The gate has to refuse the CLI and let Brim through, and a test that
-    /// only proves the first half would be satisfied by a gate that refuses
-    /// everybody.
+    /// The gate has to refuse a service with no window and let Brim
+    /// through, and a test that only proves the first half would be
+    /// satisfied by a gate that refuses everybody.
     func testTheAppItselfCanStillCompleteARemoval() async throws {
         let (service, gen, rootURL, _) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
