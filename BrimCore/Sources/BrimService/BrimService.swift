@@ -44,6 +44,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             InstallerReceiptSource(),
             BundleIdentifierComponentSource(),
             LocationInventorySource(),
+            SymlinkIntoBundleSource(),
             GroupContainerSource(),
             BundleIdentifierStateSource(),
             TeamIDSource(),
