@@ -17,10 +17,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
-    private let energyStore: EnergyLedgerStore
-    /// What was registered before a background reset, written down so the
-    /// person can put it back. The reset is refused without one.
-    public let restoreLists: RestoreListStore
 
     /// The durable store. Written and never read used to be the whole of
     /// it: the schema existed, the module compiled, and the service did
@@ -73,19 +69,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             .deletingLastPathComponent().appendingPathComponent("brim.sqlite")
         self.index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
 
-        self.energyStore = EnergyLedgerStore(
-            directoryURL: journalStoreDirectory.deletingLastPathComponent()
-        )
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
-        // Restore lists sit beside the journals: both are the record of
-        // what happened, and a background reset is the one action whose
-        // record has to exist before it runs rather than after.
-        let restoreLists = RestoreListStore(
-            directoryURL: journalStoreDirectory
-                .deletingLastPathComponent().appendingPathComponent("RestoreLists")
-        )
-        self.restoreLists = restoreLists
-        self.executor = Executor(journalStore: self.journalStore, restoreLists: restoreLists)
+        self.executor = Executor(journalStore: self.journalStore)
     }
     
     public func inspect(identity: Identity) async throws -> Footprint {
@@ -677,27 +662,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // 3. Update journal to mark undone? Or just delete journal?
         try await journalStore.delete(planId: planId)
     }
-
-    public func dumpBTM() async throws -> String {
-        let task = Process()
-        task.launchPath = "/usr/bin/sfltool"
-        task.arguments = ["dumpbtm"]
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-        
-        try task.run()
-        
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        
-        if let string = String(data: data, encoding: .utf8) {
-            return string
-        } else {
-            throw NSError(domain: "BrimService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to decode dumpbtm output."])
-        }
-    }
     
     /// Gives the executor a way to reach Brim's privileged daemon.
     ///
@@ -836,25 +800,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func developerCaches() async -> [DeveloperCache] {
         await DeveloperCacheScanner().scan()
-    }
-
-    /// Where energy totals are kept between runs.
-    private var energyLedger: EnergyLedger { energyStore.load() }
-
-    /// Samples, folds the result into the running totals, and hands back
-    /// both. A single reading only says what a process has spent since it
-    /// started; the totals say what software costs to keep around.
-    public func energyTotals() async -> EnergyTotals {
-        let result = await sampleEnergy()
-        let updated = energyLedger.accumulating(result)
-        try? energyStore.save(updated)
-        return EnergyTotals(
-            accumulated: updated.ranked().map {
-                EnergyTotals.Entry(key: $0.key, milliwattHours: $0.milliwattHours)
-            },
-            since: updated.since,
-            coverageGaps: result.coverageGaps
-        )
     }
 
     public func sampleEnergy() async -> EnergySampleResult {
@@ -1171,10 +1116,5 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
         return retracted
-    }
-
-    public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] {
-        let scanner = DuplicateScanner()
-        return try await scanner.scan(directory: directory)
     }
 }

@@ -165,17 +165,6 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
         }
     }
 
-    public func dumpBTM(withReply reply: @escaping @Sendable (String?, Error?) -> Void) {
-        Task {
-            do {
-                let dump = try await service.dumpBTM()
-                reply(dump, nil)
-            } catch {
-                reply(nil, Self.wire(error))
-            }
-        }
-    }
-
     public func leftovers(withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
         Task {
             do {
@@ -203,18 +192,6 @@ public final class BrimXPCServer: NSObject, BrimXPCProtocol, @unchecked Sendable
             do {
                 let items = try await service.recoverableItems()
                 let data = try JSONEncoder().encode(items)
-                reply(data, nil)
-            } catch {
-                reply(nil, Self.wire(error))
-            }
-        }
-    }
-    public func scanDuplicates(directoryURLString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void) {
-        let url = URL(fileURLWithPath: directoryURLString)
-        Task {
-            do {
-                let duplicates = try await service.scanDuplicates(in: url)
-                let data = try JSONEncoder().encode(duplicates)
                 reply(data, nil)
             } catch {
                 reply(nil, Self.wire(error))

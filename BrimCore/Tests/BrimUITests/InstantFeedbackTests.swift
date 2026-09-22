@@ -155,10 +155,8 @@ private actor LeftoverStub: BrimServiceProtocol {
     func verify(planId: UUID) async throws -> VerificationResult { throw No.no }
     func history() async throws -> [Plan] { [] }
     func undo(planId: UUID) async throws { throw No.no }
-    func dumpBTM() async throws -> String { "" }
     func installedApplications() async throws -> [InstalledApplication] { [] }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum No: Error { case no }

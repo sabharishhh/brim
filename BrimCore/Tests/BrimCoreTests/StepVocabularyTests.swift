@@ -38,14 +38,14 @@ final class StepVocabularyTests: XCTestCase {
         // produced by `BrimService.planToolCleanup`, so both have a producer
         // and reach the executor in the shipping app.
         //
-        // `btmReset` has neither. `BTMRestoreCapture`, `RestoreListStore` and
-        // the executor branch all exist and are covered by tests, but nothing
-        // in the product captures a list, builds a plan around one or offers
-        // the reset, so the whole feature is reachable only from the test
-        // suite. That is the decoration this file was written to catch, and
-        // it is recorded here rather than excused: T-7.3 wires it up, and
-        // this exemption comes out when it does.
-        let notThePlanners: Set<StepKind> = [.btmReset, .archivePath, .delegateToolCleanup]
+        // `btmReset` used to be exempted here, with a note saying the
+        // exemption would come out when something finally produced one. It
+        // came out the other way: the step, `BTMRestoreCapture`,
+        // `RestoreListStore` and the executor branch are all gone. It ran
+        // `sfltool resetbtm`, which deregisters every login item on the Mac
+        // at once, to fix a problem the product already reports as
+        // self-clearing, and nothing could produce it.
+        let notThePlanners: Set<StepKind> = [.archivePath, .delegateToolCleanup]
 
         for kind in StepKind.allCases where !notThePlanners.contains(kind) {
             XCTAssertTrue(
@@ -59,7 +59,6 @@ final class StepVocabularyTests: XCTestCase {
         // forgetReceipt destroys a record that cannot be rebuilt, which is
         // exactly why it is safe to do and must be asked about.
         XCTAssertTrue(StepKind.forgetReceipt.destroysWithoutRecovery)
-        XCTAssertTrue(StepKind.btmReset.destroysWithoutRecovery)
         XCTAssertFalse(StepKind.clearImmutableFlag.destroysWithoutRecovery)
         XCTAssertFalse(StepKind.revealVendorUninstaller.destroysWithoutRecovery)
     }
@@ -69,7 +68,6 @@ final class StepVocabularyTests: XCTestCase {
         // identifier is not a file, and skipping the step because no file
         // exists at "com.example.pkg" would drop it silently.
         XCTAssertFalse(StepKind.forgetReceipt.targetIsPath)
-        XCTAssertFalse(StepKind.btmReset.targetIsPath)
         XCTAssertTrue(StepKind.clearImmutableFlag.targetIsPath)
         XCTAssertTrue(StepKind.revealVendorUninstaller.targetIsPath)
     }

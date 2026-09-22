@@ -13,11 +13,9 @@ import BrimCore
     func verify(planIdString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func history(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func undo(planIdString: String, withReply reply: @escaping @Sendable (Error?) -> Void)
-    func dumpBTM(withReply reply: @escaping @Sendable (String?, Error?) -> Void)
     func installedApplications(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func leftovers(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func recoverableItems(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
-    func scanDuplicates(directoryURLString: String, withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func whatChanged(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func updateReport(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
 }

@@ -16,13 +16,10 @@ let package = Package(
         .library(name: "BrimService", targets: ["BrimService"]),
         .library(name: "BrimPrivileged", targets: ["BrimPrivileged"]),
         .library(name: "BrimUI", targets: ["BrimUI"]),
-        .executable(name: "BrimCLI", targets: ["BrimCLI"]),
-        .executable(name: "BrimMCP", targets: ["BrimMCP"]),
         .executable(name: "BrimJobHelper", targets: ["BrimJobHelper"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
     ],
     targets: [
         .target(name: "BrimCore"),
@@ -40,13 +37,6 @@ let package = Package(
         .target(name: "BrimPrivileged"),
         .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService", "BrimPrivileged"]),
         
-        .executableTarget(name: "BrimCLI", dependencies: [
-            "BrimProtocol",
-            "BrimCore",
-            "BrimService",
-            .product(name: "ArgumentParser", package: "swift-argument-parser")
-        ]),
-        .executableTarget(name: "BrimMCP", dependencies: ["BrimProtocol", "BrimService"]),
         .executableTarget(name: "BrimJobHelper", dependencies: ["BrimPrivileged"]),
         
         // Tests

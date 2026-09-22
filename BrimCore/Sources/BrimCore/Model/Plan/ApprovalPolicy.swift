@@ -9,7 +9,7 @@ extension StepKind {
     /// Services registration is put back by `undo` along with the bundle.
     public var destroysWithoutRecovery: Bool {
         switch self {
-        case .resetPrivacyGrants, .forgetReceipt, .btmReset, .delegateToolCleanup:
+        case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
             return true
         case .unregisterLaunchServices, .unloadLaunchdJob, .clearImmutableFlag,
              .revealVendorUninstaller, .archivePath:

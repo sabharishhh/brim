@@ -57,11 +57,9 @@ private actor UninstallStub: BrimServiceProtocol, ApprovalGranting {
     func explain(planId: UUID) async throws -> String { throw Oops.no }
     func history() async throws -> [Plan] { [] }
     func undo(planId: UUID) async throws { throw Oops.no }
-    func dumpBTM() async throws -> String { "" }
     func installedApplications() async throws -> [InstalledApplication] { [] }
     func leftovers() async throws -> [Leftover] { [] }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum Oops: Error, LocalizedError {

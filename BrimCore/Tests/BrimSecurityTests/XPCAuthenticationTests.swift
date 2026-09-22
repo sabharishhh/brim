@@ -168,11 +168,10 @@ final class XPCAuthenticationTests: XCTestCase {
                     unpinned.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
                 }
                 guard line.contains(".sameProcessAnonymous") else { continue }
-                // Only the CLI's own in-process listener may say this, and
-                // the file that declares the case. Matched on the path, not
-                // the basename: there are three main.swift in this tree and
-                // two of them talk to a real daemon.
-                let permitted = ["BrimCLI/main.swift", "Security/MutualAuthentication.swift"]
+                // Only the file that declares the case. The CLI used to be
+                // allowed it too, for its own in-process listener; the CLI
+                // is gone, so nothing in the product may say this now.
+                let permitted = ["Security/MutualAuthentication.swift"]
                 if !permitted.contains(where: { file.path.hasSuffix($0) }) {
                     unpinned.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
                 }
@@ -223,8 +222,12 @@ final class RegisteredIdentifierTests: XCTestCase {
     private static let retired = ["com.google.Brim", "devplaceholder"]
 
     /// Everywhere Brim creates or names something macOS will persist.
+    ///
+    /// One entry, since the command line tool went. It was the only part of
+    /// Brim that registered a launch agent, which is why removing it was
+    /// worth doing on its own: a utility whose subject is software running
+    /// when nobody asked it to should not leave an agent behind.
     private static let registrationSites = [
-        "BrimCore/Sources/BrimCLI/EnergyCmd.swift",
         "scripts/build_release.sh",
     ]
 
@@ -261,14 +264,7 @@ final class RegisteredIdentifierTests: XCTestCase {
         }
     }
 
-    func testTheEnergyAgentIsNamedAfterBrim() throws {
-        let declaration = try Self.code(of: "BrimCore/Sources/BrimCLI/EnergyCmd.swift")
-            .first { $0.text.contains("static let agentLabel") }
-        let line = try XCTUnwrap(declaration?.text, "EnergyCmd no longer declares agentLabel")
-
-        XCTAssertTrue(
-            line.contains("\"\(BrimPeer.application.signingIdentifier)."),
-            "The energy agent is registered under a name that is not Brim's: \(line)"
-        )
-    }
+    // `testTheEnergyAgentIsNamedAfterBrim` went with the command line
+    // tool. There is no energy agent now, and nothing in the product
+    // registers one.
 }

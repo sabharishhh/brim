@@ -96,12 +96,6 @@ public final class BackgroundModel: ObservableObject {
     /// SwiftUI, so the view watches a value instead.
     @Published public private(set) var revision = 0
 
-    /// Above this many rows a grouped card list stops being readable and
-    /// starts being a wall. Below it the cards earn their space.
-    public static let tableThreshold = 200
-
-    /// Whether the list on screen is large enough to want a real table.
-    public var needsTable: Bool { live.count >= Self.tableThreshold }
 
     public var gaps: [RegistrationCoverage] { report.gaps }
 

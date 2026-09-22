@@ -24,7 +24,6 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     case clearImmutableFlag
     case delegateToolCleanup
     case revealVendorUninstaller
-    case btmReset
     case archivePath
     /// Removes the bundle's Launch Services registration, after the bundle
     /// itself is gone. Deleting an app does not retract its registration:
@@ -39,7 +38,7 @@ extension StepKind {
     /// a path — the "already gone" check, verification — has to ask first.
     public var targetIsPath: Bool {
         switch self {
-        case .resetPrivacyGrants, .btmReset, .forgetReceipt, .delegateToolCleanup:
+        case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
             // Each of these names an identifier: a bundle id, a package id,
             // or which cleanup to run. None is a file.
             return false

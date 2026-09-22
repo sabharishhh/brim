@@ -102,11 +102,9 @@ private actor RegistrationStub: BrimServiceProtocol {
     func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
     func history() async throws -> [Plan] { [] }
     func undo(planId: UUID) async throws { throw Nope.no }
-    func dumpBTM() async throws -> String { "" }
     func installedApplications() async throws -> [InstalledApplication] { [] }
     func leftovers() async throws -> [Leftover] { [] }
     func recoverableItems() async throws -> [RecoverableItem] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum Nope: Error { case no }
