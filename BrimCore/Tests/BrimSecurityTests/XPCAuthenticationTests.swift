@@ -197,3 +197,78 @@ final class XPCAuthenticationTests: XCTestCase {
         return files
     }
 }
+
+/// Anything Brim registers with macOS carries Brim's own identifier.
+///
+/// `SafetyChecker` reads Brim's identifier from its own bundle because a
+/// hardcoded list once named `com.google.Brim` and a `devplaceholder`
+/// identifier, matched neither the real application nor anything else, and
+/// silently blocked self-removal. Those two survive only so an upgrade can
+/// clear what they left behind.
+///
+/// What nothing held is the other direction: that Brim never registers
+/// something *new* under one of them. It was doing exactly that. `brim
+/// energy --register` installed a launch agent labelled
+/// `com.google.Brim.energy`, with RunAtLoad and KeepAlive set, and
+/// `build_release.sh` stamped `com.google.Brim` on the bundle it built. A
+/// utility whose whole subject is background agents nobody can account for
+/// cannot be the thing installing one.
+///
+/// Read from the sources, because the registration sites are an executable
+/// target and a shell script, neither of which a test can import. The same
+/// approach `StepVocabularyTests` uses on the planner.
+final class RegisteredIdentifierTests: XCTestCase {
+
+    /// Identifiers Brim answers to for cleanup and must never register under.
+    private static let retired = ["com.google.Brim", "devplaceholder"]
+
+    /// Everywhere Brim creates or names something macOS will persist.
+    private static let registrationSites = [
+        "BrimCore/Sources/BrimCLI/EnergyCmd.swift",
+        "scripts/build_release.sh",
+    ]
+
+    private static func repositoryRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    /// Each line with its comment stripped, because a comment may name a
+    /// retired identifier in order to explain it, and the commit that
+    /// removed these did exactly that.
+    private static func code(of path: String) throws -> [(line: Int, text: String)] {
+        let text = try String(contentsOf: repositoryRoot().appendingPathComponent(path),
+                              encoding: .utf8)
+        let marker = path.hasSuffix(".swift") ? "//" : "#"
+        return text.split(separator: "\n", omittingEmptySubsequences: false)
+            .enumerated()
+            .map { (line: $0.offset + 1,
+                    text: String($0.element).components(separatedBy: marker).first ?? "") }
+    }
+
+    func testNothingRegistersUnderAnIdentifierBrimHasRetired() throws {
+        for path in Self.registrationSites {
+            for entry in try Self.code(of: path) {
+                // One constant is allowed to hold the old name, so that
+                // `--unregister` can clear an agent an earlier build left.
+                guard !entry.text.contains("formerAgentLabel") else { continue }
+                for retired in Self.retired where entry.text.contains(retired) {
+                    XCTFail("\(path):\(entry.line) uses \(retired): "
+                            + entry.text.trimmingCharacters(in: .whitespaces))
+                }
+            }
+        }
+    }
+
+    func testTheEnergyAgentIsNamedAfterBrim() throws {
+        let declaration = try Self.code(of: "BrimCore/Sources/BrimCLI/EnergyCmd.swift")
+            .first { $0.text.contains("static let agentLabel") }
+        let line = try XCTUnwrap(declaration?.text, "EnergyCmd no longer declares agentLabel")
+
+        XCTAssertTrue(
+            line.contains("\"\(BrimPeer.application.signingIdentifier)."),
+            "The energy agent is registered under a name that is not Brim's: \(line)"
+        )
+    }
+}
