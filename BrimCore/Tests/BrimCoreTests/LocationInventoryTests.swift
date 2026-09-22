@@ -243,6 +243,80 @@ final class LocationInventorySourceTests: XCTestCase {
 
         XCTAssertTrue(found.evidence.contains { $0.url.path == support.path })
     }
+
+    // MARK: - The updater's cache
+
+    /// **`<identifier>.ShipIt`.** An application installed by any route can
+    /// switch to updating itself afterwards, and Squirrel leaves its working
+    /// folder in Caches under the identifier with a suffix. Caches had an
+    /// exact identifier rule, which walks straight past it, and three of the
+    /// six applications measured on this Mac were carrying one that their
+    /// own uninstall would not have removed.
+    func testASuffixedIdentifierFolderInCachesIsFound() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BrimPrefix-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileSystem = FileSystemRoot(rootURL: root)
+        let caches = fileSystem.url(for: .userCaches)
+        try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)
+
+        let shipIt = caches.appendingPathComponent("com.example.app.ShipIt")
+        let exact = caches.appendingPathComponent("com.example.app")
+        // A different product whose identifier merely starts with the same
+        // letters. The prefix is the identifier and a dot for this reason.
+        let neighbour = caches.appendingPathComponent("com.example.applet")
+        for url in [shipIt, exact, neighbour] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+
+        let identity = Identity(bundleID: "com.example.app", name: "App")
+        let found = LocationInventorySource().findings(for: identity, in: fileSystem).evidence
+        let paths = Set(found.map { $0.url.standardizedFileURL.path })
+
+        XCTAssertTrue(
+            paths.contains(shipIt.standardizedFileURL.path),
+            "The updater's own cache is this application's and was not found."
+        )
+        XCTAssertTrue(paths.contains(exact.standardizedFileURL.path))
+        XCTAssertFalse(
+            paths.contains(neighbour.standardizedFileURL.path),
+            "com.example.applet is somebody else's and a prefix rule reached it."
+        )
+    }
+
+    /// A suffixed identifier folder in Application Support is the same shape
+    /// and the common case for anything shipping a helper or an XPC service.
+    func testASuffixedIdentifierFolderInApplicationSupportIsFound() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BrimPrefix-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileSystem = FileSystemRoot(rootURL: root)
+        let support = fileSystem.url(for: .userApplicationSupport)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+
+        let helper = support.appendingPathComponent("com.example.app.helper")
+        try FileManager.default.createDirectory(at: helper, withIntermediateDirectories: true)
+
+        let identity = Identity(bundleID: "com.example.app", name: "App")
+        let found = LocationInventorySource().findings(for: identity, in: fileSystem).evidence
+
+        XCTAssertTrue(
+            found.contains { $0.url.standardizedFileURL == helper.standardizedFileURL },
+            "A helper's folder under the application's own identifier was not found."
+        )
+    }
+
+    /// An identifier match stays Tier B when the rule gains a prefix. The
+    /// evidence is still a reverse-DNS string nobody else uses.
+    func testAPrefixedIdentifierMatchIsStillAnIdentifierMatch() {
+        let prefixed = LocationInventory.standard.locations.filter {
+            $0.domain == .userCaches && $0.rule == .bundleIdentifierPrefix
+        }
+        XCTAssertFalse(prefixed.isEmpty, "Caches lost its identifier rule entirely.")
+        for location in prefixed {
+            XCTAssertEqual(location.tier, .B)
+        }
+    }
 }
 
 /// An unfinished search does not get to select anything.
