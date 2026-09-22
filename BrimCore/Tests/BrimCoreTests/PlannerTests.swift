@@ -3,7 +3,63 @@ import Foundation
 @testable import BrimCore
 
 final class PlannerTests: XCTestCase {
-    
+
+    /// The Applications pane and the uninstall sheet describe the same row,
+    /// and they used to describe it differently. The pane showed the sentence
+    /// the evidence source wrote when it made the match, "A cache folder
+    /// keyed to the bundle identifier". The sheet threw that away and rebuilt
+    /// prose from the source's class name, giving "The file path exactly
+    /// matches the application's unique identifier. It is highly probable
+    /// this belongs to the application based on developer naming
+    /// conventions." on four rows of one plan, word for word.
+    ///
+    /// The source's sentence is the better one because it knows which rule
+    /// fired rather than only which type ran, so the plan carries it forward.
+    func testAPlanStepSaysWhatTheEvidenceSourceSaid() throws {
+        let url = URL(fileURLWithPath: "/tmp/planner_test/Library/Caches/com.test.app")
+        let evidence = Evidence(
+            url: url, tier: .B, mechanism: "BundleIdentifierComponentSource",
+            humanSentence: "A cache folder keyed to the bundle identifier"
+        )
+        let item = EvaluatedItem(
+            footprintItem: FootprintItem(evidence: evidence, sizeBytes: 10, capability: .ok),
+            selection: .selected, costOfError: .low
+        )
+        let identity = Identity(bundleID: "com.test.app", name: "TestApp")
+        let plan = Planner().createPlan(
+            from: EvaluatedFootprint(identity: identity, items: [item]),
+            intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
+            engineVersion: "1.0"
+        )
+
+        let step = try XCTUnwrap(plan.steps.first { $0.kind == .trashPath })
+        XCTAssertTrue(
+            step.evidence.hasPrefix("A cache folder keyed to the bundle identifier"),
+            "The plan discarded the source's own sentence: \(step.evidence)"
+        )
+        XCTAssertFalse(
+            step.evidence.contains("highly probable"),
+            "Tier B repeated as boilerplate under every row: \(step.evidence)"
+        )
+    }
+
+    func testANameOnlyMatchStillSaysSoOnEveryRow() {
+        // The one tier worth repeating. A C row rests on a shared name and
+        // nothing else, which changes what somebody should do about it.
+        let rendered = ExplanationRenderer().render(
+            tier: .C, capability: .ok, mechanism: "HeuristicSource",
+            found: "Shares a name with the application"
+        )
+        XCTAssertTrue(rendered.contains("name alone"), rendered)
+    }
+
+    func testASharedItemSaysItIsSharedWhateverElseIsTrue() {
+        let rendered = ExplanationRenderer().render(
+            tier: .S, capability: .ok, mechanism: "GroupContainerSource", found: "A shared container"
+        )
+        XCTAssertTrue(rendered.contains("leaves it alone"), rendered)
+    }
+
     func testPlannerCreatesValidPlan() throws {
         let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
         let identity = Identity(bundleID: "test", name: "test")
