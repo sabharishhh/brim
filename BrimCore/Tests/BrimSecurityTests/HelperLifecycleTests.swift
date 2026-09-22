@@ -12,6 +12,35 @@ import XCTest
 /// point at in other people's software.
 final class HelperLifecycleTests: XCTestCase {
 
+    /// Brim must not ask macOS about its own daemon until somebody wants it.
+    ///
+    /// Reading `SMAppService.status` is not a local lookup. It makes `smd`
+    /// open the bundle, build a background-item configuration out of the
+    /// daemon plist inside it, and ask Background Task Management for that
+    /// item's disposition. On a Mac where the daemon has never been
+    /// registered BTM answers "record not found", and being asked about an
+    /// item it has no record of is what makes macOS announce a new
+    /// background item. With no record there is no stored name, so the
+    /// notification reads "(null) can run in the background".
+    ///
+    /// Brim was doing this three times on every launch, from two separate
+    /// clients each polling in `init()` plus one more during the background
+    /// scan, before anybody had asked for the helper. Measured in the log:
+    /// nine `com.sabharishhh.brim.jobhelper.plist` evaluations per launch
+    /// before, none after.
+    ///
+    /// A utility whose entire subject is unexplained background
+    /// registrations cannot be the thing putting one in front of you.
+    @MainActor
+    func testConstructingTheClientAsksMacOSNothing() {
+        let client = PrivilegedHelperClient()
+        XCTAssertEqual(
+            client.state, .notAsked,
+            "Constructing the client read SMAppService.status, which makes macOS evaluate "
+            + "Brim's bundled daemon and surface it as a nameless background item"
+        )
+    }
+
     func testTheInterfaceCanAskTheDaemonToCleanUpAfterItself() {
         // `uninstallSelf` has to be on the protocol for the app to be able
         // to call it at all. A protocol method is a small thing to assert,
