@@ -1058,7 +1058,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// in the Trash right now rather than by what the journal once recorded.
     /// Emptying the Trash therefore changes this immediately.
     public func recoverableItems() async throws -> [RecoverableItem] {
-        let fm = FileManager.default
         var items: [RecoverableItem] = []
 
         for entry in try await ledgerStore.allEntries() {

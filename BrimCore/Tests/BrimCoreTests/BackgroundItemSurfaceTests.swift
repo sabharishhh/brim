@@ -204,6 +204,76 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         XCTAssertFalse(apple.isActionableStale)
     }
 
+    /// Apple's Stocks, in a list whose whole subject is the user's software.
+    ///
+    /// The record carries no bundle identifier and no URL at all. Its own
+    /// identifier is `4096.com.apple.stocks` and its parent's is
+    /// `2.com.apple.stocks`, and `isSystemOwned` read neither, so a
+    /// background app refresh item belonging to an app Apple ships came
+    /// through as something the person had installed. It sat in the
+    /// Background list beside Claude and Figma.
+    func testAnAppleItemWithNothingButItsIdentifierIsStillApples() async {
+        let text = dump("""
+
+         #1:
+                         UUID: FFFF
+                         Name: Stocks - background app refresh
+                   Identifier: 4096.com.apple.stocks
+                          URL: (null)
+            Parent Identifier: 2.com.apple.stocks
+        """)
+
+        let found = await surface(text).registrations(in: root)
+        let stocks = try? XCTUnwrap(found.first { $0.label == "Stocks - background app refresh" })
+        XCTAssertEqual(stocks?.isSystemOwned, true,
+                       "Only the identifiers name the owner, and both of them say Apple")
+    }
+
+    /// The other half, because a filter that catches everything is not a
+    /// filter. The same shape from Microsoft has to stay in the list.
+    func testTheSameShapeFromSomebodyElseStaysInTheList() async {
+        let text = dump("""
+
+         #1:
+                         UUID: FFFF
+                         Name: Visual Studio Code - background tasks
+                   Identifier: 8192.com.microsoft.VSCode
+                          URL: (null)
+            Parent Identifier: 2.com.microsoft.VSCode
+        """)
+
+        let found = await surface(text).registrations(in: root)
+        XCTAssertEqual(found.first?.isSystemOwned, false)
+    }
+
+    /// The type prefix is digits and a dot, and nothing else may be stripped.
+    func testOnlyTheRecordTypeIsTakenOffAnIdentifier() {
+        XCTAssertEqual(
+            BackgroundItemSurface.bundleIdentifier(in: "4096.com.apple.stocks"),
+            "com.apple.stocks"
+        )
+        XCTAssertEqual(
+            BackgroundItemSurface.bundleIdentifier(in: "com.apple.stocks"),
+            "com.apple.stocks",
+            "An identifier with no type prefix comes back whole"
+        )
+        XCTAssertEqual(
+            BackgroundItemSurface.bundleIdentifier(in: "2x.com.example.app"),
+            "2x.com.example.app",
+            "A first component that merely starts with a digit is not a type"
+        )
+        XCTAssertEqual(
+            BackgroundItemSurface.bundleIdentifier(in: "2."), "",
+            "A type and nothing after it names no bundle, and says so rather than "
+            + "offering the type as if it were one"
+        )
+        XCTAssertEqual(BackgroundItemSurface.bundleIdentifier(in: ""), "")
+        XCTAssertEqual(
+            BackgroundItemSurface.bundleIdentifier(in: ".com.apple.x"), ".com.apple.x",
+            "An empty first component is not a type either"
+        )
+    }
+
     func testAnUnreadableStoreReportsNoCoverageRatherThanNoItems() async {
         let blind = BackgroundItemSurface(read: { nil }, homeDirectory: { _ in nil })
 
