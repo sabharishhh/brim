@@ -30,10 +30,28 @@ public actor RegistrationInventory {
     }
 
     /// Every registration on the machine, from every readable surface.
+    ///
+    /// The surfaces run together. Each one waits on something different and
+    /// none of them needs any of the others: `pluginkit` is a subprocess,
+    /// Background Task Management is a file read, the launchd folders and
+    /// the plug-in folders are directory walks, and the privileged helper
+    /// surface verifies code signatures. Run one after another they added
+    /// up to the slowest thing the app does at launch; run together the
+    /// scan costs about what its slowest member costs.
+    ///
+    /// `RegistrationSurface` is `Sendable` and every surface is a value
+    /// with no shared mutable state, which is what makes this safe rather
+    /// than hopeful. The result is sorted afterwards, so the order does not
+    /// depend on which task finished first.
     public func all(in root: FileSystemRoot) async -> [Registration] {
-        var results: [Registration] = []
-        for surface in surfaces {
-            results.append(contentsOf: await surface.registrations(in: root))
+        let surfaces = self.surfaces
+        let results = await withTaskGroup(of: [Registration].self) { group in
+            for surface in surfaces {
+                group.addTask { await surface.registrations(in: root) }
+            }
+            var collected: [Registration] = []
+            for await found in group { collected.append(contentsOf: found) }
+            return collected
         }
         // Stable order: stale first, since those are what a sweep is for.
         return results.sorted {
@@ -98,11 +116,20 @@ public actor RegistrationInventory {
         await all(in: root).filter(\.isActionableStale)
     }
 
+    /// Which surfaces could be read, in the order the surfaces were given.
+    ///
+    /// Together, like `all`, and indexed rather than appended because a
+    /// task group finishes in whatever order it finishes in and this list
+    /// is shown to a person.
     public func coverage(in root: FileSystemRoot) async -> [RegistrationCoverage] {
-        var results: [RegistrationCoverage] = []
-        for surface in surfaces {
-            results.append(await surface.coverage(in: root))
+        let surfaces = self.surfaces
+        return await withTaskGroup(of: (Int, RegistrationCoverage).self) { group in
+            for (index, surface) in surfaces.enumerated() {
+                group.addTask { (index, await surface.coverage(in: root)) }
+            }
+            var byIndex: [Int: RegistrationCoverage] = [:]
+            for await (index, found) in group { byIndex[index] = found }
+            return surfaces.indices.compactMap { byIndex[$0] }
         }
-        return results
     }
 }
