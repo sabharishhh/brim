@@ -600,7 +600,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             expectedBytes: plan.expectedTotalBytes,
             recoveredBytes: recoveredBytes,
             success: success,
-            reason: reason
+            reason: reason,
+            remainingPaths: pathsRemaining
         )
     }
     
