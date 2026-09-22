@@ -59,10 +59,29 @@ struct ContentView: View {
         // scroll and every checkbox underneath it, which costs frames and
         // makes the app feel slower rather than smoother.
         .animation(.easeOut(duration: 0.16), value: selection)
-        // An ideal as well as a minimum. Without a concrete ideal the
-        // content reports that it will take any width, `.defaultSize` is
-        // ignored, and the window opens at whatever the display allows.
-        .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
+        // A minimum, and deliberately no ideal.
+        //
+        // This carried `idealWidth: 1200, idealHeight: 800` for the reason
+        // written here before: without a concrete ideal the content said it
+        // would take any width and the window opened at whatever the
+        // display allowed. `.defaultSize` on the scene answers that now and
+        // the ideal had become a second, redundant hint.
+        //
+        // It was also the single biggest cost in the app. An ideal size on
+        // the root makes SwiftUI measure the *entire* content tree to
+        // produce it, and hand the answer to AppKit as an intrinsic size,
+        // so every scroll in any panel walked the whole view graph and then
+        // ran a window-wide constraint solve. Profiling the Applications
+        // list put 43% of the main thread in `GraphHost.flushTransactions`,
+        // 25% in `-[NSWindow layoutIfNeeded]` and 14% in
+        // `ViewGraphRootValueUpdater._sizeThatFits`, with not one sample
+        // containing any of Brim's own code: no view body was running,
+        // SwiftUI was re-measuring everything. Every panel had it, which is
+        // why removing an HSplitView here and a ScrollView there each
+        // helped a little and none of it fixed the feel.
+        //
+        // A minimum is a constant and costs nothing to answer.
+        .frame(minWidth: 900, minHeight: 600)
         .focusedSceneValue(\.navigateAction) { item in selection = item }
         .task {
             guard needsSetup == nil else { return }

@@ -221,7 +221,8 @@ struct UpdatesView: View {
                         Spacer()
                     }
                     .padding(.vertical, 2)
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isStaticText)
                     .accessibilityLabel(
                         "\(entry.application.name), installed by Homebrew as "
                         + "\(entry.homebrewCask ?? "a cask")"

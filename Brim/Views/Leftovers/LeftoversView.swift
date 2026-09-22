@@ -320,6 +320,11 @@ private struct GroupRow: View {
 private struct LeftoverDetail: View {
     let group: LeftoverGroup
 
+    /// Built once for the process. A `RelativeDateTimeFormatter` is
+    /// expensive to construct and was being constructed inside the body,
+    /// so every pass of this pane paid for a new one.
+    private static let relative = RelativeDateTimeFormatter()
+
     /// A `List`, not a `ScrollView` wrapping a `VStack`.
     ///
     /// A vertical `ScrollView` proposes its own width and a *nil* height, so
@@ -385,8 +390,9 @@ private struct LeftoverDetail: View {
                 }
 
                 if let accessed = group.lastAccessed {
-                    let formatter = RelativeDateTimeFormatter()
-                    Text("Last opened " + formatter.localizedString(for: accessed, relativeTo: Date()))
+                    Text("Last opened " + Self.relative.localizedString(
+                        for: accessed, relativeTo: Date()
+                    ))
                         .font(.caption).foregroundColor(.secondary)
                 }
 
