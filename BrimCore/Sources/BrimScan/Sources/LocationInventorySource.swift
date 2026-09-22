@@ -125,7 +125,11 @@ public struct LocationInventorySource: EvidenceSource {
             // `com.example.app.plist` is the common case.
             return identity.bundleID.map { ["\($0).plist", $0] } ?? []
         case .applicationName:
-            return identity.name.isEmpty ? [] : [identity.name]
+            // Both names, because an application's folders are named after
+            // whichever of them its developer reached for. Visual Studio
+            // Code is "Visual Studio Code" on disk and "Code" to itself,
+            // and its 143 MB of support files are under the second.
+            return identity.searchNames
         case .identifierInsideBundle:
             return []
         }
