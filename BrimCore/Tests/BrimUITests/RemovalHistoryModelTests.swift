@@ -34,10 +34,8 @@ private actor HistoryStub: BrimServiceProtocol {
     func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.unimplemented }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.unimplemented }
     func verify(planId: UUID) async throws -> VerificationResult { throw Stub.unimplemented }
-    func dumpBTM() async throws -> String { throw Stub.unimplemented }
     func installedApplications() async throws -> [InstalledApplication] { [] }
     func leftovers() async throws -> [Leftover] { [] }
-    func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { [] }
 }
 
 private enum Stub: Error, LocalizedError {

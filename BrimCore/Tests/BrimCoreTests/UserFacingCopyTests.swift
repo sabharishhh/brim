@@ -60,7 +60,7 @@ final class UserFacingCopyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         var found: [(String, String)] = []
-        for directory in ["Brim/Views", "BrimCore/Sources/BrimUI", "BrimCore/Sources/BrimCLI"] {
+        for directory in ["Brim/Views", "BrimCore/Sources/BrimUI"] {
             let base = root.appendingPathComponent(directory)
             guard let walk = FileManager.default.enumerator(
                 at: base, includingPropertiesForKeys: nil

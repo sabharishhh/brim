@@ -46,9 +46,7 @@ public struct DummyBrimService: BrimServiceProtocol {
     public func verify(planId: UUID) async throws -> VerificationResult { throw notConnected }
     public func history() async throws -> [Plan] { throw notConnected }
     public func undo(planId: UUID) async throws { throw notConnected }
-    public func dumpBTM() async throws -> String { throw notConnected }
     public func installedApplications() async throws -> [InstalledApplication] { throw notConnected }
     public func leftovers() async throws -> [Leftover] { throw notConnected }
     public func recoverableItems() async throws -> [RecoverableItem] { throw notConnected }
-    public func scanDuplicates(in directory: URL) async throws -> [DuplicateGroup] { throw notConnected }
 }
