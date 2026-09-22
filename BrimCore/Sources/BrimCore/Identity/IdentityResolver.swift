@@ -61,11 +61,22 @@ public actor IdentityResolver {
         var isSandboxed = false
         var groupContainers: [String] = []
         
-        // Use SecStaticCode to extract signing info
+        // Two flags, and asking for one of them was a silent hole. The
+        // team identifier is signing information and the entitlements are
+        // requirement information, so a call that asks only for the latter
+        // reports a sandbox and group containers correctly while leaving
+        // `teamID` nil for every application on the machine. Nothing threw
+        // and nothing was logged: `TeamIDSource` opens by returning an
+        // empty array when there is no team, so the whole of it, and every
+        // team-prefixed rule in the inventory, read as "nothing found"
+        // rather than "never asked". `CodeSignature` in `BrimScan` had the
+        // flags right all along, which is the two-readings-of-one-fact
+        // hazard again.
         var staticCode: SecStaticCode?
         if SecStaticCodeCreateWithPath(bundleURL as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode {
             var signInfo: CFDictionary?
-            if SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSRequirementInformation), &signInfo) == errSecSuccess {
+            let wanted = SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSRequirementInformation)
+            if SecCodeCopySigningInformation(code, wanted, &signInfo) == errSecSuccess {
                 let infoDict = signInfo as? [String: Any]
                 teamID = infoDict?[kSecCodeInfoTeamIdentifier as String] as? String
                 
