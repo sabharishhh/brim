@@ -96,6 +96,42 @@ final class BundleNameAgreementTests: XCTestCase {
         )
     }
 
+    /// **The regression that nearly shipped.** Rating every name match Tier C
+    /// looked like tidying up and was seen only by opening the uninstall
+    /// sheet: the sheet lists what is ticked and nothing else, so a Tier C
+    /// row there cannot be ticked by hand at all. Uninstalling Claude would
+    /// have stopped removing its 11 GB `Application Support/Claude`, and
+    /// Figma its 1.1 GB, with no way for the person to put either back.
+    ///
+    /// A folder named exactly after the application's own file name keeps
+    /// the rating it had. The new `CFBundleName` match is Tier C, as the
+    /// plan says it must be, because that is the name that can be as short
+    /// as "Code".
+    func testTheFolderNamedAfterTheApplicationStillLeavesWithIt() async throws {
+        let (root, bundle) = try makeBundle(
+            fileName: "Figma", bundleName: "Figma", identifier: "com.figma.Desktop"
+        )
+        defer { try? FileManager.default.removeItem(at: root.rootURL) }
+
+        let support = root.url(for: .userApplicationSupport).appendingPathComponent("Figma")
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+
+        let identity = await IdentityResolver(root: root).resolve(bundleURL: bundle)
+        let engine = EvidenceEngine(sources: [
+            LocationInventorySource(), BundleIdentifierComponentSource(),
+        ])
+        let discovered = try await engine.discover(identity: identity, in: root)
+
+        let match = discovered.evidence.first {
+            $0.url.standardizedFileURL.path == support.standardizedFileURL.path
+        }
+        XCTAssertEqual(
+            match?.tier, .B,
+            "Application Support/Figma is no longer selected, and the uninstall sheet has no "
+            + "way to tick an unselected row, so uninstalling Figma would leave it behind."
+        )
+    }
+
     /// Both halves resolve the same set of names for the same bundle, which
     /// is the invariant that was broken rather than any one of its symptoms.
     func testBothHalvesAnswerToTheSameNames() async throws {
