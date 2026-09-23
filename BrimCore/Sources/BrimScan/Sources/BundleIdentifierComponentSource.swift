@@ -4,13 +4,23 @@ import BrimCore
 /// Resolves paths that match the exact bundle identifier, or either of the
 /// names the application answers to.
 ///
-/// An identifier is a reverse-DNS string nobody else uses, so a folder named
-/// one is Tier B. A human name is not, and this source used to call a name
-/// match Tier B as well, which meant a folder was ticked for removal by
-/// default on the strength of sharing a word with an application. The
-/// inventory has said "an identifier match is Tier B, a name match is Tier C"
-/// since it was written; this is the one place that disagreed, and it
-/// disagreed in the direction that removes things.
+/// **Two names, rated differently, and the difference is deliberate.**
+///
+/// A folder named exactly after the application's own file name keeps the
+/// Tier B it has always had here. That contradicts the inventory's rule
+/// that a name match is Tier C, and it is kept anyway because of what Tier C
+/// means in the uninstall sheet today: the sheet shows what is ticked and
+/// nothing else, so a Tier C row there cannot be ticked by hand at all.
+/// Demoting this match was tried, and it was caught only by opening the
+/// sheet: uninstalling Claude would have stopped removing its 11 GB
+/// `Application Support/Claude`, Figma its 1.1 GB, with no way for the
+/// person to put either back. When the sheet can offer an unticked row,
+/// this can follow the rule.
+///
+/// The `CFBundleName`, where it differs from the file name, is Tier C: shown,
+/// never ticked. That is the name that can be as short as "Code", which is
+/// exactly the string that makes name matching dangerous, and the plan that
+/// added it says it must not be pre-selected whatever produced it.
 public struct BundleIdentifierComponentSource: EvidenceSource {
     public init() {}
 
@@ -21,8 +31,9 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
         // 1. Name matches, on both names the bundle answers to. Visual
         // Studio Code is "Visual Studio Code" as a file and "Code" to
         // itself, and it is the second one that names the folder holding
-        // 143 MB of its settings, history and extensions.
+        // its settings, history and extensions.
         for name in identity.searchNames {
+            let isFileName = name == identity.name
             let paths = [
                 root.url(for: .applications).appendingPathComponent("\(name)"),
                 root.url(for: .userApplicationSupport).appendingPathComponent("\(name).app"),
@@ -35,10 +46,12 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
                 if fm.fileExists(atPath: url.path) && !results.contains(where: { $0.url == url }) {
                     results.append(Evidence(
                         url: url,
-                        tier: .C,
+                        tier: isFileName ? .B : .C,
                         mechanism: "BundleIdentifierComponentSource",
-                        humanSentence: "Named after the application rather than its identifier, "
-                            + "so Brim will not tick it for you."
+                        humanSentence: isFileName
+                            ? "Named after the application."
+                            : "Named after the name the application gives itself rather than "
+                                + "its identifier, so Brim will not tick it for you."
                     ))
                 }
             }

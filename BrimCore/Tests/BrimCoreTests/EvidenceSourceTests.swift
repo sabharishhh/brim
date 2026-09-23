@@ -88,18 +88,18 @@ final class EvidenceSourceTests: XCTestCase {
         
         // Load expected manifest.
         //
-        // Two rows moved from Tier B to Tier C here, and that was the point
-        // rather than a casualty. A golden file is only as good as the
-        // behaviour it was copied from, and this one had copied down two
-        // sources that called weak evidence strong and ticked the row for
-        // removal.
+        // `Group Containers/TEAMID1234.com.brim.classic` moved from Tier B
+        // to Tier C here, and that was the point rather than a casualty. It
+        // is matched on the team identifier, which belongs to the developer
+        // rather than to one of their applications: Microsoft puts one
+        // string on Word, Teams, OneDrive and Visual Studio Code alike. A
+        // golden file is only as good as the behaviour it was copied from.
         //
-        // `Application Support/ClassicApp.app` is matched on the
-        // application's name, and the inventory has always rated a name
-        // match C. `Group Containers/TEAMID1234.com.brim.classic` is matched
-        // on the team identifier, which belongs to the developer rather than
-        // to one of their applications: Microsoft puts one string on Word,
-        // Teams, OneDrive and Visual Studio Code alike.
+        // `Application Support/ClassicApp.app` stays Tier B, and that was a
+        // decision too. It was moved to C alongside the team row and moved
+        // back, because the uninstall sheet shows only what is ticked, so a
+        // Tier C row there cannot be ticked by hand and the application's
+        // own support folder would have stopped leaving with it.
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         
