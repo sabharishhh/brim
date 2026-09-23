@@ -5,21 +5,45 @@ import BrimProtocol
 
 /// One application's discovered footprint, grouped for display.
 ///
-/// The grouping is by *mechanism* rather than by folder, because the point
-/// the UI has to make is not "here are some files" but "here is how Brim
-/// knows each of these belongs to this app".
+/// The grouping is by *how Brim knows* rather than by folder, because the
+/// point the UI has to make is not "here are some files" but "here is how
+/// Brim knows each of these belongs to this app".
+///
+/// **A heading is a claim about every row under it**, so a group is exactly
+/// the rows that share a sentence and a tier. It used to be the rows that
+/// shared a source, with the heading borrowed from the first row and the
+/// label from the strongest, which held only while every source said one
+/// thing. `LocationInventorySource` says something different for every place
+/// it looks. In the running app that put "the list macOS keeps of documents
+/// this application opened" above a group of caches, and "Brim will not tick
+/// it for you" beside a Strong label, because the same source had also
+/// found a Tier B preferences file.
 public struct FootprintGroup: Identifiable, Equatable, Sendable {
-    public let mechanism: String
+    /// How strong the evidence is. The same for every row in the group.
+    public let tier: EvidenceTier
+    /// The sentence the evidence engine produced. The same for every row in
+    /// the group, so it can head them.
+    public let explanation: String
     public let items: [FootprintItem]
 
-    public var id: String { mechanism }
-    public var totalBytes: Int64 { items.reduce(0) { $0 + $1.sizeBytes } }
-    /// The strongest tier in the group — evidence quality, shown per group.
-    public var strongestTier: EvidenceTier {
-        items.map(\.evidence.tier).min(by: { $0.rank < $1.rank }) ?? .C
+    public init(tier: EvidenceTier, explanation: String, items: [FootprintItem]) {
+        self.tier = tier
+        self.explanation = explanation
+        self.items = items
     }
-    /// The sentence the evidence engine produced, shared by the group.
-    public var explanation: String { items.first?.evidence.humanSentence ?? "" }
+
+    /// Which part of Brim found the rows. Shown only when the engine gave
+    /// no sentence, and part of the identity only then, so two sources with
+    /// nothing to say are not merged under one of their names.
+    public var mechanism: String { items.first?.evidence.mechanism ?? "" }
+
+    public var id: String {
+        "\(tier.rawValue)|\(explanation)|\(explanation.isEmpty ? mechanism : "")"
+    }
+    public var totalBytes: Int64 { items.reduce(0) { $0 + $1.sizeBytes } }
+    /// The tier every row shares. Kept under this name because it is what
+    /// the list sorts and labels on.
+    public var strongestTier: EvidenceTier { tier }
 }
 
 extension EvidenceTier {
@@ -81,18 +105,33 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
-    /// Groups the selected app's footprint by the mechanism that found each
-    /// item, strongest evidence first.
+    /// Groups the selected app's footprint by what Brim can say about each
+    /// item and how sure it is, strongest evidence first.
     public var footprintGroups: [FootprintGroup] {
         guard let footprint else { return [] }
-        let byMechanism = Dictionary(grouping: footprint.items, by: \.evidence.mechanism)
-        return byMechanism
-            .map { FootprintGroup(mechanism: $0.key, items: $0.value) }
+        struct Key: Hashable {
+            let tier: EvidenceTier
+            let sentence: String
+            /// Only set when there is no sentence to group on.
+            let mechanism: String
+        }
+        let byReason = Dictionary(grouping: footprint.items) { item in
+            Key(
+                tier: item.evidence.tier,
+                sentence: item.evidence.humanSentence,
+                mechanism: item.evidence.humanSentence.isEmpty ? item.evidence.mechanism : ""
+            )
+        }
+        return byReason
+            .map { FootprintGroup(tier: $0.key.tier, explanation: $0.key.sentence, items: $0.value) }
             .sorted {
                 if $0.strongestTier.rank != $1.strongestTier.rank {
                     return $0.strongestTier.rank < $1.strongestTier.rank
                 }
-                return $0.totalBytes > $1.totalBytes
+                if $0.totalBytes != $1.totalBytes { return $0.totalBytes > $1.totalBytes }
+                // Stable when two groups weigh the same, so the list does not
+                // reshuffle every time the footprint is recomputed.
+                return $0.id < $1.id
             }
     }
 
