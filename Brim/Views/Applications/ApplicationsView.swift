@@ -9,7 +9,7 @@ import BrimUI
 /// This is where the product's claim has to be visible. The queue removes
 /// leftovers one path at a time; here the user picks an application and sees
 /// the whole footprint Brim discovered from its identity alone, each group
-/// labelled with the mechanism that found it.
+/// headed by what Brim knows about every row in it.
 struct ApplicationsView: View {
     @ObservedObject var model: ApplicationsModel
     /// Shared with the rest of the window, so a footprint that came up short
@@ -285,7 +285,7 @@ struct ApplicationsView: View {
                     Text(ByteText.short(footprint.totalSizeBytes) + " in total")
                         .monospacedDigit()
                     Text("·")
-                    Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "mechanism" : "mechanisms")")
+                    Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "kind of evidence" : "kinds of evidence")")
                 }
                 Text("The app itself is \(ByteText.short(application.bundleSizeBytes)). The rest is "
                      + "what it has written elsewhere on this Mac.")
@@ -340,7 +340,7 @@ struct ApplicationsView: View {
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel(
                 "\(locations) locations found, across "
-                + "\(model.footprintGroups.count) discovery mechanisms. "
+                + "\(model.footprintGroups.count) kinds of evidence. "
                 + "The app itself is \(ByteText.short(application.bundleSizeBytes))."
                 + (footprint.unreadableEntries > 0
                    ? (access.isGranted
