@@ -681,12 +681,69 @@ Added after M6 was largely built, when a measurement of six real applications sh
 
 Personalisation is not protection. Bookmarks, preferences, window layouts and sign-in state were all given to the application by the person using it, and every one of them leaves with the application. The discriminator is whether the thing still means anything once the application is gone. Two mechanical tests: a path is in scope only if `LocationInventory` names it with a rule, and a subtree inside application storage that the bundle declares as document scope (`CFBundleDocumentTypes` with an `Editor` role and `LSHandlerRank: Owner`, or `NSUbiquitousContainerIsDocumentScopePublic`, or a container's `Data/Documents`) is archived rather than trashed. A reference to user content is a third class: the record goes, what it names does not.
 
-### T-7.1 · The measured misses (was P1.1 to P1.7)
+### T-7.1 · The measured misses (was P1.1 to P1.7) · **done**
 - **Objective** Recover what the removal path provably leaves behind today.
 - **Depends on** nothing. Deliberately first, because T-7.2 is weeks and this is days.
 - **Work** `CFBundleName` in `LocationInventorySource.candidates`, with a test holding `LeftoversScanner` and `LocationInventorySource` to one answer for one bundle. `~/.config`, `~/.cache`, `~/.local/{bin,share,state}` and vendor dotfile directories, name-matched, Tier C. `bundleIdentifierPrefix` in caches and application support, which catches `<id>.ShipIt`. Launch Services recent-documents `.sfl4`, with §11.1's guard landed as a test first. Team identifier resolution in `IdentityResolver`. Symlinks pointing into an installed bundle.
 - **Acceptance** The same six applications re-measured, with the before and after written down. VS Code's 143 MB and Claude's 189 MB are in the footprint. A test fails if any scanner resolves a path recorded in a `.sfl4` into a scan target.
 - **Unlocks** the two largest numbers on the board, in days.
+
+**Measured, same Mac, same six applications.** `FootprintCoverageTests`
+behind `BRIM_REAL_ENV=1` is the harness, and every assertion in it failed
+before this work.
+
+| Application | Before | After |
+|---|---|---|
+| Visual Studio Code | 6 | 15 |
+| Claude | 7 | 14 |
+| Antigravity | 7 | 12 |
+| Figma | 5 | 6 |
+| Obsidian | 4 | 5 |
+| Recordly | 6 | 7 |
+
+Visual Studio Code's 143 MB in `Application Support/Code` and Claude's
+189 MB in `~/.local/share/claude` are both in the footprint. Team
+identifiers resolve for six of six where they resolved for none.
+
+Three things came out of doing it that the plan had not anticipated.
+
+- **`IdentityResolver` was asking macOS the wrong question.**
+  `SecCodeCopySigningInformation` was passed `kSecCSRequirementInformation`
+  alone, which carries the entitlements but not the team identifier, so
+  `teamID` was nil for every application ever scanned and `TeamIDSource`
+  had never run. `CodeSignature` in `BrimScan` had it right, which is the
+  two-readings hazard again.
+- **Fixing that exposed a live over-claim.** `TeamIDSource` rated every
+  `TEAMID.*` group container Tier B. A team identifier names a vendor, so
+  uninstalling Visual Studio Code offered to delete Microsoft Teams' data
+  and the shared Microsoft sign-in state, pre-selected, with Teams
+  installed. A team-prefix match is now Tier S when a sibling is installed
+  and Tier C otherwise, and never Tier B.
+- **A name match is Tier B in one source, knowingly.**
+  `BundleIdentifierComponentSource` rates a folder named after the
+  application's file name Tier B, against the inventory's rule that a
+  name match is C. It was demoted to C and put back: the uninstall sheet
+  lists only what is ticked, so a Tier C row there cannot be ticked by hand
+  at all, and uninstalling Claude would have stopped removing its 11 GB
+  `Application Support/Claude`. The new `CFBundleName` match, which can be
+  as short as "Code", is Tier C as the plan requires. The file-name match
+  can follow the rule once the sheet can offer an unticked row, which is
+  Part 4a's grouped sheet, and that dependency should be recorded against
+  P3.5.
+- **The same team fix reached launchd.** `LaunchdSource` claimed any job
+  whose label starts with the team identifier at Tier A, which is unloaded
+  by default. It is Tier S or C now, on the same terms as a group
+  container.
+- **The footprint view's headings lied once sources disagreed.** Groups were
+  keyed on the source, headed by the first row's sentence and labelled with
+  the strongest row's tier. A group is now the rows that share a sentence
+  and a tier, so both are true of every row.
+
+Deferred deliberately, both recorded in `notWorthSweeping` with reasons:
+the `.sfl4` directory and the XDG folders are searched on the uninstall
+path but held out of the leftovers sweep, the first until Apple's own
+records can be told apart and the second until the sweep can recognise a
+command line tool as still installed.
 
 ### T-7.2 · Capability-derived search (was P2.1 to P2.3)
 - **Objective** Replace category reasoning with the application's own declarations.
