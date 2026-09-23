@@ -37,8 +37,32 @@ public struct LaunchdSource: EvidenceSource {
                 // Proof that the job is this application's: its label is
                 // named after the application, or the program it runs lives
                 // inside the application's bundle.
+                //
+                // Named after means the identifier itself, or the identifier
+                // followed by a dot. It used to be any label that merely
+                // started with it, with nothing required after, and on the
+                // Mac this was found on that made the News application
+                // (`com.apple.news`) the owner of `com.apple.newsyslog`, the
+                // system's log rotation daemon, and Clock the owner of
+                // `com.apple.clocksyncd`. Tier A is ticked by default and a
+                // ticked job is unloaded, so for anybody else's applications
+                // `com.example.app` would take `com.example.applet` with it.
+                // The rest of the codebase already draws the line here:
+                // `LocationInventorySource` matches the identifier and a dot.
+                //
+                // Kept strict on purpose. A developer who names a helper
+                // `com.example.appHelper` or `com.example.app-helper` loses
+                // the label match, and nothing is lost for it: a helper that
+                // runs from inside the bundle is proven by the program path
+                // below, and a privileged helper blessed with `SMJobBless`
+                // carries its own bundle identifier as its label, which is
+                // conventionally the application's with a dot. What the
+                // boundary costs on this Mac is Apple's own agents named
+                // without one, `com.apple.SafariLaunchAgent` and `newsd`
+                // among them, for applications Brim cannot remove anyway.
                 var proven = false
-                if let label = plistIdentity.launchdLabel, label.starts(with: targetBundleID) {
+                if let label = plistIdentity.launchdLabel,
+                   label == targetBundleID || label.hasPrefix(targetBundleID + ".") {
                     proven = true
                 }
                 if !proven, let program = plistIdentity.launchdProgramPath {
