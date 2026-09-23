@@ -8,8 +8,8 @@
     },
     {
       "relativePath": "Library/Application Support/ClassicApp.app",
-      "tier": "C",
-      "description": "Named after the application rather than its identifier, so Brim will not tick it for you."
+      "tier": "B",
+      "description": "Named after the application."
     },
     {
       "relativePath": "Library/Preferences/com.brim.classic.plist",
