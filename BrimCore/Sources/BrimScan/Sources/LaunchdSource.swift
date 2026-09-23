@@ -65,11 +65,19 @@ public struct LaunchdSource: EvidenceSource {
                    label == targetBundleID || label.hasPrefix(targetBundleID + ".") {
                     proven = true
                 }
+                // The program running from inside this application's bundle
+                // is proof whatever the label says, and it is what keeps the
+                // strict label boundary above from costing recall. So it has
+                // to look in every bundle this application could be, which
+                // `AppBundleSource` has always taken to include the
+                // Applications folder inside the home folder; it used to
+                // look only in `/Applications`, so a per-user install's
+                // helper went unproven. And inside means the bundle followed
+                // by a slash: this compared with a bare `hasPrefix`, so a
+                // program in `App.apple.app` proved a job belonged to `App`.
                 if !proven, let program = plistIdentity.launchdProgramPath {
-                    if let appBundlePath = root.url(for: .applications).appendingPathComponent("\(identity.name).app").path as String?,
-                       program.hasPrefix(appBundlePath) {
-                        proven = true
-                    }
+                    proven = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
+                        .contains { program.hasPrefix($0.path + "/") }
                 }
 
                 if proven {

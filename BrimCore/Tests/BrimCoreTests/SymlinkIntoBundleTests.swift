@@ -26,10 +26,17 @@ final class SymlinkIntoBundleTests: XCTestCase {
         try? fm.removeItem(at: rootURL)
     }
 
+    /// The Applications folder inside the person's home, where a per-user
+    /// install puts its bundle.
+    private var userApplications: URL {
+        root.url(for: .userLibrary).deletingLastPathComponent().appendingPathComponent("Applications")
+    }
+
     /// An application bundle with something runnable inside it.
     @discardableResult
-    private func makeBundle(named name: String) throws -> URL {
-        let bundle = root.url(for: .applications).appendingPathComponent("\(name).app")
+    private func makeBundle(named name: String, inUserApplications: Bool = false) throws -> URL {
+        let folder = inUserApplications ? userApplications : root.url(for: .applications)
+        let bundle = folder.appendingPathComponent("\(name).app")
         let binDirectory = bundle.appendingPathComponent("Contents/Resources/app/bin")
         try fm.createDirectory(at: binDirectory, withIntermediateDirectories: true)
         try Data("#!/bin/sh\n".utf8).write(to: binDirectory.appendingPathComponent("tool"))
@@ -158,5 +165,74 @@ final class SymlinkIntoBundleTests: XCTestCase {
         try makeLink(named: "code", to: "/Applications/Visual Studio Code.app/Contents/tool")
         let found = try await evidence()
         XCTAssertTrue(found.isEmpty)
+    }
+
+    // MARK: - Where the bundle lives
+
+    /// **`Code.app` is not Visual Studio Code.** The bundle lives under its
+    /// file name. `CFBundleName` is what an application calls itself and
+    /// names its support folders after; it says nothing about where the
+    /// bundle sits. This source used to look for the bundle under both
+    /// names, so with an unrelated application called `Code.app` installed,
+    /// every command linked into that application was claimed for Visual
+    /// Studio Code at Tier B and would have been trashed with it.
+    func testALinkIntoAnotherApplicationNamedLikeTheBundleNameIsLeftAlone() async throws {
+        try makeBundle(named: "Visual Studio Code")
+        let other = try makeBundle(named: "Code")
+        try makeLink(
+            named: "othertool",
+            to: other.appendingPathComponent("Contents/Resources/app/bin/tool").path
+        )
+
+        let found = try await evidence()
+        XCTAssertTrue(
+            found.isEmpty,
+            "A link into Code.app, a different application, was claimed for Visual Studio Code "
+            + "because its CFBundleName is \"Code\"."
+        )
+    }
+
+    /// A per-user install keeps its bundle in the Applications folder inside
+    /// the home folder, and a link into it is just as much the application's.
+    /// The fix narrows which name is looked for, not which folders.
+    func testALinkIntoAPerUserInstallIsFound() async throws {
+        let bundle = try makeBundle(named: "Visual Studio Code", inUserApplications: true)
+        let link = try makeLink(
+            named: "code",
+            to: bundle.appendingPathComponent("Contents/Resources/app/bin/tool").path
+        )
+
+        let found = try await evidence()
+        XCTAssertEqual(found.map(\.url.path), [link.path])
+    }
+
+    /// The candidate locations are the file name in both Applications
+    /// folders and nothing else, which is also what `AppBundleSource` claims
+    /// as the application bundle itself at Tier A. The two have to agree:
+    /// a link is proven by pointing into the bundle Brim already calls this
+    /// application, so they cannot be allowed to mean different bundles.
+    func testTheBundleIsLookedForUnderItsFileNameInBothApplicationsFolders() async throws {
+        let locations = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
+            .map(\.standardizedFileURL.path)
+        XCTAssertEqual(
+            Set(locations),
+            [
+                root.url(for: .applications)
+                    .appendingPathComponent("Visual Studio Code.app").standardizedFileURL.path,
+                userApplications
+                    .appendingPathComponent("Visual Studio Code.app").standardizedFileURL.path,
+            ],
+            "The bundle is being looked for somewhere other than its file name in the two "
+            + "Applications folders."
+        )
+
+        let direct = try makeBundle(named: "Visual Studio Code")
+        let claimedAsTheBundle = try await AppBundleSource().evidence(for: identity, in: root)
+            .map(\.url.standardizedFileURL.path)
+        XCTAssertEqual(claimedAsTheBundle, [direct.standardizedFileURL.path])
+        XCTAssertTrue(
+            Set(claimedAsTheBundle).isSubset(of: Set(locations)),
+            "AppBundleSource calls a bundle this application that the link check would not."
+        )
     }
 }

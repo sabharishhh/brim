@@ -64,17 +64,29 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
         return results
     }
 
-    /// Where this application's bundle could be sitting.
+    /// Where this application's bundle could be sitting: its file name, in
+    /// the Applications folder and in the one inside the home folder, which
+    /// is exactly what `AppBundleSource` claims as the application itself.
+    ///
+    /// **The file name only.** This used to look under every name in
+    /// `searchNames`, which includes `CFBundleName`, and `CFBundleName` says
+    /// what an application calls itself, not where its bundle lives. Visual
+    /// Studio Code calls itself "Code", so with an unrelated application
+    /// called `Code.app` installed, every command linked into that other
+    /// application was claimed for Visual Studio Code at Tier B and would have
+    /// been trashed with it. The name that finds support folders is the wrong
+    /// one for finding bundles.
+    ///
+    /// Also the one place `LaunchdSource` asks, so a link and a launchd job
+    /// are proven by pointing into the same bundles.
     static func bundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
         let userApplications = root.url(for: .userLibrary)
             .deletingLastPathComponent()
             .appendingPathComponent("Applications")
-        return identity.searchNames.flatMap { name in
-            [
-                root.url(for: .applications).appendingPathComponent("\(name).app"),
-                userApplications.appendingPathComponent("\(name).app"),
-            ]
-        }
+        return [
+            root.url(for: .applications).appendingPathComponent("\(identity.name).app"),
+            userApplications.appendingPathComponent("\(identity.name).app"),
+        ]
     }
 
     /// Where a link actually lands, relative hops and all, or nil when the
