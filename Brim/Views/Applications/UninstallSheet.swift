@@ -1,7 +1,7 @@
-import SwiftUI
 import BrimCore
 import BrimProtocol
 import BrimUI
+import SwiftUI
 
 /// The deep uninstall, shown before it happens and proven after.
 ///
@@ -30,7 +30,9 @@ struct UninstallSheet: View {
             Divider()
             footer
         }
-        .frame(minWidth: 580, idealWidth: 660, minHeight: 420, idealHeight: 520)
+        // A fixed presentation size keeps scrolling from feeding the list's
+        // changing ideal size back into AppKit's sheet constraint solver.
+        .frame(width: 660, height: 520)
         .task {
             // Identity only — no specific targets. This is the difference
             // between uninstalling an application and tidying a folder.
@@ -62,7 +64,9 @@ struct UninstallSheet: View {
             }
             Spacer()
             Button(isFinished ? "Done" : "Cancel") {
-                if isFinished { onFinished() }
+                if isFinished {
+                    onFinished()
+                }
                 dismiss()
             }
             .keyboardShortcut(.escape, modifiers: [])
@@ -72,7 +76,9 @@ struct UninstallSheet: View {
     }
 
     private var isFinished: Bool {
-        if case .verified = model.phase { return true }
+        if case .verified = model.phase {
+            return true
+        }
         return false
     }
 
@@ -82,33 +88,32 @@ struct UninstallSheet: View {
     /// about an application that is still installed on purpose, and offered
     /// a button reading "Authorize & Uninstall" that did not uninstall
     /// anything.
-    private var isReset: Bool { intentType == .reset }
+    private var isReset: Bool {
+        intentType == .reset
+    }
 
     @ViewBuilder
     private var content: some View {
         switch model.phase {
         case .preparing:
-            ProgressView("Looking for everywhere this app has written…")
+            ProgressView("Finding app files…")
 
-        case .failed(let reason):
+        case let .failed(reason):
             message(title: "Stopped", detail: reason, isError: true)
 
-        case .appliedButUnverified(let reason):
+        case let .appliedButUnverified(reason):
             message(
                 title: isReset ? "Reset, but not checked" : "Removed, but not checked",
-                detail: "The plan ran. Brim then went back to confirm every location was "
-                      + "clear and the check itself could not finish: \(reason) "
-                      + "Nothing has been undone. Open \(application.name) in the "
-                      + "Applications list to look again.",
+                detail: "Verification could not finish: \(reason)",
                 isError: false
             )
 
         case .executing:
             ProgressView(isReset
-                        ? "Putting \(application.name) back to how it started…"
-                        : "Clearing out \(application.name)…")
+                ? "Resetting \(application.name)…"
+                : "Uninstalling \(application.name)…")
 
-        case .verified(let result):
+        case let .verified(result):
             verification(result)
 
         case .ready:
@@ -118,68 +123,55 @@ struct UninstallSheet: View {
 
     private var planList: some View {
         List {
-            if model.clearsPrivacyGrants {
-                Section {
-                    Label(
-                        "Accessibility, screen recording and the rest get cleared first, while the app "
-                        + "is still here. Once it goes, macOS will not let anyone reach them again.",
-                        systemImage: "hand.raised"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                } header: {
-                    Text("Privacy permissions")
-                }
-            }
-
-            if model.clearsRegistrations {
-                Section {
-                    Label(
-                        "After the app itself goes, Brim tells macOS to forget it, so it stops turning "
-                        + "up in \"Open With\" and stops claiming your files. Dragging an app to the "
-                        + "Trash never does this.",
-                        systemImage: "app.badge.checkmark"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                } header: {
-                    Text("System registrations")
+            if model.clearsPrivacyGrants || model.clearsRegistrations {
+                Section("System records") {
+                    if model.clearsPrivacyGrants {
+                        LabeledContent("Privacy permissions", value: "Reset")
+                    }
+                    if model.clearsRegistrations {
+                        LabeledContent("File associations", value: "Remove")
+                    }
                 }
             }
 
             Section {
                 ForEach(model.removalSteps, id: \.index) { step in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(step.evidence)
-                            .font(.callout)
-                        HStack(spacing: 6) {
-                            Text(step.target)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .truncationMode(.middle)
-                                .lineLimit(1)
-
-                            Label(
-                                step.effectiveDisposition == .delete ? "Deleted permanently" : "To Trash",
-                                systemImage: step.effectiveDisposition == .delete ? "trash.slash" : "arrow.uturn.backward"
-                            )
-                            .font(.caption2)
-                            .foregroundColor(step.effectiveDisposition == .delete ? .orange : .secondary)
-
-                            Spacer()
-                            Text(ByteText.short(step.expectedBytes))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .padding(.vertical, 1)
+                    UninstallPlanRow(
+                        target: step.target, evidence: step.evidence,
+                        bytes: step.expectedBytes, disposition: step.effectiveDisposition,
+                        kind: step.kind, tier: step.tier,
+                        selection: model.isTickedByHand(step.target) ? selection(for: step.target) : nil
+                    )
                 }
             } header: {
-                Text("\(model.removalSteps.count) \(model.removalSteps.count == 1 ? "place" : "places") Brim traced back to this app")
+                Text("Selected (\(model.removalSteps.count))")
+            }
+
+            if !model.rowsToOffer.isEmpty {
+                Section {
+                    ForEach(model.rowsToOffer, id: \.target) { row in
+                        UninstallPlanRow(
+                            target: row.target, evidence: row.evidence ?? row.reason,
+                            bytes: row.sizeBytes ?? 0, disposition: nil,
+                            kind: nil, tier: row.tier,
+                            selection: selection(for: row.target)
+                        )
+                    }
+                } header: {
+                    Text("Also include")
+                }
             }
         }
         .listStyle(.inset)
+    }
+
+    private func selection(for path: String) -> Binding<Bool> {
+        Binding(
+            get: { model.isTickedByHand(path) },
+            set: { ticked in
+                Task { await model.setTicked(ticked, path: path) }
+            }
+        )
     }
 
     private func verification(_ result: VerificationResult) -> some View {
@@ -194,11 +186,10 @@ struct UninstallSheet: View {
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                 ? (isReset
-                    ? "Brim went back to every location it cleared. The settings and state are "
-                    + "gone and \(application.name) is still installed."
-                    : "Brim went back to every location it touched. All of them are empty.")
-                 : (result.reason ?? "Some of it is still on disk."))
+                ? (isReset
+                    ? "Selected data removed. \(application.name) remains installed."
+                    : "All selected items were removed.")
+                : (result.reason ?? "Some selected items remain."))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -224,7 +215,7 @@ struct UninstallSheet: View {
 
     private func headline(for result: VerificationResult) -> String {
         guard result.success else { return "Something is still there" }
-        return isReset ? "Back to how it started" : "Nothing is left"
+        return isReset ? "Reset complete" : "Uninstall complete"
     }
 
     private func message(title: String, detail: String, isError: Bool) -> some View {
@@ -238,17 +229,20 @@ struct UninstallSheet: View {
     private var footer: some View {
         HStack {
             if case .ready = model.phase, let plan = model.plan {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Frees now: ")
-                        .foregroundColor(.secondary)
-                    + Text(ByteText.short(plan.immediatelyFreedBytes))
-                        .fontWeight(.bold)
-                        .monospacedDigit()
+                if model.isUpdating {
+                    ProgressView("Updating selection…")
+                        .controlSize(.small)
+                } else {
+                    VStack(alignment: .leading, spacing: 2) {
+                        let label = Text("Frees immediately: ").foregroundColor(.secondary)
+                        let amount = Text(ByteText.short(plan.immediatelyFreedBytes)).bold().monospacedDigit()
+                        Text("\(label)\(amount)")
 
-                    if plan.trashedBytes > 0 {
-                        Text("\(ByteText.short(plan.trashedBytes)) goes to the Trash, where you can still get it back")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if plan.trashedBytes > 0 {
+                            Text("To Trash: \(ByteText.short(plan.trashedBytes))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             }
