@@ -812,6 +812,23 @@ is complete; M7 still depends on later tasks.
 - **Acceptance** A tier-3 outcome names the one action that does work rather than describing what Brim cannot do.
 - **Unlocks** an honest completion claim, and closes the last dead step kind.
 
+**Implementation:** `RemovalTier` classifies targeted removal, the system-wide
+BTM reset that Brim does not offer, and records needing another action. Search
+details show the tier and a short action for declared VPN settings, observed
+system extensions and privacy access that may outlive a missing bundle. The
+completion report rechecks previously observed system extensions. It gives a
+conditional VPN action because macOS does not expose another app's VPN
+configuration to Brim. A failed or missing privacy-reset outcome prevents a
+successful verification claim; if the bundle is gone, the report says to
+reinstall it before resetting permissions. No system-wide BTM reset is run.
+
+**Validated:** the package suite, approval tests, Debug build and lint
+comparison passed. Fixture verification reports failed privacy resets without
+claiming a completed uninstall. The running app's search-details text was not
+visually checked because the automation window stopped accepting interaction;
+no application was removed. T-7.3 is complete; M7 still depends on T-7.4
+through T-7.6.
+
 ### T-7.4 · Leftovers re-derived from the removal engine (was P2.6)
 - **Objective** One engine, two directions.
 - **Depends on** T-7.2.

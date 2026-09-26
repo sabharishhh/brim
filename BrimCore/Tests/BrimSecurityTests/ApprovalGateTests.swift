@@ -219,7 +219,7 @@ final class ApprovalGateTests: XCTestCase {
     /// The gate has to refuse a service with no window and let Brim
     /// through, and a test that only proves the first half would be
     /// satisfied by a gate that refuses everybody.
-    func testTheAppItselfCanStillCompleteARemoval() async throws {
+    func testTheAppItselfCanStillApplyAnApprovedRemoval() async throws {
         let (service, gen, rootURL, _) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
         let plan = try await plan(from: service, in: rootURL)
@@ -228,7 +228,9 @@ final class ApprovalGateTests: XCTestCase {
         try await service.approveAndApply(planId: plan.planId, requesterIdentity: "user")
 
         let verification = try await service.verify(planId: plan.planId)
-        XCTAssertTrue(verification.success, "The app could not finish a removal it approved")
+        XCTAssertTrue(verification.remainingPaths.isEmpty, "The app did not remove the approved files")
+        XCTAssertFalse(verification.success, "The fixture's unregistered bundle cannot pass tccutil")
+        XCTAssertEqual(verification.followUpActions, [.restoreAppForPrivacyReset])
     }
 
     func testADestructivePlanStillCostsAFingerprint() async throws {

@@ -19,8 +19,10 @@ public struct CapabilitySearchScanner: Sendable {
     public func scan(identity: Identity, in root: FileSystemRoot,
                      completeness: ScanCompleteness,
                      evidence: [Evidence] = []) async -> CapabilitySearchReport? {
-        guard let surface = identity.capabilitySurface else { return nil }
+        guard identity.capabilitySurface != nil || identity.bundleID != nil else { return nil }
+        let surface = identity.capabilitySurface
         let bundle = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        let ownerPresent = bundle.map { FileManager.default.fileExists(atPath: $0) } ?? false
         let snapshots = await withTaskGroup(of: RegistrationSnapshot.self) { group in
             for source in surfaces {
                 group.addTask { await source.snapshot(in: root) }
@@ -116,7 +118,7 @@ public struct CapabilitySearchScanner: Sendable {
                     coverage = snapshot.coverage
                     let ids = Set(identity.searchBundleIdentifiers)
                     let helpers = Set(identity.identitySurface?.helperRequirements.keys.map(\.self) ?? [])
-                    let declaredJobs = Set(surface.declarations
+                    let declaredJobs = Set((surface?.declarations ?? [])
                         .filter { $0.capability == .launchdJob && $0.key == "Label" }
                         .map(\.value))
                     found = snapshot.registrations.filter { record in
@@ -139,14 +141,28 @@ public struct CapabilitySearchScanner: Sendable {
                     found = []
                 }
             }
-            checks.append(.init(capability: capability, declaration: surface.state(for: capability),
+            let declaration = surface?.state(for: capability) ?? .unknown
+            let tier = RemovalTier.forCapability(capability, ownerPresent: ownerPresent)
+            let followUp: RemovalFollowUp? = switch capability {
+            case .systemExtension where !found.isEmpty:
+                .vendorUninstaller
+            case .vpnConfiguration where declaration == .declared:
+                .vpnSettings
+            case .privacyGrant where !ownerPresent:
+                .restoreAppForPrivacyReset
+            default:
+                nil
+            }
+            checks.append(.init(capability: capability, declaration: declaration,
                                 coverage: coverage, registrations: found.sorted { $0.id < $1.id },
-                                locations: Array(Set(locations)).sorted()))
+                                locations: Array(Set(locations)).sorted(), removalTier: tier,
+                                followUp: followUp))
         }
-        let signature: [RegistrationCoverage] = surface.signatureGaps.isEmpty ? [] : [
+        let signatureGaps = surface?.signatureGaps ?? []
+        let signature: [RegistrationCoverage] = signatureGaps.isEmpty ? [] : [
             .unavailable(.bundlePlugin,
-                         "\(surface.signatureGaps.count) code "
-                             + "\(surface.signatureGaps.count == 1 ? "signature" : "signatures") unavailable.")
+                         "\(signatureGaps.count) code "
+                             + "\(signatureGaps.count == 1 ? "signature" : "signatures") unavailable.")
         ]
         return CapabilitySearchReport(checks: checks, signatureCoverage: signature)
     }

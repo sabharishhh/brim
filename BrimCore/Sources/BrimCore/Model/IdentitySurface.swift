@@ -187,18 +187,24 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
         public let coverage: RegistrationCoverage
         public let registrations: [Registration]
         public let locations: [String]
+        /// Nil in plans written before removal tiers were recorded.
+        public let removalTier: RemovalTier?
+        public let followUp: RemovalFollowUp?
         public var id: String {
             capability.rawValue
         }
 
         public init(capability: DeclaredCapability, declaration: CapabilitySurface.DeclarationState,
                     coverage: RegistrationCoverage, registrations: [Registration] = [],
-                    locations: [String] = []) {
+                    locations: [String] = [], removalTier: RemovalTier? = nil,
+                    followUp: RemovalFollowUp? = nil) {
             self.capability = capability
             self.declaration = declaration
             self.coverage = coverage
             self.registrations = registrations
             self.locations = locations
+            self.removalTier = removalTier
+            self.followUp = followUp
         }
     }
 

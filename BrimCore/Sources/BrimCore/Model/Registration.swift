@@ -115,7 +115,15 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     ///
     /// A launchd job is a file. Nothing collects it, which is why an
     /// uninstall that misses one leaves it forever.
-    public var isClearedByMacOS: Bool { kind == .backgroundItem }
+    public var isClearedByMacOS: Bool {
+        removalTier(ownerPresent: targetExists) == .destructiveOnly
+    }
+
+    /// A system-wide reset is possible for background items, but Brim never
+    /// offers it to remove one application's record.
+    public func removalTier(ownerPresent: Bool) -> RemovalTier {
+        RemovalTier.forRegistration(kind, ownerPresent: ownerPresent)
+    }
 
     /// Whether Brim will only ever describe this, never act on it.
     ///
