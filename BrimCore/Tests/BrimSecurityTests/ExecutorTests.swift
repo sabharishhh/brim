@@ -245,8 +245,8 @@ final class ExecutorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: archivedA.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: archivedB.path))
         
-        let contentA = try String(contentsOf: archivedA)
-        let contentB = try String(contentsOf: archivedB)
+        let contentA = try String(contentsOf: archivedA, encoding: .utf8)
+        let contentB = try String(contentsOf: archivedB, encoding: .utf8)
         XCTAssertEqual(contentA, "Content A")
         XCTAssertEqual(contentB, "Content B")
         

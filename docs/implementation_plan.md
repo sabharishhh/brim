@@ -745,9 +745,38 @@ path but held out of the leftovers sweep, the first until Apple's own
 records can be told apart and the second until the sweep can recognise a
 command line tool as still installed.
 
+### T-7.5 prerequisite · Offer unticked rows in the uninstall sheet · implemented, awaiting merge
+
+Moved ahead of T-7.2 from the sheet work in T-7.5. The uninstall review now
+offers discovered, unticked rows with their path, size and a short label.
+Detailed evidence is available through Details. A manual selection travels
+on `PlanIntent.tickedByHand`, so approval covers it and apply reconstructs
+it. Each toggle builds a fresh plan; approval is disabled until it arrives,
+and stale replies cannot replace the current selection. Vetoed rows cannot
+be selected, and naming a path the footprint never found adds nothing.
+
+Verified on 26 September 2026: planner, service fixture flow, approval gate,
+Tier S and model timing tests pass; the full plain suite and Debug app build
+pass. In the running app, VS Code's `Application Support/Code` is offered
+at 166 MB, inclusion changes the plan, and unticking returns the row to the
+optional list and updates the totals. No installed application was removed.
+The shell could not enumerate `~/.Trash`, so the Trash baseline is unverified.
+
+The review's scroll lag was traced to repeated window layout and SwiftUI
+size negotiation. The sheet now uses a fixed 660 by 520 point presentation
+instead of minimum and ideal content dimensions. In 20-second main-thread
+samples containing the same ten-scroll sequence, inclusive window-layout
+samples fell from 1,206 to 136 and transaction-flush samples from 1,241 to 5.
+These are sampling observations, not frame-rate measurements. Neither
+capture included planner calls. The Details control and compact rows were
+checked in the running app after the change.
+
+The file-name source's Tier B exception remains for T-7.2 to remove. Grouping
+and the rest of T-7.5 remain in their original position. M7 is not complete.
+
 ### T-7.2 · Capability-derived search (was P2.1 to P2.3)
 - **Objective** Replace category reasoning with the application's own declarations.
-- **Depends on** T-7.1, T-1.2, T-3.1.
+- **Depends on** T-7.1, T-1.2, T-3.1, and the unticked-row sheet prerequisite above.
 - **Work** `IdentitySurface`: every name a bundle answers to, from `Info.plist`, the signature, and embedded helpers, XPC services and app extensions. `CapabilitySurface`: entitlements and declarations mapped to the record classes that can exist, so `NEProviderClasses` implies a network extension and `com.apple.security.device.camera` implies one TCC entry. Planning consumes both. Unsigned and ad-hoc bundles thin the capability surface to `Info.plist` alone and that is a `RegistrationCoverage` gap, reported as one.
 - **Acceptance** An uninstall reports what it checked *and* what the application declared it had none of, and the two are distinguishable in the report. No app names appear in the implementation. A name-derived match is Tier C whatever produced the name.
 - **Unlocks** negative evidence, which is the only honest way to say a surface is clean.
