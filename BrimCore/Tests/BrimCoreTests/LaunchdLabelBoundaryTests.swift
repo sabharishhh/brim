@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// A launchd label that merely starts with an application's identifier is
 /// not that application's job. The identifier has to end where a dot begins.
@@ -23,7 +23,6 @@ import BrimCore
 /// `LocationInventorySource` matches `name.hasPrefix(bundleID + ".")`, and
 /// `LocationInventorySourceTests` holds `com.example.applet` out of reach.
 final class LaunchdLabelBoundaryTests: XCTestCase {
-
     private var rootURL: URL!
     private var root: FileSystemRoot!
     private let fm = FileManager.default
@@ -58,7 +57,9 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         try await LaunchdSource().evidence(for: identity, in: root)
     }
 
-    private var app: Identity { Identity(bundleID: "com.example.app", name: "App") }
+    private var app: Identity {
+        Identity(bundleID: "com.example.app", name: "App")
+    }
 
     // MARK: - The boundary
 
@@ -71,7 +72,7 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         XCTAssertTrue(
             found.isEmpty,
             "com.example.app claimed com.example.applet.helper. That job belongs to another "
-            + "product, and a Tier A claim unloads it along with this application."
+                + "product, and a Tier A claim unloads it along with this application."
         )
     }
 
@@ -101,7 +102,7 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         XCTAssertTrue(
             found.isEmpty,
             "A label was claimed on the strength of starting with the identifier: "
-            + found.map { $0.url.lastPathComponent }.joined(separator: ", ")
+                + found.map(\.url.lastPathComponent).joined(separator: ", ")
         )
     }
 
@@ -130,9 +131,17 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
     /// whose program lives inside the application's bundle is proven by where
     /// it runs from, whatever its label says.
     func testAHelperWithoutADotIsStillProvenByWhereItRunsFrom() async throws {
-        let program = root.url(for: .applications)
-            .appendingPathComponent("App.app/Contents/Library/LaunchServices/com.example.appHelper")
-            .path
+        let bundle = root.url(for: .applications).appendingPathComponent("App.app")
+        try fm.createDirectory(at: bundle.appendingPathComponent("Contents"),
+                               withIntermediateDirectories: true)
+        let info = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.example.app"],
+            format: .xml, options: 0
+        )
+        try info.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+        let program = bundle.appendingPathComponent(
+            "Contents/Library/LaunchServices/com.example.appHelper"
+        ).path
         try makeJob(label: "com.example.appHelper", program: program)
 
         let found = try await claimed(by: app)

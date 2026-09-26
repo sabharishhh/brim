@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// A command on the path that is really a link into an application bundle.
 ///
@@ -11,7 +11,6 @@ import BrimCore
 /// removing the application without the link leaves a `code` command that
 /// reports "no such file or directory". Docker does the same with `kubectl`.
 final class SymlinkIntoBundleTests: XCTestCase {
-
     private var rootURL: URL!
     private var root: FileSystemRoot!
     private let fm = FileManager.default
@@ -40,6 +39,12 @@ final class SymlinkIntoBundleTests: XCTestCase {
         let binDirectory = bundle.appendingPathComponent("Contents/Resources/app/bin")
         try fm.createDirectory(at: binDirectory, withIntermediateDirectories: true)
         try Data("#!/bin/sh\n".utf8).write(to: binDirectory.appendingPathComponent("tool"))
+        let identifier = name == "Visual Studio Code"
+            ? "com.microsoft.VSCode" : "com.example.\(name)"
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": identifier], format: .xml, options: 0
+        )
+        try plist.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
         return bundle
     }
 
@@ -189,7 +194,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertTrue(
             found.isEmpty,
             "A link into Code.app, a different application, was claimed for Visual Studio Code "
-            + "because its CFBundleName is \"Code\"."
+                + "because its CFBundleName is \"Code\"."
         )
     }
 
@@ -221,10 +226,10 @@ final class SymlinkIntoBundleTests: XCTestCase {
                 root.url(for: .applications)
                     .appendingPathComponent("Visual Studio Code.app").standardizedFileURL.path,
                 userApplications
-                    .appendingPathComponent("Visual Studio Code.app").standardizedFileURL.path,
+                    .appendingPathComponent("Visual Studio Code.app").standardizedFileURL.path
             ],
             "The bundle is being looked for somewhere other than its file name in the two "
-            + "Applications folders."
+                + "Applications folders."
         )
 
         let direct = try makeBundle(named: "Visual Studio Code")
