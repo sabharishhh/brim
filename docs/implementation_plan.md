@@ -745,7 +745,7 @@ path but held out of the leftovers sweep, the first until Apple's own
 records can be told apart and the second until the sweep can recognise a
 command line tool as still installed.
 
-### T-7.5 prerequisite · Offer unticked rows in the uninstall sheet · implemented, awaiting merge
+### T-7.5 prerequisite · Offer unticked rows in the uninstall sheet · merged in PR #1
 
 Moved ahead of T-7.2 from the sheet work in T-7.5. The uninstall review now
 offers discovered, unticked rows with their path, size and a short label.
@@ -771,8 +771,8 @@ These are sampling observations, not frame-rate measurements. Neither
 capture included planner calls. The Details control and compact rows were
 checked in the running app after the change.
 
-The file-name source's Tier B exception remains for T-7.2 to remove. Grouping
-and the rest of T-7.5 remain in their original position. M7 is not complete.
+The file-name source's Tier B exception is addressed in the first T-7.2 slice below.
+Grouping and the rest of T-7.5 remain in their original position. M7 is not complete.
 
 ### T-7.2 · Capability-derived search (was P2.1 to P2.3)
 - **Objective** Replace category reasoning with the application's own declarations.
@@ -780,6 +780,28 @@ and the rest of T-7.5 remain in their original position. M7 is not complete.
 - **Work** `IdentitySurface`: every name a bundle answers to, from `Info.plist`, the signature, and embedded helpers, XPC services and app extensions. `CapabilitySurface`: entitlements and declarations mapped to the record classes that can exist, so `NEProviderClasses` implies a network extension and `com.apple.security.device.camera` implies one TCC entry. Planning consumes both. Unsigned and ad-hoc bundles thin the capability surface to `Info.plist` alone and that is a `RegistrationCoverage` gap, reported as one.
 - **Acceptance** An uninstall reports what it checked *and* what the application declared it had none of, and the two are distinguishable in the report. No app names appear in the implementation. A name-derived match is Tier C whatever produced the name.
 - **Unlocks** negative evidence, which is the only honest way to say a surface is clean.
+
+**First slice implemented, awaiting merge:** evidence sources can return findings
+with scan completeness through the common protocol. Group-container, sibling-app
+and launchd directory read failures now survive aggregation and reach the safety
+engine, plan hash and uninstall review. Missing directories remain distinct from
+failed reads. Duplicate gaps count once. Old plans still decode. An incomplete
+scan selects no files automatically; manual inclusion cannot override Tier S.
+File-name matches now use Tier C, including the older component source.
+
+Verified on 26 September 2026: the new fixture tests cover failed and empty
+listings, protocol dispatch, propagation through the planner, approval hashing,
+old-plan decoding and manual selection without reviving a veto. In the running
+app, Figma's 1.21 GB support folder is offered unticked as a name match; selecting
+it changes the selected count from 8 to 9 and the Trash total from 319.3 MB to
+1.53 GB. The review was cancelled without removing anything. Unreadable-location
+reporting was verified with fixtures, not by changing permissions on real folders.
+
+**Still open:** identity and capability extraction from embedded bundles,
+entitlements and declarations; unsigned/ad-hoc signature coverage; routing
+searches from those declarations; the checked versus declared-absent registration
+report; and migration of the remaining evidence sources to report read gaps.
+This slice does not complete T-7.2 or M7.
 
 ### T-7.3 · The removal ceiling, reported rather than hidden (was P2.4, P2.5)
 - **Objective** Say what macOS will not allow, once, in the right place.
