@@ -1,6 +1,9 @@
 import Foundation
 import Security
 
+// SwiftLint and SwiftFormat disagree about braces on multiline declarations.
+// swiftformat:disable wrapMultilineStatementBraces
+// swiftlint:disable type_body_length
 /// Reads metadata in bundle packaging locations. It never searches user documents
 /// or follows a link outside the containing application.
 public enum BundleSurfaceReader {
@@ -35,7 +38,8 @@ public enum BundleSurfaceReader {
             }
             let valid = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSBasicValidateOnly), nil)
             guard valid == errSecSuccess else {
-                return Signature(gap: valid == errSecCSUnsigned ? "Unsigned code." : "Code signature could not be verified.")
+                let reason = valid == errSecCSUnsigned ? "Unsigned code." : "Code signature could not be verified."
+                return Signature(gap: reason)
             }
             return Signature(
                 identifier: values[kSecCodeInfoIdentifier as String] as? String,
@@ -81,6 +85,7 @@ public enum BundleSurfaceReader {
             "Contents/Library/LaunchServices", "Helpers", "XPCServices", "PlugIns"
         ]
 
+        // swiftlint:disable:next cyclomatic_complexity function_body_length
         mutating func visit(_ url: URL, signature: (URL) -> Signature) {
             let real = url.resolvingSymlinksInPath().standardizedFileURL.path
             let boundary = bundle.resolvingSymlinksInPath().standardizedFileURL.path
@@ -134,12 +139,12 @@ public enum BundleSurfaceReader {
             }
             // Framework helpers may live in a concrete version rather than at the root.
             if url.pathExtension.lowercased() == "framework" {
-                for version in entries(url.appendingPathComponent("Versions")) where version.lastPathComponent != "Current" {
+                for version in entries(url.appendingPathComponent("Versions"))
+                    where version.lastPathComponent != "Current" {
                     for folder in ["Helpers", "XPCServices", "PlugIns", "Frameworks"] {
-                        for child in entries(version.appendingPathComponent(folder)) {
-                            if Self.codeExtensions.contains(child.pathExtension.lowercased()) {
-                                visit(child, signature: signature)
-                            }
+                        for child in entries(version.appendingPathComponent(folder))
+                            where Self.codeExtensions.contains(child.pathExtension.lowercased()) {
+                            visit(child, signature: signature)
                         }
                     }
                 }
@@ -165,7 +170,8 @@ public enum BundleSurfaceReader {
                     }
                     // A raw helper binary has no directory-based Info.plist.
                     var isDirectory: ObjCBool = false
-                    if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+                    let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    if exists, !isDirectory.boolValue {
                         return [:]
                     }
                     unreadable.insert(plist.path)
@@ -197,9 +203,9 @@ public enum BundleSurfaceReader {
             }
         }
 
+        // swiftlint:disable:next cyclomatic_complexity function_body_length
         mutating func collect(info: [String: Any], entitlements: [String: Any], at url: URL,
-                              isDirectory: Bool)
-        {
+                              isDirectory: Bool) {
             func enabled(_ key: String) -> Bool {
                 if let flag = entitlements[key] as? Bool {
                     return flag
@@ -211,7 +217,8 @@ public enum BundleSurfaceReader {
             let extensionPoint = extensionInfo?["NSExtensionPointIdentifier"] as? String ?? ""
             let providers = info["NEProviderClasses"] as? [String: Any] ?? [:]
             let networkEntitlement = "com.apple.developer.networking.networkextension"
-            let network = !providers.isEmpty || extensionPoint.hasPrefix("com.apple.networkextension") || enabled(networkEntitlement)
+            let network = !providers.isEmpty || extensionPoint.hasPrefix("com.apple.networkextension")
+                || enabled(networkEntitlement)
             if network {
                 add(.systemExtension, key: "Network extension", value: extensionPoint, path: path)
                 add(.vpnConfiguration, key: "Network extension", value: extensionPoint, path: path)
@@ -230,13 +237,16 @@ public enum BundleSurfaceReader {
             }
             if isDirectory {
                 for helper in entries(url.appendingPathComponent("Contents/Library/LaunchServices")) {
-                    add(.privilegedHelper, key: "Contents/Library/LaunchServices", value: helper.lastPathComponent, path: path)
+                    add(.privilegedHelper, key: "Contents/Library/LaunchServices",
+                        value: helper.lastPathComponent, path: path)
                 }
                 for directory in ["Contents/Library/LaunchDaemons", "Contents/Library/LaunchAgents"] {
                     for plist in entries(url.appendingPathComponent(directory)) where plist.pathExtension == "plist" {
                         do {
                             let data = try Data(contentsOf: plist)
-                            let values = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+                            let values = try PropertyListSerialization.propertyList(
+                                from: data, options: [], format: nil
+                            ) as? [String: Any]
                             if let label = Self.component(values?["Label"] as? String) {
                                 add(.launchdJob, key: "Label", value: label, path: plist.path)
                             } else {
@@ -278,12 +288,12 @@ public enum BundleSurfaceReader {
                     add(.launchServices, key: "UTTypeIdentifier", value: identifier, path: path)
                 }
             }
-            for group in Self.strings(entitlements["com.apple.security.application-groups"]) {
-                if IdentitySurface.isPathComponent(group) {
-                    add(.applicationGroups, key: "com.apple.security.application-groups", value: group, path: path)
-                }
+            for group in Self.strings(entitlements["com.apple.security.application-groups"])
+                where IdentitySurface.isPathComponent(group) {
+                add(.applicationGroups, key: "com.apple.security.application-groups", value: group, path: path)
             }
-            if info["AudioComponents"] != nil || ["component", "vst", "vst3", "aaxplugin", "plugin"].contains(url.pathExtension.lowercased()) {
+            let pluginExtensions = ["component", "vst", "vst3", "aaxplugin", "plugin"]
+            if info["AudioComponents"] != nil || pluginExtensions.contains(url.pathExtension.lowercased()) {
                 add(.bundlePlugin, key: "Plug-in component", value: url.lastPathComponent, path: path)
             }
             if isDirectory {
@@ -293,7 +303,8 @@ public enum BundleSurfaceReader {
                 }
             }
             if url.resolvingSymlinksInPath().pathComponents.contains("Caskroom") {
-                add(.installationRecords, key: "Caskroom", value: url.resolvingSymlinksInPath().path, path: path)
+                add(.installationRecords, key: "Caskroom",
+                    value: url.resolvingSymlinksInPath().path, path: path)
             }
         }
 
@@ -318,8 +329,11 @@ public enum BundleSurfaceReader {
 
         static func isMissing(_ error: Error) -> Bool {
             let error = error as NSError
-            return (error.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(error.code))
+            let cocoaMissing = [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(error.code)
+            return (error.domain == NSCocoaErrorDomain && cocoaMissing)
                 || (error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT))
         }
     }
 }
+
+// swiftlint:enable type_body_length
