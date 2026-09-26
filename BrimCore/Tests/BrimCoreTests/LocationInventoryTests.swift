@@ -229,7 +229,7 @@ final class LocationInventorySourceTests: XCTestCase {
         // place went unread leaves somebody holding a shortfall with nothing
         // to do about it, so it also names what would fix it.
         let explanation = found.completeness.explanation ?? ""
-        XCTAssertTrue(explanation.contains("longer"), explanation)
+        XCTAssertTrue(explanation.contains("timed out"), explanation)
         XCTAssertTrue(explanation.lowercased().contains("again"), explanation)
     }
 

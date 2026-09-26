@@ -386,7 +386,8 @@ public struct Planner: Sendable {
             intent: intent,
             steps: steps,
             excludedItems: excludedItems,
-            expectedTotalBytes: expectedTotalBytes
+            expectedTotalBytes: expectedTotalBytes,
+            scanCompleteness: evaluatedFootprint.completeness
         )
     }
 }

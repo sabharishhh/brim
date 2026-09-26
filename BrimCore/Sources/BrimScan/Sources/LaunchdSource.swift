@@ -1,13 +1,17 @@
-import Foundation
 import BrimCore
+import Foundation
 
 public struct LaunchdSource: EvidenceSource {
     public init() {}
-    
+
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
         var results = [Evidence]()
-        let fm = FileManager.default
-        
+        var completeness = ScanCompleteness.complete
+
         let paths = [
             root.url(for: .systemLaunchDaemons),
             root.url(for: .systemLaunchAgents),
@@ -15,22 +19,31 @@ public struct LaunchdSource: EvidenceSource {
             root.rootURL.appendingPathComponent("System/Library/LaunchDaemons"),
             root.rootURL.appendingPathComponent("System/Library/LaunchAgents")
         ]
-        
+
         // Find the bundle ID and Team ID
         guard let targetBundleID = identity.bundleID else {
-            return results
+            return EvidenceFindings(evidence: results)
         }
-        
+
         let identityResolver = IdentityResolver(root: root)
         // Other installed applications from the same developer, looked up
         // once and only if a job turns out to be matched on the team alone.
         var siblings: [Identity]?
 
         for searchDir in paths {
-            guard let contents = try? fm.contentsOfDirectory(at: searchDir, includingPropertiesForKeys: nil) else { continue }
+            let contents: [URL]
+            switch DirectoryEntries.read(searchDir) {
+            case .absent:
+                continue
+            case .refused:
+                completeness = completeness.merging(ScanCompleteness(unreadable: [searchDir.path]))
+                continue
+            case let .listed(names):
+                contents = names.map { searchDir.appendingPathComponent($0) }
+            }
             for plistURL in contents {
                 guard plistURL.pathExtension == "plist" else { continue }
-                
+
                 // Parse it using IdentityResolver
                 let plistIdentity = await identityResolver.resolve(launchdPlistURL: plistURL)
 
@@ -60,10 +73,20 @@ public struct LaunchdSource: EvidenceSource {
                 // boundary costs on this Mac is Apple's own agents named
                 // without one, `com.apple.SafariLaunchAgent` and `newsd`
                 // among them, for applications Brim cannot remove anyway.
-                var proven = false
-                if let label = plistIdentity.launchdLabel,
-                   label == targetBundleID || label.hasPrefix(targetBundleID + ".") {
-                    proven = true
+                var proven = plistIdentity.launchdLabel.map { label in
+                    label == targetBundleID || label.hasPrefix(targetBundleID + ".")
+                } ?? false
+                let embeddedIDs = identity.searchBundleIdentifiers.filter { $0 != targetBundleID }
+                let declaredLabels = Set(identity.capabilitySurface?.declarations
+                    .filter { $0.capability == .launchdJob }
+                    .map(\.value) ?? [])
+                let label = plistIdentity.launchdLabel
+                let embeddedMatch = label.map { label in
+                    embeddedIDs.contains { label == $0 || label.hasPrefix($0 + ".") }
+                        || declaredLabels.contains(label)
+                } ?? false
+                if embeddedMatch {
+                    proven = false
                 }
                 // The program running from inside this application's bundle
                 // is proof whatever the label says, and it is what keeps the
@@ -76,16 +99,18 @@ public struct LaunchdSource: EvidenceSource {
                 // by a slash: this compared with a bare `hasPrefix`, so a
                 // program in `App.apple.app` proved a job belonged to `App`.
                 if !proven, let program = plistIdentity.launchdProgramPath {
-                    proven = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
+                    proven = SymlinkIntoBundleSource.verifiedBundleLocations(for: identity, in: root)
                         .contains { program.hasPrefix($0.path + "/") }
                 }
 
-                if proven {
+                if proven || embeddedMatch {
                     results.append(Evidence(
                         url: plistURL,
-                        tier: .A,
+                        tier: proven ? .A : .C,
                         mechanism: "LaunchdSource",
-                        humanSentence: "Background service registration"
+                        humanSentence: proven
+                            ? "Background service registration"
+                            : "Job label matches an embedded component or declaration."
                     ))
                     continue
                 }
@@ -105,9 +130,11 @@ public struct LaunchdSource: EvidenceSource {
                       label == teamID || label.hasPrefix(teamID + ".")
                 else { continue }
                 if siblings == nil {
-                    siblings = await TeamIDSource.otherApplications(
+                    let siblingScan = await TeamIDSource.otherApplicationFindings(
                         sharing: teamID, besides: identity, in: root
                     )
+                    siblings = siblingScan.identities
+                    completeness = completeness.merging(siblingScan.completeness)
                 }
                 if let claimant = siblings?.first {
                     results.append(Evidence(
@@ -128,7 +155,7 @@ public struct LaunchdSource: EvidenceSource {
                 }
             }
         }
-        
-        return results
+
+        return EvidenceFindings(evidence: results, completeness: completeness)
     }
 }

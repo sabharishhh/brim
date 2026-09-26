@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// A launchd job whose program runs from inside the application's bundle is
 /// the application's, whatever its label says. That is the fallback the
@@ -20,7 +20,6 @@ import BrimCore
 /// program in `/Applications/App.apple.app`. A path inside a bundle is the
 /// bundle followed by a slash.
 final class LaunchdProgramPathTests: XCTestCase {
-
     private var rootURL: URL!
     private var root: FileSystemRoot!
     private let fm = FileManager.default
@@ -56,13 +55,23 @@ final class LaunchdProgramPathTests: XCTestCase {
         try await LaunchdSource().evidence(for: identity, in: root)
     }
 
-    private var app: Identity { Identity(bundleID: "com.example.app", name: "App") }
+    private var app: Identity {
+        Identity(bundleID: "com.example.app", name: "App")
+    }
 
     /// **A per-user install is a real install.** The bundle sits in the
     /// Applications folder inside the home folder, which `AppBundleSource`
     /// already calls this application at Tier A, and its helper runs from
     /// inside it.
     func testAPerUserInstallsHelperIsProvenByWhereItRunsFrom() async throws {
+        let bundle = userApplications.appendingPathComponent("App.app")
+        try fm.createDirectory(at: bundle.appendingPathComponent("Contents"),
+                               withIntermediateDirectories: true)
+        let info = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.example.app"],
+            format: .xml, options: 0
+        )
+        try info.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
         let program = userApplications
             .appendingPathComponent("App.app/Contents/Library/LaunchServices/helper").path
         try makeJob(program: program)
@@ -71,7 +80,7 @@ final class LaunchdProgramPathTests: XCTestCase {
         XCTAssertEqual(
             found.first?.tier, .A,
             "A helper running from inside the per-user install of this application was not "
-            + "proven, because only /Applications was looked in."
+                + "proven, because only /Applications was looked in."
         )
     }
 
@@ -104,7 +113,7 @@ final class LaunchdProgramPathTests: XCTestCase {
         XCTAssertTrue(
             found.isEmpty,
             "A job running from Code.app, a different application, was claimed for Visual "
-            + "Studio Code because its CFBundleName is \"Code\"."
+                + "Studio Code because its CFBundleName is \"Code\"."
         )
     }
 }

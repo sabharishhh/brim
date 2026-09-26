@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// The dozen smaller plug-in folders, which differ only in their name.
 ///
@@ -76,7 +76,7 @@ public struct BundlePluginSurface: RegistrationSurface {
         Folder(path: "Library/StartupItems", inHome: false,
                singular: "startup item", extensions: []),
         Folder(path: "Library/Extensions", inHome: false,
-               singular: "kernel extension", extensions: ["kext"]),
+               singular: "kernel extension", extensions: ["kext"])
     ]
 
     public init() {}
@@ -84,7 +84,7 @@ public struct BundlePluginSurface: RegistrationSurface {
     private func url(for folder: Folder, in root: FileSystemRoot) -> URL {
         folder.inHome
             ? root.url(for: .userLibrary).deletingLastPathComponent()
-                .appendingPathComponent(folder.path)
+            .appendingPathComponent(folder.path)
             : root.rootURL.appendingPathComponent(folder.path)
     }
 
@@ -101,6 +101,19 @@ public struct BundlePluginSurface: RegistrationSurface {
         })
             ? .available(kind)
             : .unavailable(kind, "The plug-in folders could not be read.", absence: .needsPermission)
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        let failed = Self.folders.contains { folder in
+            if case .refused = DirectoryEntries.read(url(for: folder, in: root)) {
+                return true
+            }
+            return false
+        }
+        return await RegistrationSnapshot(registrations: registrations(in: root),
+                                          coverage: failed
+                                              ? .unavailable(kind, "A plug-in folder could not be read.")
+                                              : .available(kind))
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
@@ -133,7 +146,7 @@ public struct BundlePluginSurface: RegistrationSurface {
                     targetExists: true,
                     recordPath: item.path,
                     evidence: "A \(folder.singular) in \(Self.readablePath(directory.path)). "
-                            + "Loaded by macOS from that folder.",
+                        + "Loaded by macOS from that folder.",
                     isSystemOwned: directory.path.hasPrefix("/System/"),
                     capability: RemovalCapability.forDeleting(item.path)
                 ))

@@ -1,8 +1,5 @@
-import Foundation
-import os
 import BrimCore
-
-private let log = BrimLog.make("scan")
+import Foundation
 
 /// Group containers sitting under this application's team identifier.
 ///
@@ -35,47 +32,47 @@ public struct TeamIDSource: EvidenceSource {
     public init() {}
 
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
-        guard let teamID = identity.teamID else { return [] }
-        let fm = FileManager.default
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
+        guard let teamID = identity.teamID else { return EvidenceFindings(evidence: []) }
 
         let containerDirs = [
             root.url(for: .userLibrary).appendingPathComponent("Group Containers"),
             root.url(for: .systemLibrary).appendingPathComponent("Group Containers")
         ]
 
-        // **This should be a coverage gap, not a log line.** A Group
-        // Containers folder Brim cannot read is the "did not look is not
-        // nothing found" case exactly, and returning an empty array for it
-        // is the kind of unmeasured zero `RegistrationCoverage` and
-        // `ScanCompleteness` exist to prevent. It is a log line because
-        // `EvidenceSource` has nowhere to put the answer: only
-        // `LocationInventorySource` carries a `findings` method returning
-        // `ScanCompleteness`, and widening the protocol touches every source.
-        // Until that happens this reads as a clean result and is not one.
+        var completeness = ScanCompleteness.complete
         var candidates: [URL] = []
         for dir in containerDirs {
-            guard let contents = try? fm.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil
-            ) else {
-                log.debug("could not read \(dir.path)")
-                continue
-            }
-            for url in contents {
-                let name = url.lastPathComponent
-                if name == teamID || name.hasPrefix("\(teamID).") { candidates.append(url) }
+            switch DirectoryEntries.read(dir) {
+            case .absent:
+                break
+            case .refused:
+                completeness = completeness.merging(ScanCompleteness(unreadable: [dir.path]))
+            case let .listed(names):
+                for name in names where name == teamID || name.hasPrefix("\(teamID).") {
+                    candidates.append(dir.appendingPathComponent(name))
+                }
             }
         }
-        guard !candidates.isEmpty else { return [] }
+        guard !candidates.isEmpty else {
+            return EvidenceFindings(evidence: [], completeness: completeness)
+        }
 
         // Only now is it worth asking who else is on this Mac, because the
         // answer costs a directory walk and most applications match nothing
         // here at all.
-        let siblings = await Self.otherApplications(sharing: teamID, besides: identity, in: root)
+        let siblingScan = await Self.otherApplicationFindings(sharing: teamID, besides: identity, in: root)
+        let siblings = siblingScan.identities
+        completeness = completeness.merging(siblingScan.completeness)
 
-        return candidates.map { url in
+        let evidence = candidates.map { url in
             let name = url.lastPathComponent
-            if let claimant = siblings.first(where: { $0.groupContainers.contains(name) })
-                ?? siblings.first {
+            let claimant = siblings.first(where: { $0.groupContainers.contains(name) })
+                ?? siblings.first
+            if let claimant {
                 return Evidence(
                     url: url,
                     tier: .S,
@@ -92,6 +89,7 @@ public struct TeamIDSource: EvidenceSource {
                     + "does not declare it, so Brim will not tick it for you."
             )
         }
+        return EvidenceFindings(evidence: evidence, completeness: completeness)
     }
 
     /// Other installed applications signed by the same team.
@@ -99,19 +97,28 @@ public struct TeamIDSource: EvidenceSource {
     /// Top level only, and both Applications folders. A deep walk finds
     /// helpers nested inside bundles, which are not separate applications
     /// and would veto their own parent.
-    static func otherApplications(
+    static func otherApplicationFindings(
         sharing teamID: String, besides identity: Identity, in root: FileSystemRoot
-    ) async -> [Identity] {
-        let fm = FileManager.default
+    ) async -> (identities: [Identity], completeness: ScanCompleteness) {
         let directories = [
             root.url(for: .applications),
             root.url(for: .userLibrary).deletingLastPathComponent()
-                .appendingPathComponent("Applications"),
+                .appendingPathComponent("Applications")
         ]
         let resolver = IdentityResolver(root: root)
         var found: [Identity] = []
+        var unreadable: [String] = []
         for directory in directories {
-            guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { continue }
+            let names: [String]
+            switch DirectoryEntries.read(directory) {
+            case .absent:
+                continue
+            case .refused:
+                unreadable.append(directory.path)
+                continue
+            case let .listed(listed):
+                names = listed
+            }
             for name in names where name.hasSuffix(".app") {
                 let bundle = directory.appendingPathComponent(name)
                 let other = await resolver.resolve(bundleURL: bundle)
@@ -120,6 +127,6 @@ public struct TeamIDSource: EvidenceSource {
                 found.append(other)
             }
         }
-        return found
+        return (found, ScanCompleteness(unreadable: unreadable))
     }
 }
