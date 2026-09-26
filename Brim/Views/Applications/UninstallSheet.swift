@@ -220,6 +220,15 @@ struct UninstallSheet: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
+            if let actions = result.followUpActions {
+                ForEach(actions, id: \.self) { action in
+                    Text(action.sentence)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+
             if result.recoveredBytes > 0 {
                 Text("\(ByteText.short(result.recoveredBytes)) freed")
                     .font(.caption)
@@ -240,7 +249,10 @@ struct UninstallSheet: View {
     }
 
     private func headline(for result: VerificationResult) -> String {
-        guard result.success else { return "Something is still there" }
+        guard result.success else { return isReset ? "Reset incomplete" : "Removal incomplete" }
+        if result.followUpActions?.isEmpty == false {
+            return "Follow-up may be needed"
+        }
         return isReset ? "Reset complete" : "Uninstall complete"
     }
 
@@ -309,6 +321,16 @@ private struct SearchDetailsView: View {
                             Text("\(check.registrations.count + check.locations.count) found")
                                 .font(.caption).foregroundColor(.secondary)
                         }
+                        if check.declaration == .declared || !check.registrations.isEmpty || check.followUp != nil {
+                            if let tier = check.removalTier {
+                                Text(removalText(tier))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            if let followUp = check.followUp {
+                                Text(followUp.sentence)
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
                         ForEach(check.locations, id: \.self) { path in
                             Text(path).font(.caption2).foregroundColor(.secondary)
                                 .lineLimit(1).truncationMode(.middle)
@@ -335,5 +357,13 @@ private struct SearchDetailsView: View {
 
     private func coverageText(_ coverage: RegistrationCoverage) -> String {
         coverage.available ? "Checked" : (coverage.absence == .byDesign ? "Unavailable" : "Could not read")
+    }
+
+    private func removalText(_ tier: RemovalTier) -> String {
+        switch tier {
+        case .removable: "Brim can remove this"
+        case .destructiveOnly: "macOS clears this after removal"
+        case .detectableOnly: "Requires another action"
+        }
     }
 }
