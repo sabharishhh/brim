@@ -29,7 +29,7 @@ class LintBaselineTests(unittest.TestCase):
     @patch("lint_changes.subprocess.run")
     def test_reports_keep_tool_and_rule_identity_without_cache(self, run):
         run.side_effect = [
-            CompletedProcess([], 1, '[{"file":"Example.swift","rule_id":"indent"}]', ""),
+            CompletedProcess([], 1, "", 'Example.swift:8:1: error: (indent) Indent code.\n'),
             CompletedProcess([], 2, '[{"file":"Example.swift","rule_identifier":"force_cast"}]', ""),
         ]
         self.assertEqual(collect(Path.cwd(), ["Example.swift"]), Counter({
