@@ -33,7 +33,11 @@ final class EnergySamplerTests: XCTestCase {
         XCTAssertEqual(sample.bundlePath, "/Applications/Test.app")
     }
 
-    func testTheSamplerReadsRealEnergyFromThisMac() async {
+    func testTheSamplerReadsRealEnergyFromThisMac() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["BRIM_REAL_ENV"] == "1",
+            "Physical energy counters require an opted-in real Mac."
+        )
         // Every one of 530 readable processes reported a non-zero
         // ri_energy_nj when this was written. A build where the field
         // came back empty would render a view full of zeroes, and the
