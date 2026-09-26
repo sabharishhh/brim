@@ -11,6 +11,8 @@ public actor LeftoversScanner {
     /// Whether this process can reach protected locations, which decides
     /// whether a container leftover is removable or only visible.
     private let hasFullDiskAccess: Bool
+    /// A matching executable protects command line tool data in dot folders.
+    private let commandIsInstalled: @Sendable (String) -> Bool
 
     /// Registrations whose program has gone, keyed by the bundle they name.
     /// Supplied by the caller because enumerating them is the registration
@@ -26,7 +28,8 @@ public actor LeftoversScanner {
         launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
-        hasFullDiskAccess: Bool? = nil
+        hasFullDiskAccess: Bool? = nil,
+        commandIsInstalled: (@Sendable (String) -> Bool)? = nil
     ) {
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
@@ -34,6 +37,7 @@ public actor LeftoversScanner {
         self.resolver = IdentityResolver(root: root)
         self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
         self.hasFullDiskAccess = hasFullDiskAccess ?? FullDiskAccessProbe.isGranted()
+        self.commandIsInstalled = commandIsInstalled ?? Self.defaultCommandLookup(in: root)
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
@@ -55,6 +59,8 @@ public actor LeftoversScanner {
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
+        let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
+            .map { Identity(bundleID: $0, name: "") }
         
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -90,7 +96,8 @@ public actor LeftoversScanner {
         let found = await withTaskGroup(of: [Leftover].self) { group in
             for domain in domainsToScan {
                 group.addTask { [self] in
-                    walkDomain(domain, search, activeBundleIDs, activeNames,
+                    walkDomain(domain, search, activeIdentities, pastIdentities,
+                               activeBundleIDs, activeNames,
                                activeGroupContainers, activeTeamIDs)
                 }
             }
@@ -111,12 +118,15 @@ public actor LeftoversScanner {
     nonisolated private func walkDomain(
         _ domain: FileSystemRoot.Domain,
         _ search: OwnershipSearch,
+        _ activeIdentities: [Identity],
+        _ pastIdentities: [Identity],
         _ activeBundleIDs: Set<String>,
         _ activeNames: Set<String>,
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
+        let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -166,7 +176,13 @@ public actor LeftoversScanner {
                     break
                 }
 
-                if isItemActive(item: item, in: domain, vendor: vendor, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
+                let belongsToInstalledApp = isItemActive(
+                    item: item, in: domain, vendor: vendor,
+                    locationRules: locationRules, activeIdentities: activeIdentities,
+                    activeBundleIDs: activeBundleIDs, activeNames: activeNames,
+                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs
+                )
+                if belongsToInstalledApp {
                     continue
                 }
 
@@ -180,7 +196,16 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                let ownerID = extractOwnerIdentifier(from: item, in: domain)
+                let embeddedID = locationRules.contains { $0.rule == .identifierInsideBundle }
+                    ? LocationInventorySource.declaredIdentifier(at: item) : nil
+                let recordedOwner = pastIdentities
+                    .first { identity in
+                        locationRules.contains {
+                            $0.matchTier(name: name, identity: identity,
+                                         declaredIdentifier: embeddedID) != nil
+                        }
+                    }?.bundleID
+                let ownerID = recordedOwner ?? extractOwnerIdentifier(from: item, in: domain)
 
                 // The whole search, in one place: an item is only a leftover
                 // once every source that could name an owner has come back
@@ -389,6 +414,33 @@ public actor LeftoversScanner {
         .sharedUser, .sharedApplicationSupport,
     ]
 
+    static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
+        .userDotConfig, .userDotCache, .userDotLocalShare,
+        .userDotLocalState, .userDotLocalBin
+    ]
+
+    nonisolated static func defaultCommandLookup(
+        in root: FileSystemRoot
+    ) -> @Sendable (String) -> Bool {
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        let directories = path.split(separator: ":").map(String.init)
+            + ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin",
+               root.url(for: .userDotLocalBin).path]
+        return { name in
+            guard IdentitySurface.isPathComponent(name) else {
+                return false
+            }
+            return directories.contains { directory in
+                guard directory.hasPrefix("/") else {
+                    return false
+                }
+                return FileManager.default.isExecutableFile(
+                    atPath: URL(fileURLWithPath: directory).appendingPathComponent(name).path
+                )
+            }
+        }
+    }
+
     /// The children to judge in place of this folder, when the folder is
     /// one vendor's and holds more than one product.
     ///
@@ -424,6 +476,8 @@ public actor LeftoversScanner {
         item: URL,
         in domain: FileSystemRoot.Domain,
         vendor: String?,
+        locationRules: [LocationInventory.Location],
+        activeIdentities: [Identity],
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
@@ -431,6 +485,20 @@ public actor LeftoversScanner {
     ) -> Bool {
         let name = item.lastPathComponent
         let lowerName = name.lowercased()
+        if isCommandLineItemActive(item, in: domain) {
+            return true
+        }
+        let declaredIdentifier = locationRules.contains { $0.rule == .identifierInsideBundle }
+            ? LocationInventorySource.declaredIdentifier(at: item) : nil
+
+        if locationRules.contains(where: { location in
+            activeIdentities.contains { identity in
+                location.matchTier(name: name, identity: identity,
+                                   declaredIdentifier: declaredIdentifier) != nil
+            }
+        }) {
+            return true
+        }
 
         // Inside a vendor folder the application's real name is the two
         // put together, and some installers write it with a dot instead.
@@ -458,7 +526,7 @@ public actor LeftoversScanner {
             }
             return false
             
-        case .userApplicationSupport, .userCaches, .userLogs, .userWebKit, .userContainers:
+        case .userWebKit, .userContainers:
             if activeBundleIDs.contains(name) { return true }
             if activeNames.contains(lowerName) { return true }
             if domain == .userContainers {
@@ -468,27 +536,23 @@ public actor LeftoversScanner {
             }
             return false
             
-        case .userPreferences:
-            let base = name.hasSuffix(".plist") ? String(name.dropLast(6)) : name
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
-            
-        case .userSavedApplicationState:
-            let base = name.hasSuffix(".savedState") ? String(name.dropLast(11)) : name
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
-            
-        case .userPreferencesByHost:
-            // com.example.app.<hardware uuid>.plist, so the domain is
-            // everything before the identifier.
-            var base = name.hasSuffix(".plist") ? String(name.dropLast(6)) : name
-            let parts = base.split(separator: ".")
-            if parts.count > 1, UUID(uuidString: String(parts[parts.count - 1])) != nil {
-                base = parts.dropLast().joined(separator: ".")
-            }
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
-
         default:
-            return activeBundleIDs.contains(name) || activeNames.contains(lowerName)
+            return locationRules.isEmpty
+                && (activeBundleIDs.contains(name) || activeNames.contains(lowerName))
         }
+    }
+
+    private nonisolated func isCommandLineItemActive(
+        _ item: URL, in domain: FileSystemRoot.Domain
+    ) -> Bool {
+        guard Self.commandLineDataDomains.contains(domain) else {
+            return false
+        }
+        if commandIsInstalled(item.lastPathComponent) {
+            return true
+        }
+        return domain == .userDotLocalBin && !Self.isDirectory(item)
+            && FileManager.default.isExecutableFile(atPath: item.path)
     }
     
     private nonisolated func scanDirectoryLevel1(_ url: URL) -> [URL] {
