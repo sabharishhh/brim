@@ -199,10 +199,9 @@ struct LeftoversView: View {
                 if model.selectedItems.isEmpty {
                     Text("Nothing picked yet").foregroundColor(.secondary)
                 } else {
-                    Text("\(model.selectedItems.count) locations · ")
-                        .foregroundColor(.secondary)
-                    + Text(ByteText.short(model.selectedBytes))
-                        .fontWeight(.bold).monospacedDigit()
+                    let label = Text("\(model.selectedItems.count) locations · ").foregroundColor(.secondary)
+                    let amount = Text(ByteText.short(model.selectedBytes)).bold().monospacedDigit()
+                    Text("\(label)\(amount)")
                 }
                 if !model.blockedSelection.isEmpty {
                     Label("\(model.blockedSelection.count) need Full Disk Access", systemImage: "lock")

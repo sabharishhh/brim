@@ -1,5 +1,5 @@
-import XCTest
 @testable import BrimCore
+import XCTest
 
 /// A row Brim found but did not tick, ticked by the person in the uninstall
 /// sheet.
@@ -19,19 +19,18 @@ import XCTest
 /// unticked; it cannot bring back a row that was vetoed, which is how Tier S
 /// stays one way; and it cannot add a path the engine did not find at all.
 final class TickedByHandPlannerTests: XCTestCase {
-
     private var directory: URL!
-    private let fm = FileManager.default
+    private let fileManager = FileManager.default
     private let identity = Identity(bundleID: "com.example.editor", name: "Editor", bundleName: "Studio")
 
     override func setUpWithError() throws {
         directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ticked-\(UUID().uuidString)")
-        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
-        try? fm.removeItem(at: directory)
+        try? fileManager.removeItem(at: directory)
     }
 
     private func file(_ name: String, bytes: Int = 64) throws -> URL {
@@ -62,7 +61,7 @@ final class TickedByHandPlannerTests: XCTestCase {
     }
 
     private func stepTargets(_ plan: Plan) -> Set<String> {
-        Set(plan.steps.filter { $0.kind.targetIsPath }.map(\.target))
+        Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
     }
 
     // MARK: - What a tick does
@@ -99,7 +98,7 @@ final class TickedByHandPlannerTests: XCTestCase {
         let planned = plan(
             [
                 row(shared, .excluded(reason: "Shared with other installed software."), tier: .S),
-                row(refused, .excluded(reason: "Brim refused to modify this item to ensure system stability.")),
+                row(refused, .excluded(reason: "Brim refused to modify this item to ensure system stability."))
             ],
             ticked: [shared.path, refused.path]
         )
@@ -131,7 +130,7 @@ final class TickedByHandPlannerTests: XCTestCase {
             stepTargets(planned).contains(thesis.path),
             "A document the engine never found was added to an uninstall by naming it."
         )
-        XCTAssertTrue(fm.fileExists(atPath: thesis.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: thesis.path))
     }
 
     // MARK: - What the sheet needs to offer it
@@ -145,7 +144,7 @@ final class TickedByHandPlannerTests: XCTestCase {
 
         let planned = plan([
             row(support, .unselected, bytes: 131_500_000),
-            row(shared, .excluded(reason: "Shared with other installed software."), tier: .S),
+            row(shared, .excluded(reason: "Shared with other installed software."), tier: .S)
         ])
 
         let offered = try XCTUnwrap(planned.excludedItems.first { $0.target == support.path })
@@ -170,7 +169,7 @@ final class TickedByHandPlannerTests: XCTestCase {
         let support = try file("Studio")
         let planned = plan([row(support, .unselected)], ticked: [support.path])
 
-        let canonical = try XCTUnwrap(String(data: try planned.canonicalData(), encoding: .utf8))
+        let canonical = try XCTUnwrap(try String(data: planned.canonicalData(), encoding: .utf8))
         XCTAssertTrue(
             canonical.contains("\"tickedByHand\":[\"\(support.path)\"]"),
             "The ticked rows are not in the data an approval is bound to."

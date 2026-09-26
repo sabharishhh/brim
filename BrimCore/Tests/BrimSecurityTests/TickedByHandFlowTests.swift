@@ -1,7 +1,7 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimProtocol
 @testable import BrimService
+import XCTest
 
 /// A row ticked by hand in the uninstall sheet, all the way through the gate.
 ///
@@ -16,19 +16,18 @@ import XCTest
 /// plan, so nothing here reaches past the fixture tree into this Mac's own
 /// databases.
 final class TickedByHandFlowTests: XCTestCase {
-
     private var tempDir: URL!
     private var rootURL: URL!
-    private let fm = FileManager.default
+    private let fileManager = FileManager.default
 
     override func setUpWithError() throws {
-        tempDir = fm.temporaryDirectory.appendingPathComponent("ticked-flow-\(UUID().uuidString)")
+        tempDir = fileManager.temporaryDirectory.appendingPathComponent("ticked-flow-\(UUID().uuidString)")
         rootURL = tempDir.appendingPathComponent("Root")
-        try fm.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
-        try? fm.removeItem(at: tempDir)
+        try? fileManager.removeItem(at: tempDir)
     }
 
     private func makeService() -> BrimService {
@@ -40,14 +39,16 @@ final class TickedByHandFlowTests: XCTestCase {
         )
     }
 
-    private var home: URL { rootURL.appendingPathComponent("Users/\(NSUserName())") }
+    private var home: URL {
+        rootURL.appendingPathComponent("Users/\(NSUserName())")
+    }
 
     /// Found only through the name the application gives itself, so Tier C
     /// and left unticked, which is exactly Visual Studio Code's
     /// `Application Support/Code`.
     private func makeSupportFolder() throws -> URL {
         let folder = home.appendingPathComponent("Library/Application Support/Studio")
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data(repeating: 7, count: 2048).write(to: folder.appendingPathComponent("state.db"))
         return folder
     }
@@ -84,12 +85,12 @@ final class TickedByHandFlowTests: XCTestCase {
         } catch {
             XCTFail(
                 "Apply refused a plan with a hand-ticked row: \(error). It rebuilds the plan from "
-                + "the intent, so the choice has to be on the intent or this always fails."
+                    + "the intent, so the choice has to be on the intent or this always fails."
             )
         }
 
         XCTAssertFalse(
-            fm.fileExists(atPath: support.path),
+            fileManager.fileExists(atPath: support.path),
             "The person ticked it, approved it, and it is still there."
         )
     }
@@ -100,7 +101,7 @@ final class TickedByHandFlowTests: XCTestCase {
     func testAPathTheEngineDidNotFindSurvivesAnApprovedUninstall() async throws {
         let support = try makeSupportFolder()
         let documents = home.appendingPathComponent("Documents")
-        try fm.createDirectory(at: documents, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: documents, withIntermediateDirectories: true)
         let thesis = documents.appendingPathComponent("Thesis.md")
         try Data("the person's own work".utf8).write(to: thesis)
 
@@ -112,9 +113,9 @@ final class TickedByHandFlowTests: XCTestCase {
         try await service.apply(planId: planned.planId, token: token)
 
         XCTAssertTrue(
-            fm.fileExists(atPath: thesis.path),
+            fileManager.fileExists(atPath: thesis.path),
             "A document nothing traced to this application was removed by an uninstall."
         )
-        XCTAssertFalse(fm.fileExists(atPath: support.path))
+        XCTAssertFalse(fileManager.fileExists(atPath: support.path))
     }
 }

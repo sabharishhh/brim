@@ -16,11 +16,6 @@ import BrimUI
 /// a change of view, not a reload of the machine.
 @MainActor
 final class SectionModels: ObservableObject {
-    /// Declared explicitly: nothing observes this container itself — each
-    /// section observes its own model — and the compiler will not synthesise
-    /// a publisher for a type with no `@Published` properties.
-    nonisolated let objectWillChange = ObservableObjectPublisher()
-
     let applications = ApplicationsModel()
     let leftovers = LeftoversModel()
     let background = BackgroundModel()

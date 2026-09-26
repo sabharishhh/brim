@@ -190,7 +190,6 @@ final class SecurityRegressionSuiteTests: XCTestCase {
     // Plus a malformed-message fuzz pass over the XPC interfaces.
     func testMalformedMessageFuzzPass() async throws {
         // Send absolute garbage plan intent data
-        let intent = PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.garbage", name: "Garbage"))
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = FileSystemRoot(rootURL: tempRoot)
         let brimAppURL = tempRoot.appendingPathComponent("Brim.app")
