@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// Every launchd agent and daemon, in every domain, and what each points at.
 ///
@@ -31,6 +31,19 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
             : .unavailable(kind, "No launchd directory could be read.", absence: .needsPermission)
     }
 
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        let failed = domains(in: root).contains { directory in
+            if case .refused = DirectoryEntries.read(directory.url) {
+                return true
+            }
+            return false
+        }
+        return await RegistrationSnapshot(registrations: registrations(in: root),
+                                          coverage: failed
+                                              ? .unavailable(kind, "A background job folder could not be read.")
+                                              : .available(kind))
+    }
+
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
         var results: [Registration] = []
         let fm = FileManager.default
@@ -59,12 +72,12 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
                     evidence = programExists
                         ? "Registered with launchd in the \(domain.label) domain."
                         : "Registered with launchd in the \(domain.label) domain, but the program "
-                          + "it launches is missing."
+                        + "it launches is missing."
                 } else {
                     programExists = false
                     evidence = "An empty job file in the \(domain.label) domain. It names no "
-                             + "program, so launchd has nothing to run. Whatever installed it "
-                             + "emptied the file instead of removing it."
+                        + "program, so launchd has nothing to run. Whatever installed it "
+                        + "emptied the file instead of removing it."
                 }
 
                 results.append(Registration(

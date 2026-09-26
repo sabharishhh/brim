@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// Root-owned helper binaries, and the daemons that start them.
 ///
@@ -39,6 +39,14 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
             : .unavailable(kind, "The privileged helper folder could not be read.", absence: .needsPermission)
     }
 
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        if case .refused = DirectoryEntries.read(directory(in: root)) {
+            return RegistrationSnapshot(registrations: [],
+                                        coverage: .unavailable(kind, "The privileged helper folder could not be read."))
+        }
+        return await RegistrationSnapshot(registrations: registrations(in: root), coverage: .available(kind))
+    }
+
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
         let fm = FileManager.default
         let folder = directory(in: root)
@@ -59,11 +67,10 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
             let signing = CodeSignature.state(of: tool, recordedTeam: nil)
             let owner = Self.probableOwner(label: name)
 
-            let evidence: String
-            if hasDaemon {
-                evidence = "Runs as an administrator, started by a launchd daemon of the same name."
+            let evidence = if hasDaemon {
+                "Runs as an administrator, started by a launchd daemon of the same name."
             } else {
-                evidence = "Runs as an administrator, with no launchd daemon left to start it."
+                "Runs as an administrator, with no launchd daemon left to start it."
             }
 
             return Registration(

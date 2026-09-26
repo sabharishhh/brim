@@ -12,7 +12,6 @@ import Foundation
 /// tells `coverage` that it could not look. An empty string would mean
 /// "nothing registered", and those are different answers.
 public enum ToolOutput {
-
     public static func read(
         _ executable: String, _ arguments: [String], timeout: TimeInterval = 10
     ) -> String? {
@@ -21,9 +20,23 @@ public enum ToolOutput {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        let output = Pipe()
+        // A pipe filled before the process exits can stall both the tool
+        // and our reader. File handles have no bounded buffer to fill.
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brim-probe-\(UUID().uuidString)")
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else {
+            return nil
+        }
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let stdout = folder.appendingPathComponent("stdout")
+        let stderr = folder.appendingPathComponent("stderr")
+        FileManager.default.createFile(atPath: stdout.path, contents: nil)
+        FileManager.default.createFile(atPath: stderr.path, contents: nil)
+        guard let output = FileHandle(forWritingAtPath: stdout.path),
+              let errors = FileHandle(forWritingAtPath: stderr.path) else { return nil }
+        defer { try? output.close(); try? errors.close() }
         process.standardOutput = output
-        process.standardError = Pipe()
+        process.standardError = errors
 
         do {
             try process.run()
@@ -31,21 +44,16 @@ public enum ToolOutput {
             return nil
         }
 
-        // Read before waiting. A tool that fills the pipe buffer while
-        // nobody is draining it blocks forever, and `pluginkit` prints
-        // five hundred lines.
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-
         let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            usleep(20_000)
+        while process.isRunning, Date() < deadline {
+            usleep(20000)
         }
         if process.isRunning {
-            // One unresponsive probe must not hang the scan.
             process.terminate()
             return nil
         }
-
+        guard process.terminationStatus == 0,
+              let data = try? Data(contentsOf: stdout) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 }

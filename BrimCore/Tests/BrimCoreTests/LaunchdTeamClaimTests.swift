@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// A launchd job whose label starts with a team identifier belongs to the
 /// developer, not necessarily to the application being removed.
@@ -14,7 +14,6 @@ import BrimCore
 /// one `TEAMID.helper` for several applications would have had it unloaded
 /// by the removal of any one of them.
 final class LaunchdTeamClaimTests: XCTestCase {
-
     private var rootURL: URL!
     private var root: FileSystemRoot!
     private let fm = FileManager.default
@@ -62,8 +61,8 @@ final class LaunchdTeamClaimTests: XCTestCase {
         XCTAssertFalse(
             tier == .A || tier == .B,
             "A launchd job matched on the developer's team identifier was rated \(tier.rawValue). "
-            + "It would be unloaded along with this application, whichever of the developer's "
-            + "applications it actually serves."
+                + "It would be unloaded along with this application, whichever of the developer's "
+                + "applications it actually serves."
         )
     }
 
@@ -80,8 +79,15 @@ final class LaunchdTeamClaimTests: XCTestCase {
     /// A team-prefixed job whose program lives inside this application's
     /// bundle is proven by the program, not by the label, and stays direct.
     func testATeamPrefixedJobRunningFromInsideTheBundleIsStillDirect() async throws {
-        let program = root.url(for: .applications)
-            .appendingPathComponent("Editor.app/Contents/Library/LaunchServices/helper").path
+        let bundle = root.url(for: .applications).appendingPathComponent("Editor.app")
+        try fm.createDirectory(at: bundle.appendingPathComponent("Contents"),
+                               withIntermediateDirectories: true)
+        let info = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.example.editor"],
+            format: .xml, options: 0
+        )
+        try info.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+        let program = bundle.appendingPathComponent("Contents/Library/LaunchServices/helper").path
         try makeJob(label: "\(team).com.example.helper", program: program)
 
         let found = try await evidence()
