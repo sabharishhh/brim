@@ -123,7 +123,7 @@ struct RealEnvironmentFixture {
         let id = harnessBundleID
         let library = home.appendingPathComponent("Library")
 
-        var directories: [(String, URL)] = [
+        let directories: [(String, URL)] = [
             ("Application Support", library.appendingPathComponent("Application Support/\(id)")),
             ("Caches", library.appendingPathComponent("Caches/\(id)")),
             ("HTTPStorages", library.appendingPathComponent("HTTPStorages/\(id)")),

@@ -156,10 +156,28 @@ public struct Step: Codable, Equatable, Sendable {
 public struct ExcludedItem: Codable, Equatable, Sendable {
     public let target: String
     public let reason: String
-    
-    public init(target: String, reason: String) {
+    /// What Brim knows about the row, written the way a step's evidence is,
+    /// so a row the sheet offers says how Brim found it.
+    public let evidence: String?
+    public let sizeBytes: Int64?
+    public let tier: EvidenceTier?
+    /// Whether the person may tick this row in the uninstall sheet. True for
+    /// a row Brim found and left unticked; false for one that was vetoed,
+    /// which stays out whatever is asked. Nil in plans written before the
+    /// sheet could offer a row, and read as false.
+    public let canBeTickedByHand: Bool?
+
+    public init(
+        target: String, reason: String,
+        evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil,
+        tier: EvidenceTier? = nil
+    ) {
         self.target = target
         self.reason = reason
+        self.evidence = evidence
+        self.sizeBytes = sizeBytes
+        self.tier = tier
+        self.canBeTickedByHand = canBeTickedByHand
     }
 }
 
@@ -181,6 +199,22 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let specificTargets: [URL]?
     public let destinationTarget: URL?
     public let archiveAndUninstall: Bool
+    /// Rows Brim found for this application and did not tick, which the
+    /// person ticked in the uninstall sheet. Paths, exactly as the plan's
+    /// excluded rows name them.
+    ///
+    /// On the intent rather than beside it, so it is part of what the person
+    /// approves, since the plan's hash covers the intent, and part of what
+    /// `apply` rebuilds when it checks the plan again before touching
+    /// anything. Absent in plans written before the sheet could offer an
+    /// unticked row, hence optional, and absent from the encoding when nil so
+    /// every other plan hashes as it always has.
+    ///
+    /// It can only promote. A path here that the evidence engine did not
+    /// find for this application is ignored, and a row that was vetoed stays
+    /// vetoed; `Planner` holds both, and `TickedByHandPlannerTests` holds the
+    /// planner to them.
+    public private(set) var tickedByHand: [String]?
 
     /// The explicit targets this intent asks for, however they were supplied.
     /// Empty means "discover the footprint from the identity".
@@ -190,7 +224,7 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         return []
     }
 
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false, tickedByHand: [String]? = nil) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
@@ -199,6 +233,20 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         self.specificTargets = specificTargets
         self.destinationTarget = destinationTarget
         self.archiveAndUninstall = archiveAndUninstall
+        self.tickedByHand = tickedByHand
+    }
+
+    /// The same intent with a different set of rows ticked by hand. Sorted,
+    /// so one choice always makes one intent and one plan hash, and nil when
+    /// nothing is ticked, so it encodes as though the sheet never offered.
+    ///
+    /// A copy with one field changed rather than a new intent built from the
+    /// old one's fields, so a field added to the intent later cannot be
+    /// quietly dropped from every plan the sheet rebuilds.
+    public func tickingByHand(_ paths: Set<String>) -> PlanIntent {
+        var copy = self
+        copy.tickedByHand = paths.isEmpty ? nil : paths.sorted()
+        return copy
     }
 }
 

@@ -41,10 +41,6 @@ struct ContentView: View {
                     UpdatesView(model: models.updates)
                 case .history:
                     RemovalHistoryView(model: models.history, recovery: models.recovery)
-                default:
-                    Text("\(selection.rawValue) View")
-                        .foregroundColor(.secondary)
-                        .font(.title)
                 }
             } else {
                 Text("Select an item")

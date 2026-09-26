@@ -86,8 +86,10 @@ public final class RecoveryStatusModel: ObservableObject {
             object: nil, queue: .main
         ) { [weak self] _ in
             guard NSRunningApplication.current.isActive else { return }
-            Task { await watcher.setActive(true) }
-            self?.refreshNow()
+            Task { @MainActor [weak self] in
+                await watcher.setActive(true)
+                self?.refreshNow()
+            }
         })
 
         activationObservers.append(center.addObserver(

@@ -43,7 +43,32 @@ public struct Planner: Sendable {
             }
             evaluatedItems = newEvaluatedItems
         }
-        
+
+        // Rows the person ticked in the uninstall sheet. Brim left them
+        // unticked because it was not sure enough to remove them unasked,
+        // which is not the same as not being allowed to remove them: every
+        // row can still be ticked by hand.
+        //
+        // Only a row the evidence engine found and left unselected can be
+        // promoted. A path the engine did not find is not in this list to
+        // promote, so naming one adds nothing, and an uninstall stays an
+        // uninstall rather than becoming a way to remove anything at all. A
+        // vetoed row is `.excluded` and is left alone, which is how Tier S
+        // stays one way: something else on this Mac claims it, and no list
+        // brings it back.
+        if let ticked = intent.tickedByHand, !ticked.isEmpty {
+            let wanted = Set(ticked)
+            evaluatedItems = evaluatedItems.map { item in
+                guard case .unselected = item.selection,
+                      wanted.contains(item.footprintItem.evidence.url.path)
+                else { return item }
+                return EvaluatedItem(
+                    footprintItem: item.footprintItem, selection: .selected,
+                    costOfError: item.costOfError
+                )
+            }
+        }
+
         // One reset for the whole plan, before anything is removed. Placed
         // first because tccutil needs the bundle to still exist; an uninstall
         // that deletes first leaves the grants stranded for good, which is
@@ -237,10 +262,30 @@ public struct Planner: Sendable {
                     }
                 }
             case .unselected:
-                excludedItems.append(ExcludedItem(target: targetPath, reason: "You opted to keep this item, or it was unselected by default due to low confidence."))
-                
+                // Described the way a step is, because the sheet offers it
+                // beside the steps and a row a person is asked to decide on
+                // has to say how Brim found it and what it holds.
+                excludedItems.append(ExcludedItem(
+                    target: targetPath,
+                    reason: "You opted to keep this item, or it was unselected by default due to low confidence.",
+                    evidence: ExplanationRenderer().render(
+                        tier: item.footprintItem.evidence.tier,
+                        capability: item.footprintItem.capability,
+                        mechanism: item.footprintItem.evidence.mechanism,
+                        found: item.footprintItem.evidence.humanSentence
+                    ),
+                    sizeBytes: item.footprintItem.sizeBytes,
+                    canBeTickedByHand: true,
+                    tier: item.footprintItem.evidence.tier
+                ))
+
             case .excluded(let reason):
-                excludedItems.append(ExcludedItem(target: targetPath, reason: ExplanationRenderer().renderRefusal(reason: reason)))
+                excludedItems.append(ExcludedItem(
+                    target: targetPath,
+                    reason: ExplanationRenderer().renderRefusal(reason: reason),
+                    sizeBytes: item.footprintItem.sizeBytes,
+                    canBeTickedByHand: false
+                ))
             }
         }
         

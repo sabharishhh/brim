@@ -1,5 +1,6 @@
-import XCTest
+import BrimCore
 @testable import BrimService
+import XCTest
 
 /// What Brim says when a removal did not go through.
 ///
@@ -16,13 +17,20 @@ import XCTest
 /// One reason held for all fourteen and the shape of the text hid that
 /// completely.
 final class RefusalCopyTests: XCTestCase {
+    /// CI's /usr/local/bin is writable. Copy tests supply the measured state
+    /// instead of assuming the test machine has the developer's permissions.
+    private func explanation(_ paths: Set<String>) -> String {
+        BrimService.whyTheseRemain(paths) { path in
+            path.hasPrefix("/usr/local/bin/") ? .needsHelper : .ok
+        }
+    }
 
     private func fourteenInOneFolder() -> Set<String> {
-        Set((1...14).map { "/usr/local/bin/tool-\($0)" })
+        Set((1 ... 14).map { "/usr/local/bin/tool-\($0)" })
     }
 
     func testOneReasonIsGivenOnceHoweverManyThingsShareIt() {
-        let text = BrimService.whyTheseRemain(fourteenInOneFolder())
+        let text = explanation(fourteenInOneFolder())
         let sentence = "belongs to the system, so removing anything in it needs an administrator"
         XCTAssertEqual(
             text.components(separatedBy: sentence).count - 1, 1,
@@ -31,7 +39,7 @@ final class RefusalCopyTests: XCTestCase {
     }
 
     func testItOpensWithWhatHappenedAndEndsWithWhichThings() {
-        let text = BrimService.whyTheseRemain(fourteenInOneFolder())
+        let text = explanation(fourteenInOneFolder())
         XCTAssertTrue(text.hasPrefix("14 things are still there."), text)
         XCTAssertTrue(text.contains("/usr/local/bin"), "The folder they share is named:\n\(text)")
         XCTAssertTrue(text.contains("tool-1, tool-10"), "Each one is still named:\n\(text)")
@@ -40,12 +48,12 @@ final class RefusalCopyTests: XCTestCase {
     /// Short enough to read in the space it is shown in. The old one was
     /// nine hundred characters for this input and was cut off.
     func testTheRefusalFitsInThePanelThatShowsIt() {
-        let text = BrimService.whyTheseRemain(fourteenInOneFolder())
+        let text = explanation(fourteenInOneFolder())
         XCTAssertLessThan(text.count, 400, text)
     }
 
     func testOneThingKeepsItsOwnSentence() {
-        let text = BrimService.whyTheseRemain(["/usr/local/bin/zed"])
+        let text = explanation(["/usr/local/bin/zed"])
         XCTAssertTrue(text.hasPrefix("One thing is still there."), text)
         XCTAssertTrue(text.contains("/usr/local/bin belongs to the system"), text)
         XCTAssertTrue(text.hasSuffix("zed"), text)
@@ -54,10 +62,10 @@ final class RefusalCopyTests: XCTestCase {
     /// Two folders are two answers, and collapsing them would hide that one
     /// of them is a different problem with a different remedy.
     func testDifferentReasonsStayApart() {
-        let text = BrimService.whyTheseRemain([
+        let text = explanation([
             "/usr/local/bin/zed",
             "/usr/local/bin/docker",
-            "\(NSHomeDirectory())/Library/Caches/thing",
+            "\(NSHomeDirectory())/Library/Caches/thing"
         ])
         XCTAssertTrue(text.hasPrefix("3 things are still there."), text)
         XCTAssertTrue(text.contains("zed"), text)

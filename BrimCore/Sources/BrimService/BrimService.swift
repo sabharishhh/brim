@@ -736,7 +736,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// So: the reason once, the place once, and then the names. Somebody
     /// reading it learns what went wrong in the first line and which things
     /// it happened to in the last.
-    static func whyTheseRemain(_ paths: Set<String>) -> String {
+    static func whyTheseRemain(
+        _ paths: Set<String>,
+        capabilityForPath: (String) -> Capability = { RemovalCapability.forDeleting($0) }
+    ) -> String {
         let opening = paths.count == 1
             ? "One thing is still there."
             : "\(paths.count) things are still there."
@@ -748,7 +751,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         var names: [String: [String]] = [:]
         for path in paths.sorted() {
             let folder = (path as NSString).deletingLastPathComponent
-            let capability = RemovalCapability.forDeleting(path)
+            let capability = capabilityForPath(path)
             let key = "\(folder)\u{0}\(capability.rawValue)"
             if names[key] == nil { order.append(key) }
             names[key, default: []].append((path as NSString).lastPathComponent)
