@@ -152,6 +152,7 @@ final class CapabilitySurfaceTests: XCTestCase {
         let extensionCheck = try XCTUnwrap(report.checks.first { $0.capability == .appExtension })
         XCTAssertEqual(extensionCheck.declaration, .declared)
         XCTAssertTrue(extensionCheck.coverage.available)
+        XCTAssertEqual(extensionCheck.removalTier, .removable)
         XCTAssertTrue(extensionCheck.registrations.isEmpty)
         let privacyCheck = try XCTUnwrap(report.checks.first { $0.capability == .privacyGrant })
         XCTAssertEqual(privacyCheck.declaration, .unknown)
@@ -170,5 +171,44 @@ final class CapabilitySurfaceTests: XCTestCase {
     func testFailedAndTimedOutSystemProbesAreNotEmptySuccesses() {
         XCTAssertNil(ToolOutput.read("/usr/bin/false", []))
         XCTAssertNil(ToolOutput.read("/bin/sleep", ["2"], timeout: 0.02))
+    }
+
+    func testRemovalTiersKeepSystemWideAndReportOnlyRecordsOutOfThePlan() {
+        XCTAssertEqual(RemovalTier.forRegistration(.backgroundItem, ownerPresent: false), .destructiveOnly)
+        XCTAssertEqual(RemovalTier.forRegistration(.systemExtension, ownerPresent: true), .detectableOnly)
+        XCTAssertEqual(RemovalTier.forRegistration(.privacyGrant, ownerPresent: false), .detectableOnly)
+        XCTAssertEqual(RemovalTier.forRegistration(.privacyGrant, ownerPresent: true), .removable)
+        XCTAssertEqual(RemovalTier.forRegistration(.launchdJob, ownerPresent: false), .removable)
+    }
+
+    func testOnlyObservedOrDeclaredCeilingsProduceFollowUpActions() {
+        let extensionRecord = Registration(kind: .systemExtension, identifier: "org.example.extension",
+                                           label: "Extension", targetExists: true, evidence: "Registered.")
+        let report = CapabilitySearchReport(checks: [
+            .init(capability: .systemExtension, declaration: .declared,
+                  coverage: .available(.systemExtension), registrations: [extensionRecord]),
+            .init(capability: .vpnConfiguration, declaration: .declared,
+                  coverage: .withheld(.systemExtension, "Settings cannot be listed."))
+        ], signatureCoverage: [])
+        XCTAssertEqual(report.followUps(survivingSystemExtensionIDs: [],
+                                        privacyResetFailedAfterRemoval: false), [.vpnSettings])
+        XCTAssertEqual(report.followUps(survivingSystemExtensionIDs: ["org.example.extension"],
+                                        privacyResetFailedAfterRemoval: true),
+                       [.vendorUninstaller, .vpnSettings, .restoreAppForPrivacyReset])
+        XCTAssertEqual(report.followUps(survivingSystemExtensionIDs: nil,
+                                        privacyResetFailedAfterRemoval: false),
+                       [.vendorUninstaller, .vpnSettings])
+    }
+
+    func testAbsentBundleMakesPrivacyResetReportOnlyWithoutClaimingAGrant() async throws {
+        let identity = Identity(bundleID: "org.example.departed", name: "Departed")
+        let scanned = await CapabilitySearchScanner(surfaces: [])
+            .scan(identity: identity, in: root, completeness: .complete)
+        let report = try XCTUnwrap(scanned)
+        let privacy = try XCTUnwrap(report.checks.first { $0.capability == .privacyGrant })
+        XCTAssertEqual(privacy.declaration, .unknown)
+        XCTAssertEqual(privacy.removalTier, .detectableOnly)
+        XCTAssertTrue(privacy.registrations.isEmpty)
+        XCTAssertEqual(privacy.followUp, .restoreAppForPrivacyReset)
     }
 }

@@ -68,8 +68,7 @@ final class SelfRemovalIntegrationTests: XCTestCase {
 
         let plan = try await client.plan(intent: intent)
 
-        let appExistsInPlan = plan.steps.contains { $0.target.contains("Brim.app") }
-        XCTAssertTrue(appExistsInPlan, "Brim app must be included in the self-uninstall plan.")
+        XCTAssertTrue(plan.steps.contains { $0.target.contains("Brim.app") })
 
         let plistExistsInPlan = plan.steps.contains { $0.target.contains("devplaceholder.PJ52YXEB.brim.plist") }
         XCTAssertTrue(plistExistsInPlan, "Agent plist must be included. Excluded: \(plan.excludedItems.map(\.reason))")
@@ -79,7 +78,9 @@ final class SelfRemovalIntegrationTests: XCTestCase {
         try await client.apply(planId: plan.planId, token: token)
 
         let verification = try await client.verify(planId: plan.planId)
-        XCTAssertTrue(verification.success, "Self-uninstall failed verification.")
+        XCTAssertTrue(verification.remainingPaths.isEmpty, "Self-uninstall left selected files behind.")
+        XCTAssertFalse(verification.success, "The fixture's unregistered bundle cannot pass tccutil.")
+        XCTAssertEqual(verification.followUpActions, [.restoreAppForPrivacyReset])
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: brimAppDir.path), "Brim app was not deleted.")
         XCTAssertFalse(FileManager.default.fileExists(atPath: agentPlist.path), "Agent plist was not deleted.")
