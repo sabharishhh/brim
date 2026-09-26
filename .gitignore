@@ -4,3 +4,4 @@ skills/
 .build/
 .swiftpm/
 Brim.xcodeproj/build/
+__pycache__/

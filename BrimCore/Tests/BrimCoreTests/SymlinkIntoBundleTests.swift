@@ -43,6 +43,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         return bundle
     }
 
+    @discardableResult
     private func makeLink(named name: String, to destination: String) throws -> URL {
         let directory = root.url(for: .usrLocalBin)
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)

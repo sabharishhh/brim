@@ -183,9 +183,9 @@ struct RemovalSheet: View {
                     // is being removed instead keeps the honest number and
                     // stops it looking like nothing is going to happen.
                     if plan.immediatelyFreedBytes > 0 {
-                        Text("Frees now: ").foregroundColor(.secondary)
-                        + Text(ByteText.short(plan.immediatelyFreedBytes))
-                            .fontWeight(.bold).monospacedDigit()
+                        let label = Text("Frees now: ").foregroundColor(.secondary)
+                        let amount = Text(ByteText.short(plan.immediatelyFreedBytes)).bold().monospacedDigit()
+                        Text("\(label)\(amount)")
                     } else {
                         Text("Frees no space: these take up none")
                             .foregroundColor(.secondary)
