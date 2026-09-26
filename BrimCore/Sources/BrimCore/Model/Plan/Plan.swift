@@ -260,10 +260,12 @@ public struct Plan: Codable, Equatable, Sendable {
     public let intent: PlanIntent
     public let steps: [Step]
     public let excludedItems: [ExcludedItem]
+    /// Absent in older plans and complete scans. Included in the approval hash.
+    public let scanCompleteness: ScanCompleteness?
     
     public let expectedTotalBytes: Int64
     
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil) {
         self.formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
@@ -272,6 +274,7 @@ public struct Plan: Codable, Equatable, Sendable {
         self.intent = intent
         self.steps = steps
         self.excludedItems = excludedItems
+        self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
         self.expectedTotalBytes = expectedTotalBytes
     }
     

@@ -136,7 +136,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        return planner.createPlan(from: evaluated, intent: intent, engineVersion: "1.0.0")
+        return planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
     }
     
     public func explain(planId: UUID) async throws -> String {
