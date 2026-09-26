@@ -65,6 +65,14 @@ final class EvidenceCoverageTests: XCTestCase {
         XCTAssertEqual(found.completeness.unreadable, [directory.path])
     }
 
+    func testDirectLocationReadFailureIsNotAnEmptyMatch() throws {
+        let directory = root.url(for: .userApplicationSupport)
+        try writeFile(directory)
+        let app = Identity(bundleID: "org.example.app", name: "Example")
+        let found = LocationInventorySource().findings(for: app, in: root)
+        XCTAssertTrue(found.completeness.unreadable.contains(directory.path))
+    }
+
     /// This source is deliberately not LocationInventorySource. The former
     /// concrete-type check silently discarded every other source's gaps.
     private struct PartialSource: EvidenceSource {

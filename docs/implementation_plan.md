@@ -771,7 +771,7 @@ These are sampling observations, not frame-rate measurements. Neither
 capture included planner calls. The Details control and compact rows were
 checked in the running app after the change.
 
-The file-name source's Tier B exception is addressed in the first T-7.2 slice below.
+The file-name source's Tier B exception is addressed in T-7.2 below.
 Grouping and the rest of T-7.5 remain in their original position. M7 is not complete.
 
 ### T-7.2 · Capability-derived search (was P2.1 to P2.3)
@@ -781,27 +781,29 @@ Grouping and the rest of T-7.5 remain in their original position. M7 is not comp
 - **Acceptance** An uninstall reports what it checked *and* what the application declared it had none of, and the two are distinguishable in the report. No app names appear in the implementation. A name-derived match is Tier C whatever produced the name.
 - **Unlocks** negative evidence, which is the only honest way to say a surface is clean.
 
-**First slice implemented, awaiting merge:** evidence sources can return findings
-with scan completeness through the common protocol. Group-container, sibling-app
-and launchd directory read failures now survive aggregation and reach the safety
-engine, plan hash and uninstall review. Missing directories remain distinct from
-failed reads. Duplicate gaps count once. Old plans still decode. An incomplete
-scan selects no files automatically; manual inclusion cannot override Tier S.
-File-name matches now use Tier C, including the older component source.
+**Implementation in PR #2:** the evidence protocol carries complete, unreadable
+and timed-out searches through the safety engine, plan and review. Directory
+reads distinguish missing locations from failures. Name matches are Tier C.
+The bundle reader collects identifiers, names, groups, URL schemes, exported
+types, helper requirements and extension declarations from the app and its
+packaged components. It uses signed entitlements only when the signature is
+valid and not ad hoc. A signature gap is reported separately from declarations
+read from Info.plist. Embedded identifiers expand the search but remain Tier C
+without direct ownership evidence. Declared groups expand the group-container
+and Application Scripts search. Declared job labels expand the launchd search.
+The review has a compact search-details panel. It shows declaration and read
+status separately, including record counts and read limitations. The report is
+part of the plan hash and is reconstructed before apply. Unreadable locations
+leave the automatic selection empty; a Tier S veto cannot be overridden.
+Privacy grants and another app's VPN settings are marked unavailable because
+Brim cannot enumerate them through a supported reader. No declaration is
+treated as proof that either record class is empty.
 
-Verified on 26 September 2026: the new fixture tests cover failed and empty
-listings, protocol dispatch, propagation through the planner, approval hashing,
-old-plan decoding and manual selection without reviving a veto. In the running
-app, Figma's 1.21 GB support folder is offered unticked as a name match; selecting
-it changes the selected count from 8 to 9 and the Trash total from 319.3 MB to
-1.53 GB. The review was cancelled without removing anything. Unreadable-location
-reporting was verified with fixtures, not by changing permissions on real folders.
-
-**Still open:** identity and capability extraction from embedded bundles,
-entitlements and declarations; unsigned/ad-hoc signature coverage; routing
-searches from those declarations; the checked versus declared-absent registration
-report; and migration of the remaining evidence sources to report read gaps.
-This slice does not complete T-7.2 or M7.
+**Validated:** the package suite, approval tests, Debug build and lint
+comparison passed. In the running app, Figma's 1.21 GB support folder was
+offered unticked. Search details showed checked, undeclared and unavailable
+record classes separately. The review was cancelled without removal. T-7.2
+is complete; M7 still depends on later tasks.
 
 ### T-7.3 · The removal ceiling, reported rather than hidden (was P2.4, P2.5)
 - **Objective** Say what macOS will not allow, once, in the right place.

@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// A command on the path that is really a link into an application bundle.
 ///
@@ -22,31 +22,42 @@ import BrimCore
 /// goes when the bundle goes, and a link pointing somewhere else entirely is
 /// somebody else's.
 public struct SymlinkIntoBundleSource: EvidenceSource {
-
     /// Where a command installed beside an application tends to be put. Each
     /// is listed rather than walked, one level deep: these directories hold
     /// commands, not trees, and a recursive walk of `/usr/local` on a
     /// developer's Mac is its own kind of mistake.
     static let linkDomains: [FileSystemRoot.Domain] = [
-        .usrLocalBin, .usrLocalSbin, .userDotLocalBin,
+        .usrLocalBin, .usrLocalSbin, .userDotLocalBin
     ]
 
     public init() {}
 
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
         let fm = FileManager.default
 
         // The bundles this application could be. Resolved so a link through
         // `/private` or a relative hop still compares equal.
-        let bundles = Self.bundleLocations(for: identity, in: root)
+        let bundles = Self.verifiedBundleLocations(for: identity, in: root)
             .filter { fm.fileExists(atPath: $0.path) }
             .map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
-        guard !bundles.isEmpty else { return [] }
+        guard !bundles.isEmpty else { return EvidenceFindings(evidence: []) }
 
         var results: [Evidence] = []
+        var unreadable: [String] = []
         for domain in Self.linkDomains {
             let directory = root.url(for: domain)
-            guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { continue }
+            let names: [String]
+            switch DirectoryEntries.read(directory) {
+            case .absent: continue
+            case .refused:
+                unreadable.append(directory.path)
+                continue
+            case let .listed(listed): names = listed
+            }
             for name in names {
                 let link = directory.appendingPathComponent(name)
                 guard let target = Self.target(of: link, fm: fm) else { continue }
@@ -61,7 +72,7 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
                 ))
             }
         }
-        return results
+        return EvidenceFindings(evidence: results, completeness: ScanCompleteness(unreadable: unreadable))
     }
 
     /// Where this application's bundle could be sitting: its file name, in
@@ -79,14 +90,21 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
     ///
     /// Also the one place `LaunchdSource` asks, so a link and a launchd job
     /// are proven by pointing into the same bundles.
-    static func bundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
+    public static func bundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
         let userApplications = root.url(for: .userLibrary)
             .deletingLastPathComponent()
             .appendingPathComponent("Applications")
-        return [
+        return (identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? []) + [
             root.url(for: .applications).appendingPathComponent("\(identity.name).app"),
-            userApplications.appendingPathComponent("\(identity.name).app"),
+            userApplications.appendingPathComponent("\(identity.name).app")
         ]
+    }
+
+    public static func verifiedBundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
+        guard let bundleID = identity.bundleID else { return [] }
+        return bundleLocations(for: identity, in: root).filter { url in
+            Bundle(url: url)?.bundleIdentifier == bundleID
+        }
     }
 
     /// Where a link actually lands, relative hops and all, or nil when the

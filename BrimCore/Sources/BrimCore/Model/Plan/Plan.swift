@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 public enum Capability: String, Codable, Equatable, Sendable {
     case ok
@@ -32,20 +32,20 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     case unregisterLaunchServices
 }
 
-extension StepKind {
+public extension StepKind {
     /// Whether this step's `target` names a file, rather than an identifier
     /// such as a bundle id or a launchd label. Anything reading a target as
     /// a path — the "already gone" check, verification — has to ask first.
-    public var targetIsPath: Bool {
+    var targetIsPath: Bool {
         switch self {
         case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
             // Each of these names an identifier: a bundle id, a package id,
             // or which cleanup to run. None is a file.
-            return false
+            false
         case .trashPath, .trashPathPrivileged, .unloadLaunchdJob, .removeLaunchdPlist,
              .clearImmutableFlag, .revealVendorUninstaller,
              .archivePath, .unregisterLaunchServices:
-            return true
+            true
         }
     }
 }
@@ -54,13 +54,13 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
     public let dev: Int32
     public let ino: UInt64
     public let mtime: Date
-    
+
     public init(dev: Int32, ino: UInt64, mtime: Date) {
         self.dev = dev
         self.ino = ino
         self.mtime = mtime
     }
-    
+
     /// Equal when the file is the same file, allowing 10ms of drift in the
     /// modification time because a date that has been through JSON is not
     /// the date that went in.
@@ -91,9 +91,9 @@ public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     /// a bundle that is still on disk achieves nothing, because Launch
     /// Services re-registers it the moment anything looks at it again.
     case registration = 3
-    
+
     public static func < (lhs: ExecutionPhase, rhs: ExecutionPhase) -> Bool {
-        return lhs.rawValue < rhs.rawValue
+        lhs.rawValue < rhs.rawValue
     }
 }
 
@@ -110,8 +110,8 @@ public enum StepDisposition: String, Codable, Equatable, Sendable {
     /// carries settings or user data stays reversible.
     public static func `default`(for costOfError: CostOfError) -> StepDisposition {
         switch costOfError {
-        case .low: return .delete
-        case .medium, .high: return .trash
+        case .low: .delete
+        case .medium, .high: .trash
         }
     }
 }
@@ -134,7 +134,9 @@ public struct Step: Codable, Equatable, Sendable {
     public let disposition: StepDisposition?
 
     /// The disposition to act on, including for plans that predate the field.
-    public var effectiveDisposition: StepDisposition { disposition ?? .trash }
+    public var effectiveDisposition: StepDisposition {
+        disposition ?? .trash
+    }
 
     public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, archiveDestination: String? = nil, disposition: StepDisposition? = nil) {
         self.index = index
@@ -219,8 +221,12 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     /// The explicit targets this intent asks for, however they were supplied.
     /// Empty means "discover the footprint from the identity".
     public var explicitTargets: [URL] {
-        if let many = specificTargets, !many.isEmpty { return many }
-        if let one = specificTarget { return [one] }
+        if let many = specificTargets, !many.isEmpty {
+            return many
+        }
+        if let one = specificTarget {
+            return [one]
+        }
         return []
     }
 
@@ -256,17 +262,19 @@ public struct Plan: Codable, Equatable, Sendable {
     public let createdAt: Date
     public let engineVersion: String
     public let osVersion: String
-    
+
     public let intent: PlanIntent
     public let steps: [Step]
     public let excludedItems: [ExcludedItem]
     /// Absent in older plans and complete scans. Included in the approval hash.
     public let scanCompleteness: ScanCompleteness?
-    
+    /// Included in the approval hash. Nil for plans made before this report existed.
+    public private(set) var capabilityReport: CapabilitySearchReport?
+
     public let expectedTotalBytes: Int64
-    
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil) {
-        self.formatVersion = 1
+
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil) {
+        formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
         self.engineVersion = engineVersion
@@ -275,9 +283,16 @@ public struct Plan: Codable, Equatable, Sendable {
         self.steps = steps
         self.excludedItems = excludedItems
         self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
+        self.capabilityReport = capabilityReport
         self.expectedTotalBytes = expectedTotalBytes
     }
-    
+
+    public func attaching(_ report: CapabilitySearchReport?) -> Plan {
+        var copy = self
+        copy.capabilityReport = report
+        return copy
+    }
+
     /// Canonical JSON encoding required for deterministic hashing.
     public func canonicalData() throws -> Data {
         let encoder = JSONEncoder()
@@ -288,10 +303,10 @@ public struct Plan: Codable, Equatable, Sendable {
             var container = encoder.singleValueContainer()
             try container.encode(formatter.string(from: date))
         }
-        
+
         return try encoder.encode(self)
     }
-    
+
     public func contentHash() throws -> String {
         let data = try canonicalData()
         let hash = SHA256.hash(data: data)

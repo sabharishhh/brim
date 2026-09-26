@@ -6,6 +6,13 @@ enum DirectoryEntries {
     case listed([String])
     case refused
 
+    var isRefused: Bool {
+        if case .refused = self {
+            return true
+        }
+        return false
+    }
+
     static func read(_ directory: URL, using fileManager: FileManager = .default) -> Self {
         do {
             return try .listed(fileManager.contentsOfDirectory(atPath: directory.path).sorted())

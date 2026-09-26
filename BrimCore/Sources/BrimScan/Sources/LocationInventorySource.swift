@@ -14,6 +14,7 @@ import Foundation
 /// of every bundle in a plug-in folder is a directory walk, so those are
 /// done last and under the run's remaining budget.
 public struct LocationInventorySource: EvidenceSource {
+    private typealias Location = LocationInventory.Location
     private let inventory: LocationInventory
     private let budget: @Sendable () -> ScanBudget
 
@@ -42,34 +43,55 @@ public struct LocationInventorySource: EvidenceSource {
         var evidence: [Evidence] = []
         var timedOut: [String] = []
         var unreadable: [String] = []
+        var listings: [String: DirectoryEntries] = [:]
+
+        func listing(_ directory: URL) -> DirectoryEntries {
+            if let cached = listings[directory.path] {
+                return cached
+            }
+            let read = Self.entries(of: directory, fm: fm)
+            listings[directory.path] = read
+            return read
+        }
 
         // Cheap first: one existence check per location. Even a hundred
         // of these is a few milliseconds, so they are never skipped for
         // time and a slow run still gets the certain answers.
         for location in inventory.locations where location.rule != .identifierInsideBundle {
             let directory = root.url(for: location.domain)
-            for candidate in Self.candidates(for: location, identity: identity) {
+            let candidates = Self.candidates(for: location, identity: identity)
+            guard !candidates.isEmpty else { continue }
+            let read = listing(directory)
+            if case .refused = read {
+                unreadable.append(directory.path)
+            }
+            for candidate in candidates {
                 let url = directory.appendingPathComponent(candidate)
                 guard fm.fileExists(atPath: url.path) else { continue }
                 evidence.append(Evidence(
                     url: url,
-                    tier: location.tier,
+                    tier: Self.tier(for: candidate, location: location, identity: identity),
                     mechanism: "LocationInventorySource",
                     humanSentence: location.sentence
                 ))
             }
             // A prefix rule needs the directory listed, which is the one
             // cheap rule that can still be refused.
-            if location.rule == .bundleIdentifierPrefix, let bundleID = identity.bundleID {
-                switch Self.entries(of: directory, fm: fm) {
+            if location.rule == .bundleIdentifierPrefix, !identity.searchBundleIdentifiers.isEmpty {
+                switch read {
                 case .refused:
                     unreadable.append(directory.path)
                 case let .listed(names):
-                    for name in names where name.hasPrefix(bundleID + ".") {
+                    for name in names {
+                        let matches = identity.searchBundleIdentifiers.contains { name.hasPrefix($0 + ".") }
+                        guard matches else { continue }
                         let url = directory.appendingPathComponent(name)
                         guard !evidence.contains(where: { $0.url == url }) else { continue }
+                        let matchedID = identity.searchBundleIdentifiers
+                            .filter { name.hasPrefix($0 + ".") }
+                            .max { $0.count < $1.count }
                         evidence.append(Evidence(
-                            url: url, tier: location.tier,
+                            url: url, tier: matchedID == identity.bundleID ? location.tier : .C,
                             mechanism: "LocationInventorySource",
                             humanSentence: location.sentence
                         ))
@@ -83,14 +105,14 @@ public struct LocationInventorySource: EvidenceSource {
         // Expensive last: reading a bundle's Info.plist is the only way
         // to attribute an audio plug-in, whose file name says nothing.
         for location in inventory.locations where location.rule == .identifierInsideBundle {
-            guard let bundleID = identity.bundleID else { break }
+            guard !identity.searchBundleIdentifiers.isEmpty else { break }
             let directory = root.url(for: location.domain)
 
             guard !runBudget.hasRunOut else {
                 timedOut.append(directory.path)
                 continue
             }
-            switch Self.entries(of: directory, fm: fm) {
+            switch listing(directory) {
             case .absent:
                 continue
             case .refused:
@@ -98,9 +120,10 @@ public struct LocationInventorySource: EvidenceSource {
             case let .listed(names):
                 for name in names where !name.hasPrefix(".") {
                     let item = directory.appendingPathComponent(name)
-                    guard Self.declaredIdentifier(at: item) == bundleID else { continue }
+                    guard let foundID = Self.declaredIdentifier(at: item),
+                          identity.searchBundleIdentifiers.contains(foundID) else { continue }
                     evidence.append(Evidence(
-                        url: item, tier: location.tier,
+                        url: item, tier: foundID == identity.bundleID ? location.tier : .C,
                         mechanism: "LocationInventorySource",
                         humanSentence: location.sentence
                     ))
@@ -120,13 +143,13 @@ public struct LocationInventorySource: EvidenceSource {
     ) -> [String] {
         switch location.rule {
         case .bundleIdentifier:
-            return identity.bundleID.map { [$0] } ?? []
+            return identity.searchBundleIdentifiers
         case let .bundleIdentifierFile(ext):
-            return identity.bundleID.map { ["\($0).\(ext)"] } ?? []
+            return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
         case .bundleIdentifierPrefix:
             // The exact name as well as the prefixed ones, because
             // `com.example.app.plist` is the common case.
-            return identity.bundleID.map { ["\($0).plist", $0] } ?? []
+            return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
         case .applicationName:
             // Both names, because an application's folders are named after
             // whichever of them its developer reached for. Visual Studio
@@ -140,6 +163,22 @@ public struct LocationInventorySource: EvidenceSource {
                 .filter { seen.insert($0).inserted }
         case .identifierInsideBundle:
             return []
+        }
+    }
+
+    private static func tier(for candidate: String, location: Location, identity: Identity) -> EvidenceTier {
+        switch location.rule {
+        case .bundleIdentifier:
+            guard let main = identity.bundleID else { return .C }
+            return candidate == main ? location.tier : .C
+        case let .bundleIdentifierFile(ext):
+            guard let main = identity.bundleID else { return .C }
+            return candidate == "\(main).\(ext)" ? location.tier : .C
+        case .bundleIdentifierPrefix:
+            guard let main = identity.bundleID else { return .C }
+            return candidate == main || candidate == "\(main).plist" ? location.tier : .C
+        default:
+            return location.tier
         }
     }
 
