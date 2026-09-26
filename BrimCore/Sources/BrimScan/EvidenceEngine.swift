@@ -31,6 +31,17 @@ public struct DiscoveredApp: AppArtifact {
 public struct EvidenceEngine: Sendable {
     public let sources: [any EvidenceSource]
 
+    /// The production removal search, shared with the direction-agreement
+    /// test so a newly added source cannot silently drift from the sweep.
+    public static var standard: EvidenceEngine {
+        EvidenceEngine(sources: [
+            AppBundleSource(), SandboxContainerSource(), InstallerReceiptSource(),
+            BundleIdentifierComponentSource(), LocationInventorySource(),
+            SymlinkIntoBundleSource(), GroupContainerSource(), BundleIdentifierStateSource(),
+            TeamIDSource(), LaunchServicesSource(), SMAppServiceSource(), LaunchdSource()
+        ])
+    }
+
     public init(sources: [any EvidenceSource]) {
         self.sources = sources
     }
