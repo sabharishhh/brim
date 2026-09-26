@@ -26,7 +26,9 @@ public struct TierSVetoEngine: Sendable {
             vettedItems.append(item)
         }
         
-        return EvaluatedFootprint(identity: footprint.identity, items: vettedItems)
+        return EvaluatedFootprint(
+            identity: footprint.identity, items: vettedItems, completeness: footprint.completeness
+        )
     }
     
     private func checkSharedClaims(for url: URL, identity: Identity) async -> Identity? {

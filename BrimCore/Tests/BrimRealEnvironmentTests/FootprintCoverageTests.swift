@@ -252,11 +252,11 @@ final class FootprintCoverageTests: XCTestCase {
               let team = identity.teamID
         else { throw XCTSkip("\(name) is not installed on this Mac.") }
 
-        let siblings = await TeamIDSource.otherApplications(
+        let siblingScan = await TeamIDSource.otherApplicationFindings(
             sharing: team, besides: identity, in: root
         )
         try XCTSkipIf(
-            siblings.isEmpty,
+            siblingScan.identities.isEmpty,
             "No other \(team) application is installed, so there is no sharing to detect."
         )
 

@@ -95,11 +95,8 @@ final class EvidenceSourceTests: XCTestCase {
         // string on Word, Teams, OneDrive and Visual Studio Code alike. A
         // golden file is only as good as the behaviour it was copied from.
         //
-        // `Application Support/ClassicApp.app` stays Tier B, and that was a
-        // decision too. It was moved to C alongside the team row and moved
-        // back, because the uninstall sheet shows only what is ticked, so a
-        // Tier C row there cannot be ticked by hand and the application's
-        // own support folder would have stopped leaving with it.
+        // The file-name match is now Tier C too. The uninstall sheet offers
+        // unselected rows, so it remains available through explicit selection.
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         

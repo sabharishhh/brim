@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// Walks the location inventory, applying each location's own rule.
 ///
@@ -14,7 +14,6 @@ import BrimCore
 /// of every bundle in a plug-in folder is a directory walk, so those are
 /// done last and under the run's remaining budget.
 public struct LocationInventorySource: EvidenceSource {
-
     private let inventory: LocationInventory
     private let budget: @Sendable () -> ScanBudget
 
@@ -30,10 +29,14 @@ public struct LocationInventorySource: EvidenceSource {
         findings(for: identity, in: root).evidence
     }
 
+    public func scan(for identity: Identity, in root: FileSystemRoot) async throws -> EvidenceFindings {
+        findings(for: identity, in: root)
+    }
+
     /// The evidence, and an honest account of what was not looked at.
     public func findings(
         for identity: Identity, in root: FileSystemRoot
-    ) -> (evidence: [Evidence], completeness: ScanCompleteness) {
+    ) -> EvidenceFindings {
         let fm = FileManager.default
         let runBudget = budget()
         var evidence: [Evidence] = []
@@ -61,7 +64,7 @@ public struct LocationInventorySource: EvidenceSource {
                 switch Self.entries(of: directory, fm: fm) {
                 case .refused:
                     unreadable.append(directory.path)
-                case .listed(let names):
+                case let .listed(names):
                     for name in names where name.hasPrefix(bundleID + ".") {
                         let url = directory.appendingPathComponent(name)
                         guard !evidence.contains(where: { $0.url == url }) else { continue }
@@ -92,7 +95,7 @@ public struct LocationInventorySource: EvidenceSource {
                 continue
             case .refused:
                 unreadable.append(directory.path)
-            case .listed(let names):
+            case let .listed(names):
                 for name in names where !name.hasPrefix(".") {
                     let item = directory.appendingPathComponent(name)
                     guard Self.declaredIdentifier(at: item) == bundleID else { continue }
@@ -105,9 +108,9 @@ public struct LocationInventorySource: EvidenceSource {
             }
         }
 
-        return (
-            evidence,
-            ScanCompleteness(unreadable: unreadable, timedOut: timedOut)
+        return EvidenceFindings(
+            evidence: evidence,
+            completeness: ScanCompleteness(unreadable: unreadable, timedOut: timedOut)
         )
     }
 
@@ -118,7 +121,7 @@ public struct LocationInventorySource: EvidenceSource {
         switch location.rule {
         case .bundleIdentifier:
             return identity.bundleID.map { [$0] } ?? []
-        case .bundleIdentifierFile(let ext):
+        case let .bundleIdentifierFile(ext):
             return identity.bundleID.map { ["\($0).\(ext)"] } ?? []
         case .bundleIdentifierPrefix:
             // The exact name as well as the prefixed ones, because
@@ -140,23 +143,8 @@ public struct LocationInventorySource: EvidenceSource {
         }
     }
 
-    enum Listing {
-        case absent
-        /// Present and readable.
-        case listed([String])
-        /// Present and refused. Different from empty, and reported.
-        case refused
-    }
-
-    static func entries(of directory: URL, fm: FileManager) -> Listing {
-        var isDirectory: ObjCBool = false
-        guard fm.fileExists(atPath: directory.path, isDirectory: &isDirectory),
-              isDirectory.boolValue
-        else { return .absent }
-        guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else {
-            return .refused
-        }
-        return .listed(names)
+    static func entries(of directory: URL, fm: FileManager) -> DirectoryEntries {
+        DirectoryEntries.read(directory, using: fm)
     }
 
     static func declaredIdentifier(at bundle: URL) -> String? {
