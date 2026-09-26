@@ -1,6 +1,8 @@
 @testable import BrimCore
 @testable import BrimScan
 import Foundation
+
+// swiftformat:disable wrapMultilineStatementBraces
 import XCTest
 
 final class CapabilitySurfaceTests: XCTestCase {
@@ -29,8 +31,7 @@ final class CapabilitySurfaceTests: XCTestCase {
     }
 
     private func read(_ signature: @escaping (URL) -> BundleSurfaceReader.Signature)
-        -> (IdentitySurface, CapabilitySurface)
-    {
+        -> (IdentitySurface, CapabilitySurface) {
         BundleSurfaceReader.read(at: app, in: root, budget: .unlimited, signature: signature)
     }
 

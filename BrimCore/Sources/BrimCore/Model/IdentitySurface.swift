@@ -1,5 +1,6 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// Names retain their meaning: a URL scheme is never treated as a file name.
 public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
     public struct Component: Codable, Equatable, Hashable, Sendable {
@@ -18,8 +19,7 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
         public init(path: String, bundleIdentifier: String?, name: String, bundleName: String?,
                     signingIdentifier: String? = nil, displayName: String? = nil,
                     executableName: String? = nil,
-                    teamIdentifier: String?, groups: [String], urlSchemes: [String], exportedTypes: [String])
-        {
+                    teamIdentifier: String?, groups: [String], urlSchemes: [String], exportedTypes: [String]) {
             self.path = path
             self.bundleIdentifier = bundleIdentifier
             self.signingIdentifier = signingIdentifier
@@ -157,8 +157,7 @@ public struct CapabilitySurface: Codable, Equatable, Hashable, Sendable {
     public let timedOut: [String]
 
     public init(declarations: [Declaration], signatureGaps: [Gap] = [],
-                unreadable: [String] = [], timedOut: [String] = [])
-    {
+                unreadable: [String] = [], timedOut: [String] = []) {
         self.declarations = declarations
         self.signatureGaps = signatureGaps
         self.unreadable = unreadable
@@ -194,8 +193,7 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
 
         public init(capability: DeclaredCapability, declaration: CapabilitySurface.DeclarationState,
                     coverage: RegistrationCoverage, registrations: [Registration] = [],
-                    locations: [String] = [])
-        {
+                    locations: [String] = []) {
             self.capability = capability
             self.declaration = declaration
             self.coverage = coverage
