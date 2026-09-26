@@ -79,7 +79,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     
     public func inspect(identity: Identity) async throws -> Footprint {
         let projector = FootprintProjector(engine: engine)
-        var footprint = try await projector.project(identity: identity, in: root)
+        let resolved = await enriched(identity)
+        var footprint = try await projector.project(identity: resolved.identity, in: root)
         
         // T-5.3: Storage account (Deferred spike on snapshot accounting)
         let accountant = StorageAccountant()
@@ -91,7 +92,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             logicalSizeBytes: logical,
             reclaimableSizeBytes: reclaimable,
             snapshotPinnedBytes: pinned,
-            completeness: footprint.completeness
+            completeness: footprint.completeness.merging(resolved.completeness)
         )
         
         return footprint
@@ -108,8 +109,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// throwaway plan must not land in the store beside the real one.
     private func makePlan(intent: PlanIntent) async throws -> Plan {
         let projector = FootprintProjector(engine: engine)
-        let footprint: Footprint
+        var footprint: Footprint
         let explicitTargets = intent.explicitTargets
+        let resolved = explicitTargets.isEmpty
+            ? await enriched(intent.subjectIdentity)
+            : (identity: intent.subjectIdentity, completeness: ScanCompleteness.complete)
+        let subject = resolved.identity
         if !explicitTargets.isEmpty {
             // Bypass evidence engine, project exactly the requested targets.
             // Several targets become one plan, so the user approves the whole
@@ -130,13 +135,49 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                         : "Specific target requested by intent"
                 )
             }
-            footprint = try await projector.project(identity: intent.subjectIdentity, in: root, explicitEvidence: evidence)
+            footprint = try await projector.project(identity: subject, in: root, explicitEvidence: evidence)
         } else {
-            footprint = try await projector.project(identity: intent.subjectIdentity, in: root)
+            footprint = try await projector.project(identity: subject, in: root)
         }
 
+        let completeness = footprint.completeness.merging(resolved.completeness)
+        footprint = Footprint(
+            identity: footprint.identity, items: footprint.items,
+            logicalSizeBytes: footprint.logicalSizeBytes,
+            reclaimableSizeBytes: footprint.reclaimableSizeBytes,
+            snapshotPinnedBytes: footprint.snapshotPinnedBytes,
+            completeness: completeness
+        )
+
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        return planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
+        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
+        guard explicitTargets.isEmpty else { return plan }
+        let report = await CapabilitySearchScanner().scan(
+            identity: subject, in: root, completeness: completeness,
+            evidence: footprint.items.map(\.evidence)
+        )
+        return plan.attaching(report)
+    }
+
+    private func enriched(_ identity: Identity) async -> (identity: Identity, completeness: ScanCompleteness) {
+        let clean = identity.withoutDerivedSurfaces()
+        let candidates = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
+        let rootPath = root.rootURL.resolvingSymlinksInPath().standardizedFileURL.path
+        let scanRoot = root
+        for candidate in candidates {
+            let path = candidate.resolvingSymlinksInPath().standardizedFileURL.path
+            guard rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/") else { continue }
+            guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
+            let (surface, capabilities) = await Task.detached {
+                BundleSurfaceReader.read(at: candidate, in: scanRoot)
+            }.value
+            guard let first = surface.components.first else { continue }
+            let matches = identity.bundleID == nil || first.bundleIdentifier == identity.bundleID
+            guard matches else { continue }
+            return (clean.attaching(surface, capabilities: capabilities), capabilities.completeness)
+        }
+        let gaps = identity.bundlePath.map { ScanCompleteness(unreadable: [$0]) } ?? .complete
+        return (clean, gaps)
     }
     
     public func explain(planId: UUID) async throws -> String {
@@ -477,6 +518,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
         // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
         let revalidatedPlan = try await makePlan(intent: plan.intent)
+        let searchIsCurrent = plan.capabilityReport == revalidatedPlan.capabilityReport
+            && plan.scanCompleteness == revalidatedPlan.scanCompleteness
+        guard searchIsCurrent else {
+            throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
+        }
         
         // Ensure steps match exactly (count, targets, and fingerprints)
         guard plan.steps.count == revalidatedPlan.steps.count else {

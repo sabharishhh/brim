@@ -38,7 +38,7 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
         }
 
         // 2. Bundle ID matches
-        if let bundleID = identity.bundleID {
+        for bundleID in identity.searchBundleIdentifiers {
             let paths = [
                 root.url(for: .userPreferences).appendingPathComponent("\(bundleID).plist"),
                 root.url(for: .systemLibrary).appendingPathComponent("Preferences/\(bundleID).plist"),
@@ -46,15 +46,22 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
                 root.url(for: .systemLibrary).appendingPathComponent("Application Support/\(bundleID)")
             ]
 
-            for url in paths {
-                if fm.fileExists(atPath: url.path), !results.contains(where: { $0.url == url }) {
-                    let isPref = url.path.contains("Preferences")
-                    results.append(Evidence(
-                        url: url,
-                        tier: .B,
-                        mechanism: "BundleIdentifierComponentSource",
-                        humanSentence: isPref ? "Preferences keyed to the bundle identifier" : "Application Support keyed to the bundle identifier"
-                    ))
+            for url in paths where fm.fileExists(atPath: url.path) {
+                let isPref = url.path.contains("Preferences")
+                let match = Evidence(
+                    url: url,
+                    tier: bundleID == identity.bundleID ? .B : .C,
+                    mechanism: "BundleIdentifierComponentSource",
+                    humanSentence: isPref
+                        ? "Preferences keyed to the bundle identifier"
+                        : "Application Support keyed to the bundle identifier"
+                )
+                if let previous = results.firstIndex(where: { $0.url == url }) {
+                    if bundleID == identity.bundleID {
+                        results[previous] = match
+                    }
+                } else {
+                    results.append(match)
                 }
             }
         }

@@ -76,6 +76,18 @@ public struct LaunchdSource: EvidenceSource {
                 var proven = plistIdentity.launchdLabel.map { label in
                     label == targetBundleID || label.hasPrefix(targetBundleID + ".")
                 } ?? false
+                let embeddedIDs = identity.searchBundleIdentifiers.filter { $0 != targetBundleID }
+                let declaredLabels = Set(identity.capabilitySurface?.declarations
+                    .filter { $0.capability == .launchdJob }
+                    .map(\.value) ?? [])
+                let label = plistIdentity.launchdLabel
+                let embeddedMatch = label.map { label in
+                    embeddedIDs.contains { label == $0 || label.hasPrefix($0 + ".") }
+                        || declaredLabels.contains(label)
+                } ?? false
+                if embeddedMatch {
+                    proven = false
+                }
                 // The program running from inside this application's bundle
                 // is proof whatever the label says, and it is what keeps the
                 // strict label boundary above from costing recall. So it has
@@ -87,16 +99,18 @@ public struct LaunchdSource: EvidenceSource {
                 // by a slash: this compared with a bare `hasPrefix`, so a
                 // program in `App.apple.app` proved a job belonged to `App`.
                 if !proven, let program = plistIdentity.launchdProgramPath {
-                    proven = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
+                    proven = SymlinkIntoBundleSource.verifiedBundleLocations(for: identity, in: root)
                         .contains { program.hasPrefix($0.path + "/") }
                 }
 
-                if proven {
+                if proven || embeddedMatch {
                     results.append(Evidence(
                         url: plistURL,
-                        tier: .A,
+                        tier: proven ? .A : .C,
                         mechanism: "LaunchdSource",
-                        humanSentence: "Background service registration"
+                        humanSentence: proven
+                            ? "Background service registration"
+                            : "Job label matches an embedded component or declaration."
                     ))
                     continue
                 }
