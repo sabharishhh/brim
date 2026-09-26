@@ -291,6 +291,6 @@ public struct FileSystemRoot: Sendable {
         guard length > 0, length <= buffer.count else {
             return URL(fileURLWithPath: NSTemporaryDirectory())
         }
-        return URL(fileURLWithPath: String(cString: buffer))
+        return URL(fileURLWithPath: buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) })
     }
 }

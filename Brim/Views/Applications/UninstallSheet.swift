@@ -1,7 +1,7 @@
-import SwiftUI
 import BrimCore
 import BrimProtocol
 import BrimUI
+import SwiftUI
 
 /// The deep uninstall, shown before it happens and proven after.
 ///
@@ -64,7 +64,9 @@ struct UninstallSheet: View {
             }
             Spacer()
             Button(isFinished ? "Done" : "Cancel") {
-                if isFinished { onFinished() }
+                if isFinished {
+                    onFinished()
+                }
                 dismiss()
             }
             .keyboardShortcut(.escape, modifiers: [])
@@ -74,7 +76,9 @@ struct UninstallSheet: View {
     }
 
     private var isFinished: Bool {
-        if case .verified = model.phase { return true }
+        if case .verified = model.phase {
+            return true
+        }
         return false
     }
 
@@ -84,7 +88,9 @@ struct UninstallSheet: View {
     /// about an application that is still installed on purpose, and offered
     /// a button reading "Authorize & Uninstall" that did not uninstall
     /// anything.
-    private var isReset: Bool { intentType == .reset }
+    private var isReset: Bool {
+        intentType == .reset
+    }
 
     @ViewBuilder
     private var content: some View {
@@ -92,10 +98,10 @@ struct UninstallSheet: View {
         case .preparing:
             ProgressView("Finding app files…")
 
-        case .failed(let reason):
+        case let .failed(reason):
             message(title: "Stopped", detail: reason, isError: true)
 
-        case .appliedButUnverified(let reason):
+        case let .appliedButUnverified(reason):
             message(
                 title: isReset ? "Reset, but not checked" : "Removed, but not checked",
                 detail: "Verification could not finish: \(reason)",
@@ -104,10 +110,10 @@ struct UninstallSheet: View {
 
         case .executing:
             ProgressView(isReset
-                        ? "Resetting \(application.name)…"
-                        : "Uninstalling \(application.name)…")
+                ? "Resetting \(application.name)…"
+                : "Uninstalling \(application.name)…")
 
-        case .verified(let result):
+        case let .verified(result):
             verification(result)
 
         case .ready:
@@ -180,10 +186,10 @@ struct UninstallSheet: View {
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                 ? (isReset
+                ? (isReset
                     ? "Selected data removed. \(application.name) remains installed."
                     : "All selected items were removed.")
-                 : (result.reason ?? "Some selected items remain."))
+                : (result.reason ?? "Some selected items remain."))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -228,11 +234,9 @@ struct UninstallSheet: View {
                         .controlSize(.small)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Frees immediately: ")
-                            .foregroundColor(.secondary)
-                        + Text(ByteText.short(plan.immediatelyFreedBytes))
-                            .fontWeight(.bold)
-                            .monospacedDigit()
+                        let label = Text("Frees immediately: ").foregroundColor(.secondary)
+                        let amount = Text(ByteText.short(plan.immediatelyFreedBytes)).bold().monospacedDigit()
+                        Text("\(label)\(amount)")
 
                         if plan.trashedBytes > 0 {
                             Text("To Trash: \(ByteText.short(plan.trashedBytes))")

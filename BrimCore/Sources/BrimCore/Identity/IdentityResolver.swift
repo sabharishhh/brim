@@ -46,7 +46,7 @@ public actor IdentityResolver {
     
     nonisolated private func parseBundle(_ bundleURL: URL) -> Identity {
         // Enforce boundary check
-        let realPath = (try? bundleURL.resolvingSymlinksInPath().path) ?? bundleURL.path
+        let realPath = bundleURL.resolvingSymlinksInPath().path
         guard realPath.hasPrefix(root.rootURL.path) else {
             return Identity(name: "Out of bounds")
         }

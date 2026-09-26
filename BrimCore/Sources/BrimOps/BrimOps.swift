@@ -298,7 +298,7 @@ public struct SafeOps {
         guard fcntl(fd, F_GETPATH, &buffer) != -1 else {
             throw SafeOpsError.failedToOpenParent(errno)
         }
-        let resolvedPath = String(cString: buffer)
+        let resolvedPath = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
         
         if expectedPath == resolvedPath {
             return

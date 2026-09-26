@@ -1,5 +1,5 @@
-import SwiftUI
 import BrimCore
+import SwiftUI
 
 /// The evidence stays visible both before and after a person includes a row.
 struct UninstallPlanRow: View {
@@ -59,8 +59,8 @@ struct UninstallPlanRow: View {
 
                     if let action {
                         Text(action)
-                        .font(.caption2)
-                        .foregroundStyle(disposition == .delete ? .orange : .secondary)
+                            .font(.caption2)
+                            .foregroundStyle(disposition == .delete ? .orange : .secondary)
                     }
                 }
             }
@@ -77,8 +77,12 @@ struct UninstallPlanRow: View {
         default: break
         }
         let url = URL(fileURLWithPath: target)
-        if url.pathExtension == "app" { return "Application" }
-        if url.pathExtension == "sfl4" { return "Recent documents list" }
+        if url.pathExtension == "app" {
+            return "Application"
+        }
+        if url.pathExtension == "sfl4" {
+            return "Recent documents list"
+        }
         let domain = LeftoverDomain.of(url)
         return domain == .other ? url.lastPathComponent : domain.title
     }
