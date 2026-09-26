@@ -1,8 +1,8 @@
-import XCTest
-import Testing
 import BrimCore
 import BrimProtocol
 @testable import BrimUI
+import Testing
+import XCTest
 
 /// Plans the way the service does for the one thing these tests care about:
 /// an offered row becomes a step when the intent ticks it. Every intent is
@@ -20,18 +20,40 @@ private actor TickingStub: BrimServiceProtocol, ApprovalGranting {
         self.vetoed = vetoed
     }
 
-    func hold() { held = true }
-    func pending() -> Int { waiting.count }
+    func hold() {
+        held = true
+    }
+
+    func pending() -> Int {
+        waiting.count
+    }
+
     /// Releases one held reply, by the order the requests arrived in.
-    func release(_ index: Int) { waiting.remove(at: index).resume() }
-    func fail(_ index: Int) { waiting.remove(at: index).resume(throwing: NotHere()) }
-    func releaseAll() { held = false; waiting.forEach { $0.resume() }; waiting = [] }
-    func recorded() -> [PlanIntent] { intents }
-    func approvalCount() -> Int { approvals }
+    func release(_ index: Int) {
+        waiting.remove(at: index).resume()
+    }
+
+    func fail(_ index: Int) {
+        waiting.remove(at: index).resume(throwing: NotHere())
+    }
+
+    func releaseAll() {
+        held = false; waiting.forEach { $0.resume() }; waiting = []
+    }
+
+    func recorded() -> [PlanIntent] {
+        intents
+    }
+
+    func approvalCount() -> Int {
+        approvals
+    }
 
     func plan(intent: PlanIntent) async throws -> Plan {
         intents.append(intent)
-        if held { try await withCheckedThrowingContinuation { waiting.append($0) } }
+        if held {
+            try await withCheckedThrowingContinuation { waiting.append($0) }
+        }
         let ticked = Set(intent.tickedByHand ?? [])
         var steps = [Step(
             index: 0, kind: .trashPath, target: "/Applications/Editor.app", targetFingerprint: nil,
@@ -44,14 +66,14 @@ private actor TickingStub: BrimServiceProtocol, ApprovalGranting {
             if ticked.contains(path) {
                 steps.append(Step(
                     index: steps.count, kind: .trashPath, target: path, targetFingerprint: nil,
-                    tier: .C, evidence: "Named after the application.", expectedBytes: 1_000,
+                    tier: .C, evidence: "Named after the application.", expectedBytes: 1000,
                     capability: .ok, reversible: true, costOfError: .medium,
                     executionPhase: .auxiliary, disposition: .trash
                 ))
             } else {
                 excluded.append(ExcludedItem(
                     target: path, reason: "left unticked", evidence: "Named after the application.",
-                    sizeBytes: 1_000, canBeTickedByHand: true
+                    sizeBytes: 1000, canBeTickedByHand: true
                 ))
             }
         }
@@ -71,20 +93,43 @@ private actor TickingStub: BrimServiceProtocol, ApprovalGranting {
         approvals += 1
         return .stub(planId: planId, requester: requesterIdentity)
     }
+
     func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
         .stub(requester: receipt.requester)
     }
-    func apply(planId: UUID, token: ApprovalToken) async throws {}
+
+    func apply(planId _: UUID, token _: ApprovalToken) async throws {}
     func verify(planId: UUID) async throws -> VerificationResult {
         VerificationResult(planId: planId, expectedBytes: 0, recoveredBytes: 0, success: true)
     }
-    func inspect(identity: Identity) async throws -> Footprint { throw NotHere() }
-    func explain(planId: UUID) async throws -> String { throw NotHere() }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw NotHere() }
-    func installedApplications() async throws -> [InstalledApplication] { [] }
-    func leftovers() async throws -> [Leftover] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
+
+    func inspect(identity _: Identity) async throws -> Footprint {
+        throw NotHere()
+    }
+
+    func explain(planId _: UUID) async throws -> String {
+        throw NotHere()
+    }
+
+    func history() async throws -> [Plan] {
+        []
+    }
+
+    func undo(planId _: UUID) async throws {
+        throw NotHere()
+    }
+
+    func installedApplications() async throws -> [InstalledApplication] {
+        []
+    }
+
+    func leftovers() async throws -> [Leftover] {
+        []
+    }
+
+    func recoverableItems() async throws -> [RecoverableItem] {
+        []
+    }
 }
 
 private struct NotHere: Error {}
@@ -100,7 +145,6 @@ private struct NotHere: Error {}
 /// person is looking at.
 @MainActor
 final class UninstallTickByHandTests: XCTestCase {
-
     private let code = "/Users/me/Library/Application Support/Code"
     private let logs = "/Users/me/Library/Logs/Code"
     private let teams = "/Users/me/Library/Group Containers/UBF8T346G9.com.microsoft.teams"
@@ -116,8 +160,10 @@ final class UninstallTickByHandTests: XCTestCase {
     }
 
     private func settle(_ condition: @MainActor () async -> Bool) async {
-        for _ in 0..<200 {
-            if await condition() { return }
+        for _ in 0 ..< 200 {
+            if await condition() {
+                return
+            }
             try? await Task.sleep(for: .milliseconds(5))
         }
         XCTFail("The expected planning request did not arrive.")
@@ -215,9 +261,9 @@ final class UninstallTickByHandTests: XCTestCase {
         let second = Task { await model.setTicked(false, path: code) }
         await settle { await stub.pending() == 2 }
 
-        await stub.release(1)   // the untick answers first
+        await stub.release(1) // the untick answers first
         await second.value
-        await stub.release(0)   // then the tick, late
+        await stub.release(0) // then the tick, late
         await first.value
 
         XCTAssertFalse(
@@ -252,8 +298,10 @@ struct UninstallSelectionFailureTests {
     }
 
     private func waitForRequest(_ stub: TickingStub) async throws {
-        for _ in 0..<200 {
-            if await stub.pending() == 1 { return }
+        for _ in 0 ..< 200 {
+            if await stub.pending() == 1 {
+                return
+            }
             try await Task.sleep(for: .milliseconds(5))
         }
         Issue.record("The expected planning request did not arrive.")
@@ -289,7 +337,11 @@ struct UninstallSelectionFailureTests {
         try await waitForRequest(oldService)
         await model.prepare(intent: intent, service: newService)
         let currentID = model.plan?.planId
-        if fails { await oldService.fail(0) } else { await oldService.release(0) }
+        if fails {
+            await oldService.fail(0)
+        } else {
+            await oldService.release(0)
+        }
         await old.value
 
         #expect(model.phase == .ready)

@@ -1,6 +1,5 @@
 import Foundation
 import BrimProtocol
-import BrimService
 import BrimCore
 
 public final class BrimXPCListenerDelegate: NSObject, NSXPCListenerDelegate {

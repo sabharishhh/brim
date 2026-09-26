@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Drives one uninstall from plan to proof: plan, a single approval, apply,
 /// and then verification.
@@ -11,7 +11,6 @@ import BrimProtocol
 /// what it found rather than declaring success because the commands ran.
 @MainActor
 public final class UninstallExecutionModel: ObservableObject {
-
     public enum Phase: Equatable {
         case preparing
         /// Planned and waiting for the user to authorize.
@@ -54,8 +53,8 @@ public final class UninstallExecutionModel: ObservableObject {
 
     public var isBusy: Bool {
         switch phase {
-        case .preparing, .executing: return true
-        case .ready, .verified, .appliedButUnverified, .failed: return false
+        case .preparing, .executing: true
+        case .ready, .verified, .appliedButUnverified, .failed: false
         }
     }
 
@@ -85,7 +84,11 @@ public final class UninstallExecutionModel: ObservableObject {
         guard case .ready = phase else { return }
         guard ticked != tickedByHand.contains(path),
               !ticked || rowsToOffer.contains(where: { $0.target == path }) else { return }
-        if ticked { tickedByHand.insert(path) } else { tickedByHand.remove(path) }
+        if ticked {
+            tickedByHand.insert(path)
+        } else {
+            tickedByHand.remove(path)
+        }
         await rebuild()
     }
 
@@ -159,7 +162,7 @@ public final class UninstallExecutionModel: ObservableObject {
     /// space never moved is how a cleaning tool loses trust, so this says
     /// it plainly instead.
     public var spaceExplanation: String? {
-        guard case .verified(let result) = phase, let plan else { return nil }
+        guard case let .verified(result) = phase, let plan else { return nil }
         let promised = plan.immediatelyFreedBytes
         guard promised > 0 else { return nil }
 
@@ -168,8 +171,8 @@ public final class UninstallExecutionModel: ObservableObject {
         guard result.recoveredBytes < promised / 10 else { return nil }
 
         return "The files are gone, but the disk has not given the space back yet. That "
-             + "happens when a local snapshot still refers to the same blocks. macOS "
-             + "releases them when the snapshot expires or when it needs the room."
+            + "happens when a local snapshot still refers to the same blocks. macOS "
+            + "releases them when the snapshot expires or when it needs the room."
     }
 
     /// Told the moment a removal is proved, with the paths that went.
@@ -204,7 +207,7 @@ public final class UninstallExecutionModel: ObservableObject {
             phase = .verified(result)
             // Whatever the check proved gone, said straight away. What is
             // still there stays on screen, because it is still there.
-            let planned = plan.steps.filter { $0.kind.targetIsPath }.map(\.target)
+            let planned = plan.steps.filter(\.kind.targetIsPath).map(\.target)
             onRemoved?(result.removedPaths(from: planned))
         } catch {
             phase = .appliedButUnverified(error.localizedDescription)

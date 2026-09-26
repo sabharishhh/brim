@@ -176,7 +176,7 @@ public struct PowerAssertions: Sendable, Equatable {
         var buffer = [CChar](repeating: 0, count: 4096)
         let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard length > 0 else { return nil }
-        let path = String(cString: buffer)
+        let path = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
         let bundle = EnclosingBundle.component(of: URL(fileURLWithPath: path)).map { component -> String in
             let parts = path.components(separatedBy: "/" + component)
             return (parts.first ?? "") + "/" + component
