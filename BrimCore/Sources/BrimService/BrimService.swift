@@ -624,20 +624,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 .filter { removedPaths.contains($0.standardizedFileURL.path) }
         }
 
-        let success = targetsRemaining == 0 && staleRegistrations.isEmpty
-        let reason: String?
-        switch (targetsRemaining, staleRegistrations.isEmpty) {
-        case (0, true):
-            reason = nil
-        case (0, false):
-            reason = "Every file is gone, but macOS still has this app registered at "
-                   + staleRegistrations.map(\.path).joined(separator: ", ") + "."
-        case (_, true):
-            reason = Self.whyTheseRemain(pathsRemaining)
-        default:
-            reason = Self.whyTheseRemain(pathsRemaining)
-                   + " macOS also still has this app registered."
-        }
+        let (followUps, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+
+        let success = targetsRemaining == 0 && staleRegistrations.isEmpty && !privacyResetFailed
+        let reason = Self.verificationReason(
+            pathsRemaining: pathsRemaining, staleRegistrations: staleRegistrations,
+            privacyResetFailed: privacyResetFailed
+        )
         
         return VerificationResult(
             planId: planId,
@@ -645,8 +638,59 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             recoveredBytes: recoveredBytes,
             success: success,
             reason: reason,
-            remainingPaths: pathsRemaining
+            remainingPaths: pathsRemaining,
+            followUpActions: followUps.isEmpty ? nil : followUps
         )
+    }
+
+    private func removalFollowUps(plan: Plan, journal: JournalEntry?) async -> ([RemovalFollowUp], Bool) {
+        let privacyResetFailed = journal != nil && plan.steps.contains { step in
+            step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
+        }
+        let bundleStillPresent = plan.intent.subjectIdentity.bundlePath.map {
+            FileManager.default.fileExists(atPath: $0)
+        } ?? false
+        let needsPrivacyFollowUp = privacyResetFailed
+            && plan.intent.type == .uninstall && !bundleStillPresent
+        let plannedExtensions = plan.capabilityReport?.checks.first {
+            $0.capability == .systemExtension
+        }?.registrations ?? []
+        var survivingExtensionIDs: Set<String>?
+        if !plannedExtensions.isEmpty {
+            let snapshot = await SystemExtensionSurface().snapshot(in: root)
+            if snapshot.coverage.available {
+                survivingExtensionIDs = Set(snapshot.registrations.map(\.identifier))
+            }
+        }
+        var actions = plan.capabilityReport?.followUps(
+            survivingSystemExtensionIDs: survivingExtensionIDs,
+            privacyResetFailedAfterRemoval: needsPrivacyFollowUp
+        ) ?? []
+        if needsPrivacyFollowUp, !actions.contains(.restoreAppForPrivacyReset) {
+            actions.append(.restoreAppForPrivacyReset)
+        }
+        return (actions, privacyResetFailed)
+    }
+
+    private static func verificationReason(
+        pathsRemaining: Set<String>, staleRegistrations: [URL], privacyResetFailed: Bool
+    ) -> String? {
+        let pathReason: String?
+        switch (pathsRemaining.count, staleRegistrations.isEmpty) {
+        case (0, true):
+            pathReason = nil
+        case (0, false):
+            pathReason = "Every file is gone, but macOS still has this app registered at "
+                + staleRegistrations.map(\.path).joined(separator: ", ") + "."
+        case (_, true):
+            pathReason = whyTheseRemain(pathsRemaining)
+        default:
+            pathReason = whyTheseRemain(pathsRemaining)
+                + " macOS also still has this app registered."
+        }
+        let privacyReason = privacyResetFailed ? "Privacy permissions were not reset." : nil
+        let combined = [pathReason, privacyReason].compactMap(\.self).joined(separator: "\n\n")
+        return combined.isEmpty ? nil : combined
     }
     
     public func history() async throws -> [Plan] {
