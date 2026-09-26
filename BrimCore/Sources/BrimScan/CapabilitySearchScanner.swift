@@ -2,6 +2,7 @@ import BrimCore
 import BrimOps
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// A preflight account of declarations and readable system records.
 /// This report never grants ownership or selects a file for removal.
 public struct CapabilitySearchScanner: Sendable {
@@ -14,10 +15,10 @@ public struct CapabilitySearchScanner: Sendable {
         self.surfaces = surfaces
     }
 
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     public func scan(identity: Identity, in root: FileSystemRoot,
                      completeness: ScanCompleteness,
-                     evidence: [Evidence] = []) async -> CapabilitySearchReport?
-    {
+                     evidence: [Evidence] = []) async -> CapabilitySearchReport? {
         guard let surface = identity.capabilitySurface else { return nil }
         let bundle = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         let snapshots = await withTaskGroup(of: RegistrationSnapshot.self) { group in
@@ -50,7 +51,9 @@ public struct CapabilitySearchScanner: Sendable {
                 } else {
                     let ids = identity.searchBundleIdentifiers
                     do {
-                        let urls = try ids.flatMap { try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: $0) }
+                        let urls = try ids.flatMap {
+                            try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: $0)
+                        }
                         coverage = .available(.launchServices)
                         found = urls.filter { url in
                             guard let bundle else { return false }
@@ -58,7 +61,8 @@ public struct CapabilitySearchScanner: Sendable {
                             return path == bundle || path.hasPrefix(bundle + "/")
                         }.map { url in
                             Registration(kind: .launchServices,
-                                         identifier: url.path, label: url.lastPathComponent,
+                                         identifier: url.path,
+                                         label: url.lastPathComponent,
                                          owningBundleID: identity.bundleID,
                                          programPath: url.path, targetExists: true,
                                          evidence: "Registered with Launch Services.")
@@ -141,7 +145,8 @@ public struct CapabilitySearchScanner: Sendable {
         }
         let signature: [RegistrationCoverage] = surface.signatureGaps.isEmpty ? [] : [
             .unavailable(.bundlePlugin,
-                         "\(surface.signatureGaps.count) code \(surface.signatureGaps.count == 1 ? "signature" : "signatures") unavailable.")
+                         "\(surface.signatureGaps.count) code "
+                             + "\(surface.signatureGaps.count == 1 ? "signature" : "signatures") unavailable.")
         ]
         return CapabilitySearchReport(checks: checks, signatureCoverage: signature)
     }
