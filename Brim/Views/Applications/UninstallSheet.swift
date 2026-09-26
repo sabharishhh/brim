@@ -123,6 +123,22 @@ struct UninstallSheet: View {
 
     private var planList: some View {
         List {
+            if let gaps = model.plan?.scanCompleteness {
+                if !gaps.unreadable.isEmpty {
+                    Section("Could not read") {
+                        ForEach(gaps.unreadable, id: \.self) { path in
+                            Text(path).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                }
+                if !gaps.timedOut.isEmpty {
+                    Section("Scan timed out") {
+                        ForEach(gaps.timedOut, id: \.self) { path in
+                            Text(path).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                }
+            }
             if model.clearsPrivacyGrants || model.clearsRegistrations {
                 Section("System records") {
                     if model.clearsPrivacyGrants {
