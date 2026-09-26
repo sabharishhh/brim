@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimService
+import XCTest
 
 /// What Brim says when a removal did not go through.
 ///
@@ -17,9 +17,8 @@ import BrimCore
 /// One reason held for all fourteen and the shape of the text hid that
 /// completely.
 final class RefusalCopyTests: XCTestCase {
-
-    // CI's /usr/local/bin is writable. Copy tests supply the measured state
-    // instead of assuming the test machine has the developer's permissions.
+    /// CI's /usr/local/bin is writable. Copy tests supply the measured state
+    /// instead of assuming the test machine has the developer's permissions.
     private func explanation(_ paths: Set<String>) -> String {
         BrimService.whyTheseRemain(paths) { path in
             path.hasPrefix("/usr/local/bin/") ? .needsHelper : .ok
@@ -27,7 +26,7 @@ final class RefusalCopyTests: XCTestCase {
     }
 
     private func fourteenInOneFolder() -> Set<String> {
-        Set((1...14).map { "/usr/local/bin/tool-\($0)" })
+        Set((1 ... 14).map { "/usr/local/bin/tool-\($0)" })
     }
 
     func testOneReasonIsGivenOnceHoweverManyThingsShareIt() {
@@ -66,7 +65,7 @@ final class RefusalCopyTests: XCTestCase {
         let text = explanation([
             "/usr/local/bin/zed",
             "/usr/local/bin/docker",
-            "\(NSHomeDirectory())/Library/Caches/thing",
+            "\(NSHomeDirectory())/Library/Caches/thing"
         ])
         XCTAssertTrue(text.hasPrefix("3 things are still there."), text)
         XCTAssertTrue(text.contains("zed"), text)
