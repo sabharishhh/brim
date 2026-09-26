@@ -183,6 +183,9 @@ row is unclear, the usual cause is missing structure, not missing prose.
 Text a person reads should sound like someone who knows the software
 explaining it, not like a model describing it.
 
+- Keep it short, formal, professional and human. Review rows show the item,
+  path, size and action. Put detailed evidence behind an explicit Details
+  control instead of repeating explanatory paragraphs in the list.
 - **No em dashes or en dashes anywhere.** Break the sentence, use a comma,
   or use a colon. `UserFacingCopyTests` enforces this for the model layer.
 - Vary sentence shape. Three sentences of identical rhythm reads as
@@ -196,6 +199,10 @@ explaining it, not like a model describing it.
 ## Commits
 
 Author is the user alone. No co-author trailers, no tool attribution.
+Use the user's configured Git identity for both author and committer.
+Never create a branch under `codex/`. Use a descriptive branch such as
+`fix/uninstall-optional-rows`, work through a PR, and delete its branch when
+the PR is merged.
 
 Write the body as prose explaining why the change exists and what it cost to
 find. A commit here should still make sense to someone who never saw the
@@ -363,6 +370,11 @@ conversation. Split unrelated changes rather than staging everything.
   matter what the scene asked for, and clearing every piece of saved state
   made no difference. If a window ignores its default size, suspect a
   hosted AppKit view before suspecting restoration.
+- **A scrolling review sheet needs stable presentation dimensions.**
+  The uninstall sheet's minimum and ideal frame sizes fed list measurement
+  back into AppKit's window constraint solver. A fixed presentation frame
+  cut window-layout samples from 1,206 to 136 in equivalent scrolling
+  captures. Do not make its presentation size depend on the scrolling list.
 - **An ideal size on the root view is measured, and measuring it walks
   everything.** `.frame(idealWidth:idealHeight:)` on the content of a
   `WindowGroup` makes SwiftUI size the entire tree to answer, and hand that
