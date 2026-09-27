@@ -44,21 +44,20 @@ struct LeftoverStacks: View {
             ForEach(sections) { section in
                 Section {
                     if !isCollapsed(section) {
-                        let rows = visibleRows(section)
-                        let largest = Double(section.items.map(\.totalBytes).max() ?? 1)
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, group in
-                            row(group, new: new, fraction: Double(group.totalBytes) / max(largest, 1))
-                                .listRowBackground(CardSlice(position: CardSlice.position(
-                                    of: index, in: rows.count + (hasMore(section) ? 1 : 0)
-                                )))
-                                .listRowInsets(rowInsets(index, count: rows.count + (hasMore(section) ? 1 : 0)))
+                        // On the page under their title, not in a box: the
+                        // title and the indent already say what belongs
+                        // together.
+                        ForEach(visibleRows(section)) { group in
+                            row(group, new: new)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
                                 .listRowSeparator(.hidden)
                                 .transition(.brimRow(reduceMotion: reduceMotion))
                         }
                         if hasMore(section) {
                             showAll(section)
-                                .listRowBackground(CardSlice(position: .last))
-                                .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 4, trailing: 28))
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 6, trailing: 24))
                                 .listRowSeparator(.hidden)
                         }
                     }
@@ -78,14 +77,13 @@ struct LeftoverStacks: View {
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: model.revision)
     }
 
-    private func row(_ group: LeftoverGroup, new: Set<String>, fraction: Double) -> some View {
+    private func row(_ group: LeftoverGroup, new: Set<String>) -> some View {
         LeftoverRow(
             group: group,
             isPicked: model.isSelected(group),
             isInspected: model.inspected?.id == group.id,
             isKept: keptIDs.contains(group.id),
             isNew: group.items.contains { new.contains($0.id) },
-            sizeFraction: fraction,
             pick: { pick(group) },
             inspect: { model.inspected = group },
             keep: { keep(group) }
@@ -97,13 +95,6 @@ struct LeftoverStacks: View {
                 .disabled(!group.isFullyActionable || keptIDs.contains(group.id))
             Button(keptIDs.contains(group.id) ? "Stop Keeping" : "Keep") { keep(group) }
         }
-    }
-
-    private func rowInsets(_ index: Int, count: Int) -> EdgeInsets {
-        EdgeInsets(
-            top: index == 0 ? 4 : 0, leading: 20,
-            bottom: index == count - 1 ? 4 : 0, trailing: 20
-        )
     }
 
     private func sectionHeader(_ section: ItemGroup<LeftoverGroup>) -> some View {
