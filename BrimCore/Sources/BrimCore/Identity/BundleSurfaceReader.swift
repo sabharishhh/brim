@@ -11,6 +11,30 @@ public enum BundleSurfaceReader {
         read(at: bundle, in: root, budget: ScanBudget(total: 5), signature: Signature.read)
     }
 
+    /// A claim can veto removal even when its signature is not trusted to
+    /// authorize removal. Read embedded code too: an extension may hold the
+    /// group entitlement instead of its containing app.
+    static func groupClaims(at bundle: URL, in root: FileSystemRoot) -> (groups: Set<String>, complete: Bool) {
+        let claims = protectionClaims(at: bundle, in: root)
+        return (Set(claims.surface.groups), claims.complete)
+    }
+
+    /// Conservative claims for protecting installed software during a sweep.
+    /// Unvalidated signatures may protect data, never authorize its removal.
+    public static func protectionClaims(
+        at bundle: URL, in root: FileSystemRoot
+    ) -> (surface: IdentitySurface, complete: Bool) {
+        var complete = true
+        let (surface, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
+            let signature = Signature.read(url, validate: false)
+            if signature.gap != nil, signature.gap != "Unsigned code." {
+                complete = false
+            }
+            return signature
+        }
+        return (surface, complete && coverage.completeness.isComplete)
+    }
+
     struct Signature {
         var identifier: String?
         var team: String?
@@ -18,16 +42,25 @@ public enum BundleSurfaceReader {
         var gap: String?
 
         static func read(_ url: URL) -> Signature {
+            read(url, validate: true)
+        }
+
+        static func read(_ url: URL, validate: Bool) -> Signature {
             var code: SecStaticCode?
             let created = SecStaticCodeCreateWithPath(url as CFURL, [], &code)
             guard created == errSecSuccess, let code else {
-                return Signature(gap: "Code signature unavailable.")
+                return Signature(gap: created == errSecCSUnsigned ? "Unsigned code." : "Code signature unavailable.")
             }
             var dictionary: CFDictionary?
             let wanted = SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSRequirementInformation)
             let status = SecCodeCopySigningInformation(code, wanted, &dictionary)
             guard status == errSecSuccess, let values = dictionary as? [String: Any] else {
                 return Signature(gap: status == errSecCSUnsigned ? "Unsigned code." : "Code signature unavailable.")
+            }
+            if !validate {
+                return Signature(identifier: values[kSecCodeInfoIdentifier as String] as? String,
+                                 team: values[kSecCodeInfoTeamIdentifier as String] as? String,
+                                 entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
             }
             let flags = (values[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
             // CSCommon.h defines kSecCodeSignatureAdhoc as 0x0002, but does
@@ -160,7 +193,7 @@ public enum BundleSurfaceReader {
                     continue
                 }
                 do {
-                    let data = try Data(contentsOf: plist)
+                    let data = try metadata(at: plist)
                     guard let info = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
                         as? [String: Any] else { unreadable.insert(plist.path); return [:] }
                     return info
@@ -182,6 +215,21 @@ public enum BundleSurfaceReader {
                 unreadable.insert(url.appendingPathComponent("Contents/Info.plist").path)
             }
             return [:]
+        }
+
+        /// Metadata must stay inside the bundle and have a bounded read.
+        /// In particular, a launch-job plist may itself be a symlink.
+        func metadata(at url: URL) throws -> Data {
+            guard Self.contains(url.resolvingSymlinksInPath().path,
+                                within: bundle.resolvingSymlinksInPath().path) else {
+                throw CocoaError(.fileReadNoPermission)
+            }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let limit = 4 * 1024 * 1024
+            let data = try handle.read(upToCount: limit + 1) ?? Data()
+            guard data.count <= limit else { throw CocoaError(.fileReadTooLarge) }
+            return data
         }
 
         mutating func entries(_ url: URL) -> [URL] {
@@ -243,7 +291,7 @@ public enum BundleSurfaceReader {
                 for directory in ["Contents/Library/LaunchDaemons", "Contents/Library/LaunchAgents"] {
                     for plist in entries(url.appendingPathComponent(directory)) where plist.pathExtension == "plist" {
                         do {
-                            let data = try Data(contentsOf: plist)
+                            let data = try metadata(at: plist)
                             let values = try PropertyListSerialization.propertyList(
                                 from: data, options: [], format: nil
                             ) as? [String: Any]
