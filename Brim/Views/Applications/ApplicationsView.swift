@@ -17,6 +17,7 @@ struct ApplicationsView: View {
     /// came up short.
     @ObservedObject var access: FullDiskAccessModel
     @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(ShellState.self) private var shell
     @State private var uninstalling: InstalledApplication?
     @State private var resetting: InstalledApplication?
     /// What a drop that matched nothing should say. Doing nothing at all
@@ -42,6 +43,7 @@ struct ApplicationsView: View {
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
+        .focusedSceneValue(\.selectedItems, SelectedItems(urls: model.selected.map { [$0.url] } ?? []))
         .sheet(item: $resetting) { application in
             UninstallSheet(application: application, service: service, intentType: .reset) {
                 Task { await model.load(service: service) }
@@ -104,10 +106,13 @@ struct ApplicationsView: View {
                 set: { id in model.select(model.applications.first { $0.id == id }) }
             )) {
                 ForEach(model.visibleApplications) { application in
-                    row(application).tag(application.id)
+                    row(application)
+                        .tag(application.id)
+                        .contextMenu { contextMenu(application) }
                 }
             }
             .listStyle(.inset)
+            .quickLookOnSpace(model.selected.map { [$0.url] } ?? [], shell: shell)
             // Drop an application here, or on the Dock icon, to jump
             // straight to it.
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -115,6 +120,14 @@ struct ApplicationsView: View {
                 return true
             }
         }
+    }
+
+    @ViewBuilder
+    private func contextMenu(_ application: InstalledApplication) -> some View {
+        ItemMenuItems(urls: [application.url])
+        Divider()
+        Button("Remove \(application.name)…") { uninstalling = application }
+            .disabled(application.isSystemProtected)
     }
 
     private func load(_ providers: [NSItemProvider]) {

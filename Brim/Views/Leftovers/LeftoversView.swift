@@ -22,6 +22,8 @@ struct LeftoversView: View {
     /// the Trash is one thing and two watchers would poll it twice.
     @ObservedObject var recovery: RecoveryStatusModel
     @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(ShellState.self) private var shell
+    @SwiftUI.Environment(\.undoManager) private var undoManager
 
     @State private var reviewRequest: PlanIntent?
 
@@ -51,6 +53,8 @@ struct LeftoversView: View {
             model.reconcileWithDisk()
         }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
+        .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
+        .tray(trayContents)
         .sheet(item: $reviewRequest) { intent in
             RemovalSheet(
                 intent: intent,
@@ -83,6 +87,38 @@ struct LeftoversView: View {
         }
     }
 
+    private var inspectedURLs: [URL] {
+        model.inspected?.items.map(\.url) ?? []
+    }
+
+    /// What is ticked, as the window's Tray. The model keeps the
+    /// selection; this only describes it.
+    private var trayContents: TrayContents? {
+        guard !model.selectedItems.isEmpty else { return nil }
+        let blocked = model.blockedSelection.count
+        return TrayContents(
+            count: model.selectedItems.count, bytes: model.selectedBytes,
+            canReview: model.canRemoveSelection,
+            note: blocked == 0 ? nil : "\(blocked) need Full Disk Access",
+            review: { reviewRequest = model.removalIntent(requesterIdentity: NSUserName()) },
+            clear: clearTray
+        )
+    }
+
+    private func changePick(_ name: String, _ change: () -> Void) {
+        let before = model.selection
+        change()
+        PickUndo.register(undoManager, on: model, name: name, from: before, to: model.selection)
+    }
+
+    private func clearTray() {
+        changePick("Clear Tray") { model.restoreSelection([]) }
+        shell.show(ToastMessage(
+            symbol: "tray", text: "Cleared the tray", actionTitle: "Undo",
+            action: { [undoManager] in undoManager?.undo() }
+        ))
+    }
+
     // MARK: - List
 
     private var list: some View {
@@ -90,8 +126,6 @@ struct LeftoversView: View {
             header
             Divider()
             content
-            Divider()
-            footer
         }
     }
 
@@ -147,6 +181,7 @@ struct LeftoversView: View {
                 )
             }
             .listStyle(.inset)
+            .quickLookOnSpace(inspectedURLs, shell: shell)
             // Rows leaving and arriving are worth seeing happen. Keyed to a
             // counter the model bumps when the grouping changes, so it fires
             // for a removal, for a restore and for a rescan, and for nothing
@@ -175,9 +210,9 @@ struct LeftoversView: View {
                     Text("\(title) (\(entries.count))").font(.headline)
                     Spacer()
                     if !groups.isEmpty {
-                        Button("Select all") { model.selectAll(groups: groups) }
+                        Button("Select all") { changePick("Select All") { model.selectAll(groups: groups) } }
                             .buttonStyle(.link).font(.caption)
-                        Button("None") { model.deselectAll(groups: groups) }
+                        Button("None") { changePick("Select None") { model.deselectAll(groups: groups) } }
                             .buttonStyle(.link).font(.caption)
                     }
                 }
@@ -186,31 +221,6 @@ struct LeftoversView: View {
             }
             .padding(.vertical, 4)
         }
-    }
-
-    private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                if model.selectedItems.isEmpty {
-                    Text("Nothing picked yet").foregroundColor(.secondary)
-                } else {
-                    let label = Text("\(model.selectedItems.count) locations · ").foregroundColor(.secondary)
-                    let amount = Text(ByteText.short(model.selectedBytes)).bold().monospacedDigit()
-                    Text("\(label)\(amount)")
-                }
-                if !model.blockedSelection.isEmpty {
-                    Label("\(model.blockedSelection.count) need Full Disk Access", systemImage: "lock")
-                        .font(.caption).foregroundColor(.orange)
-                }
-            }
-            Spacer()
-            Button("Review & Remove…") {
-                reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!model.canRemoveSelection)
-        }
-        .padding()
     }
 
     // MARK: - Detail
@@ -246,6 +256,7 @@ struct LeftoversView: View {
 private struct LeftoverEntryRow: View {
     let entry: LeftoverListEntry
     @ObservedObject var model: LeftoversModel
+    @SwiftUI.Environment(\.undoManager) private var undoManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -275,11 +286,28 @@ private struct LeftoverEntryRow: View {
             group: group,
             isSelected: model.isSelected(group),
             isInspected: model.inspected?.id == group.id,
-            toggle: { model.toggle(group) },
+            toggle: { pick(group) },
             inspect: { model.inspected = group }
         )
         .contentShape(Rectangle())
         .onTapGesture { model.inspected = group }
+        .contextMenu {
+            ItemMenuItems(urls: group.items.map(\.url))
+            Divider()
+            Button(model.isSelected(group) ? "Remove from Tray" : "Add to Tray") { pick(group) }
+                .disabled(!group.isFullyActionable)
+        }
+    }
+
+    /// Ticks or unticks a group, as one step ⌘Z can take back.
+    private func pick(_ group: LeftoverGroup) {
+        let before = model.selection
+        let adding = !model.isSelected(group)
+        model.toggle(group)
+        PickUndo.register(
+            undoManager, on: model, name: adding ? "Add to Tray" : "Remove from Tray",
+            from: before, to: model.selection
+        )
     }
 }
 
