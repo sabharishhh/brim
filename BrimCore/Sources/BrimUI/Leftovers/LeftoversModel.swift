@@ -38,6 +38,17 @@ public final class LeftoversModel: ObservableObject {
     /// pass rather than two hundred and seventy.
     @Published public private(set) var selection: Set<String> = []
 
+    /// Groups the person kept, by `LeftoverGroup.id`. Never ticked: not by
+    /// a fresh scan's pre-selection, not by Select All, not by an undo.
+    /// Enforced in `settle()`, the one place every change ends, so no path
+    /// can forget it.
+    @Published public var keptGroups: Set<String> = [] {
+        didSet {
+            guard keptGroups != oldValue else { return }
+            settle()
+        }
+    }
+
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
     @Published public private(set) var visibleOrphanedGroups: [LeftoverGroup] = []
@@ -251,6 +262,10 @@ public final class LeftoversModel: ObservableObject {
     /// The one place the selection's consequences are worked out. Called
     /// after a batch of changes, never inside the loop making them.
     private func settle() {
+        if !keptGroups.isEmpty {
+            let kept = (orphanedGroups + unclaimedGroups).filter { keptGroups.contains($0.id) }
+            selection.subtract(kept.flatMap(\.items).map(\.id))
+        }
         selectedItems = all.filter { selection.contains($0.id) }
         selectedBytes = selectedItems.reduce(0) { $0 + $1.size }
         blockedSelection = selectedItems.filter { !$0.canBeRemovedByBrim }
