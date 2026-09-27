@@ -117,6 +117,16 @@ public final class LeftoversModel: ObservableObject {
         settle()
     }
 
+    /// Puts a selection back, for undo and for clearing the Tray.
+    ///
+    /// Only what is still here and still Brim's to remove: between a pick
+    /// and its undo, a removal or a rescan can take items away, and undo
+    /// must not put a removed item back into a plan.
+    public func restoreSelection(_ ids: Set<String>) {
+        selection = ids.intersection(all.filter(\.canBeRemovedByBrim).map(\.id))
+        settle()
+    }
+
     public func visible(_ items: [Leftover]) -> [Leftover] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }

@@ -10,7 +10,8 @@ private let log = BrimLog.make("app")
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
-    @FocusedValue(\.navigateAction) var navigateAction
+    @FocusedValue(\.shell) var shell
+    @FocusedValue(\.selectedItems) var selectedItems
     
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
     
@@ -63,29 +64,42 @@ private let log = BrimLog.make("app")
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            // Every section reachable from the keyboard, the way a Mac app
-            // is expected to behave. `after: .sidebar` puts these in the
-            // standard View menu next to "Hide Sidebar" — a CommandMenu named
-            // "View" would create a second menu of the same name instead.
-            CommandGroup(after: .sidebar) {
+            CommandMenu("Go") {
+                Button("Back") { shell?.goBack() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(!(shell?.canGoBack ?? false))
+                Button("Forward") { shell?.goForward() }
+                    .keyboardShortcut("]", modifiers: .command)
+                    .disabled(!(shell?.canGoForward ?? false))
                 Divider()
                 // Numbered from the order the sidebar renders, not from
-                // the enum's declaration order. Those were different, so
-                // Command-6 opened the seventh row.
-                ForEach(NavigationItem.displayOrder, id: \.self) { item in
-                    // Only the ones with a digit get a shortcut. Giving
-                    // the tenth a fallback key would attach something
-                    // nobody expects to a menu item, which is worse than
-                    // it having none.
-                    if let digit = item.keyboardDigit {
-                        Button(item.rawValue) { navigateAction?.perform(item) }
-                            .keyboardShortcut(KeyEquivalent(digit), modifiers: .command)
-                            .disabled(navigateAction == nil)
-                    } else {
-                        Button(item.rawValue) { navigateAction?.perform(item) }
-                            .disabled(navigateAction == nil)
-                    }
+                // the enum's declaration order. Those were different once,
+                // so Command-6 opened the seventh row.
+                ForEach(Destination.displayOrder, id: \.self) { destination in
+                    Button(destination.rawValue) { shell?.go(to: destination) }
+                        .keyboardShortcut(KeyEquivalent(destination.keyboardDigit ?? "0"), modifiers: .command)
+                        .disabled(shell == nil)
                 }
+            }
+            CommandGroup(before: .sidebar) {
+                Button("Check Again") { shell?.requestCheck() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(shell == nil)
+                Divider()
+            }
+            CommandGroup(after: .newItem) {
+                Divider()
+                Button("Reveal in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
+                Button("Quick Look") { shell?.quickLook(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("y", modifiers: .command)
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
+            }
+            CommandGroup(after: .pasteboard) {
+                Button("Copy Path") { shell?.copyPaths(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
             }
             CommandMenu("Action") {
                 Button("Remove Selected") {
