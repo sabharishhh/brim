@@ -896,14 +896,16 @@ an application.
 ### T-7.6 · Plain-language explanation and storage overview (overturns part of C-5)
 - **Objective** The two model uses that restate computed facts rather than assert new ones.
 - **Depends on** T-6.3, T-7.2.
-- **Work** Explain a row from evidence the engine already computed: who owned it, what declared it, when it appeared, what it holds, what returns by itself. Summarise a footprint by what each location is for, from `FootprintProjector` and `LeftoverDomain` figures. One retained `LanguageModelSession`, `prewarm()` on the shared prefix, `@Generable` types so the output is a value and never prose to parse, no streaming. The deterministic renderer from T-6.3 is the floor and remains the fallback whenever the model is unavailable.
+- **Work** Explain a row from evidence the engine already computed: who owned it, what declared it, when it appeared, what it holds, what returns by itself. Summarise a footprint by what each location is for, from `FootprintProjector` and `LeftoverDomain` figures. Bounded, independent `LanguageModelSession` requests, `@Generable` fact selections rather than prose to parse, and no streaming. Avoid loading the model until a selection is needed. The deterministic renderer from T-6.3 is the floor and remains the fallback whenever the model is unavailable.
 - **Acceptance** Every number and every claim in generated text traces to a computed fact. With Apple Intelligence off, the view renders T-6.3's text and nothing about the interface changes shape.
 - **Unlocks** the copy problem, structurally: prose stops being hardcoded English and becomes a rendering of evidence.
 
-**Implementation in the readable-leftovers branch:** one retained
-`LanguageModelSession` is prewarmed when either view opens. A non-streaming
-`@Generable` result chooses numbered facts for the leftover explanation or
-the footprint overview. Brim renders only facts it computed from the
+**Implementation in the readable-leftovers branch:** the model runs only
+when computed facts exceed the display limit. Each independent request uses
+a fresh `LanguageModelSession`; its transcript is released after the result.
+A bounded 32-entry cache retains fact selections, and each request is limited
+to 16 facts and 6,000 UTF-8 bytes. A non-streaming `@Generable` result chooses
+numbered facts for the leftover explanation or the footprint overview. Brim renders only facts it computed from the
 ownership search, `FootprintProjector` and `LeftoverDomain`; it does not use
 model-authored names, numbers or removal claims. Invalid choices, model
 errors and unavailable Apple Intelligence all use the same deterministic
@@ -916,15 +918,34 @@ evidence behind the Details control.
 - **Work** A `@Generable` enum over candidate owners, abstention meaning the row says nothing extra rather than growing a badge, accuracy measured on real Brim data before it is trusted.
 - **Open question, unanswered** Whether a model-proposed *name* on a row a person may delete crosses C-5's line. Everything else in M7 is independent of the answer.
 
-**M7 done when:** the same six applications are re-measured with nothing left behind that Brim can reach; a removal report distinguishes checked, declared-absent and refused-by-macOS; the leftovers sweep and the uninstall path agree for every bundle under test; and no string in the product describes a limitation where a fact would do.
+**M7 done when:** user-selected applications are audited after removal with nothing left behind that Brim can reach; a removal report distinguishes checked, declared-absent and refused-by-macOS; the leftovers sweep and the uninstall path agree for every bundle under test; and no string in the product describes a limitation where a fact would do.
 
 **Remaining live acceptance:** five of the six applications are installed
 and their footprints were measured without deletion; Obsidian is absent.
 The shared-rule fixture confirms forward and reverse agreement, including
-unticked Tier C suffix matches. A real post-removal measurement of all six
-requires deliberately uninstalling those applications, so this done
-criterion remains open. T-7.7's owner-name decision also remains open and
-does not block the other M7 work.
+unticked Tier C suffix matches. The user has deferred live removal until
+they select the applications and explicitly authorize the audit; six are no
+longer required. No live uninstall belongs to the current review and merge
+work. This done criterion remains open. T-7.7's owner-name decision also
+remains open and does not block the other M7 work.
+
+**Architecture and implementation review, 27 September 2026:** manual
+selection now receives the same shared-owner veto as automatic selection.
+Nested installed applications and embedded components contribute protective
+claims; unreadable ownership never establishes that data is orphaned. Bundle
+metadata reads stay within the bundle and have a size limit. Timed-out probes
+terminate and reap their child process, with bounded captured output.
+
+Apply revalidation compares the full action semantics. Verification checks
+skipped paths and failed record actions instead of reporting success from an
+empty set of completed file operations. Rapid checkbox changes coalesce into
+one active scan and a final plan for the latest choices. Distinct recorded
+identifiers remain separate removal choices even when display names match.
+
+The combined strict Swift package suite and Xcode Debug build passed. Final
+lint and focused merge regressions passed before publication. The final visual
+recheck could not run because the Mac was locked. No live applications were
+removed during this review.
 
 ---
 
@@ -1035,7 +1056,7 @@ Authoritative. Reflects §13.
 | 4 | **Agents** | T-4.5 and T-4.6 (T-4.1 to T-4.4 dropped, T-4.7 cut) | A read-only agent surface that cannot remove anything; all bypass attempts fail closed |
 | 5 | **Features** | T-5.1, T-5.2, T-5.3, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9, parallel and ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
 | 6 | **Product** | T-6.1 to T-6.8, minus the treemap (C-6) | Accessibility complete; budgets met including Brim's own cost; self-removal verified; update path works |
-| 7 | **Complete removal** | T-7.1 to T-7.6; T-7.7 gated | Six applications re-measured with nothing reachable left behind; checked, declared-absent and refused-by-macOS are distinguishable in a report; sweep and uninstall agree per bundle |
+| 7 | **Complete removal** | T-7.1 to T-7.6; T-7.7 gated | User-selected applications audited after removal with nothing reachable left behind; checked, declared-absent and refused-by-macOS are distinguishable in a report; sweep and uninstall agree per bundle |
 
 **Not in V1, deliberately:** a model that asserts an attribution rather than restating one (T-7.7, gated); the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; any adapter that is not the app itself; fleet or MDM features; and every item on Volume I's rejected list.
 
