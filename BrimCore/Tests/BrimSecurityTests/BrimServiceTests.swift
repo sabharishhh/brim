@@ -6,6 +6,124 @@ import Foundation
 @testable import BrimFixtures
 
 final class BrimServiceTests: XCTestCase {
+
+    func testSkippedBundleRemainsVisibleAndDoesNotSuggestReinstalling() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = FileSystemRoot(rootURL: directory.appendingPathComponent("Root"))
+        let bundle = root.url(for: .applications).appendingPathComponent("Retained.app")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        let journals = directory.appendingPathComponent("Journals")
+        let service = BrimService(root: root, brimAppURL: directory.appendingPathComponent("Brim.app"),
+                                  planStoreDirectory: directory.appendingPathComponent("Plans"),
+                                  journalStoreDirectory: journals)
+        let identity = Identity(bundleID: "org.example.retained", name: "Retained")
+        let steps = [
+            Step(index: 0, kind: .resetPrivacyGrants, target: "org.example.retained",
+                 targetFingerprint: nil, tier: .A, evidence: "Privacy reset", expectedBytes: 0,
+                 capability: .ok, reversible: false, costOfError: .medium),
+            Step(index: 1, kind: .trashPath, target: bundle.path,
+                 targetFingerprint: nil, tier: .A, evidence: "Application", expectedBytes: 1,
+                 capability: .ok, reversible: true, costOfError: .medium, executionPhase: .appBundle)
+        ]
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture", osVersion: "fixture",
+                        intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
+                        steps: steps, excludedItems: [], expectedTotalBytes: 1)
+        try await service.planStore.save(plan: plan)
+        try await JournalStore(directoryURL: journals).write(entry: JournalEntry(
+            planId: plan.planId, startedAt: Date(), status: .partial,
+            stepOutcomes: [0: "privacy_grants_not_cleared", 1: "skipped_due_to_prior_failures"]
+        ))
+        let result = try await service.verify(planId: plan.planId)
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.remainingPaths, [bundle.path])
+        XCTAssertTrue(result.removedPaths(from: [bundle.path]).isEmpty)
+        XCTAssertNil(result.followUpActions)
+    }
+
+    func testFailedReceiptActionCannotPassVerificationWithoutFileTargets() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journals = directory.appendingPathComponent("Journals")
+        let service = BrimService(root: FileSystemRoot(rootURL: directory),
+                                  brimAppURL: directory.appendingPathComponent("Brim.app"),
+                                  planStoreDirectory: directory.appendingPathComponent("Plans"),
+                                  journalStoreDirectory: journals)
+        let step = Step(index: 0, kind: .forgetReceipt, target: "org.example.package",
+                        targetFingerprint: nil, tier: .A, evidence: "Receipt", expectedBytes: 0,
+                        capability: .needsHelper, reversible: false, costOfError: .medium)
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture", osVersion: "fixture",
+                        intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(name: "Example")),
+                        steps: [step], excludedItems: [], expectedTotalBytes: 0)
+        try await service.planStore.save(plan: plan)
+        try await JournalStore(directoryURL: journals).write(entry: JournalEntry(
+            planId: plan.planId, startedAt: Date(), status: .partial,
+            stepOutcomes: [0: "needs_helper_not_set_up"]
+        ))
+        let result = try await service.verify(planId: plan.planId)
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.reason, "Some planned actions could not be completed.")
+    }
+
+    func testFailedPrivacyResetIsNotReportedAsCompleteAfterBundleRemoval() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brim-removal-ceiling-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = FileSystemRoot(rootURL: directory.appendingPathComponent("Root"))
+        let plans = directory.appendingPathComponent("Plans")
+        let journals = directory.appendingPathComponent("Journals")
+        let service = BrimService(root: root, brimAppURL: directory.appendingPathComponent("Brim.app"),
+                                  planStoreDirectory: plans, journalStoreDirectory: journals)
+        let identity = Identity(bundleID: "org.example.departed", name: "Departed")
+        let reset = Step(index: 0, kind: .resetPrivacyGrants, target: "org.example.departed",
+                         targetFingerprint: nil, tier: .A, evidence: "Privacy reset",
+                         expectedBytes: 0, capability: .ok, reversible: false,
+                         costOfError: .medium)
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture",
+                        osVersion: "fixture", intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
+                        steps: [reset], excludedItems: [], expectedTotalBytes: 0)
+        try await service.planStore.save(plan: plan)
+        try await JournalStore(directoryURL: journals).write(entry: JournalEntry(
+            planId: plan.planId, startedAt: Date(), status: .partial,
+            stepOutcomes: [0: "privacy_grants_not_cleared"]
+        ))
+
+        let result = try await service.verify(planId: plan.planId)
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.reason, "Privacy permissions were not reset.")
+        XCTAssertEqual(result.followUpActions, [.restoreAppForPrivacyReset])
+    }
+
+    func testFailedPrivacyResetWithInstalledBundleDoesNotSuggestReinstalling() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brim-reset-ceiling-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = FileSystemRoot(rootURL: directory.appendingPathComponent("Root"))
+        let plans = directory.appendingPathComponent("Plans")
+        let journals = directory.appendingPathComponent("Journals")
+        let bundle = directory.appendingPathComponent("Root/Applications/Installed.app")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        let service = BrimService(root: root, brimAppURL: directory.appendingPathComponent("Brim.app"),
+                                  planStoreDirectory: plans, journalStoreDirectory: journals)
+        let identity = Identity(bundleID: "org.example.installed", name: "Installed", bundlePath: bundle.path)
+        let reset = Step(index: 0, kind: .resetPrivacyGrants, target: "org.example.installed",
+                         targetFingerprint: nil, tier: .A, evidence: "Privacy reset",
+                         expectedBytes: 0, capability: .ok, reversible: false,
+                         costOfError: .medium)
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture",
+                        osVersion: "fixture", intent: PlanIntent(type: .reset, subjectIdentity: identity),
+                        steps: [reset], excludedItems: [], expectedTotalBytes: 0)
+        try await service.planStore.save(plan: plan)
+        try await JournalStore(directoryURL: journals).write(entry: JournalEntry(
+            planId: plan.planId, startedAt: Date(), status: .partial,
+            stepOutcomes: [0: "privacy_grants_not_cleared"]
+        ))
+
+        let result = try await service.verify(planId: plan.planId)
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.reason, "Privacy permissions were not reset.")
+        XCTAssertNil(result.followUpActions)
+    }
     
     func testServiceDrivesCompleteUninstall() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -43,9 +161,6 @@ final class BrimServiceTests: XCTestCase {
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
         let plan = try await service.plan(intent: intent)
         
-        print("PLAN STEPS: \(plan.steps)")
-        print("PLAN EXCLUDED: \(plan.excludedItems)")
-        
         XCTAssertGreaterThan(plan.steps.count, 0)
         XCTAssertGreaterThanOrEqual(plan.expectedTotalBytes, 0)
         
@@ -59,7 +174,9 @@ final class BrimServiceTests: XCTestCase {
         try await service.apply(planId: plan.planId, token: token)
         
         let verifyAfter = try await service.verify(planId: plan.planId)
-        XCTAssertTrue(verifyAfter.success)
+        XCTAssertTrue(verifyAfter.remainingPaths.isEmpty)
+        XCTAssertFalse(verifyAfter.success, "The fixture's unregistered bundle cannot pass tccutil")
+        XCTAssertEqual(verifyAfter.followUpActions, [.restoreAppForPrivacyReset])
         
         // Let's assert the recovered bytes matches the expected bytes
         // Since we are moving to Trash, the free space might not change immediately on APFS due to snapshotting or just being moved to another directory on the same volume!
