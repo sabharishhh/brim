@@ -37,7 +37,7 @@ public struct SafetyChecker: Sendable {
 
     /// Only for finding what a previous Brim left behind. Never widened:
     /// each one here is an identifier this project genuinely shipped.
-    static let identifiersOlderBuildsUsed: Set<String> = [
+    public static let identifiersOlderBuildsUsed: Set<String> = [
         "devplaceholder.PJ52YXEB.brim",
         "com.google.Brim",
     ]
