@@ -49,34 +49,18 @@ public struct FootprintProjector: Sendable {
         return items
     }
 
+    /// The same answer the leftovers sweep gives, from the same rule.
+    ///
+    /// This used to ask the item with `access(path, W_OK)`. That follows a
+    /// link, so three broken links in `~/.local/bin` found nothing at the
+    /// far end, fell through to "needs an administrator", and were skipped
+    /// after the person approved them while the sweep had called them
+    /// removable. It was also the wrong question for a read-only file,
+    /// which its folder lets go perfectly well.
     private nonisolated static func determineCapability(for path: String) -> Capability {
-        if access(path, W_OK) == 0 {
-            return .ok
-        }
-        
-        let err = errno
-        
-        var statInfo = stat()
-        if stat(path, &statInfo) == 0 {
-            let SF_RESTRICTED: UInt32 = 0x00080000
-            if (statInfo.st_flags & SF_RESTRICTED) != 0 {
-                return .refusedByOS
-            }
-        } else {
-            if errno == EPERM {
-                return .needsFullDiskAccess
-            }
-        }
-        
-        if err == EPERM {
-            return .needsFullDiskAccess
-        } else if err == EACCES {
-            return .needsHelper
-        }
-        
-        return .needsHelper
+        RemovalCapability.forDeleting(path)
     }
-    
+
     /// What one location weighs, and what could not be read.
     ///
     /// Three things this gets right that the obvious version did not:
