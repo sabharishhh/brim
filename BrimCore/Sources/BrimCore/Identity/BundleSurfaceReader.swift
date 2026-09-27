@@ -1,7 +1,6 @@
 import Foundation
 import Security
 
-// SwiftLint and SwiftFormat disagree about braces on multiline declarations.
 // swiftformat:disable wrapMultilineStatementBraces
 // swiftlint:disable type_body_length
 /// Reads metadata in bundle packaging locations. It never searches user documents
@@ -11,9 +10,7 @@ public enum BundleSurfaceReader {
         read(at: bundle, in: root, budget: ScanBudget(total: 5), signature: Signature.read)
     }
 
-    /// A claim can veto removal even when its signature is not trusted to
-    /// authorize removal. Read embedded code too: an extension may hold the
-    /// group entitlement instead of its containing app.
+    /// Unvalidated embedded claims can protect data, never authorize removal.
     static func groupClaims(at bundle: URL, in root: FileSystemRoot) -> (groups: Set<String>, complete: Bool) {
         let claims = protectionClaims(at: bundle, in: root)
         return (Set(claims.surface.groups), claims.complete)
@@ -63,8 +60,7 @@ public enum BundleSurfaceReader {
                                  entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
             }
             let flags = (values[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
-            // CSCommon.h defines kSecCodeSignatureAdhoc as 0x0002, but does
-            // not export the symbol to Swift.
+            // kSecCodeSignatureAdhoc (0x0002) is not exported to Swift.
             let adHocFlag: UInt32 = 0x0002
             if flags & adHocFlag != 0 {
                 return Signature(gap: "Ad-hoc signature.")
@@ -205,7 +201,6 @@ public enum BundleSurfaceReader {
                     if Self.isMissing(error) {
                         continue
                     }
-                    // A raw helper binary has no directory-based Info.plist.
                     var isDirectory: ObjCBool = false
                     let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
                     if exists, !isDirectory.boolValue {
@@ -221,8 +216,7 @@ public enum BundleSurfaceReader {
             return [:]
         }
 
-        /// Metadata must stay inside the bundle and have a bounded read.
-        /// In particular, a launch-job plist may itself be a symlink.
+        /// Read bounded, regular metadata files within the bundle, including symlink targets.
         func metadata(at url: URL) throws -> Data {
             guard Self.contains(url.resolvingSymlinksInPath().path,
                                 within: bundle.resolvingSymlinksInPath().path) else {
