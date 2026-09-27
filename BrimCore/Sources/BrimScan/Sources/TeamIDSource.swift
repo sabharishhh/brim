@@ -94,39 +94,21 @@ public struct TeamIDSource: EvidenceSource {
 
     /// Other installed applications signed by the same team.
     ///
-    /// Top level only, and both Applications folders. A deep walk finds
-    /// helpers nested inside bundles, which are not separate applications
-    /// and would veto their own parent.
+    /// The shared inventory stops at application bundles, so embedded
+    /// helpers cannot veto their own parent and vendor folders are included.
+
     static func otherApplicationFindings(
         sharing teamID: String, besides identity: Identity, in root: FileSystemRoot
     ) async -> (identities: [Identity], completeness: ScanCompleteness) {
-        let directories = [
-            root.url(for: .applications),
-            root.url(for: .userLibrary).deletingLastPathComponent()
-                .appendingPathComponent("Applications")
-        ]
+        let inventory = await Task.detached { InstalledBundleInventory.read(in: root) }.value
         let resolver = IdentityResolver(root: root)
         var found: [Identity] = []
-        var unreadable: [String] = []
-        for directory in directories {
-            let names: [String]
-            switch DirectoryEntries.read(directory) {
-            case .absent:
-                continue
-            case .refused:
-                unreadable.append(directory.path)
-                continue
-            case let .listed(listed):
-                names = listed
-            }
-            for name in names where name.hasSuffix(".app") {
-                let bundle = directory.appendingPathComponent(name)
-                let other = await resolver.resolve(bundleURL: bundle)
-                guard other.teamID == teamID else { continue }
-                guard other.bundleID != identity.bundleID else { continue }
-                found.append(other)
-            }
+        for bundle in inventory.bundles {
+            let other = await resolver.resolve(bundleURL: bundle)
+            guard other.teamID == teamID else { continue }
+            guard other.bundleID != identity.bundleID else { continue }
+            found.append(other)
         }
-        return (found, ScanCompleteness(unreadable: unreadable))
+        return (found, inventory.completeness)
     }
 }
