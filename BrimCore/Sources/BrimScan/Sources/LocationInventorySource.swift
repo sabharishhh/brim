@@ -60,24 +60,31 @@ public struct LocationInventorySource: EvidenceSource {
         for location in inventory.locations where location.rule != .identifierInsideBundle {
             let directory = root.url(for: location.domain)
             let candidates = Self.candidates(for: location, identity: identity)
-            guard !candidates.isEmpty else { continue }
+            let needsListing = switch location.rule {
+            case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
+                 .applicationNameDelimitedPrefix:
+                true
+            default:
+                false
+            }
+            guard !candidates.isEmpty || needsListing else { continue }
             let read = listing(directory)
-            if case .refused = read {
+            if case .refused = read, !needsListing {
                 unreadable.append(directory.path)
             }
             for candidate in candidates {
                 let url = directory.appendingPathComponent(candidate)
-                guard fm.fileExists(atPath: url.path) else { continue }
+                guard fm.fileExists(atPath: url.path),
+                      let tier = location.matchTier(name: candidate, identity: identity) else { continue }
                 evidence.append(Evidence(
                     url: url,
-                    tier: location.matchTier(name: candidate, identity: identity) ?? .C,
+                    tier: tier,
                     mechanism: "LocationInventorySource",
                     humanSentence: location.sentence
                 ))
             }
-            // A prefix rule needs the directory listed, which is the one
-            // cheap rule that can still be refused.
-            if location.rule == .bundleIdentifierPrefix, !identity.searchBundleIdentifiers.isEmpty {
+            // Prefix rules need the directory listed, which can be refused.
+            if needsListing {
                 switch read {
                 case .refused:
                     unreadable.append(directory.path)

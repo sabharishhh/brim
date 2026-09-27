@@ -46,6 +46,8 @@ public final class LeftoversModel: ObservableObject {
     /// answer only changes when the arrays do, which is where it is done now.
     @Published public private(set) var orphanedGroups: [LeftoverGroup] = []
     @Published public private(set) var unclaimedGroups: [LeftoverGroup] = []
+    @Published public private(set) var orphanedEntries: [LeftoverListEntry] = []
+    @Published public private(set) var unclaimedEntries: [LeftoverListEntry] = []
 
     /// Which group's detail is open. The list answers "what is here"; the
     /// detail answers "what is this and what do I lose".
@@ -59,6 +61,16 @@ public final class LeftoversModel: ObservableObject {
                 || (group.identifier?.localizedCaseInsensitiveContains(query) ?? false)
                 || group.items.contains { $0.url.path.localizedCaseInsensitiveContains(query) }
         }
+    }
+
+    public func visibleEntries(
+        _ entries: [LeftoverListEntry], groups: [LeftoverGroup]
+    ) -> [LeftoverListEntry] {
+        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return entries
+        }
+        // A search result must never be hidden inside a collapsed vendor.
+        return visible(groups).map(LeftoverListEntry.owner)
     }
 
     /// Selection is per group: a user reasons about software, not paths.
@@ -196,6 +208,8 @@ public final class LeftoversModel: ObservableObject {
     private func regroup() {
         orphanedGroups = orphaned.groupedByOwner()
         unclaimedGroups = unclaimed.groupedByOwner()
+        orphanedEntries = orphanedGroups.arrangedByVendor()
+        unclaimedEntries = unclaimedGroups.arrangedByVendor()
         settle()
         revision &+= 1
     }

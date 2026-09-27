@@ -287,9 +287,12 @@ struct ApplicationsView: View {
                     Text("·")
                     Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "kind of evidence" : "kinds of evidence")")
                 }
-                Text("The app itself is \(ByteText.short(application.bundleSizeBytes)). The rest is "
-                     + "what it has written elsewhere on this Mac.")
-                    .font(.caption)
+                FootprintOverviewText(
+                    footprint: footprint,
+                    bundleBytes: application.bundleSizeBytes
+                )
+                .id(application.id)
+                .font(.caption)
 
                 // A search that did not finish cannot claim to be the
                 // whole footprint, so it says so and nothing is ticked
@@ -403,5 +406,33 @@ struct ApplicationsView: View {
             }
             .listStyle(.inset)
         }
+    }
+}
+
+private struct FootprintOverviewText: View {
+    let footprint: Footprint
+    let bundleBytes: Int64
+    @State private var selectedFacts: String?
+
+    var body: some View {
+        Text("Application: \(ByteText.short(bundleBytes)). "
+             + (selectedFacts ?? facts.prefix(2).joined(separator: " ")))
+            .task(id: footprint) {
+                selectedFacts = nil
+                let choice = await EvidenceNarrator.shared.choose(from: facts)
+                guard !Task.isCancelled else { return }
+                selectedFacts = choice
+            }
+    }
+
+    private var facts: [String] {
+        var totals: [LeftoverDomain: Int64] = [:]
+        for item in footprint.items {
+            let domain = LeftoverDomain.of(item.evidence.url)
+            guard domain != .other else { continue }
+            totals[domain, default: 0] += item.sizeBytes
+        }
+        return totals.sorted { $0.value > $1.value }
+            .map { "\($0.key.title): \(ByteText.short($0.value)). \($0.key.whatItHolds)" }
     }
 }
