@@ -3,6 +3,33 @@ import BrimCore
 import XCTest
 
 final class LeftoverDirectionAgreementTests: XCTestCase {
+    func testInstalledNestedExtensionProtectsItsStateAndNames() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = FileSystemRoot(rootURL: directory, userName: "tester")
+        let app = root.url(for: .applications).appendingPathComponent("Vendor/Editor.app")
+        let helper = app.appendingPathComponent("Contents/PlugIns/Worker.appex")
+        for (bundle, identifier, name) in [(app, "org.example.editor", "Editor"),
+                                         (helper, "net.unrelated.worker", "WorkerData")] {
+            let info = bundle.appendingPathComponent("Contents/Info.plist")
+            try FileManager.default.createDirectory(at: info.deletingLastPathComponent(),
+                                                   withIntermediateDirectories: true)
+            try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier,
+                                                                  "CFBundleName": name],
+                                                format: .xml, options: 0).write(to: info)
+        }
+        let paths = [root.url(for: .userCaches).appendingPathComponent("net.unrelated.worker"),
+                     root.url(for: .userApplicationSupport).appendingPathComponent("workerdata")]
+        for path in paths {
+            try FileManager.default.createDirectory(at: path.deletingLastPathComponent(),
+                                                   withIntermediateDirectories: true)
+            try Data([1]).write(to: path)
+        }
+        let leftovers = try await LeftoversScanner(root: root)
+            .scanLeftovers(knownPastBundleIDs: ["net.unrelated.worker"])
+        XCTAssertTrue(Set(paths.map(\.path)).isDisjoint(with: leftovers.map(\.url.path)))
+    }
+
     func testUninstallEvidenceAndSweepAgreeForOneBundle() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("brim-direction-\(UUID().uuidString)")
