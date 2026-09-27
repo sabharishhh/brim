@@ -21,6 +21,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
+    private var leftoversTask: Task<[Leftover], Error>?
 
     /// The durable store. Written and never read used to be the whole of
     /// it: the schema existed, the module compiled, and the service did
@@ -1112,6 +1113,23 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
 
     public func leftovers() async throws -> [Leftover] {
+        try Task.checkCancellation()
+        if let leftoversTask {
+            let result = try await leftoversTask.value
+            try Task.checkCancellation()
+            return result
+        }
+        // Review and Storage can request the same read concurrently. Share only
+        // in-flight work; a later rescan always reads the filesystem again.
+        let task = Task { try await self.scanLeftovers() }
+        leftoversTask = task
+        defer { leftoversTask = nil }
+        let result = try await task.value
+        try Task.checkCancellation()
+        return result
+    }
+
+    private func scanLeftovers() async throws -> [Leftover] {
         // A registration whose program has gone names an owner that was
         // recorded present and is not there now — the spec's definition of
         // orphaned, and the thing a user actually notices as "I uninstalled
