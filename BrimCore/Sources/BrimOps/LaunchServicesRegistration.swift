@@ -1,5 +1,5 @@
-import Foundation
 import CoreServices
+import Foundation
 
 /// Retracting an application's Launch Services registration.
 ///
@@ -16,15 +16,14 @@ import CoreServices
 /// because Launch Services re-registers a bundle it can still see. So the two
 /// bracket the removal: grants first, registration last.
 public enum LaunchServicesRegistration {
-
     public enum UnregisterError: Error, LocalizedError, Equatable {
         case failed(path: String, code: Int32)
 
         public var errorDescription: String? {
             switch self {
-            case .failed(let path, let code):
-                return "Could not remove the Launch Services registration for \(path) "
-                     + "(lsregister exit \(code))."
+            case let .failed(path, code):
+                "Could not remove the Launch Services registration for \(path) "
+                    + "(lsregister exit \(code))."
             }
         }
     }
@@ -33,7 +32,7 @@ public enum LaunchServicesRegistration {
     /// the documented location inside the LaunchServices framework.
     public static let lsregisterPath =
         "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks"
-        + "/LaunchServices.framework/Versions/A/Support/lsregister"
+            + "/LaunchServices.framework/Versions/A/Support/lsregister"
 
     /// Unregisters one bundle path, and only that path.
     ///
@@ -71,11 +70,23 @@ public enum LaunchServicesRegistration {
     /// Services database has no supported reader, and `lsregister -dump`
     /// takes seconds and returns megabytes of text.
     public static func registeredApplicationURLs(forBundleID bundleID: String) -> [URL] {
+        (try? checkedApplicationURLs(forBundleID: bundleID)) ?? []
+    }
+
+    /// Unlike the compatibility reader, this preserves a failed query so a
+    /// review cannot present it as an empty registration.
+    public static func checkedApplicationURLs(forBundleID bundleID: String) throws -> [URL] {
         var error: Unmanaged<CFError>?
         guard let result = LSCopyApplicationURLsForBundleIdentifier(bundleID as CFString, &error) else {
-            // No match is reported as an error with a null result, which is
-            // the answer we want rather than a failure.
-            return []
+            if let error {
+                let failure = error.takeRetainedValue()
+                if CFErrorGetCode(failure) == kLSApplicationNotFoundErr {
+                    return []
+                }
+                throw failure
+            }
+            throw NSError(domain: "LaunchServices", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Launch Services did not answer."])
         }
         return (result.takeRetainedValue() as? [URL]) ?? []
     }

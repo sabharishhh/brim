@@ -20,6 +20,7 @@ struct UninstallSheet: View {
     let onFinished: () -> Void
 
     @StateObject private var model = UninstallExecutionModel()
+    @State private var showingSearchDetails = false
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -117,12 +118,37 @@ struct UninstallSheet: View {
             verification(result)
 
         case .ready:
-            planList
+            if showingSearchDetails, let report = model.plan?.capabilityReport {
+                SearchDetailsView(report: report) { showingSearchDetails = false }
+            } else {
+                planList
+            }
         }
     }
 
     private var planList: some View {
         List {
+            if model.plan?.capabilityReport != nil {
+                Section {
+                    Button("Search details") { showingSearchDetails = true }
+                }
+            }
+            if let gaps = model.plan?.scanCompleteness {
+                if !gaps.unreadable.isEmpty {
+                    Section("Could not read") {
+                        ForEach(gaps.unreadable, id: \.self) { path in
+                            Text(path).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                }
+                if !gaps.timedOut.isEmpty {
+                    Section("Scan timed out") {
+                        ForEach(gaps.timedOut, id: \.self) { path in
+                            Text(path).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                }
+            }
             if model.clearsPrivacyGrants || model.clearsRegistrations {
                 Section("System records") {
                     if model.clearsPrivacyGrants {
@@ -259,9 +285,55 @@ struct UninstallSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(!model.canAuthorize)
+                .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }
         .padding()
+    }
+}
+
+private struct SearchDetailsView: View {
+    let report: CapabilitySearchReport
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button("Back to review", action: onBack).padding()
+            List {
+                ForEach(report.checks) { check in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(check.capability.title)
+                        Text("\(declarationText(check.declaration)) · \(coverageText(check.coverage))")
+                            .font(.caption).foregroundColor(.secondary)
+                        if check.coverage.available {
+                            Text("\(check.registrations.count + check.locations.count) found")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        ForEach(check.locations, id: \.self) { path in
+                            Text(path).font(.caption2).foregroundColor(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                }
+                ForEach(report.signatureCoverage.indices, id: \.self) { index in
+                    if let limitation = report.signatureCoverage[index].limitation {
+                        LabeledContent("Signature", value: limitation)
+                    }
+                }
+            }
+            .listStyle(.inset)
+        }
+    }
+
+    private func declarationText(_ state: CapabilitySurface.DeclarationState) -> String {
+        switch state {
+        case .declared: "Declared"
+        case .notDeclared: "Not declared"
+        case .unknown: "Unknown"
+        }
+    }
+
+    private func coverageText(_ coverage: RegistrationCoverage) -> String {
+        coverage.available ? "Checked" : (coverage.absence == .byDesign ? "Unavailable" : "Could not read")
     }
 }

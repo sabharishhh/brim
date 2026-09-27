@@ -8,8 +8,8 @@
     },
     {
       "relativePath": "Library/Application Support/ClassicApp.app",
-      "tier": "B",
-      "description": "Named after the application."
+      "tier": "C",
+      "description": "Name matches the application."
     },
     {
       "relativePath": "Library/Preferences/com.brim.classic.plist",
