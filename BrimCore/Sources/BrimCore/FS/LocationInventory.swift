@@ -27,6 +27,9 @@ public struct LocationInventory: Sendable {
         /// `com.example.app.savedState` and the ByHost variants, where a
         /// hardware identifier follows.
         case bundleIdentifierPrefix
+        /// A suffix separated from the identifier, such as
+        /// `com.example.editor-helper`. Name-derived and therefore Tier C.
+        case bundleIdentifierDelimitedPrefix(String)
         /// A group explicitly declared by the bundle, or an unverified
         /// `group.<bundle id>` name when no declaration could be read.
         case groupContainer
@@ -41,6 +44,9 @@ public struct LocationInventory: Sendable {
         /// case-sensitive volume and the developers most likely to have one
         /// are the people whose `~/.cache` is measured in gigabytes.
         case applicationNameLowercased
+        /// A name followed by a clear separator, such as
+        /// `Claude - ask.workflow` or `Claude-3p`.
+        case applicationNameDelimitedPrefix(String)
         /// A bundle in this folder whose own `Info.plist` declares the
         /// identifier. The only way to attribute an audio plug-in, whose
         /// file name says nothing at all.
@@ -81,9 +87,12 @@ public struct LocationInventory: Sendable {
             case .bundleIdentifier, .bundleIdentifierFile, .bundleIdentifierPrefix,
                  .identifierInsideBundle:
                 return .B
+            case .bundleIdentifierDelimitedPrefix:
+                return .C
             case .groupContainer:
                 return .A
-            case .applicationName, .applicationNameLowercased:
+            case .applicationName, .applicationNameLowercased,
+                 .applicationNameDelimitedPrefix:
                 return .C
             }
         }
@@ -97,6 +106,8 @@ public struct LocationInventory: Sendable {
                 return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
             case .bundleIdentifierPrefix:
                 return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
+            case .bundleIdentifierDelimitedPrefix:
+                return []
             case .groupContainer:
                 if !identity.searchGroupContainers.isEmpty {
                     return identity.searchGroupContainers
@@ -108,6 +119,8 @@ public struct LocationInventory: Sendable {
                 var seen = Set<String>()
                 return identity.searchNames.map { $0.lowercased() }
                     .filter { seen.insert($0).inserted }
+            case .applicationNameDelimitedPrefix:
+                return []
             case .identifierInsideBundle:
                 return []
             }
@@ -116,6 +129,36 @@ public struct LocationInventory: Sendable {
         /// The same ownership rule is used when searching from an app and
         /// when checking whether a swept path still belongs to one.
         public func matchTier(name: String, identity: Identity, declaredIdentifier: String? = nil) -> EvidenceTier? {
+            switch rule {
+            case .applicationName, .applicationNameLowercased,
+                 .applicationNameDelimitedPrefix:
+                nameTier(name: name, identity: identity)
+            case .groupContainer:
+                groupTier(name: name, identity: identity)
+            default:
+                identifierTier(
+                    name: name, identity: identity,
+                    declaredIdentifier: declaredIdentifier
+                )
+            }
+        }
+
+        private func nameTier(name: String, identity: Identity) -> EvidenceTier? {
+            switch rule {
+            case .applicationName, .applicationNameLowercased:
+                candidates(for: identity).contains(name) ? tier : nil
+            case let .applicationNameDelimitedPrefix(separator):
+                delimitedPrefixTier(
+                    name: name, prefixes: identity.searchNames, separator: separator
+                )
+            default:
+                nil
+            }
+        }
+
+        private func identifierTier(
+            name: String, identity: Identity, declaredIdentifier: String?
+        ) -> EvidenceTier? {
             switch rule {
             case .bundleIdentifier:
                 guard identity.searchBundleIdentifiers.contains(name) else { return nil }
@@ -130,15 +173,26 @@ public struct LocationInventory: Sendable {
                     .filter({ name == $0 || name.hasPrefix($0 + ".") })
                     .max(by: { $0.count < $1.count }) else { return nil }
                 return matched == identity.bundleID ? tier : .C
-            case .groupContainer:
-                return groupTier(name: name, identity: identity)
-            case .applicationName, .applicationNameLowercased:
-                return candidates(for: identity).contains(name) ? tier : nil
+            case let .bundleIdentifierDelimitedPrefix(separator):
+                return delimitedPrefixTier(
+                    name: name, prefixes: identity.searchBundleIdentifiers, separator: separator
+                )
             case .identifierInsideBundle:
                 guard let declaredIdentifier,
                       identity.searchBundleIdentifiers.contains(declaredIdentifier) else { return nil }
                 return declaredIdentifier == identity.bundleID ? tier : .C
+            case .applicationName, .applicationNameLowercased,
+                 .applicationNameDelimitedPrefix, .groupContainer:
+                return nil
             }
+        }
+
+        private func delimitedPrefixTier(
+            name: String, prefixes: [String], separator: String
+        ) -> EvidenceTier? {
+            prefixes.contains(where: {
+                name.hasPrefix($0 + separator) && name.count > $0.count + separator.count
+            }) ? .C : nil
         }
 
         private func groupTier(name: String, identity: Identity) -> EvidenceTier? {
@@ -178,6 +232,10 @@ public struct LocationInventory: Sendable {
         // Fonts have no owning application, and a sweep of them is a list
         // of every typeface somebody has ever installed.
         .userFonts, .systemFonts,
+        // Crash reports remain in the uninstall footprint, where an app
+        // name can identify them. A sweep cannot infer an owner reliably
+        // from a diagnostic report's file name.
+        .userDiagnosticReports, .systemDiagnosticReports,
         // Per-boot scratch space. Every running process writes here and
         // macOS empties it, so a sweep of it is a thousand rows of
         // transient files that will be gone by morning. It stays in the
@@ -270,6 +328,9 @@ public struct LocationInventory: Sendable {
                  describes: "supporting files",
                  sentence: "Application Support named after the application rather than its "
                          + "identifier."),
+        Location(domain: .userApplicationSupport, rule: .applicationNameDelimitedPrefix("-"),
+                 describes: "supporting files",
+                 sentence: "A support folder beginning with the application's name."),
         Location(domain: .userSavedApplicationState, rule: .bundleIdentifierPrefix,
                  describes: "saved windows",
                  sentence: "The windows and documents macOS reopens for this application."),
@@ -331,6 +392,9 @@ public struct LocationInventory: Sendable {
         Location(domain: .userServices, rule: .identifierInsideBundle,
                  describes: "a Services menu item",
                  sentence: "A Services menu item whose own Info.plist declares this identifier."),
+        Location(domain: .userServices, rule: .applicationNameDelimitedPrefix(" - "),
+                 describes: "a Services menu item",
+                 sentence: "A Services workflow beginning with the application's name."),
         Location(domain: .systemServices, rule: .identifierInsideBundle,
                  describes: "a Services menu item",
                  sentence: "A Services menu item whose own Info.plist declares this identifier."),
@@ -436,6 +500,9 @@ public struct LocationInventory: Sendable {
                  describes: "a per-boot cache",
                  sentence: "A cache in the per-user folder macOS makes fresh each boot. "
                          + "Nothing else enumerates these."),
+        Location(domain: .darwinUserCache, rule: .bundleIdentifierDelimitedPrefix("-"),
+                 describes: "a per-boot cache",
+                 sentence: "A cache beginning with the application's identifier."),
         // Outside `~/Library` entirely, which is where cross-platform
         // software actually keeps its data. A tool written for Linux first
         // looks in `~/.config` and `~/.local/share` because that is where

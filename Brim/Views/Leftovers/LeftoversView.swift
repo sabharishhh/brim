@@ -1,7 +1,7 @@
-import SwiftUI
 import BrimCore
 import BrimProtocol
 import BrimUI
+import SwiftUI
 
 /// What is left on this Mac that no installed software claims.
 ///
@@ -111,14 +111,15 @@ struct LeftoversView: View {
     }
 
     private var summary: String {
-        if model.isScanning { return "Checking everywhere an owner could be written down…" }
-        return "\(model.orphanedGroups.count) orphaned · \(model.unclaimedGroups.count) unclaimed, "
-             + "grouped by the software that left them"
+        if model.isScanning {
+            return "Checking ownership…"
+        }
+        return "\(model.orphanedEntries.count) orphaned · \(model.unclaimedEntries.count) unclaimed"
     }
 
     @ViewBuilder
     private var content: some View {
-        if model.isScanning && model.all.isEmpty {
+        if model.isScanning, model.all.isEmpty {
             ProgressView("Searching…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.errorMessage {
             VStack(spacing: 6) {
@@ -130,15 +131,15 @@ struct LeftoversView: View {
             List {
                 section(
                     "Orphaned",
-                    "A record on this Mac names the software these belong to, and that "
-                    + "software is no longer installed. Ticked for you.",
+                    "Owner recorded. App no longer installed.",
+                    model.visibleEntries(model.orphanedEntries, groups: model.orphanedGroups),
                     model.visible(model.orphanedGroups),
                     "Nothing here. No record on this Mac points at software that has gone."
                 )
                 section(
                     "Unclaimed",
-                    "No installed application claims these, and no record says one ever "
-                    + "did. Worth reading through. Tick the ones you want removed.",
+                    "No owner found. Select items to remove.",
+                    model.visibleEntries(model.unclaimedEntries, groups: model.unclaimedGroups),
                     model.visible(model.unclaimedGroups),
                     "Everything here has an owner."
                 )
@@ -153,31 +154,23 @@ struct LeftoversView: View {
         }
     }
 
-    @ViewBuilder
     private func section(
         _ title: String, _ caption: String,
+        _ entries: [LeftoverListEntry],
         _ groups: [LeftoverGroup], _ emptyNote: String
     ) -> some View {
         Section {
-            if groups.isEmpty {
+            if entries.isEmpty {
                 Text(emptyNote).font(.caption).foregroundColor(.secondary)
             } else {
-                ForEach(groups) { group in
-                    GroupRow(
-                        group: group,
-                        isSelected: model.isSelected(group),
-                        isInspected: model.inspected?.id == group.id,
-                        toggle: { model.toggle(group) },
-                        inspect: { model.inspected = group }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.inspected = group }
+                ForEach(entries) { entry in
+                    LeftoverEntryRow(entry: entry, model: model)
                 }
             }
         } header: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("\(title) (\(groups.count))").font(.headline)
+                    Text("\(title) (\(entries.count))").font(.headline)
                     Spacer()
                     if !groups.isEmpty {
                         Button("Select all") { model.selectAll(groups: groups) }
@@ -236,8 +229,7 @@ struct LeftoversView: View {
                 Image(systemName: "questionmark.folder")
                     .font(.largeTitle).foregroundColor(.secondary)
                 Text("Select an entry").font(.headline)
-                Text("Brim names the software it belongs to, what each location holds, and "
-                     + "what you lose by removing it.")
+                Text("Review the owner, locations, and removal effect.")
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
@@ -248,6 +240,46 @@ struct LeftoversView: View {
 }
 
 // MARK: - Row
+
+private struct LeftoverEntryRow: View {
+    let entry: LeftoverListEntry
+    @ObservedObject var model: LeftoversModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            switch entry {
+            case let .owner(group):
+                ownerRow(group)
+            case let .vendor(cluster):
+                DisclosureGroup {
+                    ForEach(cluster.groups) { group in
+                        ownerRow(group)
+                            .padding(.leading, 8)
+                    }
+                } label: {
+                    HStack {
+                        Text(cluster.title).fontWeight(.medium)
+                        Spacer()
+                        Text("\(cluster.groups.count) apps")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func ownerRow(_ group: LeftoverGroup) -> some View {
+        GroupRow(
+            group: group,
+            isSelected: model.isSelected(group),
+            isInspected: model.inspected?.id == group.id,
+            toggle: { model.toggle(group) },
+            inspect: { model.inspected = group }
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { model.inspected = group }
+    }
+}
 
 private struct GroupRow: View {
     let group: LeftoverGroup
@@ -297,8 +329,7 @@ private struct GroupRow: View {
                 .font(.caption2).foregroundColor(.secondary)
 
                 if group.meaningfulBytes > 0 {
-                    Text(ByteText.short(group.meaningfulBytes)
-                         + " of this is what the app would have remembered about you")
+                    Text(ByteText.short(group.meaningfulBytes) + " may not return")
                         .font(.caption2).foregroundColor(.orange)
                 }
             }
@@ -318,6 +349,7 @@ private struct GroupRow: View {
 
 private struct LeftoverDetail: View {
     let group: LeftoverGroup
+    @State private var selectedFact: String?
 
     /// Built once for the process. A `RelativeDateTimeFormatter` is
     /// expensive to construct and was being constructed inside the body,
@@ -365,34 +397,15 @@ private struct LeftoverDetail: View {
                 callout(
                     group.category == .orphaned ? "checkmark.seal" : "questionmark.circle",
                     group.category == .orphaned ? "Orphaned" : "Unclaimed",
-                    group.evidence,
+                    overview,
                     group.category == .orphaned ? .accentColor : .secondary
                 )
-
-                // The second sentence only exists when there is a second
-                // quantity. With nothing regenerable, `ByteText` returns the
-                // word "nothing" and the sentence came out as "The other
-                // nothing is scratch files the software makes again by
-                // itself."
-                if group.meaningfulBytes > 0 {
-                    callout(
-                        "exclamationmark.triangle",
-                        "What goes for good",
-                        ByteText.inSentence(group.meaningfulBytes)
-                        + " of this never comes back once you empty the Trash."
-                        + (group.regeneratedBytes > 0
-                           ? " The other " + ByteText.inSentence(group.regeneratedBytes)
-                             + " is scratch files the software makes again by itself."
-                           : ""),
-                        .orange
-                    )
-                }
 
                 if let accessed = group.lastAccessed {
                     Text("Last opened " + Self.relative.localizedString(
                         for: accessed, relativeTo: Date()
                     ))
-                        .font(.caption).foregroundColor(.secondary)
+                    .font(.caption).foregroundColor(.secondary)
                 }
 
                 Divider()
@@ -414,6 +427,30 @@ private struct LeftoverDetail: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .task(id: contextFacts) {
+            selectedFact = nil
+            let choice = await EvidenceNarrator.shared.choose(from: contextFacts, limit: 1)
+            guard !Task.isCancelled else { return }
+            selectedFact = choice
+        }
+    }
+
+    private var contextFacts: [String] {
+        group.domains.map(\.whatItHolds)
+    }
+
+    private var overview: String {
+        var facts = [group.evidence]
+        if group.meaningfulBytes > 0 {
+            facts.append("\(ByteText.short(group.meaningfulBytes)) may not return.")
+        }
+        if group.regeneratedBytes > 0 {
+            facts.append("\(ByteText.short(group.regeneratedBytes)) can be rebuilt.")
+        }
+        if let context = selectedFact ?? contextFacts.first {
+            facts.append(context)
+        }
+        return facts.filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     /// What is stopping this, and the one thing that gets somebody past it.
@@ -432,8 +469,8 @@ private struct LeftoverDetail: View {
                 Text(why).font(.callout).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(urls.count == 1
-                     ? "Finder can, and will ask you for a password."
-                     : "Finder can, and will ask you once for all \(urls.count).")
+                    ? "Finder can, and will ask you for a password."
+                    : "Finder can, and will ask you once for all \(urls.count).")
                     .font(.callout).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button(urls.count == 1 ? "Show in Finder" : "Show all \(urls.count) in Finder") {

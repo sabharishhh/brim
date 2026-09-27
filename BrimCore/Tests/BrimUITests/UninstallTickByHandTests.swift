@@ -176,12 +176,16 @@ final class UninstallTickByHandTests: XCTestCase {
         let stub = TickingStub(offered: [code])
         let model = await prepared(stub)
         XCTAssertEqual(model.rowsToOffer.map(\.target), [code])
+        XCTAssertEqual(model.offerGroups.first { $0.title == "App data" }?.rows.map(\.target), [code])
 
         await model.setTicked(true, path: code)
 
         let last = await stub.recorded().last
         XCTAssertEqual(last?.tickedByHand, [code], "The choice did not reach the intent.")
         XCTAssertTrue(model.removalSteps.contains { $0.target == code })
+        XCTAssertTrue(model.reviewGroups.contains {
+            $0.title == "App data" && $0.steps.contains { $0.target == code }
+        })
         XCTAssertTrue(model.rowsToOffer.isEmpty, "A row being removed is still offered.")
         XCTAssertTrue(model.isTickedByHand(code))
     }
@@ -248,31 +252,31 @@ final class UninstallTickByHandTests: XCTestCase {
         XCTAssertTrue(model.removalSteps.contains { $0.target == code })
     }
 
-    /// **A late reply is not the answer.** Tick, then untick, with the first
-    /// plan arriving after the second: what is on screen has to be the plan
-    /// for the choice the person made last.
-    func testAnOlderPlanArrivingLateDoesNotReplaceTheNewerOne() async {
-        let stub = TickingStub(offered: [code])
+    /// Rapid changes share one active scan, then build the latest selection.
+    func testRapidChoicesCoalesceWithoutApprovingOrDisplayingAnOlderPlan() async {
+        let stub = TickingStub(offered: [code, logs])
         let model = await prepared(stub)
-
         await stub.hold()
         let first = Task { await model.setTicked(true, path: code) }
         await settle { await stub.pending() == 1 }
-        let second = Task { await model.setTicked(false, path: code) }
-        await settle { await stub.pending() == 2 }
+        await model.setTicked(true, path: logs)
+        await model.setTicked(false, path: code)
+        let pending = await stub.pending()
+        XCTAssertEqual(pending, 1)
+        XCTAssertFalse(model.canAuthorize)
 
-        await stub.release(1) // the untick answers first
-        await second.value
-        await stub.release(0) // then the tick, late
+        await stub.release(0)
+        await settle { await stub.pending() == 1 }
+        XCTAssertFalse(model.canAuthorize)
+        XCTAssertNil(model.plan?.intent.tickedByHand)
+        await stub.releaseAll()
         await first.value
 
-        XCTAssertFalse(
-            model.removalSteps.contains { $0.target == code },
-            "The plan for an earlier choice replaced the one the person made last."
-        )
-        XCTAssertNil(model.plan?.intent.tickedByHand)
-        XCTAssertFalse(model.isUpdating)
+        XCTAssertEqual(model.plan?.intent.tickedByHand, [logs])
+        XCTAssertFalse(model.removalSteps.contains { $0.target == code })
         XCTAssertTrue(model.canAuthorize)
+        let requests = await stub.recorded()
+        XCTAssertEqual(requests.count, 3, "Initial plan, active scan, latest selection only")
     }
 
     /// Once the removal has started, the plan is what it is.

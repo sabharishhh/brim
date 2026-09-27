@@ -91,36 +91,27 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     public var whatItHolds: String {
         switch self {
         case .cache:
-            return "Scratch files the app makes again whenever it needs them. Clearing them frees "
-                 + "space and costs you nothing but a slower first launch."
+            return "Temporary files. The app can rebuild them."
         case .applicationSupport:
-            return "The app's own data: settings, licences, saved work, databases. Worth a look "
-                 + "before you clear it. If you ever install the app again, this is what it "
-                 + "would have remembered."
+            return "App data may include settings, licences, and saved work."
         case .preferences:
-            return "Settings, and nothing else. The app goes back to its defaults without them."
+            return "Settings. Removing them restores the app's defaults."
         case .logs:
-            return "Notes the app wrote for its own developers. Nothing depends on them."
+            return "Diagnostic logs. The app can write new ones."
         case .savedState:
-            return "Which windows were open and where they sat. Written again next time the app runs."
+            return "Open windows and their positions. Rebuilt on launch."
         case .webData:
-            return "Cookies and cached pages from web content inside the app. Clear it and you "
-                 + "will be signed out of whatever it was keeping you signed in to."
+            return "Cookies and web files. Removing them may sign you out."
         case .container:
-            return "A sandboxed app's private folder, holding everything it was allowed to keep."
+            return "The app's private data."
         case .groupContainer:
-            return "Shared between an app and its extensions, or between apps from the same "
-                 + "maker. Something else may still be reading it."
+            return "Data shared with extensions or related apps."
         case .launchAgent:
-            return "A standing instruction for macOS to run something in the background. Left "
-                 + "behind, it either fails quietly at every login or keeps running software "
-                 + "you thought was gone."
+            return "A background task registered with macOS."
         case .darwinPerUser:
-            return "Scratch space macOS hands each application privately, under /var/folders. "
-                 + "The app writes it again when it needs it. Nothing lists this folder, which "
-                 + "is why what is in it outlasts the software by months."
+            return "Temporary working files under /var/folders."
         case .other:
-            return "A location outside the folders macOS sets aside for applications."
+            return "Files outside the usual app folders."
         }
     }
 
