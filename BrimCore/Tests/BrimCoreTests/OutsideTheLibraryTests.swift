@@ -108,27 +108,49 @@ final class OutsideTheLibraryTests: XCTestCase {
         }
     }
 
-    /// **The sweep must not widen by accident.** `sweepDomains` is derived
-    /// from the same table, minus an exclusion list, so adding a location is
-    /// enough to put it in the leftovers list without anybody deciding to.
-    /// These folders belong overwhelmingly to command line tools that are
-    /// still installed, and a tool has no bundle for the sweep's ownership
-    /// test to find, so every one of them would be offered as a leftover.
-    func testTheLeftoversSweepDidNotQuietlyGainTheseFolders() {
+    /// The sweep reaches these locations now that it checks executable
+    /// ownership before offering a command line tool's data.
+    func testTheLeftoversSweepIncludesDotFolders() {
         let swept = Set(LocationInventory.sweepDomains)
         for domain in [FileSystemRoot.Domain.userDotConfig, .userDotCache,
                        .userDotLocalShare, .userDotLocalState, .userDotLocalBin] {
-            XCTAssertFalse(
-                swept.contains(domain),
-                "\(domain) reached the leftovers sweep. ~/.config/git belongs to git, which "
-                + "is installed, and the sweep has no way to know that yet."
-            )
+            XCTAssertTrue(swept.contains(domain))
         }
     }
 
-    /// The uninstall path does search here, because it starts from an
-    /// application that is genuinely going.
-    func testTheUninstallPathStillSearchesThemEvenThoughTheSweepDoesNot() throws {
+    func testInstalledCommandKeepsItsSettingsButDepartedDataIsOffered() async throws {
+        let gitSettings = try make(.userDotConfig, "git")
+        let departed = try make(.userDotConfig, "departed")
+        try "settings".write(to: gitSettings.appendingPathComponent("config"),
+                             atomically: true, encoding: .utf8)
+        try "settings".write(to: departed.appendingPathComponent("config"),
+                             atomically: true, encoding: .utf8)
+
+        let leftovers = try await LeftoversScanner(
+            root: root, commandIsInstalled: { $0 == "git" }
+        ).scanLeftovers()
+        let names = Set(leftovers.map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains("git"))
+        XCTAssertTrue(names.contains("departed"))
+    }
+
+    func testLocalExecutableProtectsItsDotFolderWithoutShellPath() async throws {
+        let commandName = "brimfixturetool"
+        let settings = try make(.userDotConfig, commandName)
+        try "settings".write(to: settings.appendingPathComponent("config"),
+                             atomically: true, encoding: .utf8)
+        let bin = root.url(for: .userDotLocalBin)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let command = bin.appendingPathComponent(commandName)
+        try "#!/bin/sh\n".write(to: command, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: command.path)
+
+        let leftovers = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertFalse(leftovers.contains { $0.url.lastPathComponent == commandName })
+    }
+
+    /// The forward search still finds the same data after the sweep widens.
+    func testTheUninstallPathStillSearchesDotFolders() throws {
         let config = try make(.userDotConfig, "app")
         let identity = Identity(bundleID: "com.example.app", name: "App")
 

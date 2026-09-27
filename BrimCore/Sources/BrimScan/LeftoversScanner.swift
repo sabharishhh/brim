@@ -1,6 +1,8 @@
 import Foundation
 import BrimCore
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 public actor LeftoversScanner {
     public let root: FileSystemRoot
     private let resolver: IdentityResolver
@@ -11,6 +13,8 @@ public actor LeftoversScanner {
     /// Whether this process can reach protected locations, which decides
     /// whether a container leftover is removable or only visible.
     private let hasFullDiskAccess: Bool
+    /// A matching executable protects command line tool data in dot folders.
+    private let commandIsInstalled: @Sendable (String) -> Bool
 
     /// Registrations whose program has gone, keyed by the bundle they name.
     /// Supplied by the caller because enumerating them is the registration
@@ -26,7 +30,8 @@ public actor LeftoversScanner {
         launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
-        hasFullDiskAccess: Bool? = nil
+        hasFullDiskAccess: Bool? = nil,
+        commandIsInstalled: (@Sendable (String) -> Bool)? = nil
     ) {
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
@@ -34,13 +39,15 @@ public actor LeftoversScanner {
         self.resolver = IdentityResolver(root: root)
         self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
         self.hasFullDiskAccess = hasFullDiskAccess ?? FullDiskAccessProbe.isGranted()
+        self.commandIsInstalled = commandIsInstalled ?? Self.defaultCommandLookup(in: root)
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
-        let activeIdentities = await gatherActiveAppIdentities()
+        let gathered = await gatherActiveAppIdentities()
+        let activeIdentities = gathered.identities
         let receiptBundleIDs = await gatherInstallerReceipts()
 
-        let activeBundleIDs = Set(activeIdentities.compactMap { $0.bundleID })
+        let activeBundleIDs = Set(activeIdentities.flatMap(\.searchBundleIdentifiers))
         // The bundle's own `CFBundleName` as well as what the icon says,
         // because an application's support folder is named after the
         // former. Visual Studio Code calls itself Code in its
@@ -53,8 +60,10 @@ public actor LeftoversScanner {
         // itself, so the uninstall path went on not knowing and failed to
         // remove the same folder this one correctly refused to offer.
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
-        let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
+        let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
+        let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
+            .map { Identity(bundleID: $0, name: "") }
         
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -65,8 +74,6 @@ public actor LeftoversScanner {
             launchServicesLookup: launchServicesLookup
         )
 
-        var leftovers: [Leftover] = []
-        
         // Driven by the same inventory the uninstall path uses, rather
         // than a second list kept by hand. The two had drifted: removing
         // an application looked in sixty places and sweeping for what
@@ -90,7 +97,8 @@ public actor LeftoversScanner {
         let found = await withTaskGroup(of: [Leftover].self) { group in
             for domain in domainsToScan {
                 group.addTask { [self] in
-                    walkDomain(domain, search, activeBundleIDs, activeNames,
+                    walkDomain(domain, search, activeIdentities, pastIdentities,
+                               activeBundleIDs, activeNames,
                                activeGroupContainers, activeTeamIDs)
                 }
             }
@@ -98,7 +106,7 @@ public actor LeftoversScanner {
             for await batch in group { collected.append(contentsOf: batch) }
             return collected
         }
-        leftovers = found
+        let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
@@ -107,16 +115,29 @@ public actor LeftoversScanner {
         return leftovers.sorted { $0.size > $1.size }
     }
 
+    private static func protectUncertainOwnership(_ items: [Leftover], complete: Bool) -> [Leftover] {
+        guard !complete else { return items }
+        return items.map { item in
+            Leftover(url: item.url, size: item.size, category: .unclaimed,
+                     potentialOwner: item.potentialOwner,
+                     evidence: "Installed ownership could not be fully checked.",
+                     capability: item.capability, lastAccessed: item.lastAccessed)
+        }
+    }
+
     /// Everything one domain holds that nothing installed claims.
     nonisolated private func walkDomain(
         _ domain: FileSystemRoot.Domain,
         _ search: OwnershipSearch,
+        _ activeIdentities: [Identity],
+        _ pastIdentities: [Identity],
         _ activeBundleIDs: Set<String>,
         _ activeNames: Set<String>,
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
+        let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -166,7 +187,13 @@ public actor LeftoversScanner {
                     break
                 }
 
-                if isItemActive(item: item, in: domain, vendor: vendor, activeBundleIDs: activeBundleIDs, activeNames: activeNames, activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs) {
+                let belongsToInstalledApp = isItemActive(
+                    item: item, in: domain, vendor: vendor,
+                    locationRules: locationRules, activeIdentities: activeIdentities,
+                    activeBundleIDs: activeBundleIDs, activeNames: activeNames,
+                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs
+                )
+                if belongsToInstalledApp {
                     continue
                 }
 
@@ -180,7 +207,16 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                let ownerID = extractOwnerIdentifier(from: item, in: domain)
+                let embeddedID = locationRules.contains { $0.rule == .identifierInsideBundle }
+                    ? LocationInventorySource.declaredIdentifier(at: item) : nil
+                let recordedOwner = pastIdentities
+                    .first { identity in
+                        locationRules.contains {
+                            $0.matchTier(name: name, identity: identity,
+                                         declaredIdentifier: embeddedID) != nil
+                        }
+                    }?.bundleID
+                let ownerID = recordedOwner ?? extractOwnerIdentifier(from: item, in: domain)
 
                 // The whole search, in one place: an item is only a leftover
                 // once every source that could name an owner has come back
@@ -389,6 +425,33 @@ public actor LeftoversScanner {
         .sharedUser, .sharedApplicationSupport,
     ]
 
+    static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
+        .userDotConfig, .userDotCache, .userDotLocalShare,
+        .userDotLocalState, .userDotLocalBin
+    ]
+
+    nonisolated static func defaultCommandLookup(
+        in root: FileSystemRoot
+    ) -> @Sendable (String) -> Bool {
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        let directories = path.split(separator: ":").map(String.init)
+            + ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin",
+               root.url(for: .userDotLocalBin).path]
+        return { name in
+            guard IdentitySurface.isPathComponent(name) else {
+                return false
+            }
+            return directories.contains { directory in
+                guard directory.hasPrefix("/") else {
+                    return false
+                }
+                return FileManager.default.isExecutableFile(
+                    atPath: URL(fileURLWithPath: directory).appendingPathComponent(name).path
+                )
+            }
+        }
+    }
+
     /// The children to judge in place of this folder, when the folder is
     /// one vendor's and holds more than one product.
     ///
@@ -424,71 +487,104 @@ public actor LeftoversScanner {
         item: URL,
         in domain: FileSystemRoot.Domain,
         vendor: String?,
+        locationRules: [LocationInventory.Location],
+        activeIdentities: [Identity],
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
         activeTeamIDs: Set<String>
     ) -> Bool {
         let name = item.lastPathComponent
+        if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
+           activeNames.contains(name.lowercased()) {
+            return true
+        }
         let lowerName = name.lowercased()
+        if isCommandLineItemActive(item, in: domain) {
+            return true
+        }
+        let declaredIdentifier = locationRules.contains { $0.rule == .identifierInsideBundle }
+            ? LocationInventorySource.declaredIdentifier(at: item) : nil
+
+        if locationRules.contains(where: { location in
+            activeIdentities.contains { identity in
+                location.matchTier(name: name, identity: identity,
+                                   declaredIdentifier: declaredIdentifier) != nil
+            }
+        }) {
+            return true
+        }
 
         // Inside a vendor folder the application's real name is the two
         // put together, and some installers write it with a dot instead.
         if let vendor {
-            if activeNames.contains("\(vendor) \(name)".lowercased()) { return true }
-            if activeBundleIDs.contains("\(vendor).\(name)") { return true }
+            if activeNames.contains("\(vendor) \(name)".lowercased()) {
+                return true
+            }
+            if activeBundleIDs.contains("\(vendor).\(name)") {
+                return true
+            }
         }
 
         switch domain {
         case .userGroupContainers, .userApplicationScripts:
-            if activeGroupContainers.contains(name) { return true }
-            for teamID in activeTeamIDs {
-                if name.hasPrefix(teamID + ".") {
-                    let suffix = String(name.dropFirst(teamID.count + 1))
-                    if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                        return true
-                    }
-                }
+            return Self.isActiveGroup(name, groups: activeGroupContainers, teams: activeTeamIDs,
+                                      bundleIDs: activeBundleIDs, names: activeNames)
+
+        case .userWebKit, .userContainers:
+            if activeBundleIDs.contains(name) {
+                return true
             }
-            if let dotIndex = name.firstIndex(of: ".") {
-                let suffix = String(name[name.index(after: dotIndex)...])
-                if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                    return true
-                }
+            if activeNames.contains(lowerName) {
+                return true
             }
-            return false
-            
-        case .userApplicationSupport, .userCaches, .userLogs, .userWebKit, .userContainers:
-            if activeBundleIDs.contains(name) { return true }
-            if activeNames.contains(lowerName) { return true }
             if domain == .userContainers {
                 if let base = name.split(separator: ".").last, activeNames.contains(base.lowercased()) {
                     return true
                 }
             }
             return false
-            
-        case .userPreferences:
-            let base = name.hasSuffix(".plist") ? String(name.dropLast(6)) : name
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
-            
-        case .userSavedApplicationState:
-            let base = name.hasSuffix(".savedState") ? String(name.dropLast(11)) : name
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
-            
-        case .userPreferencesByHost:
-            // com.example.app.<hardware uuid>.plist, so the domain is
-            // everything before the identifier.
-            var base = name.hasSuffix(".plist") ? String(name.dropLast(6)) : name
-            let parts = base.split(separator: ".")
-            if parts.count > 1, UUID(uuidString: String(parts[parts.count - 1])) != nil {
-                base = parts.dropLast().joined(separator: ".")
-            }
-            return activeBundleIDs.contains(base) || activeNames.contains(base.lowercased())
 
         default:
-            return activeBundleIDs.contains(name) || activeNames.contains(lowerName)
+            return locationRules.isEmpty
+                && (activeBundleIDs.contains(name) || activeNames.contains(lowerName))
         }
+    }
+
+    private static func isActiveGroup(
+        _ name: String, groups: Set<String>, teams: Set<String>, bundleIDs: Set<String>, names: Set<String>
+    ) -> Bool {
+        if groups.contains(name) {
+            return true
+        }
+        for teamID in teams {
+            if name.hasPrefix(teamID + ".") {
+                let suffix = String(name.dropFirst(teamID.count + 1))
+                if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                    return true
+                }
+            }
+        }
+        if let dotIndex = name.firstIndex(of: ".") {
+            let suffix = String(name[name.index(after: dotIndex)...])
+            if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private nonisolated func isCommandLineItemActive(
+        _ item: URL, in domain: FileSystemRoot.Domain
+    ) -> Bool {
+        guard Self.commandLineDataDomains.contains(domain) else {
+            return false
+        }
+        if commandIsInstalled(item.lastPathComponent) {
+            return true
+        }
+        return domain == .userDotLocalBin && !Self.isDirectory(item)
+            && FileManager.default.isExecutableFile(atPath: item.path)
     }
     
     private nonisolated func scanDirectoryLevel1(_ url: URL) -> [URL] {
@@ -637,48 +733,30 @@ public actor LeftoversScanner {
     /// Code's is "Code". Reading only the file name left `Application
     /// Support/Code` looking unclaimed while the application sat in
     /// `/Applications`.
-    private func gatherActiveAppIdentities() async -> [Identity] {
-        var identities = [Identity]()
-        let fm = FileManager.default
-
-        // 1. Applications
-        let appDirs = [
-            root.url(for: .applications),
-            root.rootURL.appendingPathComponent("System/Applications"),
-            root.rootURL.appendingPathComponent("Users/\(root.userName)/Applications")
-        ]
-        
-        var searchRoots = appDirs
-        
-        // 2. Volumes
-        if let volumes = try? fm.contentsOfDirectory(at: root.url(for: .volumes), includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-            for vol in volumes {
-                searchRoots.append(vol.appendingPathComponent("Applications"))
-                searchRoots.append(vol.appendingPathComponent("Users/\(root.userName)/Applications"))
+    private func gatherActiveAppIdentities() async -> (identities: [Identity], complete: Bool) {
+        let inventory = await Task.detached { InstalledBundleInventory.read(in: self.root) }.value
+        var identities: [Identity] = []
+        var complete = inventory.completeness.isComplete
+        let budget = ScanBudget(total: 20)
+        for bundle in inventory.bundles {
+            if budget.hasRunOut {
+                complete = false; break
             }
+            let identity = await resolver.resolve(bundleURL: bundle)
+            let claims = await Task.detached {
+                BundleSurfaceReader.protectionClaims(at: bundle, in: self.root)
+            }.value
+            complete = complete && claims.complete
+            // These claims are local to the protective sweep, never passed
+            // to the uninstall evidence engine or used to select a deletion.
+            identities.append(Identity(bundleID: identity.bundleID, teamID: identity.teamID,
+                                       name: identity.name, bundleName: identity.bundleName,
+                                       groupContainers: claims.surface.groups,
+                                       identitySurface: claims.surface))
         }
-        
-        // 3. Readable users
-        if let users = try? fm.contentsOfDirectory(at: root.url(for: .users), includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-            for user in users {
-                searchRoots.append(user.appendingPathComponent("Applications"))
-            }
-        }
-        
-        for dir in searchRoots {
-            if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsPackageDescendants, .skipsHiddenFiles]) {
-                let urls = enumerator.compactMap { $0 as? URL }
-                for fileURL in urls {
-                    if fileURL.pathExtension == "app" {
-                        identities.append(await resolver.resolve(bundleURL: fileURL))
-                    }
-                }
-            }
-        }
-
-        return identities
+        return (identities, complete)
     }
-    
+
     private func gatherInstallerReceipts() async -> Set<String> {
         var receipts = Set<String>()
         let fm = FileManager.default
