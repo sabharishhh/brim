@@ -8,7 +8,6 @@ import Foundation
 /// reason about "is this needed" one path at a time; the question is about
 /// the application, and the answer is the set of places it touched.
 public struct LeftoverGroup: Identifiable, Sendable, Equatable {
-
     /// What to call this on screen.
     public let displayName: String
     /// The bundle identifier, where one was resolved.
@@ -30,7 +29,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// construction, so `id` can no longer collide by accident.
     public let groupKey: String
 
-    public var id: String { groupKey }
+    public var id: String {
+        groupKey
+    }
 
     // Everything below is derived from `items`, and every one of them used
     // to be a computed property.
@@ -52,7 +53,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     public let regeneratedBytes: Int64
 
     /// Bytes holding something the app would otherwise have remembered.
-    public var meaningfulBytes: Int64 { totalBytes - regeneratedBytes }
+    public var meaningfulBytes: Int64 {
+        totalBytes - regeneratedBytes
+    }
 
     /// The sentence that decided the category, taken from the strongest
     /// item rather than repeated per row.
@@ -101,23 +104,35 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         for item in items {
             total += item.size
             let domain = LeftoverDomain.of(item.url)
-            if domain.isRegenerated { regenerated += item.size }
-            if !orderedDomains.contains(domain) { orderedDomains.append(domain) }
-            if item.category == .orphaned, orphaned == nil { orphaned = item.evidence }
-            if anyEvidence == nil { anyEvidence = item.evidence }
-            if item.capability != .ok { actionable = false }
+            if domain.isRegenerated {
+                regenerated += item.size
+            }
+            if !orderedDomains.contains(domain) {
+                orderedDomains.append(domain)
+            }
+            if item.category == .orphaned, orphaned == nil {
+                orphaned = item.evidence
+            }
+            if anyEvidence == nil {
+                anyEvidence = item.evidence
+            }
+            if item.capability != .ok {
+                actionable = false
+            }
             obstacles.insert(item.capability)
-            if let date = item.lastAccessed, date > (accessed ?? .distantPast) { accessed = date }
+            if let date = item.lastAccessed, date > (accessed ?? .distantPast) {
+                accessed = date
+            }
         }
 
-        self.totalBytes = total
-        self.regeneratedBytes = regenerated
-        self.domains = orderedDomains.sorted { !$0.isRegenerated && $1.isRegenerated }
-        self.category = orphaned == nil ? .unclaimed : .orphaned
-        self.evidence = orphaned ?? anyEvidence ?? ""
-        self.isFullyActionable = actionable
-        self.lastAccessed = accessed
-        self.sharedObstacle = {
+        totalBytes = total
+        regeneratedBytes = regenerated
+        domains = orderedDomains.sorted { !$0.isRegenerated && $1.isRegenerated }
+        category = orphaned == nil ? .unclaimed : .orphaned
+        evidence = orphaned ?? anyEvidence ?? ""
+        isFullyActionable = actionable
+        lastAccessed = accessed
+        sharedObstacle = {
             guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
             return only
         }()
@@ -133,7 +148,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         var parts = [displayName]
         parts.append(items.count == 1 ? "one location" : "\(items.count) locations")
         parts.append(category == .orphaned ? "orphaned" : "unclaimed")
-        if !isFullyActionable { parts.append("Partly in use, so it cannot all be removed") }
+        if !isFullyActionable {
+            parts.append("Partly in use, so it cannot all be removed")
+        }
         if meaningfulBytes > 0 {
             parts.append("some of this is what the application remembered about you")
         }
@@ -142,8 +159,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     }
 }
 
-public extension Array where Element == Leftover {
-
+public extension [Leftover] {
     /// Collapses leftovers into one entry per piece of software.
     ///
     /// Keyed on the bundle identifier when the scan resolved one, and on the
@@ -169,7 +185,9 @@ public extension Array where Element == Leftover {
 
         func find(_ key: String) -> String {
             var root = key
-            while let next = parent[root], next != root { root = next }
+            while let next = parent[root], next != root {
+                root = next
+            }
             var walk = key
             while let next = parent[walk], next != root {
                 parent[walk] = root
@@ -180,14 +198,20 @@ public extension Array where Element == Leftover {
 
         func union(_ a: String, _ b: String) {
             let rootA = find(a), rootB = find(b)
-            if rootA != rootB { parent[rootB] = rootA }
+            if rootA != rootB {
+                parent[rootB] = rootA
+            }
         }
 
         for leftover in self {
             let keys = Self.groupingKeys(for: leftover)
-            for key in keys where parent[key] == nil { parent[key] = key }
+            for key in keys where parent[key] == nil {
+                parent[key] = key
+            }
             guard let first = keys.first else { continue }
-            for other in keys.dropFirst() { union(first, other) }
+            for other in keys.dropFirst() {
+                union(first, other)
+            }
         }
 
         var order: [String] = []
@@ -196,7 +220,9 @@ public extension Array where Element == Leftover {
         for leftover in self {
             guard let key = Self.groupingKeys(for: leftover).first else { continue }
             let root = find(key)
-            if buckets[root] == nil { order.append(root) }
+            if buckets[root] == nil {
+                order.append(root)
+            }
             buckets[root, default: []].append(leftover)
         }
 
@@ -241,6 +267,16 @@ public extension Array where Element == Leftover {
     /// carries an identifier, so both fall through to "codex" and merge.
     static func groupingKeys(for leftover: Leftover) -> [String] {
         var keys: [String] = []
+        // An unclaimed identifier is only a spelling from the file name,
+        // not a resolved bundle identity. Keep one product namespace
+        // together without joining every vendor helper named "Helper".
+        if leftover.category == .unclaimed, let namespace = OwnerNamespace.key(for: leftover.url.lastPathComponent) {
+            return [namespace]
+        }
+        let directID = leftover.potentialOwner?.bundleID
+        if let directID, let namespace = OwnerNamespace.key(for: directID), namespace != directID.lowercased() {
+            return [namespace]
+        }
         if let bundleID = leftover.potentialOwner?.bundleID, !bundleID.isEmpty {
             keys.append(bundleID.lowercased())
         }
@@ -261,5 +297,60 @@ public extension Array where Element == Leftover {
     /// The single strongest key, kept for callers that want one answer.
     static func groupingKey(for leftover: Leftover) -> String {
         groupingKeys(for: leftover).first ?? leftover.url.lastPathComponent.lowercased()
+    }
+}
+
+public struct LeftoverVendorCluster: Identifiable, Sendable, Equatable {
+    public let vendorKey: String
+    public let groups: [LeftoverGroup]
+    public var id: String {
+        "vendor:" + vendorKey
+    }
+
+    public var title: String {
+        vendorKey.split(separator: ".").last.map { String($0).capitalized } ?? vendorKey
+    }
+}
+
+public enum LeftoverListEntry: Identifiable, Sendable, Equatable {
+    case owner(LeftoverGroup)
+    case vendor(LeftoverVendorCluster)
+
+    public var id: String {
+        switch self {
+        case let .owner(group): "owner:" + group.id
+        case let .vendor(cluster): cluster.id
+        }
+    }
+}
+
+public extension [LeftoverGroup] {
+    /// A shared reverse-DNS vendor gets one collapsible heading while each
+    /// application remains a distinct group and a distinct removal choice.
+    func arrangedByVendor() -> [LeftoverListEntry] {
+        var groupsByVendor: [String: [LeftoverGroup]] = [:]
+        for group in self {
+            let names = [group.identifier].compactMap(\.self)
+                + group.items.map(\.url.lastPathComponent)
+            guard let vendor = names.compactMap(OwnerNamespace.vendorKey(for:)).first else { continue }
+            groupsByVendor[vendor, default: []].append(group)
+        }
+
+        var emitted = Set<String>()
+        var result: [LeftoverListEntry] = []
+        for group in self {
+            let names = [group.identifier].compactMap(\.self)
+                + group.items.map(\.url.lastPathComponent)
+            guard let vendor = names.compactMap(OwnerNamespace.vendorKey(for:)).first,
+                  let related = groupsByVendor[vendor], related.count > 1
+            else {
+                result.append(.owner(group))
+                continue
+            }
+            if emitted.insert(vendor).inserted {
+                result.append(.vendor(LeftoverVendorCluster(vendorKey: vendor, groups: related)))
+            }
+        }
+        return result
     }
 }

@@ -12,6 +12,7 @@ private let log = BrimLog.make("service")
 /// The in-process implementation of the BrimService.
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public let root: FileSystemRoot
+    private let brimAppURL: URL
     private let engine: EvidenceEngine
     private let safetyEngine: SafetyEngine
     private let planner: Planner
@@ -33,6 +34,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     
     public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true) {
         self.root = root
+        self.brimAppURL = brimAppURL
         self.consent = consent
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
@@ -1120,7 +1122,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             root: root,
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
             staleRegistrationOwners: staleRegistrationOwners,
-            homebrewOrphans: orphanedCaskNames
+            homebrewOrphans: orphanedCaskNames,
+            protectedAppURL: brimAppURL
         )
         var knownPastBundleIDs = Set<String>()
         let entries = try await ledgerStore.allEntries()

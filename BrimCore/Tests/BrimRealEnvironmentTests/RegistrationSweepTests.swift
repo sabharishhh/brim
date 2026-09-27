@@ -110,7 +110,9 @@ final class LeftoversOnThisMachineTests: XCTestCase {
         let scanner = LeftoversScanner(
             root: root,
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
-            staleRegistrationOwners: stale
+            staleRegistrationOwners: stale,
+            protectedAppURL: ProcessInfo.processInfo.environment["BRIM_AUDIT_APP_URL"]
+                .map { URL(fileURLWithPath: $0) }
         )
         return try await scanner.scanLeftovers()
     }
@@ -129,6 +131,22 @@ final class LeftoversOnThisMachineTests: XCTestCase {
         """)
         for item in orphaned.prefix(12) {
             print("  ORPHAN  \(item.url.lastPathComponent) — \(item.evidence)")
+        }
+        if ProcessInfo.processInfo.environment["BRIM_AUDIT_LEFTOVERS"] == "1" {
+            for item in leftovers {
+                print(
+                    "  AUDIT  \(item.category.rawValue) | \(item.url.path) | "
+                        + "\(item.potentialOwner?.name ?? "") | \(item.evidence)"
+                )
+            }
+            print(
+                "  GROUPS  \(orphaned.groupedByOwner().count) orphaned, "
+                    + "\(unclaimed.groupedByOwner().count) unclaimed"
+            )
+            print(
+                "  VISIBLE  \(orphaned.groupedByOwner().arrangedByVendor().count) orphaned, "
+                    + "\(unclaimed.groupedByOwner().arrangedByVendor().count) unclaimed"
+            )
         }
 
         XCTAssertFalse(leftovers.isEmpty, "A real Library should have something to say")
@@ -219,4 +237,3 @@ final class LaunchServicesContributionTests: XCTestCase {
         )
     }
 }
-
