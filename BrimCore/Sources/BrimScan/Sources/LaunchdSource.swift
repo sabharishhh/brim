@@ -25,7 +25,6 @@ public struct LaunchdSource: EvidenceSource {
             return EvidenceFindings(evidence: results)
         }
 
-        let identityResolver = IdentityResolver(root: root)
         // Other installed applications from the same developer, looked up
         // once and only if a job turns out to be matched on the team alone.
         var siblings: [Identity]?
@@ -44,8 +43,10 @@ public struct LaunchdSource: EvidenceSource {
             for plistURL in contents {
                 guard plistURL.pathExtension == "plist" else { continue }
 
-                // Parse it using IdentityResolver
-                let plistIdentity = await identityResolver.resolve(launchdPlistURL: plistURL)
+                guard let plistIdentity = Self.readJob(at: plistURL) else {
+                    completeness = completeness.merging(ScanCompleteness(unreadable: [plistURL.path]))
+                    continue
+                }
 
                 // Proof that the job is this application's: its label is
                 // named after the application, or the program it runs lives
@@ -158,4 +159,14 @@ public struct LaunchdSource: EvidenceSource {
 
         return EvidenceFindings(evidence: results, completeness: completeness)
     }
+    private static func readJob(at url: URL) -> Identity? {
+        guard let data = try? Data(contentsOf: url),
+              let values = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+                as? [String: Any] else { return nil }
+        return Identity(name: url.deletingPathExtension().lastPathComponent,
+                        launchdLabel: values["Label"] as? String,
+                        launchdProgramPath: (values["Program"] as? String)
+                            ?? (values["ProgramArguments"] as? [String])?.first)
+    }
+
 }
