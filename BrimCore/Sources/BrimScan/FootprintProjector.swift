@@ -23,35 +23,33 @@ public struct FootprintProjector: Sendable {
             evidenceList = app.evidence
             completeness = app.completeness
         }
-        
-        let fm = FileManager.default
-        let items = await Task.detached {
-            var localItems = [FootprintItem]()
-            for evidence in evidenceList {
-                // The path itself, not what it points at. `fileExists`
-                // follows a symlink, so every broken one Brim had just
-                // found was dropped here and never reached the plan.
-                guard PathExistence.exists(at: evidence.url) else { continue }
-                
-                let measured = Self.measure(at: evidence.url, fm: fm)
 
-                let capability = Self.determineCapability(for: evidence.url.path)
-
-                localItems.append(FootprintItem(
-                    evidence: evidence,
-                    sizeBytes: measured.bytes,
-                    capability: capability,
-                    unreadableEntries: measured.unreadable
-                ))
-            }
-            return localItems
-        }.value
-        
+        let items = try await Self.measureItems(evidenceList)
         return Footprint(identity: identity, items: items, completeness: completeness)
     }
-    
-    
-    nonisolated private static func determineCapability(for path: String) -> Capability {
+
+    /// Structured work retains the caller's cancellation, unlike Task.detached.
+    @concurrent
+    private static func measureItems(_ evidenceList: [Evidence]) async throws -> [FootprintItem] {
+        var items: [FootprintItem] = []
+        for evidence in evidenceList {
+            try Task.checkCancellation()
+            // The path itself, not what it points at. `fileExists`
+            // follows a symlink, so every broken one Brim had just
+            // found was dropped here and never reached the plan.
+            guard PathExistence.exists(at: evidence.url) else { continue }
+            let measured = measure(at: evidence.url, fm: .default)
+            try Task.checkCancellation()
+            items.append(FootprintItem(
+                evidence: evidence, sizeBytes: measured.bytes,
+                capability: determineCapability(for: evidence.url.path),
+                unreadableEntries: measured.unreadable
+            ))
+        }
+        return items
+    }
+
+    private nonisolated static func determineCapability(for path: String) -> Capability {
         if access(path, W_OK) == 0 {
             return .ok
         }
@@ -149,6 +147,10 @@ public struct FootprintProjector: Sendable {
         }
 
         while let entry = enumerator.nextObject() as? URL {
+            if Task.isCancelled {
+                result.unreadable += 1
+                break
+            }
             add(entry.path)
         }
         return result
