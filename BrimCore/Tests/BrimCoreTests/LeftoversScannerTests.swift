@@ -1,15 +1,26 @@
 @testable import BrimCore
 @testable import BrimScan
+import Darwin
 import Foundation
 import XCTest
 
 final class LeftoversScannerTests: XCTestCase {
-    private func installCode(in app: URL) throws {
+    private func installApp(at app: URL) throws {
         let executable = app.appendingPathComponent("Contents/MacOS/TestApp")
         try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         // A real code object makes entitlement inspection possible. It is never run.
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: executable)
+        let infoPlistData = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "CFBundleIdentifier": "com.example.TestApp",
+                "CFBundleName": "TestApp",
+                "CFBundleExecutable": "TestApp"
+            ],
+            format: .xml,
+            options: 0
+        )
+        try infoPlistData.write(to: app.appendingPathComponent("Contents/Info.plist"))
     }
 
     func testActiveAppGroupContainersAndAppSupportNotMarkedAsLeftovers() async throws {
@@ -22,17 +33,7 @@ final class LeftoversScannerTests: XCTestCase {
         let appURL = root.url(for: .applications).appendingPathComponent("TestApp.app")
         try fm.createDirectory(at: appURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
 
-        let infoPlistData = try PropertyListSerialization.data(
-            fromPropertyList: [
-                "CFBundleIdentifier": "com.example.TestApp",
-                "CFBundleName": "TestApp",
-                "CFBundleExecutable": "TestApp"
-            ],
-            format: .xml,
-            options: 0
-        )
-        try infoPlistData.write(to: appURL.appendingPathComponent("Contents/Info.plist"))
-        try installCode(in: appURL)
+        try installApp(at: appURL)
 
         // Active group container with team ID prefix
         let groupContainerURL = root.url(for: .userGroupContainers).appendingPathComponent("TEAM12345.com.example.TestApp")
@@ -43,6 +44,12 @@ final class LeftoversScannerTests: XCTestCase {
         let appSupportURL = root.url(for: .userApplicationSupport).appendingPathComponent("TestApp")
         try fm.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
         try "app support data".write(to: appSupportURL.appendingPathComponent("settings.json"), atomically: true, encoding: .utf8)
+
+        let helper = root.url(for: .userCaches)
+            .appendingPathComponent("com.example.TestApp.helper")
+        try fm.createDirectory(at: helper, withIntermediateDirectories: true)
+        try "cache".write(to: helper.appendingPathComponent("data"),
+                          atomically: true, encoding: .utf8)
 
         // Orphaned app support directory (with installer receipt)
         let receiptsDir = tempDir.appendingPathComponent("var/db/receipts")
@@ -70,6 +77,7 @@ final class LeftoversScannerTests: XCTestCase {
 
         // 2. Active application support must NOT be in leftovers
         XCTAssertFalse(leftoverNames.contains(appSupportURL.lastPathComponent), "Active application support directory should not be identified as leftover")
+        XCTAssertFalse(leftoverNames.contains(helper.lastPathComponent), "An installed app owns its helper data")
 
         // 3. Orphaned app support must be identified as .orphaned
         let orphanedMatch = leftovers.first(where: { $0.url.lastPathComponent == orphanedURL.lastPathComponent })
@@ -89,10 +97,24 @@ final class LeftoversScannerTests: XCTestCase {
 /// offered as a leftover. One had been written to under a minute before the
 /// scan that found it.
 final class AppleOwnedFilterTests: XCTestCase {
+    func testSystemNamesComeFromFixtureSystemLibrary() throws {
+        let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let frameworks = raw.appendingPathComponent("System/Library/PrivateFrameworks")
+        try FileManager.default.createDirectory(
+            at: frameworks.appendingPathComponent("SampleDaemon.framework"),
+            withIntermediateDirectories: true
+        )
+        let names = LeftoversScanner.systemNames(in: FileSystemRoot(rootURL: raw))
+        XCTAssertTrue(LeftoversScanner.isInstalledSystemComponent("SampleDaemon", names: names))
+        XCTAssertFalse(LeftoversScanner.isInstalledSystemComponent("ThirdParty", names: names))
+    }
+
     func testSystemDataIsNeverOfferedInEitherSpelling() {
         XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple.Safari"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.SHTTS"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.gamecenter"))
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("systemgroup.com.apple.icloud.searchpartyd.sharedsettings.plist"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple"))
     }
 
@@ -125,6 +147,126 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
         let tempDir = raw.resolvingSymlinksInPath()
         return (FileSystemRoot(rootURL: tempDir, userName: "testuser"), tempDir)
+    }
+
+    func testNestedInventoryRootsAndCrashReportsAreNotLeftoverRows() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        for domain in [FileSystemRoot.Domain.userPreferencesByHost, .userDiagnosticReports, .userCaches] {
+            try manager.createDirectory(at: root.url(for: domain), withIntermediateDirectories: true)
+        }
+        try "crash".write(
+            to: root.url(for: .userDiagnosticReports).appendingPathComponent("GoneApp.crash"),
+            atomically: true, encoding: .utf8
+        )
+        try "data".write(
+            to: root.url(for: .userCaches).appendingPathComponent("GoneApp"),
+            atomically: true, encoding: .utf8
+        )
+
+        let paths = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map { $0.url.resolvingSymlinksInPath().path })
+        let cache = root.url(for: .userCaches).appendingPathComponent("GoneApp")
+        XCTAssertTrue(paths.contains(cache.resolvingSymlinksInPath().path))
+        XCTAssertFalse(paths.contains(root.url(for: .userDiagnosticReports).path))
+        XCTAssertFalse(paths.contains(root.url(for: .userPreferencesByHost).path))
+        let crash = root.url(for: .userDiagnosticReports).appendingPathComponent("GoneApp.crash")
+        XCTAssertFalse(paths.contains(crash.path))
+        XCTAssertFalse(LocationInventory.sweepDomains.contains(.userDiagnosticReports))
+    }
+
+    func testRunningAppOutsideApplicationsProtectsItsCurrentAndOlderData() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        let app = raw.appendingPathComponent("Developer/Brim.app")
+        try manager.createDirectory(at: app.appendingPathComponent("Contents"),
+                                    withIntermediateDirectories: true)
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.sabharishhh.brim", "CFBundleName": "Brim"],
+            format: .xml, options: 0
+        )
+        try plist.write(to: app.appendingPathComponent("Contents/Info.plist"))
+        let support = root.url(for: .userApplicationSupport).appendingPathComponent("Brim")
+        let preferences = root.url(for: .userPreferences)
+            .appendingPathComponent("devplaceholder.PJ52YXEB.brim.plist")
+        try manager.createDirectory(at: support, withIntermediateDirectories: true)
+        try "data".write(to: support.appendingPathComponent("state"),
+                         atomically: true, encoding: .utf8)
+        try manager.createDirectory(at: preferences.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true)
+        try "old".write(to: preferences, atomically: true, encoding: .utf8)
+
+        let ordinary = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map { $0.url.resolvingSymlinksInPath().path })
+        XCTAssertTrue(ordinary.contains(support.resolvingSymlinksInPath().path))
+        XCTAssertTrue(ordinary.contains(preferences.resolvingSymlinksInPath().path))
+        let protected = try await Set(LeftoversScanner(root: root, protectedAppURL: app)
+            .scanLeftovers().map { $0.url.resolvingSymlinksInPath().path })
+        XCTAssertFalse(protected.contains(support.resolvingSymlinksInPath().path))
+        XCTAssertFalse(protected.contains(preferences.resolvingSymlinksInPath().path))
+    }
+
+    func testContainerMetadataSeparatesProductsCreatedTogether() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        let containers = root.url(for: .userContainers)
+        let owners = [
+            "com.example.alpha.Notification", "com.example.alpha.Widget",
+            "com.other.beta.Widget"
+        ]
+        for owner in owners {
+            let url = containers.appendingPathComponent(UUID().uuidString)
+            try manager.createDirectory(at: url, withIntermediateDirectories: true)
+            try "data".write(to: url.appendingPathComponent("state"),
+                             atomically: true, encoding: .utf8)
+            let result = Array(owner.utf8).withUnsafeBytes {
+                setxattr(url.path, "com.apple.containermanager.identifier",
+                         $0.baseAddress, $0.count, 0, 0)
+            }
+            XCTAssertEqual(result, 0)
+        }
+
+        let leftovers = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertEqual(leftovers.count, 3)
+        XCTAssertTrue(leftovers.allSatisfy { $0.category == .orphaned })
+        XCTAssertTrue(leftovers.allSatisfy { $0.evidence.contains("Container metadata") })
+        let groups = leftovers.groupedByOwner()
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(Set(groups.compactMap(\.identifier)), Set(owners))
+        XCTAssertTrue(groups.allSatisfy { $0.items.count == 1 })
+
+        let live = raw.appendingPathComponent("Developer/Live.app")
+        try manager.createDirectory(at: live, withIntermediateDirectories: true)
+        let withLiveParent = try await LeftoversScanner(
+            root: root,
+            launchServicesLookup: { $0 == "com.example.alpha" ? [live] : [] }
+        ).scanLeftovers()
+        XCTAssertEqual(withLiveParent.count, 1)
+        XCTAssertEqual(withLiveParent.first?.potentialOwner?.name, "Beta")
+    }
+
+    func testMacOSRelocationFolderIsNotSoftwareResidue() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let shared = root.url(for: .sharedUser)
+        let migrated = shared.appendingPathComponent("Previously Relocated Items 2")
+        let unrelated = shared.appendingPathComponent("Previously Relocated Items notes")
+        try FileManager.default.createDirectory(at: migrated, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        for folder in [migrated, unrelated] {
+            try "data".write(to: folder.appendingPathComponent("record"),
+                             atomically: true, encoding: .utf8)
+        }
+        try "".write(to: migrated.appendingPathComponent(".localized"),
+                     atomically: true, encoding: .utf8)
+
+        let names = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains(migrated.lastPathComponent))
+        XCTAssertTrue(names.contains(unrelated.lastPathComponent))
     }
 
     private func writeApp(

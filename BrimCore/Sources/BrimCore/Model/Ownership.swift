@@ -101,8 +101,7 @@ public struct OwnershipSearch: Sendable {
         }
         if let stale = registered.first {
             return .recordedButGone(
-                evidence: "macOS still has an app with this identifier listed at \(stale.path), "
-                        + "and there is nothing there any more."
+                evidence: "Launch Services lists \(stale.path), but the app is gone."
             )
         }
 
@@ -112,14 +111,13 @@ public struct OwnershipSearch: Sendable {
 
         if receiptBundleIDs.contains(identifier) {
             return .recordedButGone(
-                evidence: "An installer receipt mentions this identifier, but whatever it installed "
-                        + "is not on this Mac."
+                evidence: "An installer receipt names \(identifier), but the app is gone."
             )
         }
 
         if previouslyRemovedBundleIDs.contains(identifier) {
             return .recordedButGone(
-                evidence: "Brim removed this app, and this got left behind."
+                evidence: "Brim removed this app. This file remains."
             )
         }
 
