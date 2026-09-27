@@ -1,7 +1,8 @@
-// swiftformat:disable wrapMultilineStatementBraces
 import BrimCore
 import Darwin
 import Foundation
+
+// swiftformat:disable wrapMultilineStatementBraces
 
 public actor LeftoversScanner {
     public let root: FileSystemRoot
@@ -717,24 +718,8 @@ public actor LeftoversScanner {
 
         switch domain {
         case .userGroupContainers, .userApplicationScripts:
-            if activeGroupContainers.contains(name) {
-                return true
-            }
-            for teamID in activeTeamIDs {
-                if name.hasPrefix(teamID + ".") {
-                    let suffix = String(name.dropFirst(teamID.count + 1))
-                    if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                        return true
-                    }
-                }
-            }
-            if let dotIndex = name.firstIndex(of: ".") {
-                let suffix = String(name[name.index(after: dotIndex)...])
-                if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                    return true
-                }
-            }
-            return false
+            return Self.isActiveGroup(name, groups: activeGroupContainers, teams: activeTeamIDs,
+                                      bundleIDs: activeBundleIDs, names: activeNames)
 
         case .userWebKit, .userContainers:
             if activeBundleIDs.contains(name) {
@@ -754,6 +739,29 @@ public actor LeftoversScanner {
             return locationRules.isEmpty
                 && (activeBundleIDs.contains(name) || activeNames.contains(lowerName))
         }
+    }
+
+    private static func isActiveGroup(
+        _ name: String, groups: Set<String>, teams: Set<String>, bundleIDs: Set<String>, names: Set<String>
+    ) -> Bool {
+        if groups.contains(name) {
+            return true
+        }
+        for teamID in teams {
+            if name.hasPrefix(teamID + ".") {
+                let suffix = String(name.dropFirst(teamID.count + 1))
+                if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                    return true
+                }
+            }
+        }
+        if let dotIndex = name.firstIndex(of: ".") {
+            let suffix = String(name[name.index(after: dotIndex)...])
+            if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                return true
+            }
+        }
+        return false
     }
 
     private nonisolated func isCommandLineItemActive(
