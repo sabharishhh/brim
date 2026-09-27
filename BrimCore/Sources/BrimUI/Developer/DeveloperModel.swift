@@ -23,10 +23,28 @@ public final class DeveloperModel: ObservableObject {
         await load(service: service)
     }
 
+    private var loadTask: Task<Void, Never>?
+
+    /// The section owns its scan. Navigation can cancel a view's waiter without
+    /// discarding the result or leaving a second view waiting on an empty model.
     public func load(service: any BrimServiceProtocol) async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        let task = Task { await self.performLoad(service: service) }
+        loadTask = task
+        defer { loadTask = nil }
+        await task.value
+    }
+
+    private func performLoad(service: any BrimServiceProtocol) async {
+        guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
-        caches = await service.developerCaches()
+        let fetched = await service.developerCaches()
+        guard !Task.isCancelled else { return }
+        caches = fetched
         selection = selection.intersection(caches.map(\.id))
     }
 

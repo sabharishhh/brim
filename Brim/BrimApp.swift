@@ -78,18 +78,18 @@ private let log = BrimLog.make("app")
                     // nobody expects to a menu item, which is worse than
                     // it having none.
                     if let digit = item.keyboardDigit {
-                        Button(item.rawValue) { navigateAction?(item) }
+                        Button(item.rawValue) { navigateAction?.perform(item) }
                             .keyboardShortcut(KeyEquivalent(digit), modifiers: .command)
                             .disabled(navigateAction == nil)
                     } else {
-                        Button(item.rawValue) { navigateAction?(item) }
+                        Button(item.rawValue) { navigateAction?.perform(item) }
                             .disabled(navigateAction == nil)
                     }
                 }
             }
             CommandMenu("Action") {
                 Button("Remove Selected") {
-                    removeSelectedAction?()
+                    removeSelectedAction?.perform(())
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(removeSelectedAction == nil)

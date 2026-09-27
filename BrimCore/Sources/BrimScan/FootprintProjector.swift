@@ -23,62 +23,44 @@ public struct FootprintProjector: Sendable {
             evidenceList = app.evidence
             completeness = app.completeness
         }
-        
-        let fm = FileManager.default
-        let items = await Task.detached {
-            var localItems = [FootprintItem]()
-            for evidence in evidenceList {
-                // The path itself, not what it points at. `fileExists`
-                // follows a symlink, so every broken one Brim had just
-                // found was dropped here and never reached the plan.
-                guard PathExistence.exists(at: evidence.url) else { continue }
-                
-                let measured = Self.measure(at: evidence.url, fm: fm)
 
-                let capability = Self.determineCapability(for: evidence.url.path)
-
-                localItems.append(FootprintItem(
-                    evidence: evidence,
-                    sizeBytes: measured.bytes,
-                    capability: capability,
-                    unreadableEntries: measured.unreadable
-                ))
-            }
-            return localItems
-        }.value
-        
+        let items = try await Self.measureItems(evidenceList)
         return Footprint(identity: identity, items: items, completeness: completeness)
     }
-    
-    
-    nonisolated private static func determineCapability(for path: String) -> Capability {
-        if access(path, W_OK) == 0 {
-            return .ok
+
+    /// Structured work retains the caller's cancellation, unlike Task.detached.
+    @concurrent
+    private static func measureItems(_ evidenceList: [Evidence]) async throws -> [FootprintItem] {
+        var items: [FootprintItem] = []
+        for evidence in evidenceList {
+            try Task.checkCancellation()
+            // The path itself, not what it points at. `fileExists`
+            // follows a symlink, so every broken one Brim had just
+            // found was dropped here and never reached the plan.
+            guard PathExistence.exists(at: evidence.url) else { continue }
+            let measured = measure(at: evidence.url, fm: .default)
+            try Task.checkCancellation()
+            items.append(FootprintItem(
+                evidence: evidence, sizeBytes: measured.bytes,
+                capability: determineCapability(for: evidence.url.path),
+                unreadableEntries: measured.unreadable
+            ))
         }
-        
-        let err = errno
-        
-        var statInfo = stat()
-        if stat(path, &statInfo) == 0 {
-            let SF_RESTRICTED: UInt32 = 0x00080000
-            if (statInfo.st_flags & SF_RESTRICTED) != 0 {
-                return .refusedByOS
-            }
-        } else {
-            if errno == EPERM {
-                return .needsFullDiskAccess
-            }
-        }
-        
-        if err == EPERM {
-            return .needsFullDiskAccess
-        } else if err == EACCES {
-            return .needsHelper
-        }
-        
-        return .needsHelper
+        return items
     }
-    
+
+    /// The same answer the leftovers sweep gives, from the same rule.
+    ///
+    /// This used to ask the item with `access(path, W_OK)`. That follows a
+    /// link, so three broken links in `~/.local/bin` found nothing at the
+    /// far end, fell through to "needs an administrator", and were skipped
+    /// after the person approved them while the sweep had called them
+    /// removable. It was also the wrong question for a read-only file,
+    /// which its folder lets go perfectly well.
+    private nonisolated static func determineCapability(for path: String) -> Capability {
+        RemovalCapability.forDeleting(path)
+    }
+
     /// What one location weighs, and what could not be read.
     ///
     /// Three things this gets right that the obvious version did not:
@@ -149,6 +131,10 @@ public struct FootprintProjector: Sendable {
         }
 
         while let entry = enumerator.nextObject() as? URL {
+            if Task.isCancelled {
+                result.unreadable += 1
+                break
+            }
             add(entry.path)
         }
         return result

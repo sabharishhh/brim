@@ -223,6 +223,27 @@ public final class PrivilegedHelperClient: ObservableObject {
         }
     }
 
+    /// Asks the daemon to set aside a command link that points at
+    /// nothing. Nil when it worked, otherwise the daemon's own sentence.
+    public func removeBrokenCommand(domain: PrivilegedLinkRemoval.Domain, name: String) async -> String? {
+        guard state == .ready else {
+            return "Brim's helper is not set up, so it cannot touch anything outside your own Library."
+        }
+        return await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(returning: error.localizedDescription)
+            } as? BrimJobHelperProtocol
+
+            guard let proxy else {
+                return continuation.resume(returning: "The helper did not answer.")
+            }
+            proxy.removeBrokenCommand(domain: domain.rawValue, name: name) { refusal in
+                continuation.resume(returning: refusal)
+            }
+        }
+    }
+
     /// Asks the daemon to forget an installer receipt. Nil when it
     /// worked, otherwise the daemon's own sentence explaining why not.
     public func forgetReceipt(packageID: String) async -> String? {
