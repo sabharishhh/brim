@@ -150,7 +150,11 @@ public struct FixtureTreeGenerator {
         let fm = FileManager.default
         let daemonURL = rootURL.appendingPathComponent("Library/LaunchDaemons/com.brim.daemon.plist")
         try fm.createDirectory(at: daemonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        fm.createFile(atPath: daemonURL.path, contents: Data("dummy daemon".utf8))
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["Label": "com.brim.daemon", "Program": "/missing/fixture-daemon"],
+            format: .xml, options: 0
+        )
+        try data.write(to: daemonURL)
     }
     
     private func createSharedVendorFolder(vendorName: String, claimants: [String]) throws {
