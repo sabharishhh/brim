@@ -5,12 +5,22 @@ import Foundation
 import XCTest
 
 final class LeftoversScannerTests: XCTestCase {
-    private func installCode(in app: URL) throws {
+    private func installApp(at app: URL) throws {
         let executable = app.appendingPathComponent("Contents/MacOS/TestApp")
         try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         // A real code object makes entitlement inspection possible. It is never run.
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: executable)
+        let infoPlistData = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "CFBundleIdentifier": "com.example.TestApp",
+                "CFBundleName": "TestApp",
+                "CFBundleExecutable": "TestApp"
+            ],
+            format: .xml,
+            options: 0
+        )
+        try infoPlistData.write(to: app.appendingPathComponent("Contents/Info.plist"))
     }
 
     func testActiveAppGroupContainersAndAppSupportNotMarkedAsLeftovers() async throws {
@@ -23,17 +33,7 @@ final class LeftoversScannerTests: XCTestCase {
         let appURL = root.url(for: .applications).appendingPathComponent("TestApp.app")
         try fm.createDirectory(at: appURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
 
-        let infoPlistData = try PropertyListSerialization.data(
-            fromPropertyList: [
-                "CFBundleIdentifier": "com.example.TestApp",
-                "CFBundleName": "TestApp",
-                "CFBundleExecutable": "TestApp"
-            ],
-            format: .xml,
-            options: 0
-        )
-        try infoPlistData.write(to: appURL.appendingPathComponent("Contents/Info.plist"))
-        try installCode(in: appURL)
+        try installApp(at: appURL)
 
         // Active group container with team ID prefix
         let groupContainerURL = root.url(for: .userGroupContainers).appendingPathComponent("TEAM12345.com.example.TestApp")
