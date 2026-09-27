@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// A place macOS records that an application exists, other than the
 /// filesystem.
@@ -20,6 +20,24 @@ public protocol RegistrationSurface: Sendable {
 
     /// Whether this surface could be read at all on this machine.
     func coverage(in root: FileSystemRoot) async -> RegistrationCoverage
+    func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot
+}
+
+public struct RegistrationSnapshot: Sendable {
+    public let registrations: [Registration]
+    public let coverage: RegistrationCoverage
+    public init(registrations: [Registration], coverage: RegistrationCoverage) {
+        self.registrations = registrations
+        self.coverage = coverage
+    }
+}
+
+public extension RegistrationSurface {
+    func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        let coverage = await coverage(in: root)
+        return await RegistrationSnapshot(registrations: coverage.available ? registrations(in: root) : [],
+                                          coverage: coverage)
+    }
 }
 
 public actor RegistrationInventory {
@@ -44,19 +62,25 @@ public actor RegistrationInventory {
     /// than hopeful. The result is sorted afterwards, so the order does not
     /// depend on which task finished first.
     public func all(in root: FileSystemRoot) async -> [Registration] {
-        let surfaces = self.surfaces
+        let surfaces = surfaces
         let results = await withTaskGroup(of: [Registration].self) { group in
             for surface in surfaces {
                 group.addTask { await surface.registrations(in: root) }
             }
             var collected: [Registration] = []
-            for await found in group { collected.append(contentsOf: found) }
+            for await found in group {
+                collected.append(contentsOf: found)
+            }
             return collected
         }
         // Stable order: stale first, since those are what a sweep is for.
         return results.sorted {
-            if $0.isActionableStale != $1.isActionableStale { return $0.isActionableStale }
-            if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
+            if $0.isActionableStale != $1.isActionableStale {
+                return $0.isActionableStale
+            }
+            if $0.kind != $1.kind {
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
             return $0.identifier < $1.identifier
         }
     }
@@ -122,13 +146,15 @@ public actor RegistrationInventory {
     /// task group finishes in whatever order it finishes in and this list
     /// is shown to a person.
     public func coverage(in root: FileSystemRoot) async -> [RegistrationCoverage] {
-        let surfaces = self.surfaces
+        let surfaces = surfaces
         return await withTaskGroup(of: (Int, RegistrationCoverage).self) { group in
             for (index, surface) in surfaces.enumerated() {
-                group.addTask { (index, await surface.coverage(in: root)) }
+                group.addTask { await (index, surface.coverage(in: root)) }
             }
             var byIndex: [Int: RegistrationCoverage] = [:]
-            for await (index, found) in group { byIndex[index] = found }
+            for await (index, found) in group {
+                byIndex[index] = found
+            }
             return surfaces.indices.compactMap { byIndex[$0] }
         }
     }
