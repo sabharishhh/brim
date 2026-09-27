@@ -21,6 +21,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
+    private var leftoversTask: Task<[Leftover], Error>?
 
     /// The durable store. Written and never read used to be the whole of
     /// it: the schema existed, the module compiled, and the service did
@@ -621,8 +622,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         let (followUps, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+        // A failed step whose path is still there is explained with that
+        // path. Saying "some planned actions could not be completed" as
+        // well added a vaguer copy of the same news.
         let otherActionsFailed = journal != nil && plan.steps.contains { step in
             guard step.kind != .resetPrivacyGrants else { return false }
+            guard !(step.kind.targetIsPath && pathsRemaining.contains(step.target)) else { return false }
             let outcome = journal?.stepOutcomes[step.index]
             return outcome != "ok" && outcome != "already_gone"
         }
@@ -630,7 +635,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
             && !privacyResetFailed && !otherActionsFailed
         let reason = Self.verificationReason(
-            pathsRemaining: pathsRemaining, staleRegistrations: staleRegistrations,
+            pathsRemaining: pathsRemaining,
+            recorded: Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining),
+            staleRegistrations: staleRegistrations,
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
         
@@ -675,7 +682,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private static func verificationReason(
-        pathsRemaining: Set<String>, staleRegistrations: [URL], privacyResetFailed: Bool,
+        pathsRemaining: Set<String>, recorded: [String: String], staleRegistrations: [URL],
+        privacyResetFailed: Bool,
         otherActionsFailed: Bool
     ) -> String? {
         let pathReason: String?
@@ -686,9 +694,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             pathReason = "Every file is gone, but macOS still has this app registered at "
                 + staleRegistrations.map(\.path).joined(separator: ", ") + "."
         case (_, true):
-            pathReason = whyTheseRemain(pathsRemaining)
+            pathReason = whyTheseRemain(pathsRemaining, recorded: recorded)
         default:
-            pathReason = whyTheseRemain(pathsRemaining)
+            pathReason = whyTheseRemain(pathsRemaining, recorded: recorded)
                 + " macOS also still has this app registered."
         }
         let privacyReason = privacyResetFailed ? "Privacy permissions were not reset." : nil
@@ -830,8 +838,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// So: the reason once, the place once, and then the names. Somebody
     /// reading it learns what went wrong in the first line and which things
     /// it happened to in the last.
+    ///
+    /// What was recorded when the step ran comes first. Working the reason
+    /// out again afterwards from the folder's permissions is how three
+    /// links the journal had marked `needs_helper_not_set_up` were reported
+    /// as "macOS did not say why": the folder allowed the removal, so the
+    /// after-the-fact reading had nothing to say.
     static func whyTheseRemain(
         _ paths: Set<String>,
+        recorded: [String: String] = [:],
         capabilityForPath: (String) -> Capability = { RemovalCapability.forDeleting($0) }
     ) -> String {
         let opening = paths.count == 1
@@ -845,8 +860,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         var names: [String: [String]] = [:]
         for path in paths.sorted() {
             let folder = (path as NSString).deletingLastPathComponent
-            let capability = capabilityForPath(path)
-            let key = "\(folder)\u{0}\(capability.rawValue)"
+            let said = recorded[path].flatMap(Self.recordedReason)
+                ?? "capability:\(capabilityForPath(path).rawValue)"
+            let key = "\(folder)\u{0}\(said)"
             if names[key] == nil { order.append(key) }
             names[key, default: []].append((path as NSString).lastPathComponent)
         }
@@ -854,20 +870,64 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let paragraphs = order.flatMap { key -> [String] in
             let parts = key.components(separatedBy: "\u{0}")
             let folder = parts[0]
-            let capability = Capability(rawValue: parts[1]) ?? .ok
+            let said = parts[1]
             let these = names[key] ?? []
 
             // The folder is the subject wherever the folder is the reason,
             // so one sentence is right for one item and for fourteen. What
             // is left over is per item, and there the item is the subject.
-            let reason = RemovalCapability.folderExplanation(capability, folder: folder)
-                ?? RemovalCapability.explanation(capability)
-                ?? "Brim could not remove \(these.count == 1 ? "it" : "them") and macOS did not "
-                    + "say why."
-            return [reason, these.joined(separator: ", ")]
+            let reason: String
+            if said.hasPrefix("capability:") {
+                let capability = Capability(rawValue: String(said.dropFirst("capability:".count))) ?? .ok
+                reason = RemovalCapability.folderExplanation(capability, folder: folder)
+                    ?? RemovalCapability.explanation(capability)
+                    ?? "Brim could not remove \(these.count == 1 ? "it" : "them"), and nothing was "
+                        + "recorded to say why."
+            } else {
+                reason = said
+            }
+            // Where they are, whenever the reason has not already said.
+            let list = these.joined(separator: ", ")
+            return [reason, reason.contains(folder) ? list : "In \(folder): \(list)"]
         }
 
         return ([opening] + paragraphs).joined(separator: "\n\n")
+    }
+
+    /// What the journal recorded for each path that is still there.
+    static func recordedOutcomes(
+        plan: Plan, journal: JournalEntry?, remaining: Set<String>
+    ) -> [String: String] {
+        var recorded: [String: String] = [:]
+        for step in plan.steps where step.kind.targetIsPath && remaining.contains(step.target) {
+            if let outcome = journal?.stepOutcomes[step.index] {
+                recorded[step.target] = outcome
+            }
+        }
+        return recorded
+    }
+
+    /// A journal outcome in the person's terms, or nil where there is
+    /// nothing better to say than the folder's permissions.
+    static func recordedReason(_ outcome: String) -> String? {
+        if outcome == "needs_helper_not_set_up" {
+            return "Brim's helper is not turned on, so nothing in a system folder could move. "
+                + "It can be turned on in Background."
+        }
+        if outcome.hasPrefix("helper_refused: ") {
+            return "Brim's helper would not move this. "
+                + outcome.dropFirst("helper_refused: ".count)
+        }
+        if outcome == "skipped_due_to_prior_failures" {
+            return "Not attempted, because something before it in the same removal could not go."
+        }
+        if outcome == "refusedByOS" {
+            return nil
+        }
+        if outcome == "ok" || outcome == "already_gone" || outcome == "unsupported_kind" {
+            return nil
+        }
+        return "It could not be moved: \(outcome)"
     }
 
     /// A one step plan that runs a tool's own cleanup.
@@ -1112,6 +1172,23 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
 
     public func leftovers() async throws -> [Leftover] {
+        try Task.checkCancellation()
+        if let leftoversTask {
+            let result = try await leftoversTask.value
+            try Task.checkCancellation()
+            return result
+        }
+        // Review and Storage can request the same read concurrently. Share only
+        // in-flight work; a later rescan always reads the filesystem again.
+        let task = Task { try await self.scanLeftovers() }
+        leftoversTask = task
+        defer { leftoversTask = nil }
+        let result = try await task.value
+        try Task.checkCancellation()
+        return result
+    }
+
+    private func scanLeftovers() async throws -> [Leftover] {
         // A registration whose program has gone names an owner that was
         // recorded present and is not there now — the spec's definition of
         // orphaned, and the thing a user actually notices as "I uninstalled

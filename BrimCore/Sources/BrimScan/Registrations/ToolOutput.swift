@@ -15,7 +15,8 @@ public enum ToolOutput {
     public static func read(
         _ executable: String, _ arguments: [String], timeout: TimeInterval = 10
     ) -> String? {
-        guard FileManager.default.isExecutableFile(atPath: executable) else { return nil }
+        guard !Task.isCancelled, timeout.isFinite, timeout > 0,
+              FileManager.default.isExecutableFile(atPath: executable) else { return nil }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -45,7 +46,7 @@ public enum ToolOutput {
 
         let deadline = Date().addingTimeInterval(timeout)
         let limit = 8 * 1024 * 1024
-        while process.isRunning, Date() < deadline {
+        while process.isRunning, Date() < deadline, !Task.isCancelled {
             let size = (try? FileManager.default.attributesOfItem(atPath: stdout.path)[.size] as? Int) ?? 0
             if size > limit {
                 break

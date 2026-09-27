@@ -85,7 +85,10 @@ public final class ApplicationsModel: ObservableObject {
     @Published public var searchText = ""
 
     @Published public private(set) var selected: InstalledApplication?
-    @Published public private(set) var footprint: Footprint?
+    @Published public private(set) var footprint: Footprint? {
+        didSet { footprintGroups = makeFootprintGroups() }
+    }
+
     @Published public private(set) var isInspecting = false
     @Published public private(set) var errorMessage: String?
 
@@ -107,7 +110,9 @@ public final class ApplicationsModel: ObservableObject {
 
     /// Groups the selected app's footprint by what Brim can say about each
     /// item and how sure it is, strongest evidence first.
-    public var footprintGroups: [FootprintGroup] {
+    @Published public private(set) var footprintGroups: [FootprintGroup] = []
+
+    private func makeFootprintGroups() -> [FootprintGroup] {
         guard let footprint else { return [] }
         struct Key: Hashable {
             let tier: EvidenceTier
@@ -143,14 +148,34 @@ public final class ApplicationsModel: ObservableObject {
         await load(service: service)
     }
 
+    private var loadTask: Task<Void, Never>?
+
+    /// The section owns its scan. Navigation can cancel a view's waiter without
+    /// discarding the result or leaving a second view waiting on an empty model.
     public func load(service: any BrimServiceProtocol) async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        let task = Task { await self.performLoad(service: service) }
+        loadTask = task
+        defer { loadTask = nil }
+        await task.value
+    }
+
+    private func performLoad(service: any BrimServiceProtocol) async {
+        guard !isLoading else { return }
         self.service = service
-        isLoading = applications.isEmpty
+        isLoading = true
         defer { isLoading = false }
 
         do {
-            applications = try await service.installedApplications()
+            let found = try await service.installedApplications()
+            try Task.checkCancellation()
+            applications = found
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -226,12 +251,14 @@ public final class ApplicationsModel: ObservableObject {
 
         isInspecting = true
         inspectionTask = Task { [service] in
-            let discovered = try? await service.inspect(identity: application.identity)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                // Ignore a result that arrived after the user moved on.
-                guard self.selected?.id == application.id else { return }
+            do {
+                let discovered = try await service.inspect(identity: application.identity)
+                guard !Task.isCancelled, self.selected?.id == application.id else { return }
                 self.footprint = discovered
+                self.isInspecting = false
+            } catch {
+                guard !Task.isCancelled, self.selected?.id == application.id else { return }
+                self.errorMessage = error.localizedDescription
                 self.isInspecting = false
             }
         }
