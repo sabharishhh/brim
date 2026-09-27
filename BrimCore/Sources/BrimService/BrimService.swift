@@ -37,21 +37,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
         
-        self.engine = EvidenceEngine(sources: [
-            
-            AppBundleSource(),
-            SandboxContainerSource(),
-            InstallerReceiptSource(),
-            BundleIdentifierComponentSource(),
-            LocationInventorySource(),
-            SymlinkIntoBundleSource(),
-            GroupContainerSource(),
-            BundleIdentifierStateSource(),
-            TeamIDSource(),
-            LaunchServicesSource(),
-            SMAppServiceSource(),
-            LaunchdSource()
-        ])
+        self.engine = .standard
         
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
         let vetoEngine = TierSVetoEngine(root: root)

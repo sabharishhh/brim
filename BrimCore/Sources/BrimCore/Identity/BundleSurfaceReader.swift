@@ -1,7 +1,6 @@
 import Foundation
 import Security
 
-// SwiftLint and SwiftFormat disagree about braces on multiline declarations.
 // swiftformat:disable wrapMultilineStatementBraces
 // swiftlint:disable type_body_length
 /// Reads metadata in bundle packaging locations. It never searches user documents
@@ -11,23 +10,26 @@ public enum BundleSurfaceReader {
         read(at: bundle, in: root, budget: ScanBudget(total: 5), signature: Signature.read)
     }
 
-    /// A claim can veto removal even when its signature is not trusted to
-    /// authorize removal. Read embedded code too: an extension may hold the
-    /// group entitlement instead of its containing app.
+    /// Unvalidated embedded claims can protect data, never authorize removal.
     static func groupClaims(at bundle: URL, in root: FileSystemRoot) -> (groups: Set<String>, complete: Bool) {
-        var groups = Set<String>()
+        let claims = protectionClaims(at: bundle, in: root)
+        return (Set(claims.surface.groups), claims.complete)
+    }
+
+    /// Conservative claims for protecting installed software during a sweep.
+    /// Unvalidated signatures may protect data, never authorize its removal.
+    public static func protectionClaims(
+        at bundle: URL, in root: FileSystemRoot
+    ) -> (surface: IdentitySurface, complete: Bool) {
         var complete = true
-        let (_, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
+        let (surface, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
             let signature = Signature.read(url, validate: false)
-            if let claimed = signature.entitlements["com.apple.security.application-groups"] as? [String] {
-                groups.formUnion(claimed.filter(IdentitySurface.isPathComponent))
-            }
             if signature.gap != nil, signature.gap != "Unsigned code." {
                 complete = false
             }
             return signature
         }
-        return (groups, complete && coverage.completeness.isComplete)
+        return (surface, complete && coverage.completeness.isComplete)
     }
 
     struct Signature {
@@ -53,11 +55,12 @@ public enum BundleSurfaceReader {
                 return Signature(gap: status == errSecCSUnsigned ? "Unsigned code." : "Code signature unavailable.")
             }
             if !validate {
-                return Signature(entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
+                return Signature(identifier: values[kSecCodeInfoIdentifier as String] as? String,
+                                 team: values[kSecCodeInfoTeamIdentifier as String] as? String,
+                                 entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
             }
             let flags = (values[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
-            // CSCommon.h defines kSecCodeSignatureAdhoc as 0x0002, but does
-            // not export the symbol to Swift.
+            // kSecCodeSignatureAdhoc (0x0002) is not exported to Swift.
             let adHocFlag: UInt32 = 0x0002
             if flags & adHocFlag != 0 {
                 return Signature(gap: "Ad-hoc signature.")
@@ -198,7 +201,6 @@ public enum BundleSurfaceReader {
                     if Self.isMissing(error) {
                         continue
                     }
-                    // A raw helper binary has no directory-based Info.plist.
                     var isDirectory: ObjCBool = false
                     let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
                     if exists, !isDirectory.boolValue {
@@ -214,8 +216,7 @@ public enum BundleSurfaceReader {
             return [:]
         }
 
-        /// Metadata must stay inside the bundle and have a bounded read.
-        /// In particular, a launch-job plist may itself be a symlink.
+        /// Read bounded, regular metadata files within the bundle, including symlink targets.
         func metadata(at url: URL) throws -> Data {
             guard Self.contains(url.resolvingSymlinksInPath().path,
                                 within: bundle.resolvingSymlinksInPath().path) else {
