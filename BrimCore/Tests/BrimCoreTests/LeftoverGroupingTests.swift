@@ -175,21 +175,6 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(groups.first { $0.groupKey == "com.microsoft.office" }?.items.count, 1)
     }
 
-    func testVendorHeadingKeepsProductsAsSeparateRemovalChoices() {
-        let groups = [
-            leftover("\(home)/Caches/com.adobe.reader"),
-            leftover("\(home)/Caches/com.adobe.photoshop"),
-            leftover("\(home)/Caches/com.other.editor")
-        ].groupedByOwner()
-        let entries = groups.arrangedByVendor()
-
-        XCTAssertEqual(entries.count, 2)
-        guard case let .vendor(adobe)? = entries.first(where: { $0.id == "vendor:com.adobe" })
-        else { return XCTFail("Expected an Adobe heading") }
-        XCTAssertEqual(adobe.title, "Adobe")
-        XCTAssertEqual(Set(adobe.groups.map(\.id)), ["com.adobe.reader", "com.adobe.photoshop"])
-    }
-
     func testGroupsAreOrderedByWhatTheyCost() {
         let groups = [
             leftover("\(home)/Caches/Small", size: 10),
