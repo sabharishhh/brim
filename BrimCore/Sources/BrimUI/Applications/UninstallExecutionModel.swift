@@ -62,6 +62,7 @@ public final class UninstallExecutionModel: ObservableObject {
     /// Which request for a plan is the latest. A reply for an older one is
     /// thrown away, because it answers a choice the person has since changed.
     private var generation = 0
+    private var preparation = 0
 
     public init() {}
 
@@ -103,25 +104,34 @@ public final class UninstallExecutionModel: ObservableObject {
         } else {
             tickedByHand.remove(path)
         }
+        generation += 1
         await rebuild()
     }
 
     private func rebuild() async {
-        guard let service, let baseIntent else { return }
-        generation += 1
-        let asked = generation
+        guard let service, let baseIntent, !isUpdating else { return }
+        let sheet = preparation
         isUpdating = true
-        do {
-            let planned = try await service.plan(intent: baseIntent.tickingByHand(tickedByHand))
-            guard asked == generation else { return }
-            plan = planned
-            reviewGroups = Self.groupedSteps(planned.steps)
-            offerGroups = Self.groupedOffers(planned.excludedItems)
-            isUpdating = false
-        } catch {
-            guard asked == generation else { return }
-            isUpdating = false
-            phase = .failed(error.localizedDescription)
+        // Only one scan runs at a time. Changes made during it are combined
+        // into one subsequent plan for the latest selection.
+        while sheet == preparation {
+            let asked = generation
+            do {
+                let planned = try await service.plan(intent: baseIntent.tickingByHand(tickedByHand))
+                guard sheet == preparation else { return }
+                guard asked == generation else { continue }
+                plan = planned
+                reviewGroups = Self.groupedSteps(planned.steps)
+                offerGroups = Self.groupedOffers(planned.excludedItems)
+                isUpdating = false
+                return
+            } catch {
+                guard sheet == preparation else { return }
+                guard asked == generation else { continue }
+                isUpdating = false
+                phase = .failed(error.localizedDescription)
+                return
+            }
         }
     }
 
@@ -199,6 +209,7 @@ public final class UninstallExecutionModel: ObservableObject {
     }
 
     public func prepare(intent: PlanIntent, service: any BrimServiceProtocol) async {
+        preparation += 1
         self.service = service
         baseIntent = intent
         tickedByHand = Set(intent.tickedByHand ?? [])
