@@ -140,10 +140,10 @@ final class CapabilitySurfaceTests: XCTestCase {
         try info(["CFBundleIdentifier": "org.example.editor"], at: app)
         let outside = root.rootURL.appendingPathComponent("outside.plist")
         try PropertyListSerialization.data(fromPropertyList: ["Label": "org.unrelated.job"],
-                                            format: .xml, options: 0).write(to: outside)
+                                           format: .xml, options: 0).write(to: outside)
         let link = app.appendingPathComponent("Contents/Library/LaunchDaemons/job.plist")
         try FileManager.default.createDirectory(at: link.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true)
+                                                withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
         let (_, capabilities) = read { _ in BundleSurfaceReader.Signature(gap: "Unsigned code.") }
         XCTAssertFalse(capabilities.declarations.contains { $0.value == "org.unrelated.job" })
@@ -153,10 +153,22 @@ final class CapabilitySurfaceTests: XCTestCase {
     func testOversizedBundleMetadataIsReportedWithoutDecodingIt() throws {
         let plist = app.appendingPathComponent("Contents/Info.plist")
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true)
+                                                withIntermediateDirectories: true)
         try Data(repeating: 65, count: 4 * 1024 * 1024 + 1).write(to: plist)
         let (_, capabilities) = read { _ in BundleSurfaceReader.Signature(gap: "Unsigned code.") }
         XCTAssertTrue(capabilities.unreadable.contains(plist.path))
+    }
+
+    func testAbsentPackagingDirectoriesAreCompleteForEnumeratedBundleURLs() throws {
+        try info(["CFBundleIdentifier": "org.example.editor"], at: app)
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: root.url(for: .applications), includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey]
+        )
+        let discovered = try XCTUnwrap(urls.first)
+        let (_, capabilities) = BundleSurfaceReader.read(at: discovered, in: root, budget: .unlimited) { _ in
+            BundleSurfaceReader.Signature(gap: "Unsigned code.")
+        }
+        XCTAssertTrue(capabilities.completeness.isComplete, "\(capabilities.unreadable)")
     }
 
     func testReportKeepsDeclarationAndReadStatusSeparateAndIsApprovedWithPlan() async throws {
@@ -194,4 +206,17 @@ final class CapabilitySurfaceTests: XCTestCase {
         XCTAssertNil(ToolOutput.read("/usr/bin/false", []))
         XCTAssertNil(ToolOutput.read("/bin/sleep", ["2"], timeout: 0.02))
     }
+
+    func testTimedOutProbeThatIgnoresTerminationIsReaped() throws {
+        let pidFile = root.rootURL.appendingPathComponent("probe.pid")
+        let output = ToolOutput.read("/bin/sh", [
+            "-c", "echo $$ > \"$1\"; trap '' TERM; while :; do :; done", "probe", pidFile.path
+        ], timeout: 0.1)
+        XCTAssertNil(output)
+        let value = try String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        let pid = try XCTUnwrap(Int32(value))
+        XCTAssertEqual(kill(pid, 0), -1)
+        XCTAssertEqual(errno, ESRCH)
+    }
+
 }
