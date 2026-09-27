@@ -24,19 +24,17 @@ public enum ToolOutput {
         // and our reader. File handles have no bounded buffer to fill.
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("brim-probe-\(UUID().uuidString)")
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else {
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                       attributes: [.posixPermissions: 0o700])) != nil else {
             return nil
         }
         defer { try? FileManager.default.removeItem(at: folder) }
         let stdout = folder.appendingPathComponent("stdout")
-        let stderr = folder.appendingPathComponent("stderr")
         FileManager.default.createFile(atPath: stdout.path, contents: nil)
-        FileManager.default.createFile(atPath: stderr.path, contents: nil)
-        guard let output = FileHandle(forWritingAtPath: stdout.path),
-              let errors = FileHandle(forWritingAtPath: stderr.path) else { return nil }
-        defer { try? output.close(); try? errors.close() }
+        guard let output = FileHandle(forWritingAtPath: stdout.path) else { return nil }
+        defer { try? output.close() }
         process.standardOutput = output
-        process.standardError = errors
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
@@ -45,15 +43,24 @@ public enum ToolOutput {
         }
 
         let deadline = Date().addingTimeInterval(timeout)
+        let limit = 8 * 1024 * 1024
         while process.isRunning, Date() < deadline {
+            let size = (try? FileManager.default.attributesOfItem(atPath: stdout.path)[.size] as? Int) ?? 0
+            if size > limit { break }
             usleep(20000)
         }
         if process.isRunning {
             process.terminate()
+            let grace = Date().addingTimeInterval(0.2)
+            while process.isRunning, Date() < grace { usleep(10000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            process.waitUntilExit()
             return nil
         }
         guard process.terminationStatus == 0,
-              let data = try? Data(contentsOf: stdout) else { return nil }
+              let reader = try? FileHandle(forReadingFrom: stdout) else { return nil }
+        defer { try? reader.close() }
+        guard let data = try? reader.read(upToCount: limit + 1), data.count <= limit else { return nil }
         return String(data: data, encoding: .utf8)
     }
 }
