@@ -30,8 +30,18 @@ public enum RemovalCapability {
             // answers about the target, which for a broken link fails
             // outright and skipped this check entirely.
             var info = stat()
-            if lstat(path, &info) == 0, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
+            let described = lstat(path, &info) == 0
+            if described, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
                 return .refusedByOS
+            }
+            // A folder is moved, not unlinked, and moving one to another
+            // parent rewrites its own `..` entry, so the folder has to
+            // allow writes as well. A file or a link does not: checked on
+            // a real Mac, a read-only file and a broken link both move out
+            // of a folder you own and a read-only folder does not. Only
+            // the folder itself is asked, never through a link.
+            if described, (info.st_mode & S_IFMT) == S_IFDIR, access(path, W_OK) != 0 {
+                return errno == EPERM ? .needsFullDiskAccess : .needsHelper
             }
             return .ok
         }
