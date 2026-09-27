@@ -532,6 +532,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             // One guard, not the two that were here. They tested the same
             // thing, so the first always threw and the second, which is the
             // one that says what the fingerprints actually were, never ran.
+            guard originalStep.kind == newStep.kind,
+                  originalStep.effectiveDisposition == newStep.effectiveDisposition,
+                  originalStep.capability == newStep.capability,
+                  originalStep.executionPhase == newStep.executionPhase,
+                  originalStep.archiveDestination == newStep.archiveDestination else {
+                throw ApplyError.validationFailed("The required action changed. Review the plan again.")
+            }
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
                 throw ApplyError.validationFailed(
                     "Fingerprint mismatch at step \(i) for target \(originalStep.target): "
@@ -574,9 +581,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // lstat-ing one resolves it against the working directory.
         var pathsRemaining = Set<String>()
         for step in plan.steps where step.kind.targetIsPath {
-            if journal?.stepOutcomes[step.index] == "skipped_due_to_prior_failures" { continue }
             var statBuf = stat()
-            if lstat(step.target, &statBuf) == 0 { // 0 means it exists (symlink or real file)
+            if lstat(step.target, &statBuf) == 0 || (errno != ENOENT && errno != ENOTDIR) {
+                // A skipped path or a failed read is not proof of absence.
                 pathsRemaining.insert(step.target)
             }
         }
@@ -605,17 +612,23 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             // The leftover is a record pointing at a path holding nothing,
             // which is what emptying the Trash creates and what the Trash
             // lifecycle has to answer for.
-            staleRegistrations = LaunchServicesRegistration
-                .registeredApplicationURLs(forBundleID: bundleID)
+            staleRegistrations = try LaunchServicesRegistration
+                .checkedApplicationURLs(forBundleID: bundleID)
                 .filter { removedPaths.contains($0.standardizedFileURL.path) }
         }
 
         let (followUps, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+        let otherActionsFailed = journal != nil && plan.steps.contains { step in
+            guard step.kind != .resetPrivacyGrants else { return false }
+            let outcome = journal?.stepOutcomes[step.index]
+            return outcome != "ok" && outcome != "already_gone"
+        }
 
-        let success = targetsRemaining == 0 && staleRegistrations.isEmpty && !privacyResetFailed
+        let success = targetsRemaining == 0 && staleRegistrations.isEmpty
+            && !privacyResetFailed && !otherActionsFailed
         let reason = Self.verificationReason(
             pathsRemaining: pathsRemaining, staleRegistrations: staleRegistrations,
-            privacyResetFailed: privacyResetFailed
+            privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
         
         return VerificationResult(
@@ -633,9 +646,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let privacyResetFailed = journal != nil && plan.steps.contains { step in
             step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
         }
-        let bundleStillPresent = plan.intent.subjectIdentity.bundlePath.map {
-            FileManager.default.fileExists(atPath: $0)
-        } ?? false
+        let bundlePaths = plan.steps.filter { $0.executionPhase == .appBundle }.map(\.target)
+            + [plan.intent.subjectIdentity.bundlePath].compactMap { $0 }
+        let bundleStillPresent = bundlePaths.contains { FileManager.default.fileExists(atPath: $0) }
         let needsPrivacyFollowUp = privacyResetFailed
             && plan.intent.type == .uninstall && !bundleStillPresent
         let plannedExtensions = plan.capabilityReport?.checks.first {
@@ -659,7 +672,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private static func verificationReason(
-        pathsRemaining: Set<String>, staleRegistrations: [URL], privacyResetFailed: Bool
+        pathsRemaining: Set<String>, staleRegistrations: [URL], privacyResetFailed: Bool,
+        otherActionsFailed: Bool
     ) -> String? {
         let pathReason: String?
         switch (pathsRemaining.count, staleRegistrations.isEmpty) {
@@ -675,7 +689,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 + " macOS also still has this app registered."
         }
         let privacyReason = privacyResetFailed ? "Privacy permissions were not reset." : nil
-        let combined = [pathReason, privacyReason].compactMap(\.self).joined(separator: "\n\n")
+        let actionReason = otherActionsFailed ? "Some planned actions could not be completed." : nil
+        let combined = [pathReason, privacyReason, actionReason].compactMap(\.self).joined(separator: "\n\n")
         return combined.isEmpty ? nil : combined
     }
     
