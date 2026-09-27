@@ -159,14 +159,14 @@ public struct LaunchdSource: EvidenceSource {
 
         return EvidenceFindings(evidence: results, completeness: completeness)
     }
+
     private static func readJob(at url: URL) -> Identity? {
         guard let data = try? Data(contentsOf: url),
               let values = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-                as? [String: Any] else { return nil }
+              as? [String: Any] else { return nil }
         return Identity(name: url.deletingPathExtension().lastPathComponent,
                         launchdLabel: values["Label"] as? String,
                         launchdProgramPath: (values["Program"] as? String)
                             ?? (values["ProgramArguments"] as? [String])?.first)
     }
-
 }
