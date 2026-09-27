@@ -15,19 +15,24 @@ public enum BundleSurfaceReader {
     /// authorize removal. Read embedded code too: an extension may hold the
     /// group entitlement instead of its containing app.
     static func groupClaims(at bundle: URL, in root: FileSystemRoot) -> (groups: Set<String>, complete: Bool) {
-        var groups = Set<String>()
+        let claims = protectionClaims(at: bundle, in: root)
+        return (Set(claims.surface.groups), claims.complete)
+    }
+
+    /// Conservative claims for protecting installed software during a sweep.
+    /// Unvalidated signatures may protect data, never authorize its removal.
+    public static func protectionClaims(
+        at bundle: URL, in root: FileSystemRoot
+    ) -> (surface: IdentitySurface, complete: Bool) {
         var complete = true
-        let (_, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
+        let (surface, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
             let signature = Signature.read(url, validate: false)
-            if let claimed = signature.entitlements["com.apple.security.application-groups"] as? [String] {
-                groups.formUnion(claimed.filter(IdentitySurface.isPathComponent))
-            }
             if signature.gap != nil, signature.gap != "Unsigned code." {
                 complete = false
             }
             return signature
         }
-        return (groups, complete && coverage.completeness.isComplete)
+        return (surface, complete && coverage.completeness.isComplete)
     }
 
     struct Signature {
@@ -53,7 +58,9 @@ public enum BundleSurfaceReader {
                 return Signature(gap: status == errSecCSUnsigned ? "Unsigned code." : "Code signature unavailable.")
             }
             if !validate {
-                return Signature(entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
+                return Signature(identifier: values[kSecCodeInfoIdentifier as String] as? String,
+                                 team: values[kSecCodeInfoTeamIdentifier as String] as? String,
+                                 entitlements: values[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:])
             }
             let flags = (values[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
             // CSCommon.h defines kSecCodeSignatureAdhoc as 0x0002, but does
