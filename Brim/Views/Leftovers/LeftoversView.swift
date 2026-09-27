@@ -553,7 +553,9 @@ private struct LeftoverDetail: View {
             // seven broken commands in one folder for one reason, and the
             // callout above plus seven copies of the same orange sentence
             // is the wall this was meant to stop being.
-            if group.sharedObstacle == nil,
+            // Not for a row the helper takes: "needs an administrator" was
+            // still shown under dead links the helper was about to move.
+            if group.sharedObstacle == nil, !item.canBeRemovedByBrim,
                let why = RemovalCapability.explanation(item.capability) {
                 Label(why, systemImage: "lock")
                     .font(.caption2).foregroundColor(.orange)
