@@ -29,6 +29,9 @@ struct RemovalSheet: View {
     /// Dismissal. Still here for the case the check could not run, where a
     /// fresh scan really is the only way to know.
     let onFinished: () -> Void
+    /// Closed after a removal the check proved, with its plan, so the page
+    /// behind can offer to put it back.
+    var onProven: ((UUID) -> Void)?
 
     @StateObject private var model = UninstallExecutionModel()
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -75,6 +78,9 @@ struct RemovalSheet: View {
                 // rescanning here would be four hundred milliseconds spent
                 // rediscovering what it knows.
                 if case .appliedButUnverified = model.phase { onFinished() }
+                if case .verified = model.phase, let plan = model.plan {
+                    onProven?(plan.planId)
+                }
                 dismiss()
             }
             .keyboardShortcut(.escape, modifiers: [])
