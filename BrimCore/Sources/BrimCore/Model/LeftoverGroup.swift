@@ -159,6 +159,29 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     }
 }
 
+private struct OwnerAliases {
+    let ambiguousNames: Set<String>
+
+    init(items: [Leftover]) {
+        var identifiersByName: [String: Set<String>] = [:]
+        for item in items {
+            if let identifier = item.potentialOwner?.bundleID, let name = item.potentialOwner?.name {
+                identifiersByName[name.lowercased(), default: []].insert(identifier.lowercased())
+            }
+        }
+        ambiguousNames = Set(identifiersByName.filter { $0.value.count > 1 }.keys)
+    }
+
+    func keys(for item: Leftover) -> [String] {
+        let keys = [Leftover].groupingKeys(for: item)
+        guard let name = item.potentialOwner?.name.lowercased(), ambiguousNames.contains(name) else {
+            return keys
+        }
+        return item.potentialOwner?.bundleID == nil
+            ? ["name:" + name] : keys.filter { $0 != name }
+    }
+}
+
 public extension [Leftover] {
     /// Collapses leftovers into one entry per piece of software.
     ///
@@ -167,6 +190,7 @@ public extension [Leftover] {
     /// `Application Support/Codex` with `Caches/Codex`, since neither
     /// carries an identifier and both are named for the same tool.
     func groupedByOwner() -> [LeftoverGroup] {
+        let aliases = OwnerAliases(items: self)
         // Every name a leftover answers to, joined up.
         //
         // Keying on the single strongest name split software that resolves
@@ -204,7 +228,7 @@ public extension [Leftover] {
         }
 
         for leftover in self {
-            let keys = Self.groupingKeys(for: leftover)
+            let keys = aliases.keys(for: leftover)
             for key in keys where parent[key] == nil {
                 parent[key] = key
             }
@@ -218,7 +242,7 @@ public extension [Leftover] {
         var buckets: [String: [Leftover]] = [:]
 
         for leftover in self {
-            guard let key = Self.groupingKeys(for: leftover).first else { continue }
+            guard let key = aliases.keys(for: leftover).first else { continue }
             let root = find(key)
             if buckets[root] == nil {
                 order.append(root)
@@ -271,10 +295,6 @@ public extension [Leftover] {
         // not a resolved bundle identity. Keep one product namespace
         // together without joining every vendor helper named "Helper".
         if leftover.category == .unclaimed, let namespace = OwnerNamespace.key(for: leftover.url.lastPathComponent) {
-            return [namespace]
-        }
-        let directID = leftover.potentialOwner?.bundleID
-        if let directID, let namespace = OwnerNamespace.key(for: directID), namespace != directID.lowercased() {
             return [namespace]
         }
         if let bundleID = leftover.potentialOwner?.bundleID, !bundleID.isEmpty {

@@ -5,6 +5,14 @@ import Foundation
 import XCTest
 
 final class LeftoversScannerTests: XCTestCase {
+    private func installCode(in app: URL) throws {
+        let executable = app.appendingPathComponent("Contents/MacOS/TestApp")
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
+                                               withIntermediateDirectories: true)
+        // A real code object makes entitlement inspection possible. It is never run.
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: executable)
+    }
+
     func testActiveAppGroupContainersAndAppSupportNotMarkedAsLeftovers() async throws {
         let rawTempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let fm = FileManager.default
@@ -18,12 +26,14 @@ final class LeftoversScannerTests: XCTestCase {
         let infoPlistData = try PropertyListSerialization.data(
             fromPropertyList: [
                 "CFBundleIdentifier": "com.example.TestApp",
-                "CFBundleName": "TestApp"
+                "CFBundleName": "TestApp",
+                "CFBundleExecutable": "TestApp"
             ],
             format: .xml,
             options: 0
         )
         try infoPlistData.write(to: appURL.appendingPathComponent("Contents/Info.plist"))
+        try installCode(in: appURL)
 
         // Active group container with team ID prefix
         let groupContainerURL = root.url(for: .userGroupContainers).appendingPathComponent("TEAM12345.com.example.TestApp")
@@ -224,9 +234,9 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         XCTAssertTrue(leftovers.allSatisfy { $0.category == .orphaned })
         XCTAssertTrue(leftovers.allSatisfy { $0.evidence.contains("Container metadata") })
         let groups = leftovers.groupedByOwner()
-        XCTAssertEqual(groups.count, 2)
-        XCTAssertEqual(groups.first { $0.groupKey == "com.example.alpha" }?.items.count, 2)
-        XCTAssertEqual(groups.first { $0.groupKey == "com.other.beta" }?.items.count, 1)
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(Set(groups.compactMap(\.identifier)), Set(owners))
+        XCTAssertTrue(groups.allSatisfy { $0.items.count == 1 })
 
         let live = raw.appendingPathComponent("Developer/Live.app")
         try manager.createDirectory(at: live, withIntermediateDirectories: true)

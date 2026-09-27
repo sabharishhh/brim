@@ -42,7 +42,6 @@ struct LeftoversView: View {
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
-        .task { EvidenceNarrator.shared.prewarm() }
         .task { await recovery.start(service: service) }
         // Putting something back in Finder puts the file back where it was,
         // so the row belongs back in the list. The Trash changing is the
@@ -428,9 +427,11 @@ private struct LeftoverDetail: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .task(id: group.id) {
+        .task(id: contextFacts) {
             selectedFact = nil
-            selectedFact = await EvidenceNarrator.shared.choose(from: contextFacts, limit: 1)
+            let choice = await EvidenceNarrator.shared.choose(from: contextFacts, limit: 1)
+            guard !Task.isCancelled else { return }
+            selectedFact = choice
         }
     }
 
