@@ -72,8 +72,6 @@ public actor LeftoversScanner {
             launchServicesLookup: launchServicesLookup
         )
 
-        var leftovers: [Leftover] = []
-        
         // Driven by the same inventory the uninstall path uses, rather
         // than a second list kept by hand. The two had drifted: removing
         // an application looked in sixty places and sweeping for what
@@ -106,19 +104,23 @@ public actor LeftoversScanner {
             for await batch in group { collected.append(contentsOf: batch) }
             return collected
         }
-        // An incomplete installed-app inventory cannot prove an owner is gone.
-        leftovers = gathered.complete ? found : found.map { item in
-            Leftover(url: item.url, size: item.size, category: .unclaimed,
-                     potentialOwner: item.potentialOwner,
-                     evidence: "Installed ownership could not be fully checked.",
-                     capability: item.capability, lastAccessed: item.lastAccessed)
-        }
+        let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
         // disposable: nothing having read a file lately says nothing about
         // whether its owner is gone.
         return leftovers.sorted { $0.size > $1.size }
+    }
+
+    private static func protectUncertainOwnership(_ items: [Leftover], complete: Bool) -> [Leftover] {
+        guard !complete else { return items }
+        return items.map { item in
+            Leftover(url: item.url, size: item.size, category: .unclaimed,
+                     potentialOwner: item.potentialOwner,
+                     evidence: "Installed ownership could not be fully checked.",
+                     capability: item.capability, lastAccessed: item.lastAccessed)
+        }
     }
 
     /// Everything one domain holds that nothing installed claims.

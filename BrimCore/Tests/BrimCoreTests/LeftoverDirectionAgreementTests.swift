@@ -1,3 +1,4 @@
+// swiftformat:disable wrapMultilineStatementBraces
 import BrimCore
 @testable import BrimScan
 import XCTest
@@ -10,19 +11,19 @@ final class LeftoverDirectionAgreementTests: XCTestCase {
         let app = root.url(for: .applications).appendingPathComponent("Vendor/Editor.app")
         let helper = app.appendingPathComponent("Contents/PlugIns/Worker.appex")
         for (bundle, identifier, name) in [(app, "org.example.editor", "Editor"),
-                                         (helper, "net.unrelated.worker", "WorkerData")] {
+                                           (helper, "net.unrelated.worker", "WorkerData")] {
             let info = bundle.appendingPathComponent("Contents/Info.plist")
             try FileManager.default.createDirectory(at: info.deletingLastPathComponent(),
-                                                   withIntermediateDirectories: true)
+                                                    withIntermediateDirectories: true)
             try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier,
                                                                   "CFBundleName": name],
-                                                format: .xml, options: 0).write(to: info)
+                                               format: .xml, options: 0).write(to: info)
         }
         let paths = [root.url(for: .userCaches).appendingPathComponent("net.unrelated.worker"),
                      root.url(for: .userApplicationSupport).appendingPathComponent("workerdata")]
         for path in paths {
             try FileManager.default.createDirectory(at: path.deletingLastPathComponent(),
-                                                   withIntermediateDirectories: true)
+                                                    withIntermediateDirectories: true)
             try Data([1]).write(to: path)
         }
         let leftovers = try await LeftoversScanner(root: root)
