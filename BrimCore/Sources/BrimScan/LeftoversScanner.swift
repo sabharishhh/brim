@@ -1,3 +1,4 @@
+// swiftformat:disable wrapMultilineStatementBraces
 import Foundation
 import BrimCore
 
@@ -494,7 +495,9 @@ public actor LeftoversScanner {
     ) -> Bool {
         let name = item.lastPathComponent
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
-           activeNames.contains(name.lowercased()) { return true }
+           activeNames.contains(name.lowercased()) {
+            return true
+        }
         let lowerName = name.lowercased()
         if isCommandLineItemActive(item, in: domain) {
             return true
@@ -514,43 +517,60 @@ public actor LeftoversScanner {
         // Inside a vendor folder the application's real name is the two
         // put together, and some installers write it with a dot instead.
         if let vendor {
-            if activeNames.contains("\(vendor) \(name)".lowercased()) { return true }
-            if activeBundleIDs.contains("\(vendor).\(name)") { return true }
+            if activeNames.contains("\(vendor) \(name)".lowercased()) {
+                return true
+            }
+            if activeBundleIDs.contains("\(vendor).\(name)") {
+                return true
+            }
         }
 
         switch domain {
         case .userGroupContainers, .userApplicationScripts:
-            if activeGroupContainers.contains(name) { return true }
-            for teamID in activeTeamIDs {
-                if name.hasPrefix(teamID + ".") {
-                    let suffix = String(name.dropFirst(teamID.count + 1))
-                    if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                        return true
-                    }
-                }
-            }
-            if let dotIndex = name.firstIndex(of: ".") {
-                let suffix = String(name[name.index(after: dotIndex)...])
-                if activeBundleIDs.contains(suffix) || activeNames.contains(suffix.lowercased()) {
-                    return true
-                }
-            }
-            return false
-            
+            return Self.isActiveGroup(name, groups: activeGroupContainers, teams: activeTeamIDs,
+                                      bundleIDs: activeBundleIDs, names: activeNames)
+
         case .userWebKit, .userContainers:
-            if activeBundleIDs.contains(name) { return true }
-            if activeNames.contains(lowerName) { return true }
+            if activeBundleIDs.contains(name) {
+                return true
+            }
+            if activeNames.contains(lowerName) {
+                return true
+            }
             if domain == .userContainers {
                 if let base = name.split(separator: ".").last, activeNames.contains(base.lowercased()) {
                     return true
                 }
             }
             return false
-            
+
         default:
             return locationRules.isEmpty
                 && (activeBundleIDs.contains(name) || activeNames.contains(lowerName))
         }
+    }
+
+    private static func isActiveGroup(
+        _ name: String, groups: Set<String>, teams: Set<String>, bundleIDs: Set<String>, names: Set<String>
+    ) -> Bool {
+        if groups.contains(name) {
+            return true
+        }
+        for teamID in teams {
+            if name.hasPrefix(teamID + ".") {
+                let suffix = String(name.dropFirst(teamID.count + 1))
+                if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                    return true
+                }
+            }
+        }
+        if let dotIndex = name.firstIndex(of: ".") {
+            let suffix = String(name[name.index(after: dotIndex)...])
+            if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                return true
+            }
+        }
+        return false
     }
 
     private nonisolated func isCommandLineItemActive(
@@ -718,7 +738,9 @@ public actor LeftoversScanner {
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
         for bundle in inventory.bundles {
-            if budget.hasRunOut { complete = false; break }
+            if budget.hasRunOut {
+                complete = false; break
+            }
             let identity = await resolver.resolve(bundleURL: bundle)
             let claims = await Task.detached {
                 BundleSurfaceReader.protectionClaims(at: bundle, in: self.root)
