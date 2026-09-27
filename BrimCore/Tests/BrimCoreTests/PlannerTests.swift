@@ -4,6 +4,21 @@ import Foundation
 
 final class PlannerTests: XCTestCase {
 
+    func testUntickedApplicationDoesNotResetPrivacyPermissions() {
+        let identity = Identity(bundleID: "org.example.app", name: "Example")
+        let item = EvaluatedItem(footprintItem: FootprintItem(
+            evidence: Evidence(url: URL(fileURLWithPath: "/tmp/Example.app"), tier: .A,
+                               mechanism: "test", humanSentence: "Application"),
+            sizeBytes: 1, capability: .ok
+        ), selection: .unselected, costOfError: .medium)
+        let footprint = EvaluatedFootprint(identity: identity, items: [item],
+                                           completeness: ScanCompleteness(unreadable: ["/tmp/unreadable"]))
+        let plan = Planner().createPlan(from: footprint,
+                                        intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
+                                        engineVersion: "test")
+        XCTAssertTrue(plan.steps.isEmpty)
+    }
+
     /// The Applications pane and the uninstall sheet describe the same row,
     /// and they used to describe it differently. The pane showed the sentence
     /// the evidence source wrote when it made the match, "A cache folder
