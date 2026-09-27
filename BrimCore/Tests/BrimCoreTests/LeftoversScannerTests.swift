@@ -8,7 +8,7 @@ final class LeftoversScannerTests: XCTestCase {
     private func installCode(in app: URL) throws {
         let executable = app.appendingPathComponent("Contents/MacOS/TestApp")
         try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true)
+                                                withIntermediateDirectories: true)
         // A real code object makes entitlement inspection possible. It is never run.
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: executable)
     }
