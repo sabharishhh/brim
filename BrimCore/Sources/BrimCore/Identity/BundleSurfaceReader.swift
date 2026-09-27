@@ -180,6 +180,10 @@ public enum BundleSurfaceReader {
         mutating func readInfo(_ url: URL) -> [String: Any] {
             for relative in ["Contents/Info.plist", "Resources/Info.plist", "Info.plist"] {
                 let plist = url.appendingPathComponent(relative)
+                var info = stat()
+                if lstat(plist.path, &info) != 0, errno == ENOENT {
+                    continue
+                }
                 let real = plist.resolvingSymlinksInPath().path
                 guard Self.contains(real, within: bundle.resolvingSymlinksInPath().path) else {
                     unreadable.insert(plist.path)
@@ -217,9 +221,16 @@ public enum BundleSurfaceReader {
                                 within: bundle.resolvingSymlinksInPath().path) else {
                 throw CocoaError(.fileReadNoPermission)
             }
-            let handle = try FileHandle(forReadingFrom: url)
+            let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+            guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             defer { try? handle.close() }
             let limit = 4 * 1024 * 1024
+            var info = stat()
+            guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            guard info.st_size <= limit else { throw CocoaError(.fileReadTooLarge) }
             let data = try handle.read(upToCount: limit + 1) ?? Data()
             guard data.count <= limit else { throw CocoaError(.fileReadTooLarge) }
             return data
@@ -227,6 +238,10 @@ public enum BundleSurfaceReader {
 
         mutating func entries(_ url: URL) -> [URL] {
             guard !budget.hasRunOut else { timedOut.insert(url.path); return [] }
+            var info = stat()
+            if lstat(url.path, &info) != 0, errno == ENOENT {
+                return []
+            }
             let real = url.resolvingSymlinksInPath().path
             guard Self.contains(real, within: bundle.resolvingSymlinksInPath().path) else {
                 unreadable.insert(url.path)

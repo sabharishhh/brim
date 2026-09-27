@@ -25,7 +25,8 @@ public enum ToolOutput {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("brim-probe-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
-                                                       attributes: [.posixPermissions: 0o700])) != nil else {
+                                                        attributes: [.posixPermissions: 0o700])) != nil
+        else {
             return nil
         }
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -46,15 +47,13 @@ public enum ToolOutput {
         let limit = 8 * 1024 * 1024
         while process.isRunning, Date() < deadline {
             let size = (try? FileManager.default.attributesOfItem(atPath: stdout.path)[.size] as? Int) ?? 0
-            if size > limit { break }
+            if size > limit {
+                break
+            }
             usleep(20000)
         }
         if process.isRunning {
-            process.terminate()
-            let grace = Date().addingTimeInterval(0.2)
-            while process.isRunning, Date() < grace { usleep(10000) }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            process.waitUntilExit()
+            stop(process)
             return nil
         }
         guard process.terminationStatus == 0,
@@ -62,5 +61,17 @@ public enum ToolOutput {
         defer { try? reader.close() }
         guard let data = try? reader.read(upToCount: limit + 1), data.count <= limit else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func stop(_ process: Process) {
+        process.terminate()
+        let grace = Date().addingTimeInterval(0.2)
+        while process.isRunning, Date() < grace {
+            usleep(10000)
+        }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+        process.waitUntilExit()
     }
 }
