@@ -947,6 +947,33 @@ lint and focused merge regressions passed before publication. The final visual
 recheck could not run because the Mac was locked. No live applications were
 removed during this review.
 
+**Responsiveness and removal reliability, 27 September 2026.** Scrolling
+lagged in every panel because two menu commands were focused values holding
+closures; SwiftUI counted every redraw as new focus state and rebuilt the
+menus and window root, so Brim sat at 100% CPU whenever it was frontmost.
+`FocusedAction` compares by name. Over the same scroll sequence the main
+thread went from busy in 99.8% of samples to 2.7% with the SwiftUI list, so
+the AppKit list built for the lag was dropped. Scan fan-out is bounded to four,
+cancellation reaches the work, and each section owns its scan.
+
+A leftovers removal skipped three broken links in `~/.local/bin` as needing an
+administrator: planning asked the item, through the link, while the sweep asked
+the folder. Both now use `RemovalCapability`, which also knows a read-only
+folder cannot be moved. The helper sets aside dead command links in
+`/usr/local/bin` and `/usr/local/sbin` after proving them dead itself, is
+connected for every removal through `HelperRoute`, and is offered once during
+setup. `HelperScope` is the planner's reading of the helper's rules, so a plan
+promises only what the helper takes and shows the rest as staying before
+approval. The sweep no longer lists macOS's `org.cups` files, bundles with an
+Apple identifier, or bundles signed by an installed vendor's team. Results
+report the outcome recorded for each path and offer Show in Finder.
+
+Measured on this Mac: 163 of 180 leftovers need nothing, 9 dead links need the
+helper, and 8 in root-owned folders are shown as staying. With the helper on,
+all 9 links were set aside and the daemon log and journal confirmed each one.
+Open decision: whether the helper should take other root-owned leftovers, which
+needs a way for it to prove each is unused.
+
 ---
 
 ## 12. Critical path, parallel work, prototypes, risks

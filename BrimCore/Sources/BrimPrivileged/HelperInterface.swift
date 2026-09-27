@@ -3,9 +3,9 @@ import Security
 
 /// The whole of what the root daemon will do.
 ///
-/// Two methods. There is no "delete this path", no "run this command", and
-/// nothing that takes a URL, because an interface that cannot express a
-/// dangerous request cannot be talked into one.
+/// A few narrow methods. There is no "delete this path", no "run this
+/// command", and nothing that takes a URL, because an interface that
+/// cannot express a dangerous request cannot be talked into one.
 @objc public protocol BrimJobHelperProtocol {
     /// Sets aside one launchd job file that is no longer good for
     /// anything. The daemon builds the path from the domain and the name
@@ -13,6 +13,16 @@ import Security
     ///
     /// The reply carries nil when it worked, or a sentence saying why not.
     func removeDefunctJob(
+        domain: String, name: String,
+        withReply reply: @escaping (String?) -> Void
+    )
+
+    /// Sets aside one command link that points at nothing. The daemon
+    /// builds the path from the domain and the name and proves the link is
+    /// dead itself; see `PrivilegedLinkRemoval`.
+    ///
+    /// The reply carries nil when it worked, or a sentence saying why not.
+    func removeBrokenCommand(
         domain: String, name: String,
         withReply reply: @escaping (String?) -> Void
     )
@@ -51,7 +61,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "3"
+    public static let version = "4"
 
     public static let teamID = "9LY29YLFG2"
 
