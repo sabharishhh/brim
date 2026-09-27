@@ -534,11 +534,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             // One guard, not the two that were here. They tested the same
             // thing, so the first always threw and the second, which is the
             // one that says what the fingerprints actually were, never ran.
-            guard originalStep.kind == newStep.kind,
-                  originalStep.effectiveDisposition == newStep.effectiveDisposition,
-                  originalStep.capability == newStep.capability,
-                  originalStep.executionPhase == newStep.executionPhase,
-                  originalStep.archiveDestination == newStep.archiveDestination else {
+            let sameAction = originalStep.kind == newStep.kind
+                && originalStep.effectiveDisposition == newStep.effectiveDisposition
+                && originalStep.capability == newStep.capability
+                && originalStep.executionPhase == newStep.executionPhase
+                && originalStep.archiveDestination == newStep.archiveDestination
+            guard sameAction else {
                 throw ApplyError.validationFailed("The required action changed. Review the plan again.")
             }
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
@@ -649,7 +650,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
         }
         let bundlePaths = plan.steps.filter { $0.executionPhase == .appBundle }.map(\.target)
-            + [plan.intent.subjectIdentity.bundlePath].compactMap { $0 }
+            + [plan.intent.subjectIdentity.bundlePath].compactMap(\.self)
         let bundleStillPresent = bundlePaths.contains { FileManager.default.fileExists(atPath: $0) }
         let needsPrivacyFollowUp = privacyResetFailed
             && plan.intent.type == .uninstall && !bundleStillPresent
