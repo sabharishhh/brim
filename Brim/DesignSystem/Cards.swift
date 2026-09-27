@@ -108,22 +108,40 @@ struct StatCard<Detail: View>: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Palette.inkTertiary)
                 }
-                Text(figure)
-                    .font(.brimFigure)
-                    .foregroundStyle(Palette.ink)
-                    .contentTransition(.numericText())
-                HStack(spacing: 6) {
-                    StatusDot(status: status)
-                    Text(phrase)
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                        .lineLimit(1)
+                if status == .checking {
+                    // The shape of the answer, shimmering, rather than a
+                    // zero or an ellipsis nobody measured.
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBar(width: 128, height: 24)
+                            .padding(.vertical, 4)
+                        SkeletonBar(width: 96)
+                    }
+                    .shimmer()
+                    .transition(.opacity)
+                    .accessibilityLabel("Checking")
+                } else {
+                    Text(figure)
+                        .font(.brimFigure)
+                        .foregroundStyle(Palette.ink)
+                        .contentTransition(.numericText())
+                        .transition(.opacity)
+                    HStack(spacing: 6) {
+                        StatusDot(status: status)
+                        Text(phrase)
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.inkSecondary)
+                            .lineLimit(1)
+                    }
+                    .transition(.opacity)
                 }
                 Spacer(minLength: 0)
-                detail
+                if status != .checking {
+                    detail
+                }
             }
             .padding(18)
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+            .animation(Motion.standard, value: status == .checking)
             .card()
             .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
             .offset(y: isHovering ? -2 : 0)

@@ -1,7 +1,7 @@
-import QuickLook
-import SwiftUI
 import BrimProtocol
 import BrimUI
+import QuickLook
+import SwiftUI
 
 struct ContentView: View {
     /// Where the window is, where it has been, Quick Look and the toast.
@@ -37,8 +37,8 @@ struct ContentView: View {
                         shell.go(to: destination)
                     }
                 }
-            ))
-            .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
+            ), activity: models.activity)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
             ZStack {
                 page(shell.selection)
@@ -47,6 +47,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.paper)
+            .overlay(alignment: .top) { ActivityLine(activity: models.activity) }
             // Keyed to the page, so a change of page is animated and
             // nothing inside one inherits it: an animation over the whole
             // column would animate every scroll and every checkbox too.
@@ -118,7 +119,11 @@ struct ContentView: View {
         }
         .sheet(isPresented: Binding(
             get: { needsSetup == true },
-            set: { if !$0 { needsSetup = false } }
+            set: {
+                if !$0 {
+                    needsSetup = false
+                }
+            }
         )) {
             OnboardingSheet(service: service) {
                 hasFinishedSetup = true
@@ -193,5 +198,22 @@ struct ContentView: View {
         case .developer: await models.developer.load(service: service)
         case .journal: await models.history.load(service: service)
         }
+    }
+}
+
+/// The brim line under the toolbar, running while any place is scanning,
+/// and gone when nothing is, so an idle window draws nothing.
+private struct ActivityLine: View {
+    @ObservedObject var activity: ScanActivity
+
+    var body: some View {
+        ZStack {
+            if !activity.busy.isEmpty {
+                BrimLine(work: .indeterminate)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: activity.busy.isEmpty)
+        .accessibilityHidden(activity.busy.isEmpty)
     }
 }

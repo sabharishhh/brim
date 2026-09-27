@@ -92,6 +92,11 @@ struct LeftoversView: View {
                         .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
                 }
+                if model.isScanning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Checking")
+                }
                 Spacer()
                 Picker("Group By", selection: $grouping) {
                     ForEach(LeftoverGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -122,7 +127,10 @@ struct LeftoversView: View {
     @ViewBuilder
     private var content: some View {
         if model.isScanning, model.all.isEmpty {
-            SkeletonStack()
+            SkeletonRows()
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
         } else if model.all.isEmpty {
@@ -276,35 +284,6 @@ struct LeftoversView: View {
             symbol: "tray", text: "Tray cleared", actionTitle: "Undo",
             action: { [undoManager] in undoManager?.undo() }
         ))
-    }
-}
-
-/// Rows in the shape of the real ones while the first scan runs, so
-/// nothing moves when the content arrives.
-private struct SkeletonStack: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0 ..< 6, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Palette.well)
-                        .frame(width: Metrics.rowIcon, height: Metrics.rowIcon)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Capsule().fill(Palette.well).frame(width: 140, height: 9)
-                        Capsule().fill(Palette.well).frame(width: 90, height: 7)
-                    }
-                    Spacer()
-                    Capsule().fill(Palette.well).frame(width: 56, height: 9)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: Metrics.rowHeight)
-            }
-        }
-        .padding(Metrics.cardPadding)
-        .card()
-        .padding(.horizontal, 16)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .accessibilityLabel("Checking")
     }
 }
 
