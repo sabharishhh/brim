@@ -23,6 +23,7 @@ struct LeftoversView: View {
     @ObservedObject var recovery: RecoveryStatusModel
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
+    @SwiftUI.Environment(AppSession.self) private var session
     @SwiftUI.Environment(\.undoManager) private var undoManager
 
     @State private var reviewRequest: PlanIntent?
@@ -45,6 +46,14 @@ struct LeftoversView: View {
         }
         .task { await model.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
+        // Seen, a moment after it is on screen, so Home's "new" count and
+        // the dots have been looked at before they go.
+        .task(id: model.checkedAt) {
+            guard model.checkedAt != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            session.visits.acknowledge("leftovers", current: Set(model.all.map(\.id)))
+        }
         // Putting something back in Finder puts the file back where it was,
         // so the row belongs back in the list. The Trash changing is the
         // signal, and checking costs one `lstat` per row Brim removed and
@@ -134,6 +143,7 @@ struct LeftoversView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Leftovers").font(.title2).fontWeight(.bold)
+                        .pageMorph("page.leftovers")
                     Text(summary).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()

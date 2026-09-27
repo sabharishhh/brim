@@ -322,6 +322,8 @@ struct Tile: View {
     let figure: String
     let caption: String
     var icons: [IconSource] = []
+    /// Morphs into the title of the page this opens (`pageMorph`).
+    var morphID: String?
     let action: () -> Void
 
     @State private var isHovering = false
@@ -333,6 +335,7 @@ struct Tile: View {
                     Text(title)
                         .font(.brimGroupTitle)
                         .foregroundStyle(Palette.ink)
+                        .pageMorph(morphID ?? title)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -347,7 +350,7 @@ struct Tile: View {
                         BrimIcon(source: source, size: 26)
                     }
                     if !icons.isEmpty {
-                        Spacer().frame(width: 12)
+                        Spacer().frame(width: 18)
                     }
                     Text(caption)
                         .font(.brimFacts)
