@@ -225,6 +225,13 @@ struct UninstallSheet: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
+            if !result.success, !result.remainingPaths.isEmpty {
+                let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
+                Button(urls.count == 1 ? "Show in Finder" : "Show All \(urls.count) in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                }
+            }
+
             if let actions = result.followUpActions {
                 ForEach(actions, id: \.self) { action in
                     Text(action.sentence)

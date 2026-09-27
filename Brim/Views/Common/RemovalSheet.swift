@@ -135,6 +135,17 @@ struct RemovalSheet: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
+                        if !result.remainingPaths.isEmpty {
+                            // Selected, not just opened: a folder of twenty-seven
+                            // names with six to find is not help. Finder opens a
+                            // window per folder, and can move what is left itself.
+                            let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
+                            Button(urls.count == 1 ? "Show in Finder" : "Show All \(urls.count) in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting(urls)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                        }
                     }
 
                     if let explanation = model.spaceExplanation {
