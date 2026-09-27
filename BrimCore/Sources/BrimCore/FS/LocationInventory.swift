@@ -27,6 +27,9 @@ public struct LocationInventory: Sendable {
         /// `com.example.app.savedState` and the ByHost variants, where a
         /// hardware identifier follows.
         case bundleIdentifierPrefix
+        /// A group explicitly declared by the bundle, or an unverified
+        /// `group.<bundle id>` name when no declaration could be read.
+        case groupContainer
         /// A file or folder named exactly the application's name.
         case applicationName
         /// A file or folder named the application's name in lower case.
@@ -78,9 +81,74 @@ public struct LocationInventory: Sendable {
             case .bundleIdentifier, .bundleIdentifierFile, .bundleIdentifierPrefix,
                  .identifierInsideBundle:
                 return .B
+            case .groupContainer:
+                return .A
             case .applicationName, .applicationNameLowercased:
                 return .C
             }
+        }
+
+        /// Names the forward search can test without reading a bundle.
+        public func candidates(for identity: Identity) -> [String] {
+            switch rule {
+            case .bundleIdentifier:
+                return identity.searchBundleIdentifiers
+            case let .bundleIdentifierFile(ext):
+                return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
+            case .bundleIdentifierPrefix:
+                return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
+            case .groupContainer:
+                if !identity.searchGroupContainers.isEmpty {
+                    return identity.searchGroupContainers
+                }
+                return identity.searchBundleIdentifiers.map { "group.\($0)" }
+            case .applicationName:
+                return identity.searchNames
+            case .applicationNameLowercased:
+                var seen = Set<String>()
+                return identity.searchNames.map { $0.lowercased() }
+                    .filter { seen.insert($0).inserted }
+            case .identifierInsideBundle:
+                return []
+            }
+        }
+
+        /// The same ownership rule is used when searching from an app and
+        /// when checking whether a swept path still belongs to one.
+        public func matchTier(name: String, identity: Identity, declaredIdentifier: String? = nil) -> EvidenceTier? {
+            switch rule {
+            case .bundleIdentifier:
+                guard identity.searchBundleIdentifiers.contains(name) else { return nil }
+                return name == identity.bundleID ? tier : .C
+            case let .bundleIdentifierFile(ext):
+                guard let matched = identity.searchBundleIdentifiers.first(where: {
+                    name == "\($0).\(ext)"
+                }) else { return nil }
+                return matched == identity.bundleID ? tier : .C
+            case .bundleIdentifierPrefix:
+                guard let matched = identity.searchBundleIdentifiers
+                    .filter({ name == $0 || name.hasPrefix($0 + ".") })
+                    .max(by: { $0.count < $1.count }) else { return nil }
+                return matched == identity.bundleID ? tier : .C
+            case .groupContainer:
+                return groupTier(name: name, identity: identity)
+            case .applicationName, .applicationNameLowercased:
+                return candidates(for: identity).contains(name) ? tier : nil
+            case .identifierInsideBundle:
+                guard let declaredIdentifier,
+                      identity.searchBundleIdentifiers.contains(declaredIdentifier) else { return nil }
+                return declaredIdentifier == identity.bundleID ? tier : .C
+            }
+        }
+
+        private func groupTier(name: String, identity: Identity) -> EvidenceTier? {
+            if identity.searchGroupContainers.contains(name) {
+                return .A
+            }
+            guard identity.searchGroupContainers.isEmpty,
+                  identity.searchBundleIdentifiers.contains(where: { name == "group.\($0)" })
+            else { return nil }
+            return .C
         }
     }
 
@@ -117,23 +185,6 @@ public struct LocationInventory: Sendable {
         // genuine part of that application's footprint; it is only
         // useless as an answer to "what has been left behind".
         .darwinUserTemp,
-        // Held back from the sweep rather than judged worthless. An
-        // orphaned recent-documents record is a real leftover, but the
-        // directory holds about fifty of Apple's own alongside the third
-        // party ones, and the leftovers list is already long enough to be
-        // the thing people complain about. It joins the sweep when there is
-        // something to tell Apple's records apart from everybody else's.
-        .userRecentDocuments,
-        // Held back for the same reason and a sharper one. These folders
-        // belong overwhelmingly to command line tools that are very much
-        // still installed: `~/.config/git`, `~/.config/gh`, `~/.cache/uv`.
-        // A tool has no application bundle, so the sweep's test for whether
-        // something is still owned cannot see it, and every one of them
-        // would be offered as a leftover. The uninstall path searches here
-        // because it starts from an application that is genuinely going;
-        // the sweep cannot until it can recognise a command line tool.
-        .userDotConfig, .userDotCache, .userDotLocalShare,
-        .userDotLocalState, .userDotLocalBin,
     ]
 
     public let locations: [Location]
@@ -180,6 +231,18 @@ public struct LocationInventory: Sendable {
         Location(domain: .userApplicationSupport, rule: .bundleIdentifierPrefix,
                  describes: "supporting files",
                  sentence: "Application Support keyed to the bundle identifier."),
+        Location(domain: .userContainers, rule: .bundleIdentifier,
+                 describes: "sandbox data",
+                 sentence: "Container keyed to the bundle identifier."),
+        Location(domain: .systemContainers, rule: .bundleIdentifier,
+                 describes: "sandbox data for every user",
+                 sentence: "Container for every user, keyed to the bundle identifier."),
+        Location(domain: .userGroupContainers, rule: .groupContainer,
+                 describes: "shared app data",
+                 sentence: "Group container declared by this app, or matched by name only."),
+        Location(domain: .userWebKit, rule: .bundleIdentifier,
+                 describes: "web data",
+                 sentence: "WebKit data keyed to the bundle identifier."),
         Location(domain: .systemApplicationSupport, rule: .bundleIdentifierPrefix,
                  describes: "supporting files for every user",
                  sentence: "Application Support for every user, keyed to the bundle identifier."),
@@ -232,6 +295,9 @@ public struct LocationInventory: Sendable {
         Location(domain: .userApplicationScripts, rule: .bundleIdentifier,
                  describes: "automation scripts",
                  sentence: "The folder macOS gives a sandboxed application for its scripts."),
+        Location(domain: .userApplicationScripts, rule: .groupContainer,
+                 describes: "shared automation scripts",
+                 sentence: "Automation scripts for a declared app group, or matched by name only."),
         Location(domain: .userAutosaveInformation, rule: .bundleIdentifierPrefix,
                  describes: "autosaved documents",
                  sentence: "Documents this application autosaved but never closed."),

@@ -836,6 +836,24 @@ through T-7.6.
 - **Acceptance** A test binds the two directions: for one bundle, what the uninstall would remove and what the sweep attributes to it are the same set.
 - **Unlocks** the end of the drift class that cost three commits in one day.
 
+**Implementation:** the production evidence engine is one shared definition.
+Each inventory location now provides the candidate names and tiered match used
+by both forward discovery and the leftovers sweep. The sweep checks installed
+identities with those rules and uses them to attribute records to a bundle Brim
+previously removed. Containers, group containers and WebKit locations are in
+the inventory. Recent-documents records and dot folders join the sweep.
+Apple's own recent-documents records stay out; an installed executable keeps
+its command line tool data out, including tools in `~/.local/bin` when the app
+has a limited `PATH`. The direction-agreement fixture compares the production
+search with the sweep for one bundle across support, preferences, caches,
+recent documents, WebKit and group containers.
+
+**Validated:** the package suite, approval tests, Debug build and lint
+comparison passed. Fixture tests confirm that installed app data and installed
+command line tool settings stay out of the sweep, while the same app's files
+appear after removal. T-7.4 is complete; the real-machine row count and
+grouping work remain in T-7.5.
+
 ### T-7.5 · The list a person can actually read (was P3.1 to P3.6)
 - **Objective** 231 rows to roughly 105, every removal citing a file on disk.
 - **Depends on** T-7.4.

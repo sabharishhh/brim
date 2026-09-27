@@ -70,7 +70,7 @@ public struct LocationInventorySource: EvidenceSource {
                 guard fm.fileExists(atPath: url.path) else { continue }
                 evidence.append(Evidence(
                     url: url,
-                    tier: Self.tier(for: candidate, location: location, identity: identity),
+                    tier: location.matchTier(name: candidate, identity: identity) ?? .C,
                     mechanism: "LocationInventorySource",
                     humanSentence: location.sentence
                 ))
@@ -83,15 +83,11 @@ public struct LocationInventorySource: EvidenceSource {
                     unreadable.append(directory.path)
                 case let .listed(names):
                     for name in names {
-                        let matches = identity.searchBundleIdentifiers.contains { name.hasPrefix($0 + ".") }
-                        guard matches else { continue }
+                        guard let tier = location.matchTier(name: name, identity: identity) else { continue }
                         let url = directory.appendingPathComponent(name)
                         guard !evidence.contains(where: { $0.url == url }) else { continue }
-                        let matchedID = identity.searchBundleIdentifiers
-                            .filter { name.hasPrefix($0 + ".") }
-                            .max { $0.count < $1.count }
                         evidence.append(Evidence(
-                            url: url, tier: matchedID == identity.bundleID ? location.tier : .C,
+                            url: url, tier: tier,
                             mechanism: "LocationInventorySource",
                             humanSentence: location.sentence
                         ))
@@ -121,9 +117,11 @@ public struct LocationInventorySource: EvidenceSource {
                 for name in names where !name.hasPrefix(".") {
                     let item = directory.appendingPathComponent(name)
                     guard let foundID = Self.declaredIdentifier(at: item),
-                          identity.searchBundleIdentifiers.contains(foundID) else { continue }
+                          let tier = location.matchTier(
+                              name: name, identity: identity, declaredIdentifier: foundID
+                          ) else { continue }
                     evidence.append(Evidence(
-                        url: item, tier: foundID == identity.bundleID ? location.tier : .C,
+                        url: item, tier: tier,
                         mechanism: "LocationInventorySource",
                         humanSentence: location.sentence
                     ))
@@ -141,45 +139,7 @@ public struct LocationInventorySource: EvidenceSource {
     static func candidates(
         for location: LocationInventory.Location, identity: Identity
     ) -> [String] {
-        switch location.rule {
-        case .bundleIdentifier:
-            return identity.searchBundleIdentifiers
-        case let .bundleIdentifierFile(ext):
-            return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
-        case .bundleIdentifierPrefix:
-            // The exact name as well as the prefixed ones, because
-            // `com.example.app.plist` is the common case.
-            return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
-        case .applicationName:
-            // Both names, because an application's folders are named after
-            // whichever of them its developer reached for. Visual Studio
-            // Code is "Visual Studio Code" on disk and "Code" to itself,
-            // and its 143 MB of support files are under the second.
-            return identity.searchNames
-        case .applicationNameLowercased:
-            var seen = Set<String>()
-            return identity.searchNames
-                .map { $0.lowercased() }
-                .filter { seen.insert($0).inserted }
-        case .identifierInsideBundle:
-            return []
-        }
-    }
-
-    private static func tier(for candidate: String, location: Location, identity: Identity) -> EvidenceTier {
-        switch location.rule {
-        case .bundleIdentifier:
-            guard let main = identity.bundleID else { return .C }
-            return candidate == main ? location.tier : .C
-        case let .bundleIdentifierFile(ext):
-            guard let main = identity.bundleID else { return .C }
-            return candidate == "\(main).\(ext)" ? location.tier : .C
-        case .bundleIdentifierPrefix:
-            guard let main = identity.bundleID else { return .C }
-            return candidate == main || candidate == "\(main).plist" ? location.tier : .C
-        default:
-            return location.tier
-        }
+        location.candidates(for: identity)
     }
 
     static func entries(of directory: URL, fm: FileManager) -> DirectoryEntries {
