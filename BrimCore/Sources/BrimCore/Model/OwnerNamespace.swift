@@ -40,16 +40,4 @@ public enum OwnerNamespace {
     public static func displayName(for key: String) -> String {
         key.split(separator: ".").last.map { String($0).capitalized } ?? key
     }
-
-    /// The vendor portion is for a list heading only. It must never become
-    /// a removal identity because one vendor can ship unrelated apps.
-    public static func vendorKey(for fileName: String) -> String? {
-        guard let key = key(for: fileName) else { return nil }
-        let parts = key.split(separator: ".")
-        guard parts.count >= 3 else { return nil }
-        if parts[0] == "jp", parts[1] == "co", parts.count >= 4 {
-            return parts.prefix(3).joined(separator: ".")
-        }
-        return parts.prefix(2).joined(separator: ".")
-    }
 }

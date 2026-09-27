@@ -52,7 +52,7 @@ final class LeftoversModelTests: XCTestCase {
     func testRepeatedSearchBindingDoesNotRepublishDerivedRows() {
         let model = LeftoversModel()
         var publications = 0
-        let observation = model.$visibleOrphanedEntries.sink { _ in publications += 1 }
+        let observation = model.$visibleOrphanedGroups.sink { _ in publications += 1 }
         model.searchText = ""
         model.searchText = ""
         XCTAssertEqual(publications, 1)
@@ -87,11 +87,11 @@ final class LeftoversModelTests: XCTestCase {
         ]))
         let original = model.selection
         model.searchText = " beta "
-        XCTAssertTrue(model.visibleOrphanedEntries.isEmpty)
-        XCTAssertEqual(model.visibleUnclaimedEntries.count, 1)
+        XCTAssertTrue(model.visibleOrphanedGroups.isEmpty)
+        XCTAssertEqual(model.visibleUnclaimedGroups.count, 1)
         XCTAssertEqual(model.selection, original)
         model.forget(paths: ["/tmp/leftovers/Beta"])
-        XCTAssertTrue(model.visibleUnclaimedEntries.isEmpty)
+        XCTAssertTrue(model.visibleUnclaimedGroups.isEmpty)
     }
 
     /// The grouped lists are stored now rather than recomputed on read, so
