@@ -63,6 +63,7 @@ struct DeveloperView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Developer").font(.title2).fontWeight(.bold)
+                    .pageMorph("page.developer")
                 Text(summary).font(.caption).foregroundColor(.secondary)
             }
             Spacer()
