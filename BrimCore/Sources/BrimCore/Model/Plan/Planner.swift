@@ -79,6 +79,9 @@ public struct Planner: Sendable {
         // effect of tidying a cache directory.
         if intent.type == .uninstall,
            intent.explicitTargets.isEmpty,
+           evaluatedItems.contains(where: {
+               $0.selection == .selected && $0.footprintItem.evidence.url.pathExtension == "app"
+           }),
            let bundleID = intent.subjectIdentity.bundleID {
             steps.append(Step(
                 index: index,
