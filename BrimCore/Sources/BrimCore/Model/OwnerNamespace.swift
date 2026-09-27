@@ -20,11 +20,15 @@ public enum OwnerNamespace {
         if hasTeamPrefix, parts.count > 2 {
             parts.removeFirst()
         }
-        guard parts.count >= (hasTeamPrefix ? 2 : 3) else { return nil }
+        guard parts.count >= 2, parts.allSatisfy({ part in
+            !part.isEmpty && part.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        }) else { return nil }
 
         let commonRoots: Set = ["com", "org", "net", "io", "dev", "app", "edu", "gov"]
+        let countryRoot = parts[0].count == 2 && parts[0].allSatisfy(\.isLetter)
+        guard commonRoots.contains(parts[0]) || countryRoot else { return nil }
         let depth = if commonRoots.contains(parts[0]) {
-            3
+            min(3, parts.count)
         } else if parts.count >= 4, parts[1] == "co" {
             4
         } else {

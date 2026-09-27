@@ -21,6 +21,28 @@ final class LeftoverGroupingTests: XCTestCase {
 
     private let home = "/Users/someone/Library"
 
+    func testDistinctRecordedOwnersWithTheSameNameRemainSeparate() {
+        let groups = [
+            leftover("\(home)/Caches/org.example.editor", owner: Identity(
+                bundleID: "org.example.editor", name: "Editor"
+            ), category: .orphaned),
+            leftover("\(home)/Caches/net.other.editor", owner: Identity(
+                bundleID: "net.other.editor", name: "Editor"
+            ), category: .orphaned),
+            leftover("\(home)/Caches/org.example.editor.beta", owner: Identity(
+                bundleID: "org.example.editor.beta", name: "Editor Beta"
+            ), category: .orphaned)
+        ].groupedByOwner()
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertTrue(groups.allSatisfy { $0.items.count == 1 })
+    }
+
+    func testVersionedFileNamesAreNotApplicationNamespaces() {
+        XCTAssertNil(OwnerNamespace.key(for: "Adobe Save for Web 13.0 Prefs"))
+        XCTAssertNil(OwnerNamespace.key(for: "settings.2.backup"))
+        XCTAssertEqual(OwnerNamespace.key(for: "com.example.editor.helper.plist"), "com.example.editor")
+    }
+
     // MARK: - Grouping
 
     func testTheSameToolInTwoPlacesIsOneEntry() {
