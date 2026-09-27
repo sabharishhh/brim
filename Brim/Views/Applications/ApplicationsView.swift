@@ -42,7 +42,6 @@ struct ApplicationsView: View {
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadIfNeeded(service: service) }
-        .task { EvidenceNarrator.shared.prewarm() }
         .sheet(item: $resetting) { application in
             UninstallSheet(application: application, service: service, intentType: .reset) {
                 Task { await model.load(service: service) }
@@ -420,7 +419,9 @@ private struct FootprintOverviewText: View {
              + (selectedFacts ?? facts.prefix(2).joined(separator: " ")))
             .task(id: footprint) {
                 selectedFacts = nil
-                selectedFacts = await EvidenceNarrator.shared.choose(from: facts)
+                let choice = await EvidenceNarrator.shared.choose(from: facts)
+                guard !Task.isCancelled else { return }
+                selectedFacts = choice
             }
     }
 
