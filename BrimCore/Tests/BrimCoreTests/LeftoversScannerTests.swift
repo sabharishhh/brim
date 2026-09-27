@@ -1,7 +1,8 @@
-import XCTest
-import Foundation
 @testable import BrimCore
 @testable import BrimScan
+import Darwin
+import Foundation
+import XCTest
 
 final class LeftoversScannerTests: XCTestCase {
     func testActiveAppGroupContainersAndAppSupportNotMarkedAsLeftovers() async throws {
@@ -10,10 +11,10 @@ final class LeftoversScannerTests: XCTestCase {
         try fm.createDirectory(at: rawTempDir, withIntermediateDirectories: true)
         let tempDir = rawTempDir.resolvingSymlinksInPath()
         let root = FileSystemRoot(rootURL: tempDir, userName: "testuser")
-        
+
         let appURL = root.url(for: .applications).appendingPathComponent("TestApp.app")
         try fm.createDirectory(at: appURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
-        
+
         let infoPlistData = try PropertyListSerialization.data(
             fromPropertyList: [
                 "CFBundleIdentifier": "com.example.TestApp",
@@ -23,24 +24,30 @@ final class LeftoversScannerTests: XCTestCase {
             options: 0
         )
         try infoPlistData.write(to: appURL.appendingPathComponent("Contents/Info.plist"))
-        
+
         // Active group container with team ID prefix
         let groupContainerURL = root.url(for: .userGroupContainers).appendingPathComponent("TEAM12345.com.example.TestApp")
         try fm.createDirectory(at: groupContainerURL, withIntermediateDirectories: true)
         try "group data".write(to: groupContainerURL.appendingPathComponent("data.txt"), atomically: true, encoding: .utf8)
-        
+
         // Active Application Support using app name rather than bundle ID
         let appSupportURL = root.url(for: .userApplicationSupport).appendingPathComponent("TestApp")
         try fm.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
         try "app support data".write(to: appSupportURL.appendingPathComponent("settings.json"), atomically: true, encoding: .utf8)
-        
+
+        let helper = root.url(for: .userCaches)
+            .appendingPathComponent("com.example.TestApp.helper")
+        try fm.createDirectory(at: helper, withIntermediateDirectories: true)
+        try "cache".write(to: helper.appendingPathComponent("data"),
+                          atomically: true, encoding: .utf8)
+
         // Orphaned app support directory (with installer receipt)
         let receiptsDir = tempDir.appendingPathComponent("var/db/receipts")
         try fm.createDirectory(at: receiptsDir, withIntermediateDirectories: true)
         try "receipt".write(to: receiptsDir.appendingPathComponent("com.old.orphaned.plist"), atomically: true, encoding: .utf8)
         let orphanedURL = root.url(for: .userApplicationSupport).appendingPathComponent("com.old.orphaned")
         try fm.createDirectory(at: orphanedURL, withIntermediateDirectories: true)
-        
+
         // Truly unclaimed directory. With something in it: an empty
         // folder nobody can name gives back nothing and is left out, so a
         // fixture that tests attribution has to hold some bytes or it is
@@ -51,21 +58,22 @@ final class LeftoversScannerTests: XCTestCase {
             to: unclaimedURL.appendingPathComponent("data.bin"),
             atomically: true, encoding: .utf8
         )
-        
+
         let scanner = LeftoversScanner(root: root)
         let leftovers = try await scanner.scanLeftovers()
         // 1. Active group container must NOT be in leftovers
-        let leftoverNames = leftovers.map { $0.url.lastPathComponent }
+        let leftoverNames = leftovers.map(\.url.lastPathComponent)
         XCTAssertFalse(leftoverNames.contains(groupContainerURL.lastPathComponent), "Active group container should not be identified as leftover")
-        
+
         // 2. Active application support must NOT be in leftovers
         XCTAssertFalse(leftoverNames.contains(appSupportURL.lastPathComponent), "Active application support directory should not be identified as leftover")
-        
+        XCTAssertFalse(leftoverNames.contains(helper.lastPathComponent), "An installed app owns its helper data")
+
         // 3. Orphaned app support must be identified as .orphaned
         let orphanedMatch = leftovers.first(where: { $0.url.lastPathComponent == orphanedURL.lastPathComponent })
         XCTAssertNotNil(orphanedMatch, "Orphaned item should be detected")
         XCTAssertEqual(orphanedMatch?.category, .orphaned)
-        
+
         // 4. Truly unclaimed item must be identified as .unclaimed
         let unclaimedMatch = leftovers.first(where: { $0.url.lastPathComponent == unclaimedURL.lastPathComponent })
         XCTAssertNotNil(unclaimedMatch, "Unclaimed item should be detected")
@@ -79,11 +87,24 @@ final class LeftoversScannerTests: XCTestCase {
 /// offered as a leftover. One had been written to under a minute before the
 /// scan that found it.
 final class AppleOwnedFilterTests: XCTestCase {
+    func testSystemNamesComeFromFixtureSystemLibrary() throws {
+        let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let frameworks = raw.appendingPathComponent("System/Library/PrivateFrameworks")
+        try FileManager.default.createDirectory(
+            at: frameworks.appendingPathComponent("SampleDaemon.framework"),
+            withIntermediateDirectories: true
+        )
+        let names = LeftoversScanner.systemNames(in: FileSystemRoot(rootURL: raw))
+        XCTAssertTrue(LeftoversScanner.isInstalledSystemComponent("SampleDaemon", names: names))
+        XCTAssertFalse(LeftoversScanner.isInstalledSystemComponent("ThirdParty", names: names))
+    }
 
     func testSystemDataIsNeverOfferedInEitherSpelling() {
         XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple.Safari"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.SHTTS"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("group.com.apple.gamecenter"))
+        XCTAssertTrue(LeftoversScanner.isAppleOwned("systemgroup.com.apple.icloud.searchpartyd.sharedsettings.plist"))
         XCTAssertTrue(LeftoversScanner.isAppleOwned("com.apple"))
     }
 
@@ -111,12 +132,131 @@ final class AppleOwnedFilterTests: XCTestCase {
 /// sixty-nine "Unclaimed" — found, and buried, which is not found. These
 /// hold the three classes that turned up auditing what else was missing.
 final class LeftoversScannerGapAuditTests: XCTestCase {
-
     private func makeRoot() throws -> (FileSystemRoot, URL) {
         let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
         let tempDir = raw.resolvingSymlinksInPath()
         return (FileSystemRoot(rootURL: tempDir, userName: "testuser"), tempDir)
+    }
+
+    func testNestedInventoryRootsAndCrashReportsAreNotLeftoverRows() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        for domain in [FileSystemRoot.Domain.userPreferencesByHost, .userDiagnosticReports, .userCaches] {
+            try manager.createDirectory(at: root.url(for: domain), withIntermediateDirectories: true)
+        }
+        try "crash".write(
+            to: root.url(for: .userDiagnosticReports).appendingPathComponent("GoneApp.crash"),
+            atomically: true, encoding: .utf8
+        )
+        try "data".write(
+            to: root.url(for: .userCaches).appendingPathComponent("GoneApp"),
+            atomically: true, encoding: .utf8
+        )
+
+        let paths = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map { $0.url.resolvingSymlinksInPath().path })
+        let cache = root.url(for: .userCaches).appendingPathComponent("GoneApp")
+        XCTAssertTrue(paths.contains(cache.resolvingSymlinksInPath().path))
+        XCTAssertFalse(paths.contains(root.url(for: .userDiagnosticReports).path))
+        XCTAssertFalse(paths.contains(root.url(for: .userPreferencesByHost).path))
+        let crash = root.url(for: .userDiagnosticReports).appendingPathComponent("GoneApp.crash")
+        XCTAssertFalse(paths.contains(crash.path))
+        XCTAssertFalse(LocationInventory.sweepDomains.contains(.userDiagnosticReports))
+    }
+
+    func testRunningAppOutsideApplicationsProtectsItsCurrentAndOlderData() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        let app = raw.appendingPathComponent("Developer/Brim.app")
+        try manager.createDirectory(at: app.appendingPathComponent("Contents"),
+                                    withIntermediateDirectories: true)
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.sabharishhh.brim", "CFBundleName": "Brim"],
+            format: .xml, options: 0
+        )
+        try plist.write(to: app.appendingPathComponent("Contents/Info.plist"))
+        let support = root.url(for: .userApplicationSupport).appendingPathComponent("Brim")
+        let preferences = root.url(for: .userPreferences)
+            .appendingPathComponent("devplaceholder.PJ52YXEB.brim.plist")
+        try manager.createDirectory(at: support, withIntermediateDirectories: true)
+        try "data".write(to: support.appendingPathComponent("state"),
+                         atomically: true, encoding: .utf8)
+        try manager.createDirectory(at: preferences.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true)
+        try "old".write(to: preferences, atomically: true, encoding: .utf8)
+
+        let ordinary = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map { $0.url.resolvingSymlinksInPath().path })
+        XCTAssertTrue(ordinary.contains(support.resolvingSymlinksInPath().path))
+        XCTAssertTrue(ordinary.contains(preferences.resolvingSymlinksInPath().path))
+        let protected = try await Set(LeftoversScanner(root: root, protectedAppURL: app)
+            .scanLeftovers().map { $0.url.resolvingSymlinksInPath().path })
+        XCTAssertFalse(protected.contains(support.resolvingSymlinksInPath().path))
+        XCTAssertFalse(protected.contains(preferences.resolvingSymlinksInPath().path))
+    }
+
+    func testContainerMetadataSeparatesProductsCreatedTogether() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let manager = FileManager.default
+        let containers = root.url(for: .userContainers)
+        let owners = [
+            "com.example.alpha.Notification", "com.example.alpha.Widget",
+            "com.other.beta.Widget"
+        ]
+        for owner in owners {
+            let url = containers.appendingPathComponent(UUID().uuidString)
+            try manager.createDirectory(at: url, withIntermediateDirectories: true)
+            try "data".write(to: url.appendingPathComponent("state"),
+                             atomically: true, encoding: .utf8)
+            let result = Array(owner.utf8).withUnsafeBytes {
+                setxattr(url.path, "com.apple.containermanager.identifier",
+                         $0.baseAddress, $0.count, 0, 0)
+            }
+            XCTAssertEqual(result, 0)
+        }
+
+        let leftovers = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertEqual(leftovers.count, 3)
+        XCTAssertTrue(leftovers.allSatisfy { $0.category == .orphaned })
+        XCTAssertTrue(leftovers.allSatisfy { $0.evidence.contains("Container metadata") })
+        let groups = leftovers.groupedByOwner()
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups.first { $0.groupKey == "com.example.alpha" }?.items.count, 2)
+        XCTAssertEqual(groups.first { $0.groupKey == "com.other.beta" }?.items.count, 1)
+
+        let live = raw.appendingPathComponent("Developer/Live.app")
+        try manager.createDirectory(at: live, withIntermediateDirectories: true)
+        let withLiveParent = try await LeftoversScanner(
+            root: root,
+            launchServicesLookup: { $0 == "com.example.alpha" ? [live] : [] }
+        ).scanLeftovers()
+        XCTAssertEqual(withLiveParent.count, 1)
+        XCTAssertEqual(withLiveParent.first?.potentialOwner?.name, "Beta")
+    }
+
+    func testMacOSRelocationFolderIsNotSoftwareResidue() async throws {
+        let (root, raw) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: raw) }
+        let shared = root.url(for: .sharedUser)
+        let migrated = shared.appendingPathComponent("Previously Relocated Items 2")
+        let unrelated = shared.appendingPathComponent("Previously Relocated Items notes")
+        try FileManager.default.createDirectory(at: migrated, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        for folder in [migrated, unrelated] {
+            try "data".write(to: folder.appendingPathComponent("record"),
+                             atomically: true, encoding: .utf8)
+        }
+        try "".write(to: migrated.appendingPathComponent(".localized"),
+                     atomically: true, encoding: .utf8)
+
+        let names = try await Set(LeftoversScanner(root: root).scanLeftovers()
+            .map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains(migrated.lastPathComponent))
+        XCTAssertTrue(names.contains(unrelated.lastPathComponent))
     }
 
     private func writeApp(
@@ -187,7 +327,7 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         XCTAssertEqual(dangling?.category, .orphaned)
         XCTAssertEqual(dangling?.size, 0)
         XCTAssertEqual(dangling?.potentialOwner?.name, "Ghost.app",
-                        "Named by what it pointed at, not by its own link name")
+                       "Named by what it pointed at, not by its own link name")
     }
 
     /// One folder can hold several products, and only the top level was
@@ -217,7 +357,7 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         XCTAssertNotNil(dead, "A dead product nested beside a live one must still be found")
         XCTAssertEqual(dead?.category, .unclaimed)
         XCTAssertEqual(dead?.potentialOwner?.name, "Vendor DeadProduct",
-                        "Named with the vendor, or it reads next to nothing to a person")
+                       "Named with the vendor, or it reads next to nothing to a person")
     }
 
     /// A bundle's file name and what it calls itself internally are not

@@ -1,12 +1,11 @@
-import XCTest
 @testable import BrimCore
+import XCTest
 
 /// Grouping, and what a location means. Both exist because the flat list
 /// could not be reasoned about: the same software appeared several times
 /// with nothing to connect the rows, and nothing on screen distinguished a
 /// cache that rebuilds itself from the folder holding an app's licence.
 final class LeftoverGroupingTests: XCTestCase {
-
     private func leftover(
         _ path: String,
         owner: Identity? = nil,
@@ -67,7 +66,7 @@ final class LeftoverGroupingTests: XCTestCase {
             leftover("/usr/local/bin/docker", owner: owner, category: .orphaned),
             leftover("/usr/local/bin/kubectl", owner: owner, category: .orphaned),
             leftover("/usr/local/bin/cagent", owner: owner, category: .orphaned),
-            leftover("/usr/local/bin/docker-compose", owner: owner, category: .orphaned),
+            leftover("/usr/local/bin/docker-compose", owner: owner, category: .orphaned)
         ]
         let groups = leftovers.groupedByOwner()
 
@@ -87,7 +86,7 @@ final class LeftoverGroupingTests: XCTestCase {
             leftover(
                 "/usr/local/bin/pythont",
                 owner: Identity(bundleID: nil, name: "PythonT.framework"), category: .orphaned
-            ),
+            )
         ].groupedByOwner()
 
         XCTAssertEqual(groups.count, 3)
@@ -137,6 +136,36 @@ final class LeftoverGroupingTests: XCTestCase {
             leftover("\(home)/Caches/Loki")
         ].groupedByOwner()
         XCTAssertEqual(groups.count, 2)
+    }
+
+    func testReverseDNSHelpersStayWithTheirProductWithoutMergingVendorApps() {
+        let groups = [
+            leftover("\(home)/Containers/com.microsoft.teams2.agent"),
+            leftover("\(home)/Preferences/com.microsoft.teams2.notificationcenter.plist"),
+            leftover("\(home)/Preferences/com.microsoft.office.plist"),
+            leftover("\(home)/HTTPStorages/com.openai.chat.binarycookies"),
+            leftover("\(home)/WebKit/com.openai.chat")
+        ].groupedByOwner()
+
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(groups.first { $0.groupKey == "com.microsoft.teams2" }?.items.count, 2)
+        XCTAssertEqual(groups.first { $0.groupKey == "com.openai.chat" }?.items.count, 2)
+        XCTAssertEqual(groups.first { $0.groupKey == "com.microsoft.office" }?.items.count, 1)
+    }
+
+    func testVendorHeadingKeepsProductsAsSeparateRemovalChoices() {
+        let groups = [
+            leftover("\(home)/Caches/com.adobe.reader"),
+            leftover("\(home)/Caches/com.adobe.photoshop"),
+            leftover("\(home)/Caches/com.other.editor")
+        ].groupedByOwner()
+        let entries = groups.arrangedByVendor()
+
+        XCTAssertEqual(entries.count, 2)
+        guard case let .vendor(adobe)? = entries.first(where: { $0.id == "vendor:com.adobe" })
+        else { return XCTFail("Expected an Adobe heading") }
+        XCTAssertEqual(adobe.title, "Adobe")
+        XCTAssertEqual(Set(adobe.groups.map(\.id)), ["com.adobe.reader", "com.adobe.photoshop"])
     }
 
     func testGroupsAreOrderedByWhatTheyCost() {
