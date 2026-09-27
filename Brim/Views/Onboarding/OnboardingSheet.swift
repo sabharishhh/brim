@@ -1,6 +1,7 @@
 import SwiftUI
 import BrimCore
 import BrimProtocol
+import BrimPrivileged
 import BrimUI
 
 /// First run, and the only place Brim asks the person for anything.
@@ -20,7 +21,7 @@ struct OnboardingSheet: View {
     let onFinished: () -> Void
 
     private enum Step: Int, CaseIterable {
-        case what, access, confirm
+        case what, access, helper, confirm
     }
 
     @State private var step: Step = .what
@@ -47,6 +48,7 @@ struct OnboardingSheet: View {
         switch step {
         case .what: whatBrimDoes
         case .access: fullDiskAccess
+        case .helper: helperStep
         case .confirm: confirmOwnership
         }
     }
@@ -125,6 +127,9 @@ struct OnboardingSheet: View {
         }
     }
 
+    /// Read by the helper step, in `OnboardingSheet+Helper.swift`.
+    @State var helperState: PrivilegedHelperClient.State?
+
     private var confirmOwnership: some View {
         VStack(alignment: .leading, spacing: 16) {
             title(
@@ -158,7 +163,7 @@ struct OnboardingSheet: View {
 
     // MARK: - Chrome
 
-    private func title(_ heading: String, _ detail: String) -> some View {
+    func title(_ heading: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(heading).font(.largeTitle).fontWeight(.bold)
             Text(detail)
@@ -180,7 +185,7 @@ struct OnboardingSheet: View {
         }
     }
 
-    private func status(
+    func status(
         _ symbol: String, _ tint: Color, _ heading: String, _ detail: String
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -221,6 +226,17 @@ struct OnboardingSheet: View {
                 // until the setting is on and continuing is the obvious
                 // next move.
                 if access.isGranted {
+                    Button("Continue") { step = .helper }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Skip for now") { step = .helper }
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                }
+            case .helper:
+                if helperState == .ready {
                     Button("Continue") { step = .confirm }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
