@@ -31,11 +31,29 @@ public final class UpdatesModel: ObservableObject {
         await load(service: service)
     }
 
+    private var loadTask: Task<Void, Never>?
+
+    /// The section owns its scan. Navigation can cancel a view's waiter without
+    /// discarding the result or leaving a second view waiting on an empty model.
     public func load(service: any BrimServiceProtocol) async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        let task = Task { await self.performLoad(service: service) }
+        loadTask = task
+        defer { loadTask = nil }
+        await task.value
+    }
+
+    private func performLoad(service: any BrimServiceProtocol) async {
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
 
-        report = await service.updateReport()
+        let fetched = await service.updateReport()
+        guard !Task.isCancelled else { return }
+        report = fetched
         agents = report.agents
     }
 
