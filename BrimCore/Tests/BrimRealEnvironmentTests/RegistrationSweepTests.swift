@@ -143,10 +143,6 @@ final class LeftoversOnThisMachineTests: XCTestCase {
                 "  GROUPS  \(orphaned.groupedByOwner().count) orphaned, "
                     + "\(unclaimed.groupedByOwner().count) unclaimed"
             )
-            print(
-                "  VISIBLE  \(orphaned.groupedByOwner().arrangedByVendor().count) orphaned, "
-                    + "\(unclaimed.groupedByOwner().arrangedByVendor().count) unclaimed"
-            )
         }
 
         XCTAssertFalse(leftovers.isEmpty, "A real Library should have something to say")
