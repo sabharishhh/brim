@@ -167,6 +167,7 @@ struct EmptyState: View {
 struct TrayBar: View {
     let count: Int
     let bytes: Int64
+    var canReview = true
     let review: () -> Void
     let clear: () -> Void
 
@@ -187,7 +188,9 @@ struct TrayBar: View {
                     .foregroundStyle(Palette.inkSecondary)
                 Button("Review", action: review)
                     .buttonStyle(.glassProminent)
-                    .keyboardShortcut(.defaultAction)
+                    // A capsule inside a capsule, so the ends nest.
+                    .buttonBorderShape(.capsule)
+                    .disabled(!canReview)
             }
             .font(.body.weight(.medium))
             .monospacedDigit()
@@ -220,6 +223,7 @@ struct Toast: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
             }
         }
         .font(.body)
