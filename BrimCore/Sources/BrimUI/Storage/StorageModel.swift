@@ -20,6 +20,8 @@ public final class StorageModel: ObservableObject {
     @Published public private(set) var brimCanClear: Int64 = 0
     @Published public private(set) var brimCanClearCount = 0
 
+    @Published public private(set) var estimateUnavailable = false
+
     public init() {}
 
     public var startupVolume: VolumeAccount? {
@@ -31,16 +33,32 @@ public final class StorageModel: ObservableObject {
         await load(service: service)
     }
 
+    private var loadTask: Task<Void, Never>?
+
+    /// The section owns its scan. Navigation can cancel a view's waiter without
+    /// discarding the result or leaving a second view waiting on an empty model.
     public func load(service: any BrimServiceProtocol) async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        let task = Task { await self.performLoad(service: service) }
+        loadTask = task
+        defer { loadTask = nil }
+        await task.value
+    }
+
+    private func performLoad(service: any BrimServiceProtocol) async {
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        volumes = await service.volumes()
-
-        // Taken from the same scan the Leftovers section shows, so the two
-        // can never disagree about what is on offer.
-        if let leftovers = try? await service.leftovers() {
-            brimCanClear = leftovers.reduce(0) { $0 + $1.size }
-            brimCanClearCount = leftovers.count
-        }
+        async let accounts = service.volumes()
+        async let found = try? service.leftovers()
+        let (newVolumes, leftovers) = await (accounts, found)
+        guard !Task.isCancelled else { return }
+        volumes = newVolumes
+        estimateUnavailable = leftovers == nil
+        brimCanClear = leftovers?.reduce(0) { $0 + $1.size } ?? 0
+        brimCanClearCount = leftovers?.count ?? 0
     }
 }
