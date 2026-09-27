@@ -398,6 +398,26 @@ conversation. Split unrelated changes rather than staging everything.
   `RelativeDateTimeFormatter()` is expensive to construct. Thirty-nine
   history rows formatting a date per frame is what made that list heavy.
   Format once, when the value is made.
+- **Moving a folder needs write permission on the folder itself.** Its
+  `..` entry is rewritten, so a read-only folder refuses even inside your
+  own Library, while a read-only file or a broken link moves. Ask the parent
+  and, for a folder, the folder, with `lstat`. `access()` follows links, and
+  asking it about a broken link is how three leftovers in `~/.local/bin`
+  were sent to an administrator helper that was never going to run.
+- **A plan promises only what can happen.** Anything that needs root becomes
+  a step only if `HelperScope` says the helper will take it; the rest is
+  shown as staying before approval. The helper proves a job or link is dead
+  itself and never accepts a path.
+- **A focused value that is a closure never stops changing.** Two closures
+  cannot be compared, so SwiftUI counts every redraw as new focus state,
+  rebuilds the menus the scene builds from it, redraws the window, and
+  publishes another closure. With Brim frontmost the main thread sat at
+  100% forever, and every list in the app scrolled badly because of it.
+  Hiding the window dropped it to 0%, which is also why an idle sample
+  looked clean: the menus only listen while the app is active. An AppKit
+  table was built for the Leftovers lag before this was found and made no
+  difference. Wrap the action in `FocusedAction`, which compares by name.
+  Measure an idle window with the app frontmost before blaming a list.
 
 ## Build and run
 

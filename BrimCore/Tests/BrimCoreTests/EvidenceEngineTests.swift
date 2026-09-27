@@ -43,4 +43,62 @@ final class EvidenceEngineTests: XCTestCase {
         XCTAssertEqual(app.evidence[0].tier, .S)
         XCTAssertEqual(app.evidence[0].mechanism, "M2")
     }
+
+    private actor Probe {
+        var active = 0
+        var peak = 0
+        var started = 0
+        func enter() {
+            active += 1
+            started += 1
+            peak = max(peak, active)
+        }
+
+        func leave() {
+            active -= 1
+        }
+    }
+
+    private struct DelayedSource: EvidenceSource {
+        let index: Int
+        let probe: Probe
+        func evidence(for _: Identity, in _: FileSystemRoot) async throws -> [Evidence] {
+            await probe.enter()
+            do {
+                try await Task.sleep(for: .milliseconds(index == 0 ? 80 : 10))
+            } catch {
+                await probe.leave()
+                throw error
+            }
+            await probe.leave()
+            return [Evidence(url: URL(fileURLWithPath: "/tmp/brim-source-order"), tier: .B,
+                             mechanism: "source-\(index)", humanSentence: "Recorded match")]
+        }
+    }
+
+    func testParallelSourcesAreBoundedAndTiesKeepSourceOrder() async throws {
+        let probe = Probe()
+        let engine = EvidenceEngine(sources: (0 ..< 12).map { DelayedSource(index: $0, probe: probe) })
+        let result = try await engine.discover(identity: Identity(bundleID: nil, name: "Test"),
+                                               in: FileSystemRoot())
+        let peak = await probe.peak
+        XCTAssertGreaterThan(peak, 1)
+        XCTAssertLessThanOrEqual(peak, 4)
+        XCTAssertEqual(result.evidence.first?.mechanism, "source-0")
+    }
+
+    func testCancelledDiscoveryDoesNotStartMoreSourcesOrReturnPartialSuccess() async {
+        let probe = Probe()
+        let engine = EvidenceEngine(sources: (0 ..< 100).map { DelayedSource(index: $0, probe: probe) })
+        let task = Task {
+            try await engine.discover(identity: Identity(bundleID: nil, name: "Test"), in: FileSystemRoot())
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancellation must not return a complete footprint")
+        } catch { XCTAssertTrue(error is CancellationError) }
+        let started = await probe.started
+        XCTAssertLessThanOrEqual(started, 4)
+    }
 }

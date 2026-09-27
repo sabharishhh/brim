@@ -149,6 +149,9 @@ struct StorageView: View {
                 Text("Can be cleared").fontWeight(.medium)
                 if model.isLoading {
                     Text("Still counting…").font(.callout).foregroundColor(.secondary)
+                } else if model.estimateUnavailable {
+                    Text("Could not read the cleanup estimate.")
+                        .font(.callout).foregroundColor(.secondary)
                 } else if model.brimCanClear == 0 {
                     Text("Nothing found.")
                         .font(.callout).foregroundColor(.secondary)

@@ -19,6 +19,8 @@ public actor LeftoversScanner {
     /// Names actually present in the sealed system Library on this Mac.
     /// Gathered once per scan, before the domain tasks start.
     private let systemLibraryNames: Set<String>
+    /// The reverse-DNS families macOS ships under, such as `org.cups`.
+    private let systemFamilies: Set<String>
     /// The actual running Brim bundle may be a development build outside
     /// /Applications. It is still an installed owner of its own files.
     private let protectedAppURL: URL?
@@ -49,11 +51,14 @@ public actor LeftoversScanner {
         self.hasFullDiskAccess = hasFullDiskAccess ?? FullDiskAccessProbe.isGranted()
         self.commandIsInstalled = commandIsInstalled ?? Self.defaultCommandLookup(in: root)
         systemLibraryNames = Self.systemNames(in: root)
+        systemFamilies = Self.families(of: systemLibraryNames)
         self.protectedAppURL = protectedAppURL
     }
 
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
+        try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
+        try Task.checkCancellation()
         var gatheredIdentities = gathered.identities
         if let protectedAppURL, FileManager.default.fileExists(atPath: protectedAppURL.path) {
             let own = await resolver.resolve(bundleURL: protectedAppURL)
@@ -117,20 +122,12 @@ public actor LeftoversScanner {
         // Support` and the caches dominating while the small domains
         // waited their turn. Sorted afterwards, so the answer does not
         // depend on which domain finished first.
-        let found = await withTaskGroup(of: [Leftover].self) { group in
-            for domain in domainsToScan {
-                group.addTask { [self] in
-                    walkDomain(domain, search, activeIdentities, pastIdentities,
-                               activeBundleIDs, activeNames,
-                               activeGroupContainers, activeTeamIDs, inventoryRoots)
-                }
-            }
-            var collected: [Leftover] = []
-            for await batch in group {
-                collected.append(contentsOf: batch)
-            }
-            return collected
+        let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
+            walkDomain(domain, search, activeIdentities, pastIdentities,
+                       activeBundleIDs, activeNames,
+                       activeGroupContainers, activeTeamIDs, inventoryRoots)
         }
+        let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
 
         // Sorted by size descending. Access time is carried on each item and
@@ -204,6 +201,26 @@ public actor LeftoversScanner {
                 // and their support folders are the largest leftovers on
                 // many machines.
                 if Self.isAppleOwned(name) || Self.isInstalledSystemComponent(name, names: systemLibraryNames) {
+                    continue
+                }
+
+                // A name in a family macOS itself ships. CUPS is part of
+                // macOS and names its files `org.cups.*`, so the printer list
+                // in /Library/Preferences was offered as an unclaimed
+                // leftover while every printer on the Mac depended on it.
+                if Self.isInSystemFamily(name, families: systemFamilies) {
+                    continue
+                }
+
+                // A bundle says whose it is, in its own Info.plist and in its
+                // signature, and that outranks anything its file name
+                // suggests. `ParrotAudioPlugin.driver` is Apple's by its
+                // identifier, and `MSTeamsAudioDevice.driver` is signed by the
+                // team that signed Microsoft Teams, which is installed.
+                if let signed = Self.bundleSignature(of: item),
+                   Self.belongsToInstalledSoftware(
+                       identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
+                   ) {
                     continue
                 }
 
@@ -424,6 +441,58 @@ public actor LeftoversScanner {
     /// A name is protected only when a corresponding component exists under
     /// this machine's /System/Library. A generic vendor or framework list
     /// would age as macOS changes and could hide third-party residue.
+    /// The first two components of every reverse-DNS name macOS ships
+    /// outside `com.apple`, which is handled on its own.
+    static func families(of names: Set<String>) -> Set<String> {
+        Set(names.compactMap { name in
+            let parts = name.split(separator: ".")
+            guard parts.count >= 3 else { return nil }
+            let family = parts.prefix(2).joined(separator: ".")
+            return family == "com.apple" ? nil : family
+        })
+    }
+
+    static func isInSystemFamily(_ name: String, families: Set<String>) -> Bool {
+        let parts = systemComponentStem(name).split(separator: ".")
+        guard parts.count >= 3 else { return false }
+        return families.contains(parts.prefix(2).joined(separator: "."))
+    }
+
+    /// Apple's by identifier, or signed by a team that also signed an
+    /// installed application. A vendor that is still here may still use it,
+    /// and "might be in use" is not a leftover.
+    static func belongsToInstalledSoftware(
+        identifier: String?, team: String?, activeTeams: Set<String>
+    ) -> Bool {
+        if let identifier, isAppleOwned(identifier) {
+            return true
+        }
+        if let team {
+            return activeTeams.contains(team)
+        }
+        return false
+    }
+
+    /// The identifier and signing team a bundle declares, or nil when this
+    /// is not a bundle. Read only for bundles, so a folder of caches costs
+    /// one failed file lookup.
+    static func bundleSignature(of url: URL) -> (identifier: String?, team: String?)? {
+        let info = url.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: info),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data, format: nil
+              ) as? [String: Any]
+        else { return nil }
+        // The team only from a signature that holds up, read the one way
+        // this module reads signatures. A broken signature proves nothing
+        // about who made the bundle.
+        var team: String?
+        if case let .valid(signedBy) = CodeSignature.state(of: url, recordedTeam: nil) {
+            team = signedBy
+        }
+        return (plist["CFBundleIdentifier"] as? String, team)
+    }
+
     static func isInstalledSystemComponent(_ name: String, names: Set<String>) -> Bool {
         let stem = systemComponentStem(name)
         return names.contains(stem)
@@ -943,7 +1012,7 @@ public actor LeftoversScanner {
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
         for bundle in inventory.bundles {
-            if budget.hasRunOut {
+            if budget.hasRunOut || Task.isCancelled {
                 complete = false; break
             }
             let identity = await resolver.resolve(bundleURL: bundle)

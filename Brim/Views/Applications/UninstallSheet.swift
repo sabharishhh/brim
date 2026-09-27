@@ -201,6 +201,8 @@ struct UninstallSheet: View {
                     Text("\(group.title) (\(group.rows.count))")
                 }
             }
+
+            StayingSection(items: model.staying)
         }
         .listStyle(.inset)
     }
@@ -224,6 +226,13 @@ struct UninstallSheet: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+
+            if !result.success, !result.remainingPaths.isEmpty {
+                let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
+                Button(urls.count == 1 ? "Show in Finder" : "Show All \(urls.count) in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                }
+            }
 
             if let actions = result.followUpActions {
                 ForEach(actions, id: \.self) { action in

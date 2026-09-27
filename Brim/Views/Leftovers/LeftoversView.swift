@@ -76,9 +76,11 @@ struct LeftoversView: View {
     /// Backs the Action menu's Remove Selected, so the keyboard reaches the
     /// same place the button does. Nil when there is nothing to remove,
     /// which is what greys the menu item out.
-    private var removeSelectedIfPossible: (() -> Void)? {
+    private var removeSelectedIfPossible: FocusedAction<Void>? {
         guard model.canRemoveSelection else { return nil }
-        return { reviewRequest = model.removalIntent(requesterIdentity: NSUserName()) }
+        return FocusedAction(name: "remove leftovers") { _ in
+            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+        }
     }
 
     // MARK: - List
@@ -132,15 +134,15 @@ struct LeftoversView: View {
                 section(
                     "Orphaned",
                     "Owner recorded. App no longer installed.",
-                    model.visibleEntries(model.orphanedEntries, groups: model.orphanedGroups),
-                    model.visible(model.orphanedGroups),
+                    model.visibleOrphanedEntries,
+                    model.visibleOrphanedGroups,
                     "Nothing here. No record on this Mac points at software that has gone."
                 )
                 section(
                     "Unclaimed",
                     "No owner found. Select items to remove.",
-                    model.visibleEntries(model.unclaimedEntries, groups: model.unclaimedGroups),
-                    model.visible(model.unclaimedGroups),
+                    model.visibleUnclaimedEntries,
+                    model.visibleUnclaimedGroups,
                     "Everything here has an owner."
                 )
             }
@@ -551,7 +553,9 @@ private struct LeftoverDetail: View {
             // seven broken commands in one folder for one reason, and the
             // callout above plus seven copies of the same orange sentence
             // is the wall this was meant to stop being.
-            if group.sharedObstacle == nil,
+            // Not for a row the helper takes: "needs an administrator" was
+            // still shown under dead links the helper was about to move.
+            if group.sharedObstacle == nil, !item.canBeRemovedByBrim,
                let why = RemovalCapability.explanation(item.capability) {
                 Label(why, systemImage: "lock")
                     .font(.caption2).foregroundColor(.orange)
