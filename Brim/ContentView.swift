@@ -76,7 +76,10 @@ struct ContentView: View {
         //
         // A minimum is a constant and costs nothing to answer.
         .frame(minWidth: 900, minHeight: 600)
-        .focusedSceneValue(\.navigateAction) { item in selection = item }
+        .focusedSceneValue(\.navigateAction, FocusedAction(name: "navigate") { item in selection = item })
+        // Once, for every section. Asks macOS nothing until a removal
+        // needs the helper; see `HelperRoute`.
+        .task { await HelperRoute.connect(models.background.helper, to: service) }
         .task {
             guard needsSetup == nil else { return }
             if hasFinishedSetup {

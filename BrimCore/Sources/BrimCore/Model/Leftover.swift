@@ -35,6 +35,16 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
 
     public var id: String { url.path }
 
+    /// Whether Brim can take this away, itself or through its helper.
+    ///
+    /// Nine dead command links in a root-owned `/usr/local/bin` could not
+    /// be ticked at all, because only `.ok` counted, though the helper
+    /// exists for exactly that kind of leftover. The helper's own reading
+    /// of what it will take decides, so nothing is ticked that it refuses.
+    public var canBeRemovedByBrim: Bool {
+        capability == .ok || (capability == .needsHelper && HelperScope.covers(url.path))
+    }
+
     public init(
         url: URL,
         size: Int64,

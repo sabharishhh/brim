@@ -51,11 +51,8 @@ public struct EvidenceEngine: Sendable {
         var rawEvidence = [Evidence]()
         var completeness = ScanCompleteness.complete
 
-        for source in sources {
-            // A source that knows what it could not reach says so, and
-            // the gap travels with the result instead of being lost the
-            // moment the evidence is merged.
-            let found = try await source.scan(for: identity, in: root)
+        let findings = try await scanSources(identity: identity, in: root)
+        for found in findings {
             rawEvidence.append(contentsOf: found.evidence)
             completeness = completeness.merging(found.completeness)
         }
@@ -101,6 +98,12 @@ public struct EvidenceEngine: Sendable {
             engineVersion: EvidenceEngineRevision,
             completeness: completeness
         )
+    }
+
+    private func scanSources(identity: Identity, in root: FileSystemRoot) async throws -> [EvidenceFindings] {
+        try await BoundedTasks.map(sources) { source in
+            try await source.scan(for: identity, in: root)
+        }
     }
 
     /// Which of two pieces of evidence for the same path to keep.

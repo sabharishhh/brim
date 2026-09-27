@@ -116,10 +116,10 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
             if anyEvidence == nil {
                 anyEvidence = item.evidence
             }
-            if item.capability != .ok {
+            if !item.canBeRemovedByBrim {
                 actionable = false
             }
-            obstacles.insert(item.capability)
+            obstacles.insert(item.canBeRemovedByBrim ? .ok : item.capability)
             if let date = item.lastAccessed, date > (accessed ?? .distantPast) {
                 accessed = date
             }

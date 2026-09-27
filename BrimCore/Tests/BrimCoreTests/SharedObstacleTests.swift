@@ -12,11 +12,17 @@ import XCTest
 ///
 /// The obstacle belongs to the group because the remedy does. Six broken
 /// Python shims share one reason, one folder and one trip to Finder.
+///
+/// Since then the helper takes dead command links, so those shims are
+/// Brim's after all and read from this Mac's real `/usr/local/bin` they
+/// made this group actionable. The rows now sit in a root-owned folder the
+/// helper does not touch, which is still the case the group has to speak
+/// for.
 final class SharedObstacleTests: XCTestCase {
 
     private func leftover(_ name: String, _ capability: Capability) -> Leftover {
         Leftover(
-            url: URL(fileURLWithPath: "/usr/local/bin/\(name)"),
+            url: URL(fileURLWithPath: "/Library/Application Support/PythonT/\(name)"),
             size: 0,
             category: .orphaned,
             potentialOwner: Identity(bundleID: nil, name: "PythonT.framework"),
