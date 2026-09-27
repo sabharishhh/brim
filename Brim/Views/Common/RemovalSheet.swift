@@ -41,7 +41,7 @@ struct RemovalSheet: View {
             Divider()
             footer
         }
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 400, idealHeight: 480)
+        .frame(width: 640, height: 520)
         // Checking, then the list, then removing, then the result. Four
         // states that replaced each other instantly, which read as the
         // sheet flickering rather than as it working.
