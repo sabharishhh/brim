@@ -23,11 +23,11 @@ struct SinceLastLook: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Since Brim last looked")
+                Text("Changes")
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)
                 if let since = history.changes.first?.since {
-                    Text(Self.day(since))
+                    Text("since " + Self.day(since))
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 }
@@ -47,9 +47,9 @@ struct SinceLastLook: View {
                 .buttonStyle(.press)
             }
             if history.snapshots < 2 {
-                note("This is Brim's first look at this Mac. Next time, what changed shows here.")
+                note("Shown from the next check")
             } else if history.changes.isEmpty, newLeftovers == 0 {
-                note("Nothing was installed, removed or updated.")
+                note("No apps installed, removed or updated")
             } else {
                 ForEach(visible, id: \.bundleID) { change in
                     line(icon(for: change), change.sentence)
@@ -72,6 +72,7 @@ struct SinceLastLook: View {
             }
         }
         .padding(Metrics.cardPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .card()
     }
 
@@ -132,7 +133,7 @@ struct SinceLastLook: View {
     static func day(_ date: Date, now: Date = .now) -> String {
         let calendar = Calendar.current
         if calendar.isDate(date, inSameDayAs: now) {
-            return "earlier today"
+            return "today"
         }
         if let days = calendar.dateComponents([.day], from: date, to: now).day, days < 7 {
             return weekday.string(from: date)
@@ -154,10 +155,10 @@ struct DropWell: View {
                 .foregroundStyle(isTargeted ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary))
                 .symbolEffect(.bounce, value: isTargeted)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Drop an app here")
+                Text("Drop an app to inspect it")
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                Text("to see everything it put on this Mac.")
+                Text("Everything it installed, in one place")
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
             }
