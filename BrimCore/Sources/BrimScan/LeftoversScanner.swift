@@ -1,3 +1,4 @@
+// swiftformat:disable wrapMultilineStatementBraces
 import BrimCore
 import Darwin
 import Foundation
@@ -79,7 +80,7 @@ public actor LeftoversScanner {
         // remove the same folder this one correctly refused to offer.
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
-        let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
+        let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
         let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
             .map { Identity(bundleID: $0, name: "") }
 
@@ -91,8 +92,6 @@ public actor LeftoversScanner {
             staleRegistrationOwners: staleRegistrationOwners,
             launchServicesLookup: launchServicesLookup
         )
-
-        var leftovers: [Leftover] = []
 
         // Driven by the same inventory the uninstall path uses, rather
         // than a second list kept by hand. The two had drifted: removing
@@ -131,19 +130,23 @@ public actor LeftoversScanner {
             }
             return collected
         }
-        // An incomplete installed-app inventory cannot prove an owner is gone.
-        leftovers = gathered.complete ? found : found.map { item in
-            Leftover(url: item.url, size: item.size, category: .unclaimed,
-                     potentialOwner: item.potentialOwner,
-                     evidence: "Installed ownership could not be fully checked.",
-                     capability: item.capability, lastAccessed: item.lastAccessed)
-        }
+        let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
         // disposable: nothing having read a file lately says nothing about
         // whether its owner is gone.
         return leftovers.sorted { $0.size > $1.size }
+    }
+
+    private static func protectUncertainOwnership(_ items: [Leftover], complete: Bool) -> [Leftover] {
+        guard !complete else { return items }
+        return items.map { item in
+            Leftover(url: item.url, size: item.size, category: .unclaimed,
+                     potentialOwner: item.potentialOwner,
+                     evidence: "Installed ownership could not be fully checked.",
+                     capability: item.capability, lastAccessed: item.lastAccessed)
+        }
     }
 
     // The safety checks here must run before attributing or offering a path.
@@ -337,7 +340,9 @@ public actor LeftoversScanner {
             among: [ownerID, name, qualified] + [parentID].compactMap(\.self),
             search: lookup.search
         )
-        if case .present = verdict { return nil }
+        if case .present = verdict {
+            return nil
+        }
 
         let cask = Self.matchingOrphanedCask(
             ownerID: ownerID, name: qualified, among: homebrewOrphans
@@ -661,7 +666,9 @@ public actor LeftoversScanner {
     ) -> Bool {
         let name = item.lastPathComponent
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
-           activeNames.contains(name.lowercased()) { return true }
+           activeNames.contains(name.lowercased()) {
+            return true
+        }
         let lowerName = name.lowercased()
         // A helper, widget, or extension often appends a component to its
         // parent bundle identifier. The installed parent still owns it.
@@ -678,7 +685,9 @@ public actor LeftoversScanner {
                         containerOwner.hasPrefix($0 + ".")
                     })
             }
-            if ownerIsActive { return true }
+            if ownerIsActive {
+                return true
+            }
         }
         if isCommandLineItemActive(item, in: domain) {
             return true
@@ -926,7 +935,9 @@ public actor LeftoversScanner {
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
         for bundle in inventory.bundles {
-            if budget.hasRunOut { complete = false; break }
+            if budget.hasRunOut {
+                complete = false; break
+            }
             let identity = await resolver.resolve(bundleURL: bundle)
             let claims = await Task.detached {
                 BundleSurfaceReader.protectionClaims(at: bundle, in: self.root)
