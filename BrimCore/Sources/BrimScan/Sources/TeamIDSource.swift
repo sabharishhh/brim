@@ -92,10 +92,10 @@ public struct TeamIDSource: EvidenceSource {
         return EvidenceFindings(evidence: evidence, completeness: completeness)
     }
 
-    /// Other installed applications signed by the same team.
-    ///
-    /// The shared inventory stops at application bundles, so embedded
-    /// helpers cannot veto their own parent and vendor folders are included.
+    // Other installed applications signed by the same team.
+    //
+    // The shared inventory stops at application bundles, so embedded
+    // helpers cannot veto their own parent and vendor folders are included.
 
     static func otherApplicationFindings(
         sharing teamID: String, besides identity: Identity, in root: FileSystemRoot
