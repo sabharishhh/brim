@@ -41,10 +41,11 @@ public actor LeftoversScanner {
     }
     
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
-        let activeIdentities = await gatherActiveAppIdentities()
+        let gathered = await gatherActiveAppIdentities()
+        let activeIdentities = gathered.identities
         let receiptBundleIDs = await gatherInstallerReceipts()
 
-        let activeBundleIDs = Set(activeIdentities.compactMap { $0.bundleID })
+        let activeBundleIDs = Set(activeIdentities.flatMap(\.searchBundleIdentifiers))
         // The bundle's own `CFBundleName` as well as what the icon says,
         // because an application's support folder is named after the
         // former. Visual Studio Code calls itself Code in its
@@ -57,7 +58,7 @@ public actor LeftoversScanner {
         // itself, so the uninstall path went on not knowing and failed to
         // remove the same folder this one correctly refused to offer.
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
-        let activeGroupContainers = Set(activeIdentities.flatMap { $0.groupContainers })
+        let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap { $0.teamID })
         let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
             .map { Identity(bundleID: $0, name: "") }
@@ -105,7 +106,13 @@ public actor LeftoversScanner {
             for await batch in group { collected.append(contentsOf: batch) }
             return collected
         }
-        leftovers = found
+        // An incomplete installed-app inventory cannot prove an owner is gone.
+        leftovers = gathered.complete ? found : found.map { item in
+            Leftover(url: item.url, size: item.size, category: .unclaimed,
+                     potentialOwner: item.potentialOwner,
+                     evidence: "Installed ownership could not be fully checked.",
+                     capability: item.capability, lastAccessed: item.lastAccessed)
+        }
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
@@ -484,6 +491,8 @@ public actor LeftoversScanner {
         activeTeamIDs: Set<String>
     ) -> Bool {
         let name = item.lastPathComponent
+        if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
+           activeNames.contains(name.lowercased()) { return true }
         let lowerName = name.lowercased()
         if isCommandLineItemActive(item, in: domain) {
             return true
@@ -701,48 +710,28 @@ public actor LeftoversScanner {
     /// Code's is "Code". Reading only the file name left `Application
     /// Support/Code` looking unclaimed while the application sat in
     /// `/Applications`.
-    private func gatherActiveAppIdentities() async -> [Identity] {
-        var identities = [Identity]()
-        let fm = FileManager.default
-
-        // 1. Applications
-        let appDirs = [
-            root.url(for: .applications),
-            root.rootURL.appendingPathComponent("System/Applications"),
-            root.rootURL.appendingPathComponent("Users/\(root.userName)/Applications")
-        ]
-        
-        var searchRoots = appDirs
-        
-        // 2. Volumes
-        if let volumes = try? fm.contentsOfDirectory(at: root.url(for: .volumes), includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-            for vol in volumes {
-                searchRoots.append(vol.appendingPathComponent("Applications"))
-                searchRoots.append(vol.appendingPathComponent("Users/\(root.userName)/Applications"))
-            }
+    private func gatherActiveAppIdentities() async -> (identities: [Identity], complete: Bool) {
+        let inventory = await Task.detached { InstalledBundleInventory.read(in: self.root) }.value
+        var identities: [Identity] = []
+        var complete = inventory.completeness.isComplete
+        let budget = ScanBudget(total: 20)
+        for bundle in inventory.bundles {
+            if budget.hasRunOut { complete = false; break }
+            let identity = await resolver.resolve(bundleURL: bundle)
+            let claims = await Task.detached {
+                BundleSurfaceReader.protectionClaims(at: bundle, in: self.root)
+            }.value
+            complete = complete && claims.complete
+            // These claims are local to the protective sweep, never passed
+            // to the uninstall evidence engine or used to select a deletion.
+            identities.append(Identity(bundleID: identity.bundleID, teamID: identity.teamID,
+                                       name: identity.name, bundleName: identity.bundleName,
+                                       groupContainers: claims.surface.groups,
+                                       identitySurface: claims.surface))
         }
-        
-        // 3. Readable users
-        if let users = try? fm.contentsOfDirectory(at: root.url(for: .users), includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-            for user in users {
-                searchRoots.append(user.appendingPathComponent("Applications"))
-            }
-        }
-        
-        for dir in searchRoots {
-            if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsPackageDescendants, .skipsHiddenFiles]) {
-                let urls = enumerator.compactMap { $0 as? URL }
-                for fileURL in urls {
-                    if fileURL.pathExtension == "app" {
-                        identities.append(await resolver.resolve(bundleURL: fileURL))
-                    }
-                }
-            }
-        }
-
-        return identities
+        return (identities, complete)
     }
-    
+
     private func gatherInstallerReceipts() async -> Set<String> {
         var receipts = Set<String>()
         let fm = FileManager.default
