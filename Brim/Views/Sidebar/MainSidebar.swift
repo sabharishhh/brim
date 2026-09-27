@@ -49,17 +49,39 @@ enum NavigationItem: String, Hashable, CaseIterable {
     }
 }
 
+/// A command a view offers to the menu bar, equal to any other with the
+/// same name.
+///
+/// A focused value that is a bare closure can never compare equal to the
+/// one before it, so SwiftUI treated every redraw as a change of focus
+/// state. The scene reads these values to build its menus, so the menus
+/// were rebuilt, the window's root was rebuilt with them, and that redraw
+/// published yet another closure. With Brim frontmost the main thread sat
+/// at 100% doing nothing else, which is what made every list in the app
+/// scroll badly: a sample of an idle window scrolled once showed the loop
+/// still running twenty seconds later, and hiding Brim dropped it to 0%.
+/// The closures captured state storage rather than values, so the one
+/// already delivered stays correct and a new one is not needed.
+struct FocusedAction<Input>: Equatable {
+    let name: String
+    let perform: (Input) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name
+    }
+}
+
 /// Lets a section offer "Remove Selected" to the Action menu.
 ///
 /// Defined here rather than in the view that provides it, because the
 /// provider changes: this began in the Review queue and moved to Leftovers
 /// when that queue was removed, and the command should not break each time.
 struct RemoveSelectedActionKey: FocusedValueKey {
-    typealias Value = () -> Void
+    typealias Value = FocusedAction<Void>
 }
 
 extension FocusedValues {
-    var removeSelectedAction: (() -> Void)? {
+    var removeSelectedAction: FocusedAction<Void>? {
         get { self[RemoveSelectedActionKey.self] }
         set { self[RemoveSelectedActionKey.self] = newValue }
     }
@@ -68,11 +90,11 @@ extension FocusedValues {
 /// Lets the View menu drive sidebar selection, so every section is
 /// reachable from the keyboard as a Mac app is expected to be.
 struct NavigateActionKey: FocusedValueKey {
-    typealias Value = (NavigationItem) -> Void
+    typealias Value = FocusedAction<NavigationItem>
 }
 
 extension FocusedValues {
-    var navigateAction: ((NavigationItem) -> Void)? {
+    var navigateAction: FocusedAction<NavigationItem>? {
         get { self[NavigateActionKey.self] }
         set { self[NavigateActionKey.self] = newValue }
     }
