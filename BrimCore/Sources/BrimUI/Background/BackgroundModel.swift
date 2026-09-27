@@ -161,42 +161,25 @@ public final class BackgroundModel: ObservableObject {
         matching(report.stale).filter(Self.needsTheHelper)
     }
 
-    /// Connects the daemon to the service, so a plan containing a
-    /// privileged step has something to carry it out. Called whenever the
-    /// section loads, because the daemon can be set up or taken away
-    /// between one visit and the next.
-    public func connectHelper(service: any BrimServiceProtocol) async {
+    /// Brings the helper's state up to date where this section has work
+    /// for it, so the section can say whether it is ready.
+    ///
+    /// This used to connect the helper to the service as well, and to
+    /// disconnect it when this section had nothing waiting, which left a
+    /// removal started anywhere else with no helper at all. `HelperRoute`
+    /// connects it once for the whole app now.
+    public func connectHelper(service _: any BrimServiceProtocol) async {
         // Only where the daemon would have something to do. Asking macOS
         // about it on a Mac with no privileged jobs to remove costs an XPC
         // round trip, a signature check, and a background-item notification
         // nobody asked for. `waitingOnHelper` is derived from the scan that
         // has just finished, so by here it is a settled answer.
-        guard !waitingOnHelper.isEmpty else {
-            await service.usePrivilegedRemover(nil)
-            await service.usePrivilegedReceiptForgetter(nil)
-            return
-        }
+        guard !waitingOnHelper.isEmpty else { return }
         helper.refresh()
         // Before trusting it with anything: an SMAppService daemon stays
         // registered across an application update, so the root process
         // answering can be one an older Brim installed.
         await helper.verifyVersion()
-        guard helper.state.canRemove else {
-            await service.usePrivilegedRemover(nil)
-            await service.usePrivilegedReceiptForgetter(nil)
-            return
-        }
-        let helper = self.helper
-        await service.usePrivilegedReceiptForgetter { packageID in
-            await helper.forgetReceipt(packageID: packageID)
-        }
-        await service.usePrivilegedRemover { path in
-            guard let domain = await BackgroundModel.domain(of: path) else {
-                return "That is not somewhere Brim's helper will touch."
-            }
-            let name = (path as NSString).lastPathComponent
-            return await helper.removeDefunctJob(domain: domain, name: name)
-        }
     }
 
     /// Entries that are genuinely left over but that Brim cannot remove as
