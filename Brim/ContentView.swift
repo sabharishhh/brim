@@ -7,6 +7,8 @@ struct ContentView: View {
     /// Owned here so a section change does not throw away a scan. See
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
+    /// What outlives a launch: kept items, what was seen, saved icons.
+    @State private var session = AppSession()
     @Environment(\.brimService) private var service
     /// Setup runs once and then never again, whether or not the person
     /// accepted everything in it. Asking again next launch is how an app
@@ -80,6 +82,11 @@ struct ContentView: View {
         // Once, for every section. Asks macOS nothing until a removal
         // needs the helper; see `HelperRoute`.
         .task { await HelperRoute.connect(models.background.helper, to: service) }
+        .task { session.visits.begin() }
+        // Every installed app's icon, saved while the app is here to ask,
+        // so its leftovers keep its face after it is removed.
+        .onReceive(models.applications.$applications) { session.icons.remember($0) }
+        .environment(session)
         .task {
             guard needsSetup == nil else { return }
             if hasFinishedSetup {
