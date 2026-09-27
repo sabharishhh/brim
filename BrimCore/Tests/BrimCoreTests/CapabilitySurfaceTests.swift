@@ -136,6 +136,29 @@ final class CapabilitySurfaceTests: XCTestCase {
         }
     }
 
+    func testLaunchJobSymlinkOutsideBundleCannotSupplyADeclaration() throws {
+        try info(["CFBundleIdentifier": "org.example.editor"], at: app)
+        let outside = root.rootURL.appendingPathComponent("outside.plist")
+        try PropertyListSerialization.data(fromPropertyList: ["Label": "org.unrelated.job"],
+                                            format: .xml, options: 0).write(to: outside)
+        let link = app.appendingPathComponent("Contents/Library/LaunchDaemons/job.plist")
+        try FileManager.default.createDirectory(at: link.deletingLastPathComponent(),
+                                               withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        let (_, capabilities) = read { _ in BundleSurfaceReader.Signature(gap: "Unsigned code.") }
+        XCTAssertFalse(capabilities.declarations.contains { $0.value == "org.unrelated.job" })
+        XCTAssertTrue(capabilities.unreadable.contains(link.path))
+    }
+
+    func testOversizedBundleMetadataIsReportedWithoutDecodingIt() throws {
+        let plist = app.appendingPathComponent("Contents/Info.plist")
+        try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(),
+                                               withIntermediateDirectories: true)
+        try Data(repeating: 65, count: 4 * 1024 * 1024 + 1).write(to: plist)
+        let (_, capabilities) = read { _ in BundleSurfaceReader.Signature(gap: "Unsigned code.") }
+        XCTAssertTrue(capabilities.unreadable.contains(plist.path))
+    }
+
     func testReportKeepsDeclarationAndReadStatusSeparateAndIsApprovedWithPlan() async throws {
         try info(["CFBundleIdentifier": "org.example.editor",
                   "NSExtension": ["NSExtensionPointIdentifier": "org.example.extension"]], at: app)
