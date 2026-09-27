@@ -271,23 +271,8 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
     /// mistake can be undone. Both directories are on the same volume, so
     /// this is one atomic rename and never a partial copy.
     private func moveIntoQuarantine(parent: Int32, name: String, from directory: String) throws {
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let destination = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
-            .appendingPathComponent(stamp)
-            .appendingPathComponent((directory as NSString).lastPathComponent)
-
-        do {
-            try FileManager.default.createDirectory(
-                at: destination, withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        } catch {
-            throw PrivilegedJobRemoval.Refusal.couldNotQuarantine(error.localizedDescription)
-        }
-
-        let holding = open(destination.path, O_RDONLY | O_DIRECTORY)
-        guard holding >= 0 else {
-            throw PrivilegedJobRemoval.Refusal.couldNotQuarantine("the holding folder would not open")
+        let holding = try openHoldingFolder(for: directory) { why in
+            PrivilegedJobRemoval.Refusal.couldNotQuarantine(why)
         }
         defer { close(holding) }
 

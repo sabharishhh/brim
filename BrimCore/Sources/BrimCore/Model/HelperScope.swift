@@ -10,7 +10,6 @@ import Foundation
 /// planner's reading of the same rules; `HelperScopeAgreementTests` holds
 /// the two to one answer.
 public enum HelperScope {
-
     /// Where the helper sets aside a launchd job that no longer runs.
     public static let jobFolders: Set<String> = ["/Library/LaunchAgents", "/Library/LaunchDaemons"]
 
@@ -44,10 +43,15 @@ public enum HelperScope {
     public static func keptOut(_ path: String, bytes: Int64) -> ExcludedItem? {
         guard !covers(path) else { return nil }
         let folder = (path as NSString).deletingLastPathComponent
+        // The folder allows changes, so the item itself refuses: a folder
+        // that is read-only cannot be moved even out of your own Library.
+        let reason = access(folder, W_OK) == 0
+            ? "This folder is read-only, so it cannot be moved, and it stays where it is."
+            : "\(folder) belongs to the system, and Brim's helper does not remove things "
+            + "from it, so this stays where it is."
         return ExcludedItem(
             target: path,
-            reason: "\(folder) belongs to the system, and Brim's helper does not remove things "
-                + "from it, so this stays where it is.",
+            reason: reason,
             sizeBytes: bytes,
             canBeTickedByHand: false
         )
@@ -59,7 +63,9 @@ public enum HelperScope {
         var own = stat()
         guard lstat(path, &own) == 0, (own.st_mode & S_IFMT) == S_IFLNK else { return false }
         var far = stat()
-        if stat(path, &far) == 0 { return false }
+        if stat(path, &far) == 0 {
+            return false
+        }
         return errno == ENOENT || errno == ENOTDIR
     }
 }
