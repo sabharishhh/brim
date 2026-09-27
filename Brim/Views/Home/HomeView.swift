@@ -173,7 +173,7 @@ struct HomeView: View {
         let groups = leftovers.orphanedGroups + leftovers.unclaimedGroups
         let checked = leftovers.checkedAt != nil
         let summary = HomeStatus.leftovers(.init(
-            removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedEntries.count,
+            removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedGroups.count,
             hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
         ))
         let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
