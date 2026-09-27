@@ -17,6 +17,8 @@ enum Palette {
     static let hairline = Color(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.09)
     /// Fills behind bars, meters and symbols.
     static let well = Color(light: 0x1C1B19, dark: 0xF2F0EA, lightAlpha: 0.06, darkAlpha: 0.10)
+    /// The light that sweeps across loading placeholders.
+    static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.75, darkAlpha: 0.07)
     /// Staying, needs a look.
     static let caution = Color.orange
     /// Permanent deletion, and nothing else.
