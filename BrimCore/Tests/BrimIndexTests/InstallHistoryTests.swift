@@ -52,6 +52,19 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(count, 1, "One snapshot is not nothing changed, it is nothing to compare")
     }
 
+    func testOnlyWhatArrivedAfterTheFirstLookHasAnArrivalDate() async throws {
+        // Everything is "first seen" at the first look, so taking that as
+        // an install date would call every app on the Mac recently installed.
+        let index = try makeIndex()
+        let firstLook = Date(timeIntervalSince1970: 1_000_000)
+        let later = firstLook.addingTimeInterval(24 * 60 * 60)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: firstLook)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: later)
+
+        let appeared = try await index.appearances()
+        XCTAssertEqual(appeared, ["com.b": later])
+    }
+
     func testSomethingInstalledBetweenLooksIsFound() async throws {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
