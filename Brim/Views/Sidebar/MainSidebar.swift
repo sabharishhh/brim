@@ -95,6 +95,8 @@ extension FocusedValues {
 
 struct MainSidebar: View {
     @Binding var selection: Destination?
+    /// Which places are still scanning, shown as a spinner on their row.
+    @ObservedObject var activity: ScanActivity
 
     var body: some View {
         // `.tag` rather than `NavigationLink(value:)`. The link form belongs
@@ -118,8 +120,18 @@ struct MainSidebar: View {
 
     private func rows(_ destinations: [Destination]) -> some View {
         ForEach(destinations, id: \.self) { destination in
-            Label(destination.rawValue, systemImage: destination.icon)
-                .tag(destination)
+            HStack {
+                Label(destination.rawValue, systemImage: destination.icon)
+                Spacer()
+                if activity.busy.contains(destination) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .transition(.opacity)
+                        .accessibilityLabel("Checking")
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: activity.busy.contains(destination))
+            .tag(destination)
         }
     }
 }
