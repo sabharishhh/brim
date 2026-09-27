@@ -9,9 +9,10 @@ final class PlannerTests: XCTestCase {
         let item = EvaluatedItem(footprintItem: FootprintItem(
             evidence: Evidence(url: URL(fileURLWithPath: "/tmp/Example.app"), tier: .A,
                                mechanism: "test", humanSentence: "Application"),
-            sizeBytes: 1, capability: .ok), selection: .unselected, costOfError: .medium)
+            sizeBytes: 1, capability: .ok
+        ), selection: .unselected, costOfError: .medium)
         let footprint = EvaluatedFootprint(identity: identity, items: [item],
-                                          completeness: ScanCompleteness(unreadable: ["/tmp/unreadable"]))
+                                           completeness: ScanCompleteness(unreadable: ["/tmp/unreadable"]))
         let plan = Planner().createPlan(from: footprint,
                                         intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
                                         engineVersion: "test")
