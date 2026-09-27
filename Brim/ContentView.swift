@@ -76,7 +76,7 @@ struct ContentView: View {
         //
         // A minimum is a constant and costs nothing to answer.
         .frame(minWidth: 900, minHeight: 600)
-        .focusedSceneValue(\.navigateAction) { item in selection = item }
+        .focusedSceneValue(\.navigateAction, FocusedAction(name: "navigate") { item in selection = item })
         .task {
             guard needsSetup == nil else { return }
             if hasFinishedSetup {

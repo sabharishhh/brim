@@ -398,6 +398,16 @@ conversation. Split unrelated changes rather than staging everything.
   `RelativeDateTimeFormatter()` is expensive to construct. Thirty-nine
   history rows formatting a date per frame is what made that list heavy.
   Format once, when the value is made.
+- **A focused value that is a closure never stops changing.** Two closures
+  cannot be compared, so SwiftUI counts every redraw as new focus state,
+  rebuilds the menus the scene builds from it, redraws the window, and
+  publishes another closure. With Brim frontmost the main thread sat at
+  100% forever, and every list in the app scrolled badly because of it.
+  Hiding the window dropped it to 0%, which is also why an idle sample
+  looked clean: the menus only listen while the app is active. An AppKit
+  table was built for the Leftovers lag before this was found and made no
+  difference. Wrap the action in `FocusedAction`, which compares by name.
+  Measure an idle window with the app frontmost before blaming a list.
 
 ## Build and run
 
