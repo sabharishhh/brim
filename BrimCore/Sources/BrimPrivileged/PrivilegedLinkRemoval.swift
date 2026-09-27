@@ -20,7 +20,6 @@ import Foundation
 /// 3. **It is set aside, not deleted.** The link goes into the same
 ///    root-owned quarantine as a job file, so it can be put back.
 public enum PrivilegedLinkRemoval {
-
     /// The only folders this will touch. Both are where an installer puts
     /// a command for the whole machine, and both belong to root.
     public enum Domain: String, Sendable, CaseIterable {
@@ -94,9 +93,9 @@ public enum PrivilegedLinkRemoval {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
         let length = readlinkat(parent, name, &buffer, Int(PATH_MAX))
         guard length > 0 else { throw Refusal.unreadable }
-        let destination = String(
-            decoding: buffer[0 ..< length].map { UInt8(bitPattern: $0) }, as: UTF8.self
-        )
+        // The buffer starts zeroed and holds at most PATH_MAX bytes, so the
+        // byte after the destination is always its terminator.
+        let destination = String(cString: buffer)
 
         var far = stat()
         if fstatat(parent, name, &far, 0) == 0 {

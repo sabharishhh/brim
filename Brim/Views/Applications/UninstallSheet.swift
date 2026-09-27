@@ -201,6 +201,8 @@ struct UninstallSheet: View {
                     Text("\(group.title) (\(group.rows.count))")
                 }
             }
+
+            StayingSection(items: model.staying)
         }
         .listStyle(.inset)
     }
