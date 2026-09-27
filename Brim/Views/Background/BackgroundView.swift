@@ -91,6 +91,7 @@ struct BackgroundView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Background").font(.title2).fontWeight(.bold)
+                        .pageMorph("page.background")
                     Text(summary).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()

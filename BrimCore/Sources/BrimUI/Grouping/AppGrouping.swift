@@ -77,7 +77,7 @@ public struct AppGrouper {
         return false
     }
 
-    func isRecentlyInstalled(_ app: InstalledApplication) -> Bool {
+    public func isRecentlyInstalled(_ app: InstalledApplication) -> Bool {
         app.installedAt.map { $0 >= daysAgo(Self.recentDays) } ?? false
     }
 
