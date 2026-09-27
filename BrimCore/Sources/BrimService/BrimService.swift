@@ -988,7 +988,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // installations. Best effort: a history that could not be
         // written must not stop the list being returned.
         await recordSnapshot(of: applications)
-        return applications
+        return await withInstallDates(applications)
+    }
+
+    /// Each application's install date, from the snapshot it first
+    /// appeared in, including the one just written.
+    private func withInstallDates(_ applications: [InstalledApplication]) async -> [InstalledApplication] {
+        let appeared = await (try? index?.appearances()) ?? [:]
+        return applications.map { application in
+            var dated = application
+            dated.installedAt = application.identity.bundleID.flatMap { appeared[$0] }
+            return dated
+        }
     }
 
     private func recordSnapshot(of applications: [InstalledApplication]) async {
@@ -1000,7 +1011,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 name: application.name,
                 version: application.version,
                 bundlePath: application.url.path,
-                sizeBytes: application.bundleSizeBytes
+                sizeBytes: application.bundleSizeBytes,
+                addedAt: application.addedAt,
+                lastUsedAt: application.lastOpened
             )
         }
         do {
