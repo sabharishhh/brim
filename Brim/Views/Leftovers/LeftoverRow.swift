@@ -28,8 +28,6 @@ struct LeftoverRow: View {
     let isInspected: Bool
     let isKept: Bool
     let isNew: Bool
-    /// Size against the largest row in the same card.
-    let sizeFraction: Double
     let pick: () -> Void
     let inspect: () -> Void
     let keep: () -> Void
@@ -60,35 +58,21 @@ struct LeftoverRow: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 2) {
-                Button(action: keep) {
-                    Image(systemName: isKept ? "pin.slash" : "pin")
-                }
-                .help(isKept ? "Stop keeping" : "Keep")
-                Button {
+            HStack(spacing: 6) {
+                RowAction(symbol: isKept ? "pin.slash" : "pin", help: isKept ? "Stop Keeping" : "Keep", action: keep)
+                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(group.items.map(\.url))
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
                 }
-                .help("Reveal in Finder")
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(Palette.inkSecondary)
             .opacity(isHovering ? 1 : 0)
             .allowsHitTesting(isHovering)
             .accessibilityHidden(!isHovering)
 
-            EvidenceMeter(tier: LeftoverGrouper.confidence(group), showsLabel: false)
-                .frame(width: 20)
-
-            VStack(alignment: .trailing, spacing: 5) {
-                Text(ByteText.short(group.totalBytes))
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-                SizeBar(fraction: sizeFraction)
-            }
-            .frame(width: 72, alignment: .trailing)
+            Text(ByteText.short(group.totalBytes))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+                .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .frame(height: Metrics.rowHeight)
@@ -160,34 +144,23 @@ struct LeftoverRow: View {
     }
 }
 
-/// The part of a card behind one row: rounded at the top of a card, at
-/// the bottom, at both for a card of one, and square in between.
-struct CardSlice: View {
-    enum Position { case only, first, middle, last }
-
-    let position: Position
+/// A small icon button that appears on a row: one size and one hit area
+/// everywhere, so a row of them lines up and each is easy to hit.
+struct RowAction: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
 
     var body: some View {
-        let radius = Metrics.cardRadius
-        let top: CGFloat = position == .only || position == .first ? radius : 0
-        let bottom: CGFloat = position == .only || position == .last ? radius : 0
-        UnevenRoundedRectangle(
-            topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom,
-            topTrailingRadius: top, style: .continuous
-        )
-        .fill(Palette.surface)
-        .padding(.horizontal, 16)
-        .padding(.top, top > 0 ? 4 : 0)
-        .padding(.bottom, bottom > 0 ? 4 : 0)
-    }
-
-    static func position(of index: Int, in count: Int) -> Position {
-        if count == 1 {
-            return .only
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 26, height: 26)
+                .contentShape(.rect)
         }
-        if index == 0 {
-            return .first
-        }
-        return index == count - 1 ? .last : .middle
+        .buttonStyle(.borderless)
+        .foregroundStyle(Palette.inkSecondary)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
