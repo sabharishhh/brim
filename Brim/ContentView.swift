@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var session = AppSession()
     /// What the current page has picked to remove, shown as the Tray.
     @State private var tray: TrayContents?
+    /// What a Home tile's title morphs through into its page.
+    @Namespace private var pages
     @Environment(\.brimService) private var service
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Setup runs once and then never again, whether or not the person
@@ -49,6 +51,7 @@ struct ContentView: View {
             // nothing inside one inherits it: an animation over the whole
             // column would animate every scroll and every checkbox too.
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: shell.selection)
+            .environment(\.pageNamespace, pages)
             .onPreferenceChange(TrayKey.self) { tray = $0 }
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: tray) }
             .toolbar { toolbar }
@@ -62,7 +65,7 @@ struct ContentView: View {
         }
         // An application dropped anywhere on the window opens it in Apps.
         .dropDestination(for: URL.self) { urls, _ in
-            open(droppedApplication: urls)
+            models.openApplication(from: urls, shell: shell)
         }
         // A minimum, and deliberately no ideal.
         //
@@ -130,7 +133,7 @@ struct ContentView: View {
     private func page(_ destination: Destination) -> some View {
         switch destination {
         case .home:
-            ReviewSummaryView(open: { shell.go(to: $0, lens: $1) }, models: models)
+            HomeView(models: models)
         case .apps:
             switch shell.appsLens {
             case .all: ApplicationsView(model: models.applications, access: models.fullDiskAccess)
@@ -190,16 +193,5 @@ struct ContentView: View {
         case .developer: await models.developer.load(service: service)
         case .journal: await models.history.load(service: service)
         }
-    }
-
-    private func open(droppedApplication urls: [URL]) -> Bool {
-        guard let app = urls.first(where: { $0.pathExtension == "app" }) else { return false }
-        shell.go(to: .apps, lens: .all)
-        if !models.applications.selectApplication(at: app) {
-            shell.show(ToastMessage(
-                symbol: "questionmark.app", text: "\(app.deletingPathExtension().lastPathComponent) is not in the list"
-            ))
-        }
-        return true
     }
 }
