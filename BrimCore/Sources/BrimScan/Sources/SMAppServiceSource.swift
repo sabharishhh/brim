@@ -1,63 +1,43 @@
-import Foundation
 import BrimCore
+import Foundation
 
 public struct SMAppServiceSource: EvidenceSource {
     public init() {}
-    
+
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
         var results = [Evidence]()
-        let fm = FileManager.default
-        
-        // We need to look inside the primary app bundle for this identity.
-        // We will guess the bundle location if it's not provided, but mostly
-        // this relies on AppBundleSource having found it.
-        // For independence, we'll check standard locations.
-        let name = identity.name
-        let appPaths = [
-            root.url(for: .applications).appendingPathComponent("\(name).app"),
-            root.url(for: .userApplicationSupport).appendingPathComponent("\(name).app")
+        var completeness = ScanCompleteness.complete
+        let folders = [
+            ("Contents/Library/LaunchServices", "Privileged helper tool bundled within the application"),
+            ("Contents/Library/LaunchDaemons", "Background daemon bundled within the application"),
+            ("Contents/Library/LaunchAgents", "Background agent bundled within the application")
         ]
-        
-        for appURL in appPaths {
-            guard fm.fileExists(atPath: appURL.path) else { continue }
-            
-            let lsDir = appURL.appendingPathComponent("Contents/Library/LaunchServices")
-            if let contents = try? fm.contentsOfDirectory(at: lsDir, includingPropertiesForKeys: nil) {
-                for fileURL in contents {
-                    results.append(Evidence(
-                        url: fileURL,
-                        tier: .A,
-                        mechanism: "SMAppServiceSource",
-                        humanSentence: "Privileged helper tool bundled within the application"
-                    ))
-                }
-            }
-            
-            let ldDir = appURL.appendingPathComponent("Contents/Library/LaunchDaemons")
-            if let contents = try? fm.contentsOfDirectory(at: ldDir, includingPropertiesForKeys: nil) {
-                for fileURL in contents {
-                    results.append(Evidence(
-                        url: fileURL,
-                        tier: .A,
-                        mechanism: "SMAppServiceSource",
-                        humanSentence: "Background daemon bundled within the application"
-                    ))
-                }
-            }
-            
-            let laDir = appURL.appendingPathComponent("Contents/Library/LaunchAgents")
-            if let contents = try? fm.contentsOfDirectory(at: laDir, includingPropertiesForKeys: nil) {
-                for fileURL in contents {
-                    results.append(Evidence(
-                        url: fileURL,
-                        tier: .A,
-                        mechanism: "SMAppServiceSource",
-                        humanSentence: "Background agent bundled within the application"
-                    ))
-                }
+        for appURL in SymlinkIntoBundleSource.verifiedBundleLocations(for: identity, in: root) {
+            for (relative, description) in folders {
+                let found = Self.bundledEvidence(in: appURL.appendingPathComponent(relative),
+                                                 description: description)
+                results.append(contentsOf: found.evidence)
+                completeness = completeness.merging(found.completeness)
             }
         }
-        
-        return results
+        return EvidenceFindings(evidence: results, completeness: completeness)
+    }
+
+    private static func bundledEvidence(in directory: URL, description: String) -> EvidenceFindings {
+        switch DirectoryEntries.read(directory) {
+        case .absent:
+            EvidenceFindings(evidence: [])
+        case .refused:
+            EvidenceFindings(evidence: [], completeness: ScanCompleteness(unreadable: [directory.path]))
+        case let .listed(names):
+            EvidenceFindings(evidence: names.map { name in
+                Evidence(url: directory.appendingPathComponent(name), tier: .A,
+                         mechanism: "SMAppServiceSource", humanSentence: description)
+            })
+        }
     }
 }

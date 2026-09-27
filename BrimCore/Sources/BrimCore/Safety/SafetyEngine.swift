@@ -21,6 +21,13 @@ public struct EvaluatedItem: Equatable, Sendable {
 public struct EvaluatedFootprint: Equatable, Sendable {
     public let identity: Identity
     public let items: [EvaluatedItem]
+    public let completeness: ScanCompleteness
+
+    public init(identity: Identity, items: [EvaluatedItem], completeness: ScanCompleteness = .complete) {
+        self.identity = identity
+        self.items = items
+        self.completeness = completeness
+    }
 }
 
 /// The only component that may decide what gets selected for removal.
@@ -88,7 +95,9 @@ public struct SafetyEngine: Sendable {
             )
         }
         
-        let preVeto = EvaluatedFootprint(identity: footprint.identity, items: evaluatedItems)
+        let preVeto = EvaluatedFootprint(
+            identity: footprint.identity, items: evaluatedItems, completeness: footprint.completeness
+        )
         return await vetoEngine.applyVeto(to: preVeto)
     }
     

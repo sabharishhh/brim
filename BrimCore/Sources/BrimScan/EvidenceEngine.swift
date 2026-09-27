@@ -1,8 +1,8 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// The engine revision, bumped whenever heuristic logic changes.
-public let EvidenceEngineRevision = "1.0.0"
+public let EvidenceEngineRevision = "1.1.0"
 
 /// The discovered application artifact containing deduplicated and sorted evidence.
 public struct DiscoveredApp: AppArtifact {
@@ -30,11 +30,11 @@ public struct DiscoveredApp: AppArtifact {
 /// A deterministic engine that aggregates evidence from multiple sources.
 public struct EvidenceEngine: Sendable {
     public let sources: [any EvidenceSource]
-    
+
     public init(sources: [any EvidenceSource]) {
         self.sources = sources
     }
-    
+
     /// Aggregates, deduplicates by target, resolves tier conflicts, and sorts deterministically.
     public func discover(identity: Identity, in root: FileSystemRoot) async throws -> DiscoveredApp {
         var rawEvidence = [Evidence]()
@@ -44,15 +44,11 @@ public struct EvidenceEngine: Sendable {
             // A source that knows what it could not reach says so, and
             // the gap travels with the result instead of being lost the
             // moment the evidence is merged.
-            if let inventory = source as? LocationInventorySource {
-                let found = inventory.findings(for: identity, in: root)
-                rawEvidence.append(contentsOf: found.evidence)
-                completeness = completeness.merging(found.completeness)
-            } else {
-                rawEvidence.append(contentsOf: try await source.evidence(for: identity, in: root))
-            }
+            let found = try await source.scan(for: identity, in: root)
+            rawEvidence.append(contentsOf: found.evidence)
+            completeness = completeness.merging(found.completeness)
         }
-        
+
         // Deduplicate and resolve tier conflicts.
         //
         // Keyed on the file itself rather than on the string naming it.
@@ -81,12 +77,12 @@ public struct EvidenceEngine: Sendable {
             }
         }
         let bestEvidenceByPath = bestEvidenceByFile
-        
+
         // Sort deterministically (alphabetically by path)
         let sortedEvidence = bestEvidenceByPath.values.sorted { $0.url.path < $1.url.path }
-        
+
         let bundleID = identity.bundleID ?? identity.name
-        
+
         return DiscoveredApp(
             bundleID: bundleID,
             name: identity.name,
@@ -95,7 +91,7 @@ public struct EvidenceEngine: Sendable {
             completeness: completeness
         )
     }
-    
+
     /// Which of two pieces of evidence for the same path to keep.
     ///
     /// S is deliberately the heaviest, and not because it is the most

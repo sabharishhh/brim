@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// System and network extensions: content filters, VPNs, DriverKit drivers.
 ///
@@ -27,14 +27,22 @@ public struct SystemExtensionSurface: RegistrationSurface {
         self.read = read
     }
 
-    public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+    public func coverage(in _: FileSystemRoot) async -> RegistrationCoverage {
         read() == nil
             ? .unavailable(kind, "systemextensionsctl did not answer, so system extensions "
-                          + "were not read.")
+                + "were not read.")
             : .available(kind)
     }
 
-    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+    public func snapshot(in _: FileSystemRoot) async -> RegistrationSnapshot {
+        guard let output = read() else {
+            return RegistrationSnapshot(registrations: [],
+                                        coverage: .unavailable(kind, "System extensions could not be read."))
+        }
+        return RegistrationSnapshot(registrations: Self.parse(output), coverage: .available(kind))
+    }
+
+    public func registrations(in _: FileSystemRoot) async -> [Registration] {
         guard let output = read() else { return [] }
         return Self.parse(output)
     }
@@ -48,8 +56,12 @@ public struct SystemExtensionSurface: RegistrationSurface {
         for rawLine in output.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { continue }
-            if line.hasSuffix("extension(s)") { continue }
-            if line.hasPrefix("---") || line.lowercased().hasPrefix("enabled") { continue }
+            if line.hasSuffix("extension(s)") {
+                continue
+            }
+            if line.hasPrefix("---") || line.lowercased().hasPrefix("enabled") {
+                continue
+            }
 
             // Columns are tab separated: enabled, active, team, bundle id,
             // version, name, state.
