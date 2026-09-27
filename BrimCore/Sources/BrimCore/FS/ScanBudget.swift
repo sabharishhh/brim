@@ -35,7 +35,9 @@ public struct ScanBudget: Sendable {
         ScanBudget(total: .greatestFiniteMagnitude, perProbe: .greatestFiniteMagnitude)
     }
 
-    public var hasRunOut: Bool { Date() >= deadline }
+    public var hasRunOut: Bool {
+        Task.isCancelled || Date() >= deadline
+    }
 
     /// What a single probe may take now: whichever is smaller, its own
     /// allowance or whatever is left of the run.

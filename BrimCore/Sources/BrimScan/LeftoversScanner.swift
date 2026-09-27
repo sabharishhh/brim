@@ -53,7 +53,9 @@ public actor LeftoversScanner {
     }
 
     public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
+        try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
+        try Task.checkCancellation()
         var gatheredIdentities = gathered.identities
         if let protectedAppURL, FileManager.default.fileExists(atPath: protectedAppURL.path) {
             let own = await resolver.resolve(bundleURL: protectedAppURL)
@@ -117,20 +119,12 @@ public actor LeftoversScanner {
         // Support` and the caches dominating while the small domains
         // waited their turn. Sorted afterwards, so the answer does not
         // depend on which domain finished first.
-        let found = await withTaskGroup(of: [Leftover].self) { group in
-            for domain in domainsToScan {
-                group.addTask { [self] in
-                    walkDomain(domain, search, activeIdentities, pastIdentities,
-                               activeBundleIDs, activeNames,
-                               activeGroupContainers, activeTeamIDs, inventoryRoots)
-                }
-            }
-            var collected: [Leftover] = []
-            for await batch in group {
-                collected.append(contentsOf: batch)
-            }
-            return collected
+        let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
+            walkDomain(domain, search, activeIdentities, pastIdentities,
+                       activeBundleIDs, activeNames,
+                       activeGroupContainers, activeTeamIDs, inventoryRoots)
         }
+        let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
 
         // Sorted by size descending. Access time is carried on each item and
@@ -943,7 +937,7 @@ public actor LeftoversScanner {
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
         for bundle in inventory.bundles {
-            if budget.hasRunOut {
+            if budget.hasRunOut || Task.isCancelled {
                 complete = false; break
             }
             let identity = await resolver.resolve(bundleURL: bundle)
