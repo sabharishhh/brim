@@ -17,7 +17,9 @@ public struct InstalledBundleInventory: Sendable {
             directories.append(volume.appendingPathComponent("Applications"))
             directories.append(volume.appendingPathComponent("Users/\(root.userName)/Applications"))
         }
-        for directory in directories { reader.walk(directory, depth: 0) }
+        for directory in directories {
+            reader.walk(directory, depth: 0)
+        }
         return Self(bundles: reader.bundles.sorted { $0.path < $1.path },
                     completeness: ScanCompleteness(unreadable: Array(reader.unreadable),
                                                    timedOut: Array(reader.timedOut)))
@@ -40,8 +42,10 @@ public struct InstalledBundleInventory: Sendable {
                 ).sorted { $0.path < $1.path }
             } catch {
                 let failure = error as NSError
-                if failure.domain != NSCocoaErrorDomain
-                    || ![NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(failure.code) {
+                let cocoaMissing = failure.domain == NSCocoaErrorDomain
+                    && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(failure.code)
+                let posixMissing = failure.domain == NSPOSIXErrorDomain && failure.code == Int(ENOENT)
+                if !cocoaMissing, !posixMissing {
                     unreadable.insert(directory.path)
                 }
                 return []
@@ -49,8 +53,12 @@ public struct InstalledBundleInventory: Sendable {
         }
 
         mutating func walk(_ directory: URL, depth: Int) {
+            var info = stat()
+            if lstat(directory.path, &info) != 0, errno == ENOENT {
+                return
+            }
             let path = directory.resolvingSymlinksInPath().path
-            let boundary = root.rootURL.path
+            let boundary = root.rootURL.resolvingSymlinksInPath().path
             guard boundary == "/" || path == boundary || path.hasPrefix(boundary + "/") else {
                 unreadable.insert(directory.path)
                 return

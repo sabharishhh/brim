@@ -1,3 +1,4 @@
+// swiftformat:disable wrapMultilineStatementBraces
 import Foundation
 
 public struct TierSVetoEngine: Sendable {
@@ -51,7 +52,9 @@ public struct TierSVetoEngine: Sendable {
                     }
                 }
 
-                if let sharedWith = await checkSharedClaims(for: targetURL, identity: footprint.identity, resolver: resolver) {
+                if let sharedWith = await checkSharedClaims(
+                    for: targetURL, identity: footprint.identity, resolver: resolver
+                ) {
                     vettedItems.append(EvaluatedItem(
                         footprintItem: item.footprintItem,
                         selection: .excluded(reason: "Shared file claimed by \(sharedWith.name)"),
@@ -82,8 +85,12 @@ public struct TierSVetoEngine: Sendable {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             let budget = ScanBudget(total: 10)
             for bundle in inventory.bundles {
-                if bundle.resolvingSymlinksInPath().path == subject { continue }
-                if budget.hasRunOut { complete = false; break }
+                if bundle.resolvingSymlinksInPath().path == subject {
+                    continue
+                }
+                if budget.hasRunOut {
+                    complete = false; break
+                }
                 let claims = readGroups(bundle, root)
                 complete = complete && claims.complete
                 for group in claims.groups.sorted() {
