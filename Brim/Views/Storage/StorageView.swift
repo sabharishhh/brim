@@ -35,7 +35,8 @@ struct StorageView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Storage").font(.title2).fontWeight(.bold)
+                Text("Space").font(.title2).fontWeight(.bold)
+                    .pageMorph("page.space")
                 Text(model.isLoading
                      ? "Reading the volumes…"
                      : "Free space, space macOS is holding, and what can be cleared.")

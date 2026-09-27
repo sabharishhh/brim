@@ -18,6 +18,9 @@ public final class LeftoversModel: ObservableObject {
     @Published public private(set) var orphaned: [Leftover] = []
     @Published public private(set) var unclaimed: [Leftover] = []
     @Published public private(set) var isScanning = false
+    /// When the last scan finished, for "Checked 2 hours ago". Nil until
+    /// one has, which is "not checked", never "checked and empty".
+    @Published public private(set) var checkedAt: Date?
     @Published public private(set) var errorMessage: String?
     @Published public var searchText = "" {
         didSet {
@@ -291,6 +294,7 @@ public final class LeftoversModel: ObservableObject {
             let found = try await service.leftovers()
             try Task.checkCancellation()
             hasLoaded = true
+            checkedAt = Date()
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
