@@ -1,16 +1,19 @@
 import XCTest
 import BrimCore
 import BrimProtocol
+import Combine
 @testable import BrimUI
 
 private actor LeftoversStub: BrimServiceProtocol {
     let items: [Leftover]
     let failure: Error?
+    var calls = 0
     init(_ items: [Leftover], failure: Error? = nil) {
         self.items = items
         self.failure = failure
     }
     func leftovers() async throws -> [Leftover] {
+        calls += 1
         if let failure { throw failure }
         return items
     }
@@ -46,6 +49,38 @@ private func leftover(
 
 @MainActor
 final class LeftoversModelTests: XCTestCase {
+    func testRepeatedSearchBindingDoesNotRepublishDerivedRows() {
+        let model = LeftoversModel()
+        var publications = 0
+        let observation = model.$visibleOrphanedEntries.sink { _ in publications += 1 }
+        model.searchText = ""
+        model.searchText = ""
+        XCTAssertEqual(publications, 1)
+        withExtendedLifetime(observation) {}
+    }
+
+    func testEmptySuccessfulScanIsCachedAcrossNavigation() async {
+        let service = LeftoversStub([])
+        let model = LeftoversModel()
+        await model.loadIfNeeded(service: service)
+        await model.loadIfNeeded(service: service)
+        let calls = await service.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testSearchSnapshotUpdatesAfterRemovalWithoutChangingSelection() async {
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([
+            leftover("Alpha", .orphaned), leftover("Beta", .unclaimed)
+        ]))
+        let original = model.selection
+        model.searchText = " beta "
+        XCTAssertTrue(model.visibleOrphanedEntries.isEmpty)
+        XCTAssertEqual(model.visibleUnclaimedEntries.count, 1)
+        XCTAssertEqual(model.selection, original)
+        model.forget(paths: ["/tmp/leftovers/Beta"])
+        XCTAssertTrue(model.visibleUnclaimedEntries.isEmpty)
+    }
 
     /// The grouped lists are stored now rather than recomputed on read, so
     /// they have to be reassigned everywhere the flat lists are. Grouping two

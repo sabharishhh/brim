@@ -132,15 +132,15 @@ struct LeftoversView: View {
                 section(
                     "Orphaned",
                     "Owner recorded. App no longer installed.",
-                    model.visibleEntries(model.orphanedEntries, groups: model.orphanedGroups),
-                    model.visible(model.orphanedGroups),
+                    model.visibleOrphanedEntries,
+                    model.visibleOrphanedGroups,
                     "Nothing here. No record on this Mac points at software that has gone."
                 )
                 section(
                     "Unclaimed",
                     "No owner found. Select items to remove.",
-                    model.visibleEntries(model.unclaimedEntries, groups: model.unclaimedGroups),
-                    model.visible(model.unclaimedGroups),
+                    model.visibleUnclaimedEntries,
+                    model.visibleUnclaimedGroups,
                     "Everything here has an owner."
                 )
             }

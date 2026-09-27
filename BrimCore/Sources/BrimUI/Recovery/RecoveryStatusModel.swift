@@ -28,6 +28,8 @@ public final class RecoveryStatusModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var activationObservers: [NSObjectProtocol] = []
     private var started = false
+    private var refreshRequested = false
+    private var refreshGeneration = 0
 
     public init(watcher: TrashWatcher = TrashWatcher()) {
         self.watcher = watcher
@@ -59,8 +61,11 @@ public final class RecoveryStatusModel: ObservableObject {
 
     public func stop() async {
         started = false
+        refreshGeneration &+= 1
+        refreshRequested = false
         refreshTask?.cancel()
         refreshTask = nil
+        isRefreshing = false
         await watcher.stop()
 
         let center = NSWorkspace.shared.notificationCenter
@@ -104,23 +109,42 @@ public final class RecoveryStatusModel: ObservableObject {
     private func refresh() async {
         guard let service else { return }
 
-        // One refresh at a time; a burst of changes should not fan out into
-        // overlapping scans of the ledger.
-        refreshTask?.cancel()
-        let task = Task { [service] in
-            await MainActor.run { self.isRefreshing = true }
-            defer { Task { @MainActor in self.isRefreshing = false } }
-
-            // The Trash changing is also the moment a removal's registration
-            // can go stale: emptying it leaves macOS pointing at a bundle
-            // that is no longer there. Reconcile before reading, so the
-            // state the UI shows and the state of the machine agree.
-            await service.reconcileRegistrations()
-            guard !Task.isCancelled else { return }
-
-            let fetched = (try? await service.recoverableItems()) ?? []
-            guard !Task.isCancelled else { return }
-            await MainActor.run { self.items = fetched }
+        // One active request, with one trailing refresh for events arriving during it.
+        refreshRequested = true
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let generation = refreshGeneration
+        isRefreshing = true
+        let task = Task { [weak self, service] in
+            guard let self else { return }
+            defer {
+                if self.refreshGeneration == generation {
+                    self.isRefreshing = false
+                    self.refreshTask = nil
+                }
+            }
+            while refreshRequested, !Task.isCancelled {
+                refreshRequested = false
+                // The Trash changing is also the moment a removal's registration
+                // can go stale: emptying it leaves macOS pointing at a bundle
+                // that is no longer there. Reconcile before reading, so the
+                // state the UI shows and the state of the machine agree.
+                await service.reconcileRegistrations()
+                guard !Task.isCancelled else { return }
+                do {
+                    let fetched = try await service.recoverableItems()
+                    guard !Task.isCancelled else { return }
+                    // A polling tick with no change must not invalidate every list.
+                    if items != fetched {
+                        items = fetched
+                    }
+                } catch {
+                    // A failed read is not proof that the Trash is empty.
+                    return
+                }
+            }
         }
         refreshTask = task
         await task.value

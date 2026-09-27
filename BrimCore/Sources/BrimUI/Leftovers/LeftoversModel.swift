@@ -19,7 +19,13 @@ public final class LeftoversModel: ObservableObject {
     @Published public private(set) var unclaimed: [Leftover] = []
     @Published public private(set) var isScanning = false
     @Published public private(set) var errorMessage: String?
-    @Published public var searchText = ""
+    @Published public var searchText = "" {
+        didSet {
+            if oldValue != searchText {
+                filterGroups()
+            }
+        }
+    }
 
     /// Chosen for removal. Orphans start selected, unclaimed items never do.
     ///
@@ -30,6 +36,19 @@ public final class LeftoversModel: ObservableObject {
     @Published public private(set) var selection: Set<String> = []
 
     private var service: (any BrimServiceProtocol)?
+    private var hasLoaded = false
+    @Published public private(set) var visibleOrphanedGroups: [LeftoverGroup] = []
+    @Published public private(set) var visibleUnclaimedGroups: [LeftoverGroup] = []
+    @Published public private(set) var visibleOrphanedEntries: [LeftoverListEntry] = []
+    @Published public private(set) var visibleUnclaimedEntries: [LeftoverListEntry] = []
+
+    private func filterGroups() {
+        visibleOrphanedGroups = visible(orphanedGroups)
+        visibleUnclaimedGroups = visible(unclaimedGroups)
+        let searching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        visibleOrphanedEntries = searching ? visibleOrphanedGroups.map(LeftoverListEntry.owner) : orphanedEntries
+        visibleUnclaimedEntries = searching ? visibleUnclaimedGroups.map(LeftoverListEntry.owner) : unclaimedEntries
+    }
 
     public init() {}
 
@@ -79,21 +98,22 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func toggle(_ group: LeftoverGroup) {
+        let ids = group.items.map(\.id)
         if isSelected(group) {
-            for item in group.items { selection.remove(item.id) }
+            selection.subtract(ids)
         } else {
-            for item in group.items where item.capability == .ok { selection.insert(item.id) }
+            selection.formUnion(group.items.filter { $0.capability == .ok }.map(\.id))
         }
         settle()
     }
 
     public func selectAll(groups: [LeftoverGroup]) {
-        for group in groups { for item in group.items where item.capability == .ok { selection.insert(item.id) } }
+        selection.formUnion(groups.flatMap(\.items).filter { $0.capability == .ok }.map(\.id))
         settle()
     }
 
     public func deselectAll(groups: [LeftoverGroup]) {
-        for group in groups { for item in group.items { selection.remove(item.id) } }
+        selection.subtract(groups.flatMap(\.items).map(\.id))
         settle()
     }
 
@@ -210,6 +230,7 @@ public final class LeftoversModel: ObservableObject {
         unclaimedGroups = unclaimed.groupedByOwner()
         orphanedEntries = orphanedGroups.arrangedByVendor()
         unclaimedEntries = unclaimedGroups.arrangedByVendor()
+        filterGroups()
         settle()
         revision &+= 1
     }
@@ -231,17 +252,35 @@ public final class LeftoversModel: ObservableObject {
         // while the person was elsewhere, which the view could not see
         // because it was not on screen to be told.
         reconcileWithDisk()
-        guard all.isEmpty, !isScanning else { return }
+        guard !hasLoaded, !isScanning else { return }
         await load(service: service)
     }
 
+    private var loadTask: Task<Void, Never>?
+
+    /// The section owns its scan. Navigation can cancel a view's waiter without
+    /// discarding the result or leaving a second view waiting on an empty model.
     public func load(service: any BrimServiceProtocol) async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        let task = Task { await self.performLoad(service: service) }
+        loadTask = task
+        defer { loadTask = nil }
+        await task.value
+    }
+
+    private func performLoad(service: any BrimServiceProtocol) async {
+        guard !isScanning else { return }
         self.service = service
         isScanning = true
         defer { isScanning = false }
 
         do {
             let found = try await service.leftovers()
+            try Task.checkCancellation()
+            hasLoaded = true
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
@@ -253,7 +292,11 @@ public final class LeftoversModel: ObservableObject {
             regroup()
             inspected = nil
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
+            hasLoaded = false
+            inspected = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
             orphaned = []
@@ -275,12 +318,12 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func selectAll(in items: [Leftover]) {
-        for item in items where item.capability == .ok { selection.insert(item.id) }
+        selection.formUnion(items.filter { $0.capability == .ok }.map(\.id))
         settle()
     }
 
     public func deselectAll(in items: [Leftover]) {
-        for item in items { selection.remove(item.id) }
+        selection.subtract(items.map(\.id))
         settle()
     }
 
