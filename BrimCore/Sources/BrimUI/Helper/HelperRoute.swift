@@ -16,7 +16,6 @@ import Foundation
 /// when a plan is actually running a step that needs the helper.
 @MainActor
 public enum HelperRoute {
-
     /// The one helper client, kept so a review can ask about it.
     private static var connected: PrivilegedHelperClient?
 
@@ -26,7 +25,9 @@ public enum HelperRoute {
             await remove(path, helper: helper)
         }
         await service.usePrivilegedReceiptForgetter { packageID in
-            if let problem = await ready(helper) { return problem }
+            if let problem = await ready(helper) {
+                return problem
+            }
             return await helper.forgetReceipt(packageID: packageID)
         }
     }
@@ -35,7 +36,9 @@ public enum HelperRoute {
     /// folder. The folders are the helper's own; see `HelperScope`, which
     /// is the planner's reading of the same lists.
     static func remove(_ path: String, helper: PrivilegedHelperClient) async -> String? {
-        if let problem = await ready(helper) { return problem }
+        if let problem = await ready(helper) {
+            return problem
+        }
         let folder = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
         if let domain = PrivilegedJobRemoval.Domain.allCases.first(where: { $0.directory == folder }) {
@@ -75,11 +78,13 @@ public enum HelperRoute {
     private static var checkedThisLaunch = false
 
     /// Nil when the helper can take work, otherwise what the person can do
-    /// about it. The version is checked once per launch: a daemon an older
-    /// Brim registered applies that version's rules.
+    /// about it. The status is read every time, because the person can
+    /// switch the helper off in System Settings while Brim is open. The
+    /// version is checked once per launch: a daemon an older Brim registered
+    /// applies that version's rules.
     private static func ready(_ helper: PrivilegedHelperClient) async -> String? {
-        if helper.state != .ready || !checkedThisLaunch {
-            helper.refresh()
+        helper.refresh()
+        if helper.state == .ready, !checkedThisLaunch {
             await helper.verifyVersion()
             checkedThisLaunch = helper.state == .ready
         }

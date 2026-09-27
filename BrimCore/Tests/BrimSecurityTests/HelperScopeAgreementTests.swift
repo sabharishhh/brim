@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimPrivileged
+import XCTest
 
 /// The plan promises only what the helper will do.
 ///
@@ -11,7 +11,6 @@ import BrimCore
 /// one added to the plan and not the helper would be promised and then
 /// refused after approval, which is the incident that started this.
 final class HelperScopeAgreementTests: XCTestCase {
-
     func testThePlanAndTheHelperNameTheSameJobFolders() {
         XCTAssertEqual(
             HelperScope.jobFolders,

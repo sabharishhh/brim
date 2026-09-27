@@ -1,5 +1,5 @@
-import XCTest
 @testable import BrimPrivileged
+import XCTest
 
 /// What the root daemon refuses when asked to set aside a command link.
 ///
@@ -9,7 +9,6 @@ import XCTest
 /// something alive: a path in the name, a link that still works, a real
 /// file with a link's name, a destination the daemon cannot see.
 final class PrivilegedLinkRemovalTests: XCTestCase {
-
     private var directory: URL!
     private var descriptor: Int32 = -1
 
@@ -22,7 +21,9 @@ final class PrivilegedLinkRemovalTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        if descriptor >= 0 { close(descriptor) }
+        if descriptor >= 0 {
+            close(descriptor)
+        }
         try? FileManager.default.removeItem(at: directory)
     }
 

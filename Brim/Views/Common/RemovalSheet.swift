@@ -171,13 +171,7 @@ struct RemovalSheet: View {
                             stepRow(step)
                         }
                     }
-                    if !model.staying.isEmpty {
-                        Section("Staying (\(model.staying.count))") {
-                            ForEach(model.staying, id: \.target) { item in
-                                stayingRow(item)
-                            }
-                        }
-                    }
+                    StayingSection(items: model.staying)
                 }
                 .listStyle(.inset)
             }
@@ -235,24 +229,6 @@ struct RemovalSheet: View {
                 .truncationMode(.middle).lineLimit(1)
         }
         .padding(.vertical, 1)
-    }
-
-    private func stayingRow(_ item: ExcludedItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(URL(fileURLWithPath: item.target).lastPathComponent).font(.callout)
-            Text(item.target)
-                .font(.caption).foregroundColor(.secondary)
-                .truncationMode(.middle).lineLimit(1)
-            Text(item.reason)
-                .font(.caption).foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, 1)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            "\(URL(fileURLWithPath: item.target).lastPathComponent), staying. \(item.reason)"
-        )
-        .accessibilityAddTraits(.isStaticText)
     }
 
     private var footer: some View {

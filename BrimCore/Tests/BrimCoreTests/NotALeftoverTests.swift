@@ -1,6 +1,6 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Things that need an administrator are mostly not leftovers.
 ///
@@ -12,7 +12,6 @@ import XCTest
 /// `MSTeamsAudioDevice.driver` with Microsoft Teams installed. Offering any
 /// of them is how a leftover list stops being believed.
 final class NotALeftoverTests: XCTestCase {
-
     private var rootURL: URL!
     private var root: FileSystemRoot!
 
