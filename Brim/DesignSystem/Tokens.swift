@@ -65,7 +65,7 @@ enum Metrics {
 /// system's own, so it renders as crisply as the rest, and it is warmer
 /// than the default without looking like a web font.
 extension Font {
-    static let brimHeadline = Font.system(size: 30, weight: .medium, design: .rounded)
+    static let brimHeadline = Font.system(size: 26, weight: .semibold, design: .rounded)
     static let brimDayHeader = Font.system(.title3, design: .rounded, weight: .semibold)
     static let brimPageTitle = Font.system(.title2, design: .rounded, weight: .semibold)
     static let brimGroupTitle = Font.system(.headline)
