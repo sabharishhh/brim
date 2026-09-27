@@ -18,6 +18,8 @@ public struct VerificationResult: Codable, Equatable, Sendable {
     /// find out, four hundred milliseconds after the person pressed Done.
     /// The answer was already here.
     public let remainingPaths: Set<String>
+    /// Nil in results written before the removal ceiling was reported.
+    public let followUpActions: [RemovalFollowUp]?
 
     /// The paths that went, which is what a list needs to drop a row.
     public func removedPaths(from planned: some Sequence<String>) -> Set<String> {
@@ -30,7 +32,8 @@ public struct VerificationResult: Codable, Equatable, Sendable {
         recoveredBytes: Int64,
         success: Bool,
         reason: String? = nil,
-        remainingPaths: Set<String> = []
+        remainingPaths: Set<String> = [],
+        followUpActions: [RemovalFollowUp]? = nil
     ) {
         self.planId = planId
         self.expectedBytes = expectedBytes
@@ -38,5 +41,6 @@ public struct VerificationResult: Codable, Equatable, Sendable {
         self.success = success
         self.reason = reason
         self.remainingPaths = remainingPaths
+        self.followUpActions = followUpActions
     }
 }
