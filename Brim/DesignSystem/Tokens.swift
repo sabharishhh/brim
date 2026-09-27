@@ -59,17 +59,19 @@ enum Metrics {
     static let rowsBeforeShowAll = 7
 }
 
-/// Type styles. SF Pro everywhere; the serif appears only in the Home
-/// headline and the Journal's day headers, where Brim is speaking rather
-/// than listing.
+/// Type styles. No serif anywhere. SF Pro for everything read in lists,
+/// and SF Pro Rounded where Brim speaks rather than lists: the Home
+/// headline, the big figures and the Journal's day headers. Rounded is the
+/// system's own, so it renders as crisply as the rest, and it is warmer
+/// than the default without looking like a web font.
 extension Font {
-    static let brimHeadline = Font.system(size: 30, weight: .regular, design: .serif)
-    static let brimDayHeader = Font.system(.title3, design: .serif)
-    static let brimPageTitle = Font.system(.title2, weight: .semibold)
+    static let brimHeadline = Font.system(size: 30, weight: .medium, design: .rounded)
+    static let brimDayHeader = Font.system(.title3, design: .rounded, weight: .semibold)
+    static let brimPageTitle = Font.system(.title2, design: .rounded, weight: .semibold)
     static let brimGroupTitle = Font.system(.headline)
     static let brimRowTitle = Font.system(.body, weight: .medium)
     static let brimFacts = Font.system(.subheadline)
-    static let brimFigure = Font.system(size: 28, weight: .semibold).monospacedDigit()
+    static let brimFigure = Font.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit()
 }
 
 private extension Color {
