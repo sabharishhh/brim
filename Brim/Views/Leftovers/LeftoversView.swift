@@ -76,9 +76,11 @@ struct LeftoversView: View {
     /// Backs the Action menu's Remove Selected, so the keyboard reaches the
     /// same place the button does. Nil when there is nothing to remove,
     /// which is what greys the menu item out.
-    private var removeSelectedIfPossible: (() -> Void)? {
+    private var removeSelectedIfPossible: FocusedAction<Void>? {
         guard model.canRemoveSelection else { return nil }
-        return { reviewRequest = model.removalIntent(requesterIdentity: NSUserName()) }
+        return FocusedAction(name: "remove leftovers") { _ in
+            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+        }
     }
 
     // MARK: - List
