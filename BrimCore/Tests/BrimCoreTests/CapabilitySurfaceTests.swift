@@ -218,5 +218,4 @@ final class CapabilitySurfaceTests: XCTestCase {
         XCTAssertEqual(kill(pid, 0), -1)
         XCTAssertEqual(errno, ESRCH)
     }
-
 }
