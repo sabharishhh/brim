@@ -5,9 +5,9 @@ import SystemConfiguration
 
 /// The first page: this Mac at a glance, then in depth one click away.
 ///
-/// A headline, what changed since Brim last looked, three tiles and a place
-/// to drop an app. Nothing here is a number that was not measured: every
-/// figure waits for its scan, and until then says it is looking.
+/// The Mac's name, cards for Space, Leftovers, Background and Developer,
+/// what changed, and a place to drop an app. Short phrases only, and no
+/// number that was not measured: every figure waits for its scan.
 struct HomeView: View {
     // Each model observed directly. Nested `ObservableObject`s do not
     // propagate, so observing `SectionModels` alone would never redraw.
@@ -17,6 +17,7 @@ struct HomeView: View {
     @ObservedObject private var fullDiskAccess: FullDiskAccessModel
     @ObservedObject private var background: BackgroundModel
     @ObservedObject private var storage: StorageModel
+    @ObservedObject private var developer: DeveloperModel
     private let models: SectionModels
 
     @SwiftUI.Environment(\.brimService) private var service
@@ -31,6 +32,7 @@ struct HomeView: View {
         fullDiskAccess = models.fullDiskAccess
         background = models.background
         storage = models.storage
+        developer = models.developer
     }
 
     var body: some View {
@@ -40,7 +42,7 @@ struct HomeView: View {
             // the window open at half the display.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     header
                     if !fullDiskAccess.isGranted {
                         accessNote
@@ -48,19 +50,25 @@ struct HomeView: View {
                     if !recovery.isEmpty {
                         recoveryNote
                     }
-                    tiles
-                    SinceLastLook(
-                        history: applications.history, applications: applications.applications,
-                        newLeftovers: newLeftoverOwners
-                    ) { shell.go(to: .leftovers) }
-                    if !recentlyInstalled.isEmpty {
-                        recentRow
+                    spaceCard
+                    HStack(alignment: .top, spacing: 16) {
+                        leftoversCard
+                        backgroundCard
+                        developerCard
+                    }
+                    HStack(alignment: .top, spacing: 16) {
+                        SinceLastLook(
+                            history: applications.history, applications: applications.applications,
+                            newLeftovers: newLeftoverOwners
+                        ) { shell.go(to: .leftovers) }
+                        if !recentlyInstalled.isEmpty {
+                            recentCard
+                        }
                     }
                     DropWell { models.openApplication(from: $0, shell: shell) }
                 }
-                .frame(maxWidth: 880, alignment: .leading)
+                .frame(maxWidth: 900, alignment: .leading)
                 .padding(Metrics.pagePadding)
-                .padding(.top, 8)
                 Spacer(minLength: 0)
             }
         }
@@ -69,47 +77,28 @@ struct HomeView: View {
         .task { await recovery.start(service: service) }
         .task { await background.loadIfNeeded(service: service) }
         .task { await storage.loadIfNeeded(service: service) }
+        .task { await developer.loadIfNeeded(service: service) }
         .onAppear { fullDiskAccess.startObserving() }
     }
 
     // MARK: - Header
 
+    /// The Mac's name and how fresh the numbers are. No sentence: the
+    /// cards say what matters in a few words each.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(Self.macName)
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(Palette.inkTertiary)
-                Spacer()
-                FreshnessLabel(freshness: freshness)
-            }
-            Text(HomeHeadline.sentence(headlineFacts))
+        HStack(alignment: .firstTextBaseline) {
+            Text(Self.macName)
                 .font(.brimHeadline)
                 .foregroundStyle(Palette.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
-                .brimAnimation(Motion.standard, value: HomeHeadline.sentence(headlineFacts))
                 .accessibilityAddTraits(.isHeader)
+            Spacer()
+            FreshnessLabel(freshness: freshness)
         }
     }
 
     /// The computer's own name, as Sharing settings has it. Read once:
     /// `Host.current()` can wait on the network to answer the same thing.
     private static let macName: String = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "This Mac"
-
-    private var headlineFacts: HomeHeadline.Facts {
-        HomeHeadline.Facts(
-            removedApps: leftovers.orphanedGroups.count,
-            removedAppBytes: leftovers.orphanedGroups.reduce(0) { $0 + $1.totalBytes },
-            unclaimed: leftovers.unclaimedEntries.count,
-            unclaimedBytes: leftovers.unclaimedGroups.reduce(0) { $0 + $1.totalBytes },
-            hasChecked: leftovers.checkedAt != nil,
-            isChecking: leftovers.isScanning,
-            canSeeLibrary: fullDiskAccess.isGranted,
-            failed: leftovers.errorMessage != nil
-        )
-    }
 
     private var freshness: Freshness {
         if leftovers.isScanning {
@@ -138,9 +127,8 @@ struct HomeView: View {
     private var accessNote: some View {
         HomeNote(
             symbol: "lock", tint: Palette.caution,
-            title: "Brim can see only part of this Mac",
-            detail: "Without Full Disk Access most of what apps leave behind is out of sight, "
-                + "so every number here is lower than the truth.",
+            title: "Full Disk Access is off",
+            detail: "Most of Library is out of sight, so counts are low.",
             actionTitle: "Open Settings"
         ) { FullDiskAccess.openSettings() }
     }
@@ -149,65 +137,79 @@ struct HomeView: View {
         let count = recovery.items.count
         return HomeNote(
             symbol: "arrow.uturn.backward", tint: .accentColor,
-            title: count == 1 ? "1 removal can still be put back" : "\(count) removals can still be put back",
-            detail: ByteText.inSentence(recovery.totalBytes) + " is in the Trash until you empty it.",
+            title: count == 1 ? "1 removal can be put back" : "\(count) removals can be put back",
+            detail: "\(ByteText.short(recovery.totalBytes)) in the Trash",
             actionTitle: "Open Journal"
         ) { shell.go(to: .journal) }
     }
 
-    // MARK: - Tiles
+    // MARK: - Cards
 
-    private var tiles: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Tile(
-                title: "Leftovers", figure: leftoverFigure, caption: leftoverCaption,
-                icons: topOwners.map(\.ownerIcon), morphID: "page.leftovers"
-            ) { shell.go(to: .leftovers) }
-            Tile(
-                title: "Background", figure: background.isLoading ? "…" : "\(background.live.count)",
-                caption: backgroundCaption, morphID: "page.background"
-            ) { shell.go(to: .background) }
-            Tile(
-                title: "Space", figure: spaceFigure, caption: spaceCaption, morphID: "page.space"
-            ) { shell.go(to: .space) }
-        }
+    private var spaceCard: some View {
+        let volume = storage.startupVolume
+        return StatCard(
+            title: "Space", symbol: "internaldrive",
+            figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
+            status: volume == nil ? .checking : .neutral,
+            phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
+            morphID: "page.space"
+        ) {
+            if let volume {
+                // Three facts, never added into one: what is used, what
+                // macOS will release when it needs to, and what is free.
+                MeterBar(segments: [
+                    MeterSegment(label: "Used", value: volume.used, color: Palette.hue(1)),
+                    MeterSegment(
+                        label: "Held by macOS", value: volume.reclaimableByTheSystem,
+                        color: Palette.hue(1).opacity(0.4)
+                    ),
+                    MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
+                ])
+            }
+        } action: { shell.go(to: .space) }
     }
 
-    private var topOwners: [LeftoverGroup] {
-        let owners = leftovers.orphanedGroups.isEmpty ? leftovers.unclaimedGroups : leftovers.orphanedGroups
-        return Array(owners.sorted { $0.totalBytes > $1.totalBytes }.prefix(3))
-    }
-
-    private var leftoverFigure: String {
-        guard leftovers.checkedAt != nil else { return "…" }
+    private var leftoversCard: some View {
         let groups = leftovers.orphanedGroups + leftovers.unclaimedGroups
-        return ByteText.short(groups.reduce(0) { $0 + $1.totalBytes })
+        let checked = leftovers.checkedAt != nil
+        let summary = HomeStatus.leftovers(.init(
+            removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedEntries.count,
+            hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
+        ))
+        let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
+        let data = groups.reduce(0) { $0 + $1.meaningfulBytes }
+        return StatCard(
+            title: "Leftovers", symbol: "shippingbox",
+            figure: checked ? ByteText.short(rebuilds + data) : "…",
+            status: summary.status, phrase: summary.phrase, morphID: "page.leftovers"
+        ) {
+            if checked, rebuilds + data > 0 {
+                MeterBar(segments: [
+                    MeterSegment(label: "Data", value: data, color: Palette.hue(5)),
+                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.hue(0))
+                ])
+            }
+        } action: { shell.go(to: .leftovers) }
     }
 
-    private var leftoverCaption: String {
-        guard leftovers.checkedAt != nil else { return "Looking" }
-        let removed = leftovers.orphanedGroups.count
-        if removed > 0 {
-            return removed == 1 ? "from 1 removed app" : "from \(removed) removed apps"
-        }
-        let unclaimed = leftovers.unclaimedEntries.count
-        return unclaimed == 0 ? "nothing left behind" : "\(unclaimed) that no app claims"
+    private var backgroundCard: some View {
+        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: !background.isLoading)
+        return StatCard(
+            title: "Background", symbol: "gearshape.2",
+            figure: background.isLoading ? "…" : "\(background.live.count) running",
+            status: summary.status, phrase: summary.phrase, morphID: "page.background"
+        ) { shell.go(to: .background) }
     }
 
-    private var backgroundCaption: String {
-        guard !background.isLoading else { return "Looking" }
-        let stale = background.stale.count
-        return stale == 0 ? "running, nothing left over" : "running, \(stale) left over"
-    }
-
-    private var spaceFigure: String {
-        guard let volume = storage.startupVolume else { return "…" }
-        return ByteText.short(volume.freeRightNow) + " free"
-    }
-
-    private var spaceCaption: String {
-        guard let volume = storage.startupVolume else { return storage.isLoading ? "Looking" : "Not read yet" }
-        return "of \(ByteText.short(volume.capacity)) on \(volume.name)"
+    private var developerCard: some View {
+        let count = developer.caches.count
+        return StatCard(
+            title: "Developer", symbol: "hammer",
+            figure: developer.isScanning ? "…" : ByteText.short(developer.totalBytes),
+            status: developer.isScanning ? .checking : .neutral,
+            phrase: developer.isScanning ? "Checking" : (count == 1 ? "1 build cache" : "\(count) build caches"),
+            morphID: "page.developer"
+        ) { shell.go(to: .developer) }
     }
 
     // MARK: - Recently installed
@@ -218,38 +220,38 @@ struct HomeView: View {
             .sorted { ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast) }
     }
 
-    private var recentRow: some View {
+    private var recentCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Recently installed")
                 .font(.brimGroupTitle)
                 .foregroundStyle(Palette.ink)
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    ForEach(recentlyInstalled) { app in
-                        Button {
-                            shell.go(to: .apps, lens: .all)
-                            applications.select(app)
-                        } label: {
-                            VStack(spacing: 6) {
-                                BrimIcon(source: .bundle(app.url), size: 48)
-                                Text(app.name)
-                                    .font(.caption)
-                                    .foregroundStyle(Palette.inkSecondary)
-                                    .lineLimit(1)
-                                    .frame(width: 72)
-                            }
+            HStack(alignment: .top, spacing: 14) {
+                ForEach(recentlyInstalled.prefix(4)) { app in
+                    Button {
+                        shell.go(to: .apps, lens: .all)
+                        applications.select(app)
+                    } label: {
+                        VStack(spacing: 6) {
+                            BrimIcon(source: .bundle(app.url), size: 44)
+                            Text(app.name)
+                                .font(.caption)
+                                .foregroundStyle(Palette.inkSecondary)
+                                .lineLimit(1)
+                                .frame(width: 64)
                         }
-                        .buttonStyle(.press)
-                        .accessibilityLabel("\(app.name), installed recently")
                     }
+                    .buttonStyle(.press)
+                    .accessibilityLabel("\(app.name), recently installed")
                 }
             }
-            .scrollIndicators(.never)
         }
+        .padding(18)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .card()
     }
 }
 
-/// A note that needs the person, above the tiles: Full Disk Access, or
+/// A note that needs the person, above the cards: Full Disk Access, or
 /// removals still in the Trash.
 private struct HomeNote: View {
     let symbol: String
