@@ -1,6 +1,7 @@
-// swiftformat:disable wrapMultilineStatementBraces
 import Foundation
 import BrimCore
+
+// swiftformat:disable wrapMultilineStatementBraces
 
 public actor LeftoversScanner {
     public let root: FileSystemRoot
