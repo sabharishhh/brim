@@ -1,15 +1,23 @@
+import QuickLook
 import SwiftUI
 import BrimProtocol
 import BrimUI
 
 struct ContentView: View {
-    @State private var selection: NavigationItem? = .review
+    /// Where the window is, where it has been, Quick Look and the toast.
+    @State private var shell = ShellState()
+    /// Saved with the window, so it reopens where it was left.
+    @SceneStorage("destination") private var savedDestination = Destination.home.rawValue
+    @SceneStorage("appsLens") private var savedLens = AppsLens.all.rawValue
     /// Owned here so a section change does not throw away a scan. See
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
     /// What outlives a launch: kept items, what was seen, saved icons.
     @State private var session = AppSession()
+    /// What the current page has picked to remove, shown as the Tray.
+    @State private var tray: TrayContents?
     @Environment(\.brimService) private var service
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Setup runs once and then never again, whether or not the person
     /// accepted everything in it. Asking again next launch is how an app
     /// trains people to dismiss without reading.
@@ -20,41 +28,42 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            MainSidebar(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
-        } detail: {
-            if let selection = selection {
-                switch selection {
-                case .review:
-                    ReviewSummaryView(navigationSelection: $selection, models: models)
-                case .applications:
-                    ApplicationsView(model: models.applications, access: models.fullDiskAccess)
-                case .leftovers:
-                    LeftoversView(model: models.leftovers, recovery: models.recovery)
-                case .background:
-                    BackgroundView(model: models.background)
-                case .storage:
-                    StorageView(model: models.storage)
-                case .energy:
-                    EnergyView(model: models.energy)
-                case .developer:
-                    DeveloperView(model: models.developer)
-                case .updates:
-                    UpdatesView(model: models.updates)
-                case .history:
-                    RemovalHistoryView(model: models.history, recovery: models.recovery)
+            MainSidebar(selection: Binding(
+                get: { shell.selection },
+                set: { destination in
+                    if let destination {
+                        shell.go(to: destination)
+                    }
                 }
-            } else {
-                Text("Select an item")
-                    .foregroundColor(.secondary)
+            ))
+            .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
+        } detail: {
+            ZStack {
+                page(shell.selection)
+                    .id(shell.selection)
+                    .transition(.brimPage(movingDown: shell.movedDown, reduceMotion: reduceMotion))
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Palette.paper)
+            // Keyed to the page, so a change of page is animated and
+            // nothing inside one inherits it: an animation over the whole
+            // column would animate every scroll and every checkbox too.
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: shell.selection)
+            .onPreferenceChange(TrayKey.self) { tray = $0 }
+            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: tray) }
+            .toolbar { toolbar }
         }
-        // A section change is a change of view, and it should read as one.
-        // Scoped to the selection so nothing inside a panel inherits it:
-        // an animation applied to the whole detail column animates every
-        // scroll and every checkbox underneath it, which costs frames and
-        // makes the app feel slower rather than smoother.
-        .animation(.easeOut(duration: 0.16), value: selection)
+        .quickLookPreview($shell.previewURL, in: shell.previewURLs)
+        // The preview panel is not the key window, so Escape arrives here.
+        .onKeyPress(.escape) {
+            guard shell.isPreviewing else { return .ignored }
+            shell.closePreview()
+            return .handled
+        }
+        // An application dropped anywhere on the window opens it in Apps.
+        .dropDestination(for: URL.self) { urls, _ in
+            open(droppedApplication: urls)
+        }
         // A minimum, and deliberately no ideal.
         //
         // This carried `idealWidth: 1200, idealHeight: 800` for the reason
@@ -78,7 +87,15 @@ struct ContentView: View {
         //
         // A minimum is a constant and costs nothing to answer.
         .frame(minWidth: 900, minHeight: 600)
-        .focusedSceneValue(\.navigateAction, FocusedAction(name: "navigate") { item in selection = item })
+        .focusedSceneValue(\.shell, shell)
+        .environment(shell)
+        .onAppear {
+            shell.restore(Destination(rawValue: savedDestination) ?? .home)
+            shell.appsLens = AppsLens(rawValue: savedLens) ?? .all
+        }
+        .onChange(of: shell.selection) { _, destination in savedDestination = destination.rawValue }
+        .onChange(of: shell.appsLens) { _, lens in savedLens = lens.rawValue }
+        .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
         // Once, for every section. Asks macOS nothing until a removal
         // needs the helper; see `HelperRoute`.
         .task { await HelperRoute.connect(models.background.helper, to: service) }
@@ -105,5 +122,84 @@ struct ContentView: View {
                 needsSetup = false
             }
         }
+    }
+
+    // MARK: - Pages
+
+    @ViewBuilder
+    private func page(_ destination: Destination) -> some View {
+        switch destination {
+        case .home:
+            ReviewSummaryView(open: { shell.go(to: $0, lens: $1) }, models: models)
+        case .apps:
+            switch shell.appsLens {
+            case .all: ApplicationsView(model: models.applications, access: models.fullDiskAccess)
+            case .updates: UpdatesView(model: models.updates)
+            case .energy: EnergyView(model: models.energy)
+            }
+        case .leftovers:
+            LeftoversView(model: models.leftovers, recovery: models.recovery)
+        case .background:
+            BackgroundView(model: models.background)
+        case .space:
+            StorageView(model: models.storage)
+        case .developer:
+            DeveloperView(model: models.developer)
+        case .journal:
+            RemovalHistoryView(model: models.history, recovery: models.recovery)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        if shell.selection == .apps {
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: $shell.appsLens) {
+                    ForEach(AppsLens.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                shell.requestCheck()
+            } label: {
+                Label("Check Again", systemImage: "arrow.clockwise")
+            }
+            .help("Check this page again (⌘R)")
+        }
+    }
+
+    /// Reads the current page again from the Mac.
+    private func checkAgain() async {
+        switch shell.selection {
+        case .home:
+            async let leftovers: Void = models.leftovers.load(service: service)
+            async let applications: Void = models.applications.load(service: service)
+            _ = await (leftovers, applications)
+        case .apps:
+            switch shell.appsLens {
+            case .all: await models.applications.load(service: service)
+            case .updates: await models.updates.load(service: service)
+            case .energy: await models.energy.sample(service: service)
+            }
+        case .leftovers: await models.leftovers.load(service: service)
+        case .background: await models.background.load(service: service)
+        case .space: await models.storage.load(service: service)
+        case .developer: await models.developer.load(service: service)
+        case .journal: await models.history.load(service: service)
+        }
+    }
+
+    private func open(droppedApplication urls: [URL]) -> Bool {
+        guard let app = urls.first(where: { $0.pathExtension == "app" }) else { return false }
+        shell.go(to: .apps, lens: .all)
+        if !models.applications.selectApplication(at: app) {
+            shell.show(ToastMessage(
+                symbol: "questionmark.app", text: "\(app.deletingPathExtension().lastPathComponent) is not in the list"
+            ))
+        }
+        return true
     }
 }

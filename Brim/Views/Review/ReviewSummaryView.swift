@@ -16,7 +16,8 @@ import BrimUI
 /// which is the same distinction `RegistrationCoverage` draws and for the
 /// same reason: "nothing found" and "did not look" are different claims.
 struct ReviewSummaryView: View {
-    @Binding var navigationSelection: NavigationItem?
+    /// Opens a page, and for Apps, which lens of it.
+    let open: (Destination, AppsLens?) -> Void
 
     // Each model is observed directly rather than through the container.
     // `@ObservedObject var models: SectionModels` subscribes to
@@ -33,8 +34,8 @@ struct ReviewSummaryView: View {
     @ObservedObject private var developer: DeveloperModel
     @ObservedObject private var updates: UpdatesModel
 
-    init(navigationSelection: Binding<NavigationItem?>, models: SectionModels) {
-        self._navigationSelection = navigationSelection
+    init(open: @escaping (Destination, AppsLens?) -> Void, models: SectionModels) {
+        self.open = open
         self.leftovers = models.leftovers
         self.applications = models.applications
         self.recovery = models.recovery
@@ -134,7 +135,7 @@ struct ReviewSummaryView: View {
                  + "\(recovery.items.count == 1 ? "removal is" : "removals are") still recoverable",
             detail: ByteText.inSentence(recovery.totalBytes)
                   + " is sitting in the Trash. You can put it back until you empty it.",
-            action: ("Review in History", { navigationSelection = .history })
+            action: ("Review in the Journal", { open(.journal, nil) })
         )
     }
 
@@ -173,8 +174,8 @@ struct ReviewSummaryView: View {
     /// colour. The order is the whole of it, so the first card is the one
     /// worth reading first on this Mac rather than whichever happened to
     /// be declared first.
-    private var rankedAreas: [(item: NavigationItem, view: AnyView)] {
-        let built: [(NavigationItem, ReviewRanking.Finding, AnyView)] = [
+    private var rankedAreas: [(item: ReviewArea, view: AnyView)] {
+        let built: [(ReviewArea, ReviewRanking.Finding, AnyView)] = [
             (
                 .leftovers,
                 // Counted in groups, which is what the Leftovers screen
@@ -309,11 +310,12 @@ struct ReviewSummaryView: View {
     }
 
     private func card(
-        _ destination: NavigationItem, _ symbol: String, _ title: String,
+        _ destination: ReviewArea, _ symbol: String, _ title: String,
         _ status: Status, _ detail: String
     ) -> some View {
         Button {
-            navigationSelection = destination
+            let place = destination.place
+            open(place.destination, place.lens)
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: symbol)
