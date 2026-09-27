@@ -143,7 +143,79 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
+    func removeBrokenCommand(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
+        do {
+            let target = try PrivilegedLinkRemoval.target(domain: domain, name: name)
+            try setAsideDeadLink(target)
+            log.info("set aside \(target.path, privacy: .public)")
+            reply(nil)
+        } catch let refusal as PrivilegedLinkRemoval.Refusal {
+            log.error("refused \(domain)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch {
+            log.error("failed \(domain)/\(name, privacy: .public): \(error.localizedDescription)")
+            reply(error.localizedDescription)
+        }
+    }
+
     // MARK: - Doing it without being tricked
+
+    /// Moves a dead command link into the quarantine, having proved it is
+    /// dead through the directory's own descriptor.
+    ///
+    /// A rename where the volume allows one. Where it does not, the link is
+    /// written again inside the quarantine with the same destination and
+    /// then removed: a link is nothing but its destination, so that copy
+    /// is exact and it still puts back.
+    private func setAsideDeadLink(_ target: URL) throws {
+        let directory = target.deletingLastPathComponent().path
+        let name = target.lastPathComponent
+
+        let parent = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard parent >= 0 else { throw PrivilegedLinkRemoval.Refusal.notThere }
+        defer { close(parent) }
+
+        let destination = try PrivilegedLinkRemoval.deadDestination(parent: parent, name: name)
+        let holding = try openHoldingFolder(for: directory) { why in
+            PrivilegedLinkRemoval.Refusal.couldNotQuarantine(why)
+        }
+        defer { close(holding) }
+
+        if renameat(parent, name, holding, name) == 0 {
+            return
+        }
+        guard errno == EXDEV else {
+            throw PrivilegedLinkRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
+        }
+        guard symlinkat(destination, holding, name) == 0 else {
+            throw PrivilegedLinkRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
+        }
+        guard unlinkat(parent, name, 0) == 0 else {
+            throw PrivilegedLinkRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
+        }
+    }
+
+    /// A fresh, dated folder in the quarantine, named after the folder the
+    /// item came from, opened as a descriptor.
+    private func openHoldingFolder(
+        for directory: String, refusal: (String) -> Error
+    ) throws -> Int32 {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let destination = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
+            .appendingPathComponent(stamp)
+            .appendingPathComponent((directory as NSString).lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(
+                at: destination, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        } catch {
+            throw refusal(error.localizedDescription)
+        }
+        let holding = open(destination.path, O_RDONLY | O_DIRECTORY)
+        guard holding >= 0 else { throw refusal("the holding folder would not open") }
+        return holding
+    }
 
     /// Moves the job file into a root-owned quarantine, having checked
     /// that it is what it claims to be.
