@@ -3,6 +3,54 @@ import BrimCore
 import XCTest
 
 final class LeftoverDirectionAgreementTests: XCTestCase {
+    func testDelimitedNamesStayWithInstalledAppAndAppearInUninstallReview() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brim-delimited-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let root = FileSystemRoot(rootURL: directory.resolvingSymlinksInPath(), userName: "testuser")
+        let bundle = root.url(for: .applications).appendingPathComponent("Sample.app")
+        try FileManager.default.createDirectory(
+            at: bundle.appendingPathComponent("Contents"), withIntermediateDirectories: true
+        )
+        let info = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "org.example.sample", "CFBundleName": "Sample"],
+            format: .xml, options: 0
+        )
+        try info.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+
+        let matches: [(FileSystemRoot.Domain, String)] = [
+            (.userApplicationSupport, "Sample-3p"),
+            (.userServices, "Sample - ask.workflow"),
+            (.darwinUserCache, "org.example.sample-ide.helper")
+        ]
+        var expected = Set<String>()
+        for (domain, name) in matches {
+            let url = root.url(for: domain).appendingPathComponent(name)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try "data".write(to: url, atomically: true, encoding: .utf8)
+            expected.insert(EvidenceEngine.identity(of: url))
+        }
+        let similar = root.url(for: .userApplicationSupport).appendingPathComponent("SampleOther-3p")
+        try "other".write(to: similar, atomically: true, encoding: .utf8)
+
+        let identity = await IdentityResolver(root: root).resolve(bundleURL: bundle)
+        let offered = try await LocationInventorySource().evidence(for: identity, in: root)
+        let matching = offered.filter { expected.contains(EvidenceEngine.identity(of: $0.url)) }
+        XCTAssertEqual(Set(matching.map { EvidenceEngine.identity(of: $0.url) }), expected)
+        XCTAssertTrue(matching.allSatisfy { $0.tier == .C })
+        XCTAssertFalse(offered.contains { $0.url == similar })
+
+        let installed = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertTrue(expected.isDisjoint(with: installed.map { EvidenceEngine.identity(of: $0.url) }))
+
+        try FileManager.default.removeItem(at: bundle)
+        let removed = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertEqual(Set(removed.map { EvidenceEngine.identity(of: $0.url) }).intersection(expected), expected)
+    }
+
     func testUninstallEvidenceAndSweepAgreeForOneBundle() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("brim-direction-\(UUID().uuidString)")

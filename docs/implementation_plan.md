@@ -861,12 +861,54 @@ grouping work remain in T-7.5.
 - **Acceptance** Re-measured on the real machine, not projected. Every reduction names the record that justified it.
 - **Unlocks** a list with a plausible number of rows in it.
 
+**Implementation in the readable-leftovers branch:** `DiagnosticReports`
+remains searchable during uninstall but no longer creates anonymous sweep
+rows. The sweep reads names present in this Mac's `/System/Library`, skips
+nested inventory roots, and protects the running Brim bundle even when it is
+a development build outside `/Applications`. It also recognises Brim's older
+identifiers. Container manager metadata identifies otherwise opaque UUID
+containers; product namespaces keep helpers together while vendor headings
+collapse several separate removal choices. The uninstall review groups paths
+by location. Its rows retain their individual selection and evidence.
+
+**Read-only measurement on this Mac, 27 September 2026:** the original sweep
+listed 270 paths, 12 orphaned and 258 unclaimed. This sweep lists 165 paths,
+24 orphaned and 141 unclaimed, under 99 visible headings. These exclusions
+have an observed record or installed owner: `/System/Library` entries for
+macOS components; the `com.apple.containermanager.identifier` attribute for
+Bitcoin2, Binance and MetaTrader UUID containers; the built Brim bundle and
+its old identifiers; the installed Claude bundle for `Claude-3p` and three
+`Claude - *.workflow` paths; and the installed Antigravity bundle for its
+`com.google.antigravity-ide` cache. The `/Users/Shared/Relocated Items`
+folders carry macOS's `.localized` marker and contain files moved during an
+update, as [Apple documents](https://support.apple.com/guide/mac-help/mchl8ae423a3/mac),
+so they are not app residue. A `systemgroup.com.apple` preference is
+also Apple-owned. An overlapping `DiagnosticReports` directory is scanned
+only through its own inventory rule.
+
+The UUID containers for Bitcoin2 and Binance were created seconds apart,
+but their metadata names different products. Time alone would merge unrelated
+data into one deletion choice. No temporal cluster was made without a common
+owner record. The separate app selections remain available under a vendor
+heading. The running app showed the list and the read-only scan did not remove
+an application.
+
 ### T-7.6 · Plain-language explanation and storage overview (overturns part of C-5)
 - **Objective** The two model uses that restate computed facts rather than assert new ones.
 - **Depends on** T-6.3, T-7.2.
 - **Work** Explain a row from evidence the engine already computed: who owned it, what declared it, when it appeared, what it holds, what returns by itself. Summarise a footprint by what each location is for, from `FootprintProjector` and `LeftoverDomain` figures. One retained `LanguageModelSession`, `prewarm()` on the shared prefix, `@Generable` types so the output is a value and never prose to parse, no streaming. The deterministic renderer from T-6.3 is the floor and remains the fallback whenever the model is unavailable.
 - **Acceptance** Every number and every claim in generated text traces to a computed fact. With Apple Intelligence off, the view renders T-6.3's text and nothing about the interface changes shape.
 - **Unlocks** the copy problem, structurally: prose stops being hardcoded English and becomes a rendering of evidence.
+
+**Implementation in the readable-leftovers branch:** one retained
+`LanguageModelSession` is prewarmed when either view opens. A non-streaming
+`@Generable` result chooses numbered facts for the leftover explanation or
+the footprint overview. Brim renders only facts it computed from the
+ownership search, `FootprintProjector` and `LeftoverDomain`; it does not use
+model-authored names, numbers or removal claims. Invalid choices, model
+errors and unavailable Apple Intelligence all use the same deterministic
+view. The review sheet keeps its short path, size and action rows, with
+evidence behind the Details control.
 
 ### T-7.7 · Opaque-name classification (still gated)
 - **Objective** Name the ten to fifteen rows nothing deterministic can name.
@@ -875,6 +917,14 @@ grouping work remain in T-7.5.
 - **Open question, unanswered** Whether a model-proposed *name* on a row a person may delete crosses C-5's line. Everything else in M7 is independent of the answer.
 
 **M7 done when:** the same six applications are re-measured with nothing left behind that Brim can reach; a removal report distinguishes checked, declared-absent and refused-by-macOS; the leftovers sweep and the uninstall path agree for every bundle under test; and no string in the product describes a limitation where a fact would do.
+
+**Remaining live acceptance:** five of the six applications are installed
+and their footprints were measured without deletion; Obsidian is absent.
+The shared-rule fixture confirms forward and reverse agreement, including
+unticked Tier C suffix matches. A real post-removal measurement of all six
+requires deliberately uninstalling those applications, so this done
+criterion remains open. T-7.7's owner-name decision also remains open and
+does not block the other M7 work.
 
 ---
 

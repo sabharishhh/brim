@@ -160,22 +160,36 @@ struct UninstallSheet: View {
                 }
             }
 
-            Section {
-                ForEach(model.removalSteps, id: \.index) { step in
-                    UninstallPlanRow(
-                        target: step.target, evidence: step.evidence,
-                        bytes: step.expectedBytes, disposition: step.effectiveDisposition,
-                        kind: step.kind, tier: step.tier,
-                        selection: model.isTickedByHand(step.target) ? selection(for: step.target) : nil
-                    )
-                }
-            } header: {
+            if !model.reviewGroups.isEmpty {
                 Text("Selected (\(model.removalSteps.count))")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
+            ForEach(model.reviewGroups) { group in
+                Section {
+                    ForEach(group.steps, id: \.index) { step in
+                        UninstallPlanRow(
+                            target: step.target, evidence: step.evidence,
+                            bytes: step.expectedBytes, disposition: step.effectiveDisposition,
+                            kind: step.kind, tier: step.tier,
+                            selection: model.isTickedByHand(step.target) ? selection(for: step.target) : nil
+                        )
+                    }
+                } header: {
+                    Text("\(group.title) (\(group.steps.count))")
+                }
             }
 
-            if !model.rowsToOffer.isEmpty {
+            if !model.offerGroups.isEmpty {
+                Text("Also include (\(model.rowsToOffer.count))")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
+            ForEach(model.offerGroups) { group in
                 Section {
-                    ForEach(model.rowsToOffer, id: \.target) { row in
+                    ForEach(group.rows, id: \.target) { row in
                         UninstallPlanRow(
                             target: row.target, evidence: row.evidence ?? row.reason,
                             bytes: row.sizeBytes ?? 0, disposition: nil,
@@ -184,20 +198,11 @@ struct UninstallSheet: View {
                         )
                     }
                 } header: {
-                    Text("Also include")
+                    Text("\(group.title) (\(group.rows.count))")
                 }
             }
         }
         .listStyle(.inset)
-    }
-
-    private func selection(for path: String) -> Binding<Bool> {
-        Binding(
-            get: { model.isTickedByHand(path) },
-            set: { ticked in
-                Task { await model.setTicked(ticked, path: path) }
-            }
-        )
     }
 
     private func verification(_ result: VerificationResult) -> some View {
@@ -248,22 +253,6 @@ struct UninstallSheet: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func headline(for result: VerificationResult) -> String {
-        guard result.success else { return isReset ? "Reset incomplete" : "Removal incomplete" }
-        if result.followUpActions?.isEmpty == false {
-            return "Follow-up may be needed"
-        }
-        return isReset ? "Reset complete" : "Uninstall complete"
-    }
-
-    private func message(title: String, detail: String, isError: Bool) -> some View {
-        VStack(spacing: 6) {
-            Text(title).font(.headline).foregroundColor(isError ? .red : .primary)
-            Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
-        }
-        .padding()
-    }
-
     private var footer: some View {
         HStack {
             if case .ready = model.phase, let plan = model.plan {
@@ -299,6 +288,33 @@ struct UninstallSheet: View {
                 .controlSize(.large)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
+        }
+        .padding()
+    }
+}
+
+private extension UninstallSheet {
+    func selection(for path: String) -> Binding<Bool> {
+        Binding(
+            get: { model.isTickedByHand(path) },
+            set: { ticked in
+                Task { await model.setTicked(ticked, path: path) }
+            }
+        )
+    }
+
+    func headline(for result: VerificationResult) -> String {
+        guard result.success else { return isReset ? "Reset incomplete" : "Removal incomplete" }
+        if result.followUpActions?.isEmpty == false {
+            return "Follow-up may be needed"
+        }
+        return isReset ? "Reset complete" : "Uninstall complete"
+    }
+
+    func message(title: String, detail: String, isError: Bool) -> some View {
+        VStack(spacing: 6) {
+            Text(title).font(.headline).foregroundColor(isError ? .red : .primary)
+            Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
         .padding()
     }

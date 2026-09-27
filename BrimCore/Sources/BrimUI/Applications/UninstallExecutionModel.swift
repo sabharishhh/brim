@@ -3,6 +3,18 @@ import BrimProtocol
 import Combine
 import Foundation
 
+public struct UninstallReviewGroup: Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let steps: [Step]
+}
+
+public struct UninstallOfferGroup: Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let rows: [ExcludedItem]
+}
+
 /// Drives one uninstall from plan to proof: plan, a single approval, apply,
 /// and then verification.
 ///
@@ -32,6 +44,8 @@ public final class UninstallExecutionModel: ObservableObject {
 
     @Published public private(set) var phase: Phase = .preparing
     @Published public private(set) var plan: Plan?
+    @Published public private(set) var reviewGroups: [UninstallReviewGroup] = []
+    @Published public private(set) var offerGroups: [UninstallOfferGroup] = []
 
     /// Rows the person ticked in the sheet, which Brim had found and left
     /// unticked. Held here and sent on the intent, so every change of mind
@@ -101,6 +115,8 @@ public final class UninstallExecutionModel: ObservableObject {
             let planned = try await service.plan(intent: baseIntent.tickingByHand(tickedByHand))
             guard asked == generation else { return }
             plan = planned
+            reviewGroups = Self.groupedSteps(planned.steps)
+            offerGroups = Self.groupedOffers(planned.excludedItems)
             isUpdating = false
         } catch {
             guard asked == generation else { return }
@@ -118,6 +134,56 @@ public final class UninstallExecutionModel: ObservableObject {
 
     public var removalSteps: [Step] {
         (plan?.steps ?? []).filter { !Self.bookkeepingKinds.contains($0.kind) }
+    }
+
+    private static func groupedSteps(_ steps: [Step]) -> [UninstallReviewGroup] {
+        var order: [String] = []
+        var buckets: [String: [Step]] = [:]
+        for step in steps where !bookkeepingKinds.contains(step.kind) {
+            let title = groupTitle(for: step.target, kind: step.kind)
+            if buckets[title] == nil {
+                order.append(title)
+            }
+            buckets[title, default: []].append(step)
+        }
+        if let app = order.firstIndex(of: "Application") {
+            order.remove(at: app)
+            order.insert("Application", at: 0)
+        }
+        return order.compactMap { title in
+            guard let steps = buckets[title] else { return nil }
+            return UninstallReviewGroup(id: title, title: title, steps: steps)
+        }
+    }
+
+    private static func groupedOffers(_ rows: [ExcludedItem]) -> [UninstallOfferGroup] {
+        var order: [String] = []
+        var buckets: [String: [ExcludedItem]] = [:]
+        for row in rows where row.canBeTickedByHand == true {
+            let title = groupTitle(for: row.target, kind: nil)
+            if buckets[title] == nil {
+                order.append(title)
+            }
+            buckets[title, default: []].append(row)
+        }
+        return order.compactMap { title in
+            guard let rows = buckets[title] else { return nil }
+            return UninstallOfferGroup(id: title, title: title, rows: rows)
+        }
+    }
+
+    private static func groupTitle(for target: String, kind: StepKind?) -> String {
+        switch kind {
+        case .forgetReceipt: return "Installer records"
+        case .revealVendorUninstaller: return "Vendor uninstallers"
+        default: break
+        }
+        let url = URL(fileURLWithPath: target)
+        if url.pathExtension == "app" {
+            return "Application"
+        }
+        let domain = LeftoverDomain.of(url)
+        return domain == .other ? "Other files" : domain.title
     }
 
     /// Whether this plan also retracts the app's Launch Services
@@ -142,11 +208,15 @@ public final class UninstallExecutionModel: ObservableObject {
         let asked = generation
         isUpdating = false
         plan = nil
+        reviewGroups = []
+        offerGroups = []
         phase = .preparing
         do {
             let planned = try await service.plan(intent: intent)
             guard asked == generation else { return }
             plan = planned
+            reviewGroups = Self.groupedSteps(planned.steps)
+            offerGroups = Self.groupedOffers(planned.excludedItems)
             phase = .ready
         } catch {
             guard asked == generation else { return }
