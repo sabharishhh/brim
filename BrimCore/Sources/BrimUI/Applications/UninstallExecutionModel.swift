@@ -146,6 +146,17 @@ public final class UninstallExecutionModel: ObservableObject {
         (plan?.steps ?? []).filter { !Self.bookkeepingKinds.contains($0.kind) }
     }
 
+    /// What the plan keeps and cannot be ticked, with the reason. Shown
+    /// before approval so nothing is learned only from the result.
+    public var staying: [ExcludedItem] {
+        (plan?.excludedItems ?? []).filter { $0.canBeTickedByHand == false }
+    }
+
+    /// How many removals go through Brim's helper.
+    public var helperSteps: Int {
+        removalSteps.filter { $0.kind == .trashPathPrivileged }.count
+    }
+
     private static func groupedSteps(_ steps: [Step]) -> [UninstallReviewGroup] {
         var order: [String] = []
         var buckets: [String: [Step]] = [:]

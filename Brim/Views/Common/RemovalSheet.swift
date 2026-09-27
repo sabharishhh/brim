@@ -149,28 +149,99 @@ struct RemovalSheet: View {
                 .padding()
             }
         case .ready:
-            List(model.removalSteps, id: \.index) { step in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(URL(fileURLWithPath: step.target).lastPathComponent).font(.callout)
-                        Spacer()
-                        Label(
-                            step.effectiveDisposition == .delete ? "Deleted permanently" : "To Trash",
-                            systemImage: step.effectiveDisposition == .delete ? "trash.slash" : "arrow.uturn.backward"
-                        )
-                        .font(.caption2)
-                        .foregroundColor(step.effectiveDisposition == .delete ? .orange : .secondary)
-                        Text(ByteText.short(step.expectedBytes))
-                            .font(.caption).foregroundColor(.secondary).monospacedDigit()
-                    }
-                    Text(step.target)
-                        .font(.caption).foregroundColor(.secondary)
-                        .truncationMode(.middle).lineLimit(1)
+            VStack(spacing: 0) {
+                if model.helperSteps > 0, let helperProblem {
+                    helperNotice(helperProblem)
+                    Divider()
                 }
-                .padding(.vertical, 1)
+                List {
+                    Section {
+                        ForEach(model.removalSteps, id: \.index) { step in
+                            stepRow(step)
+                        }
+                    }
+                    if !model.staying.isEmpty {
+                        Section("Staying (\(model.staying.count))") {
+                            ForEach(model.staying, id: \.target) { item in
+                                stayingRow(item)
+                            }
+                        }
+                    }
+                }
+                .listStyle(.inset)
             }
-            .listStyle(.inset)
+            .task(id: model.helperSteps) { await checkHelper() }
         }
+    }
+
+    /// Nil once the helper can take the steps that need it.
+    @State private var helperProblem: String?
+
+    private func checkHelper() async {
+        guard model.helperSteps > 0 else { return }
+        helperProblem = await HelperRoute.problem()
+    }
+
+    private func helperNotice(_ problem: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.shield").foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.helperSteps == 1
+                    ? "One of these is in a system folder, so Brim's helper moves it."
+                    : "\(model.helperSteps) of these are in a system folder, so Brim's helper moves them.")
+                    .font(.callout)
+                Text(problem).font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Turn On…") {
+                HelperRoute.turnOn()
+                Task { await checkHelper() }
+            }
+            Button("Check Again") { Task { await checkHelper() } }
+        }
+        .padding(12)
+    }
+
+    private func stepRow(_ step: Step) -> some View {
+        let byHelper = step.kind == .trashPathPrivileged
+        let permanent = step.effectiveDisposition == .delete
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(URL(fileURLWithPath: step.target).lastPathComponent).font(.callout)
+                Spacer()
+                Label(
+                    byHelper ? "Set aside by Brim's helper" : permanent ? "Deleted permanently" : "To Trash",
+                    systemImage: byHelper ? "lock.shield" : permanent ? "trash.slash" : "arrow.uturn.backward"
+                )
+                .font(.caption2)
+                .foregroundColor(permanent ? .orange : .secondary)
+                Text(ByteText.short(step.expectedBytes))
+                    .font(.caption).foregroundColor(.secondary).monospacedDigit()
+            }
+            Text(step.target)
+                .font(.caption).foregroundColor(.secondary)
+                .truncationMode(.middle).lineLimit(1)
+        }
+        .padding(.vertical, 1)
+    }
+
+    private func stayingRow(_ item: ExcludedItem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(URL(fileURLWithPath: item.target).lastPathComponent).font(.callout)
+            Text(item.target)
+                .font(.caption).foregroundColor(.secondary)
+                .truncationMode(.middle).lineLimit(1)
+            Text(item.reason)
+                .font(.caption).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(URL(fileURLWithPath: item.target).lastPathComponent), staying. \(item.reason)"
+        )
+        .accessibilityAddTraits(.isStaticText)
     }
 
     private var footer: some View {

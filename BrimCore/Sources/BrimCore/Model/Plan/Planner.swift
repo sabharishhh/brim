@@ -151,14 +151,16 @@ public struct Planner: Sendable {
                 // Only generate destructive steps if intent is NOT archive, OR if archive explicitly requested uninstall
                 let shouldDelete = (intent.type != .archive) || (intent.type == .archive && intent.archiveAndUninstall)
                 
-                // A target in a folder that belongs to root needs the
-                // daemon, whatever kind of thing it is. Deciding this here
-                // rather than at the point of failure is what lets one
-                // selection mix a file of the user's with one of root's
-                // and still be a single plan, a single review and a single
-                // confirmation. Whose folder something sits in is not a
-                // distinction a person should have to make.
+                // Root's folders need the daemon, decided here so one selection
+                // can mix the person's files with root's in one plan and one
+                // review. Only what the daemon will take becomes a step; the
+                // rest stays out with its reason. See `HelperScope.keptOut`.
                 let needsPrivilege = item.footprintItem.capability == .needsHelper
+                if shouldDelete, needsPrivilege, let kept = HelperScope.keptOut(targetPath, bytes: sizeBytes) {
+                    expectedTotalBytes -= sizeBytes
+                    excludedItems.append(kept)
+                    continue
+                }
 
                 // A locked file used to disappear from the plan: the safety
                 // checker refused it and said nothing, so the person saw a
