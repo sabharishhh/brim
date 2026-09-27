@@ -190,6 +190,31 @@ public actor Index {
         return result
     }
 
+    /// When each application that was not there the first time Brim
+    /// looked first appeared.
+    ///
+    /// An application in the first snapshot has no appearance date: it was
+    /// already installed, and nothing Brim recorded says when it arrived.
+    /// By rowid, for the reason `changesSinceLastScan` gives.
+    public nonisolated func appearances() async throws -> [String: Date] {
+        try await dbManager.dbPool.read { database in
+            guard let firstScan = try String.fetchOne(database, sql: """
+            SELECT scan_id FROM observation WHERE scan_id IS NOT NULL ORDER BY id LIMIT 1
+            """) else { return [:] }
+            let rows = try Row.fetchAll(database, sql: """
+            SELECT identity_id, MIN(observed_at) AS seen FROM observation
+            WHERE scan_id IS NOT NULL
+            GROUP BY identity_id
+            HAVING SUM(scan_id = ?) = 0
+            """, arguments: [firstScan])
+            var appeared: [String: Date] = [:]
+            for row in rows {
+                appeared[row["identity_id"]] = row["seen"]
+            }
+            return appeared
+        }
+    }
+
     /// How many snapshots are on record, so the UI can say "first look"
     /// rather than "nothing changed".
     public nonisolated func snapshotCount() async throws -> Int {

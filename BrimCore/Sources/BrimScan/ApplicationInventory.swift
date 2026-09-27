@@ -1,5 +1,7 @@
-import Foundation
 import BrimCore
+import CoreServices
+import Foundation
+import Security
 
 /// Lists the applications installed on a machine.
 ///
@@ -29,6 +31,8 @@ public actor ApplicationInventory {
     public func installedApplications() async -> [InstalledApplication] {
         var seen = Set<String>()
         var results: [InstalledApplication] = []
+        let casks = UpdateSourceScanner().installedCasks()
+        var developers = DeveloperNames()
 
         for domain in searchDomains {
             for bundleURL in bundles(in: domain.url) {
@@ -41,18 +45,53 @@ public actor ApplicationInventory {
                 // symlink into a Cryptex, so a check on the listed path alone
                 // would offer Safari for removal and measure it as 0 bytes.
                 let resolved = bundleURL.resolvingSymlinksInPath()
-                results.append(InstalledApplication(
+                var application = InstalledApplication(
                     identity: identity,
                     url: bundleURL,
                     bundleSizeBytes: Self.size(of: resolved),
                     isSystemProtected: domain.protected || Self.isOSOwned(resolved)
-                ))
+                )
+                describe(&application, resolved: resolved, casks: casks, developers: &developers)
+                results.append(application)
             }
         }
 
         return results.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+    }
+
+    /// Category, source, developer and use, for grouping. Every value is
+    /// read from a file or Spotlight; none of it is worked out by guessing.
+    private func describe(
+        _ application: inout InstalledApplication, resolved: URL, casks: Set<String>,
+        developers: inout DeveloperNames
+    ) {
+        let bundleID = application.identity.bundleID
+        application.category = Self.infoValue("LSApplicationCategoryType", in: resolved)
+        application.source = ApplicationFacts.source(
+            bundleID: bundleID, path: resolved.path,
+            hasAppStoreReceipt: FileManager.default.fileExists(
+                atPath: resolved.appendingPathComponent("Contents/_MASReceipt/receipt").path
+            ),
+            isHomebrewCask: UpdateSourceScanner.matchingCask(for: application, among: casks) != nil
+        )
+        application.developer = ApplicationFacts.isApple(bundleID: bundleID)
+            ? "Apple"
+            : developers.name(team: application.identity.teamID, bundle: resolved)
+            ?? ApplicationFacts.vendor(fromBundleID: bundleID)
+        if let item = MDItemCreateWithURL(kCFAllocatorDefault, resolved as CFURL) {
+            application.lastOpened = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date
+            application.addedAt = MDItemCopyAttribute(item, kMDItemDateAdded) as? Date
+        }
+    }
+
+    private static func infoValue(_ key: String, in bundle: URL) -> String? {
+        let plist = bundle.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return nil }
+        return values[key] as? String
     }
 
     /// Top-level `.app` bundles only. Applications nested inside another app's
@@ -110,5 +149,38 @@ public actor ApplicationInventory {
             total += Int64((try? fileURL.resourceValues(forKeys: Set(keys)))?.fileSize ?? 0)
         }
         return total
+    }
+}
+
+/// Organisation names by signing team, read from the certificate once per
+/// team rather than once per app: Adobe's five apps cost one read.
+struct DeveloperNames {
+    private var byTeam: [String: String] = [:]
+
+    mutating func name(team: String?, bundle: URL) -> String? {
+        guard let team else { return nil }
+        if let known = byTeam[team] {
+            return known
+        }
+        // Not remembered when nothing is found: an App Store app is
+        // re-signed by Apple and names nobody, and another app from the
+        // same team may still say who it is.
+        guard let found = Self.certificateOrganisation(of: bundle) else { return nil }
+        byTeam[team] = found
+        return found
+    }
+
+    private static func certificateOrganisation(of bundle: URL) -> String? {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
+            == errSecSuccess,
+            let values = information as? [String: Any],
+            let certificates = values[kSecCodeInfoCertificates as String] as? [SecCertificate],
+            let leaf = certificates.first,
+            let summary = SecCertificateCopySubjectSummary(leaf) as String?
+        else { return nil }
+        return ApplicationFacts.organisation(fromCertificateSummary: summary)
     }
 }
