@@ -1,54 +1,69 @@
-import Foundation
 import BrimCore
+import Foundation
 
-/// Resolves sandbox containers and application groups (Tier A).
+/// Finds sandbox and declared group containers.
 public struct SandboxContainerSource: EvidenceSource {
     public init() {}
-    
+
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
-        var results = [Evidence]()
-        
-        guard let bundleID = identity.bundleID else {
-            return results
-        }
-        
-        let fm = FileManager.default
-        
-        // 1. Sandbox container
-        let userContainer = root.url(for: .userContainers).appendingPathComponent(bundleID)
-        let sysContainer = root.url(for: .systemLibrary).appendingPathComponent("Containers/\(bundleID)")
-        
-        for url in [userContainer, sysContainer] {
-            if fm.fileExists(atPath: url.path) {
-                results.append(Evidence(
-                    url: url,
-                    tier: .A,
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
+        let containerDirs = [
+            root.url(for: .userContainers),
+            root.url(for: .systemLibrary).appendingPathComponent("Containers")
+        ]
+        let groupDirs = [
+            root.url(for: .userGroupContainers),
+            root.url(for: .systemLibrary).appendingPathComponent("Group Containers")
+        ]
+        let unreadable = (containerDirs + groupDirs)
+            .filter { DirectoryEntries.read($0).isRefused }
+            .map(\.path)
+        let evidence = containerEvidence(for: identity, in: containerDirs)
+            + groupEvidence(for: identity, in: groupDirs)
+        return EvidenceFindings(evidence: evidence,
+                                completeness: ScanCompleteness(unreadable: unreadable))
+    }
+
+    private func containerEvidence(for identity: Identity, in directories: [URL]) -> [Evidence] {
+        identity.searchBundleIdentifiers.flatMap { identifier in
+            directories.compactMap { directory in
+                let url = directory.appendingPathComponent(identifier)
+                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+                let direct = identifier == identity.bundleID
+                return Evidence(
+                    url: url, tier: direct ? .A : .C,
                     mechanism: "SandboxContainerSource",
-                    humanSentence: "Sandbox container keyed to this bundle identifier"
-                ))
+                    humanSentence: direct
+                        ? "Sandbox container keyed to this bundle identifier"
+                        : "Container keyed to an embedded component."
+                )
             }
         }
-        
-        // 2. Group containers
-        let userGroupDir = root.url(for: .userGroupContainers)
-        let sysGroupDir = root.url(for: .systemLibrary).appendingPathComponent("Group Containers")
-        
-        let groupsToCheck = !identity.groupContainers.isEmpty ? identity.groupContainers : ["group.\(bundleID)"]
-        
-        for group in groupsToCheck {
-            for dir in [userGroupDir, sysGroupDir] {
-                let groupURL = dir.appendingPathComponent(group)
-                if fm.fileExists(atPath: groupURL.path) && !results.contains(where: { $0.url == groupURL }) {
-                    results.append(Evidence(
-                        url: groupURL,
-                        tier: .A,
-                        mechanism: "SandboxContainerSource",
-                        humanSentence: "Group container declared in application entitlements"
-                    ))
+    }
+
+    private func groupEvidence(for identity: Identity, in directories: [URL]) -> [Evidence] {
+        if !identity.searchGroupContainers.isEmpty {
+            return identity.searchGroupContainers.flatMap { group in
+                directories.compactMap { directory in
+                    let url = directory.appendingPathComponent(group)
+                    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+                    return Evidence(url: url, tier: .A,
+                                    mechanism: "SandboxContainerSource",
+                                    humanSentence: "Group container declared in application entitlements")
                 }
             }
         }
-        
-        return results
+        return identity.searchBundleIdentifiers.flatMap { identifier in
+            directories.compactMap { directory in
+                let url = directory.appendingPathComponent("group.\(identifier)")
+                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+                return Evidence(url: url, tier: .C,
+                                mechanism: "SandboxContainerSource",
+                                humanSentence: "Group name matches the application.")
+            }
+        }
     }
 }

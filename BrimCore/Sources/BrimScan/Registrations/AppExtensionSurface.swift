@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// App extensions, as PluginKit knows them.
 ///
@@ -25,14 +25,26 @@ public struct AppExtensionSurface: RegistrationSurface {
         self.read = read
     }
 
-    public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+    public func coverage(in _: FileSystemRoot) async -> RegistrationCoverage {
         read() == nil
             ? .unavailable(kind, "pluginkit did not answer, so app extensions were not read.")
             : .available(kind)
     }
 
-    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+    public func snapshot(in _: FileSystemRoot) async -> RegistrationSnapshot {
+        guard let output = read() else {
+            return RegistrationSnapshot(registrations: [],
+                                        coverage: .unavailable(kind, "App extensions could not be read."))
+        }
+        return RegistrationSnapshot(registrations: Self.registrations(from: output), coverage: .available(kind))
+    }
+
+    public func registrations(in _: FileSystemRoot) async -> [Registration] {
         guard let output = read() else { return [] }
+        return Self.registrations(from: output)
+    }
+
+    private static func registrations(from output: String) -> [Registration] {
         let fm = FileManager.default
 
         return output.split(separator: "\n").compactMap { line -> Registration? in
@@ -88,7 +100,9 @@ public struct AppExtensionSurface: RegistrationSurface {
     static func parse(_ line: String) -> Entry? {
         guard !line.isEmpty else { return nil }
         // " (490 plug-ins)" closes the listing.
-        if line.contains("plug-ins)") && !line.contains("\t") { return nil }
+        if line.contains("plug-ins)"), !line.contains("\t") {
+            return nil
+        }
 
         let fields = line.components(separatedBy: "\t")
         guard fields.count >= 4 else { return nil }
@@ -106,8 +120,8 @@ public struct AppExtensionSurface: RegistrationSurface {
         var identifier = rest
         var version: String?
         if rest.hasSuffix(")"), let open = Self.openingParenthesis(closing: rest) {
-            identifier = String(rest[rest.startIndex..<open])
-            let inner = String(rest[rest.index(after: open)..<rest.index(before: rest.endIndex)])
+            identifier = String(rest[rest.startIndex ..< open])
+            let inner = String(rest[rest.index(after: open) ..< rest.index(before: rest.endIndex)])
             version = inner == "(null)" ? nil : inner
         }
         guard !identifier.isEmpty else { return nil }
@@ -131,10 +145,14 @@ public struct AppExtensionSurface: RegistrationSurface {
         var index = text.endIndex
         while index > text.startIndex {
             index = text.index(before: index)
-            if text[index] == ")" { depth += 1 }
+            if text[index] == ")" {
+                depth += 1
+            }
             if text[index] == "(" {
                 depth -= 1
-                if depth == 0 { return index }
+                if depth == 0 {
+                    return index
+                }
             }
         }
         return nil

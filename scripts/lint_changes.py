@@ -10,6 +10,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -23,15 +24,23 @@ def collect(root, files):
     if not files:
         return counts
     commands = {
-        "swiftformat": ["swiftformat", "--lint", "--cache", "ignore", "--swift-version", "6.0", "--commas", "inline", "--reporter", "json"],
+        # SwiftFormat 0.63's collecting JSON reporter crashed in write() on
+        # both CI and this Mac. Its default reporter emits each finding directly.
+        "swiftformat": ["swiftformat", "--lint", "--cache", "ignore", "--swift-version", "6.0", "--trailing-commas", "never"],
         "swiftlint": ["swiftlint", "lint", "--quiet", "--no-cache", "--reporter", "json"],
     }
     for tool, command in commands.items():
         result = subprocess.run(command + files, cwd=root, text=True, capture_output=True)
-        try:
-            rows = json.loads(result.stdout)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(f"{tool} did not return a report: {result.stderr}") from error
+        if tool == "swiftformat":
+            rows = [{"file": match[1], "rule_id": match[2]} for match in re.finditer(
+                r"^(.+):\d+:\d+: (?:error|warning): \(([^)]+)\) ",
+                result.stdout + result.stderr, re.MULTILINE
+            )]
+        else:
+            try:
+                rows = json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                raise RuntimeError(f"{tool} did not return a report ({result.returncode}): {result.stderr}") from error
         if not isinstance(rows, list) or result.returncode not in (0, 1, 2):
             raise RuntimeError(f"{tool} failed ({result.returncode}): {result.stderr}")
         if result.returncode != 0 and not rows:

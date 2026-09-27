@@ -63,32 +63,25 @@ public struct ScanCompleteness: Sendable, Equatable, Codable {
     public let timedOut: [String]
 
     public init(unreadable: [String] = [], timedOut: [String] = []) {
-        self.unreadable = unreadable
-        self.timedOut = timedOut
+        self.unreadable = Array(Set(unreadable)).sorted()
+        self.timedOut = Array(Set(timedOut)).sorted()
     }
 
     public static let complete = ScanCompleteness()
 
     public var isComplete: Bool { unreadable.isEmpty && timedOut.isEmpty }
 
-    /// What the person is told, or nil when there is nothing to tell.
-    ///
-    /// Both sentences have to carry the same two things: what is missing, and
-    /// what to do about it. An earlier pair said only the first, and ended on
-    /// "so nothing is selected for you", which reads as an apology for work
-    /// Brim did not do rather than as a list of everything it did.
+    /// A read failure can have several causes; do not promise that a permission fixes it.
     public var explanation: String? {
         guard !isComplete else { return nil }
-        if !timedOut.isEmpty {
-            let count = timedOut.count
-            return "\(count) \(count == 1 ? "place" : "places") took longer to read than the "
-                 + "scan allows. Everything else is listed below. Run the scan again to "
-                 + "include \(count == 1 ? "it" : "them")."
+        var reasons: [String] = []
+        if !unreadable.isEmpty {
+            reasons.append("Could not read \(unreadable.count) \(unreadable.count == 1 ? "place" : "places").")
         }
-        let count = unreadable.count
-        return "\(count) \(count == 1 ? "place" : "places") on this Mac \(count == 1 ? "is" : "are") "
-             + "closed to Brim. Everything else is listed below, and Full Disk Access opens "
-             + "the rest."
+        if !timedOut.isEmpty {
+            reasons.append("The scan timed out in \(timedOut.count) \(timedOut.count == 1 ? "place" : "places").")
+        }
+        return (reasons + ["Review the available items or scan again."]).joined(separator: " ")
     }
 
     public func merging(_ other: ScanCompleteness) -> ScanCompleteness {
