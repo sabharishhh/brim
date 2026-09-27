@@ -102,13 +102,13 @@ public final class LeftoversModel: ObservableObject {
         if isSelected(group) {
             selection.subtract(ids)
         } else {
-            selection.formUnion(group.items.filter { $0.capability == .ok }.map(\.id))
+            selection.formUnion(group.items.filter(\.canBeRemovedByBrim).map(\.id))
         }
         settle()
     }
 
     public func selectAll(groups: [LeftoverGroup]) {
-        selection.formUnion(groups.flatMap(\.items).filter { $0.capability == .ok }.map(\.id))
+        selection.formUnion(groups.flatMap(\.items).filter(\.canBeRemovedByBrim).map(\.id))
         settle()
     }
 
@@ -240,7 +240,7 @@ public final class LeftoversModel: ObservableObject {
     private func settle() {
         selectedItems = all.filter { selection.contains($0.id) }
         selectedBytes = selectedItems.reduce(0) { $0 + $1.size }
-        blockedSelection = selectedItems.filter { $0.capability != .ok }
+        blockedSelection = selectedItems.filter { !$0.canBeRemovedByBrim }
     }
 
     /// Scans only if there is nothing to show. Returning to a section is a
@@ -285,7 +285,7 @@ public final class LeftoversModel: ObservableObject {
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
-            selection = Set(orphaned.filter { $0.capability == .ok }.map(\.id))
+            selection = Set(orphaned.filter(\.canBeRemovedByBrim).map(\.id))
             // A fresh scan is the truth, so nothing is being held back for
             // a restore that the scan itself would have found.
             removedButRecoverable = []
@@ -318,7 +318,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func selectAll(in items: [Leftover]) {
-        selection.formUnion(items.filter { $0.capability == .ok }.map(\.id))
+        selection.formUnion(items.filter(\.canBeRemovedByBrim).map(\.id))
         settle()
     }
 
