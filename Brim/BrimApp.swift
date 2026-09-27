@@ -25,7 +25,7 @@ private let log = BrimLog.make("app")
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            root
                 .environment(\.brimService, client)
                 .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
@@ -105,6 +105,16 @@ private let log = BrimLog.make("app")
         }
     }
     
+    /// The app, or in a debug build launched with `-designGallery YES`,
+    /// every design system component on one page.
+    @ViewBuilder private var root: some View {
+        if DesignGallery.isRequested {
+            DesignGallery()
+        } else {
+            ContentView()
+        }
+    }
+
     /// The root daemon, so its own cleanup can run before Brim goes.
     @StateObject private var helper = PrivilegedHelperClient()
 
