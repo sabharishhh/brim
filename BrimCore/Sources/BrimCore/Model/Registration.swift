@@ -95,6 +95,21 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// a file. Offering a removal without asking this is what produced an
     /// authorization followed by "2 targets still remain".
     public let capability: Capability
+    /// Whether macOS launches this when the person signs in, as its own
+    /// record says. Optional so a registration saved before it existed
+    /// still decodes.
+    ///
+    /// Background Task Management keeps a record for every application
+    /// that has helpers, pointing at the application's bundle, whether or
+    /// not the application itself opens at login. Reading "points at an
+    /// app" as "opens at login" put Brim, ChatGPT and seven more under
+    /// that heading on a Mac where none of them did.
+    public let atLogin: Bool?
+
+    /// A login item, by its record's own type or by the older mechanism.
+    public var launchesAtLogin: Bool {
+        atLogin == true || kind == .legacyLoginItem
+    }
 
     // The record's own location is part of the identity. Google Keystone
     // installs the same job twice, once for the user and once for the
@@ -162,7 +177,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         evidence: String,
         isSystemOwned: Bool = false,
         signing: SigningState? = nil,
-        capability: Capability = .ok
+        capability: Capability = .ok,
+        atLogin: Bool? = nil
     ) {
         self.kind = kind
         self.identifier = identifier
@@ -175,6 +191,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         self.isSystemOwned = isSystemOwned
         self.signing = signing
         self.capability = capability
+        self.atLogin = atLogin
     }
 }
 
