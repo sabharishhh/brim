@@ -46,7 +46,7 @@ struct AppRow: View {
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
-                .frame(width: 72, alignment: .trailing)
+                .frame(minWidth: 56, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
