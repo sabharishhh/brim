@@ -50,6 +50,16 @@ struct LeftoverStacks: View {
         return List {
             ForEach(sections) { section in
                 Section {
+                    // The group's title as its first row, not a pinned header:
+                    // a pinned header is drawn on its own band with a rule under it.
+                    Group {
+                        sectionHeader(section)
+
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+
                     if !isCollapsed(section) {
                         // On the page under their title, not in a box: the
                         // title and the indent already say what belongs
@@ -68,9 +78,8 @@ struct LeftoverStacks: View {
                                 .listRowSeparator(.hidden)
                         }
                     }
-                } header: {
-                    sectionHeader(section)
                 }
+                .listSectionSeparator(.hidden)
             }
         }
         .onAppear { remembered = StableOrder.positions(grouped) }

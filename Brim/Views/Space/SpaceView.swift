@@ -61,7 +61,6 @@ struct SpaceView: View {
             Text("Space")
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
-                .pageMorph("page.space")
             if model.isLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -95,7 +94,6 @@ struct SpaceView: View {
                 )
                 figure("Free", volume.freeRightNow, "Available now", Palette.inkTertiary)
             }
-            Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Label("Finder shows \(ByteText.short(volume.freeAsFinderReportsIt)) free", systemImage: "info.circle")
                     .foregroundStyle(Palette.inkSecondary)

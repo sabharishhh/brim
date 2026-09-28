@@ -21,8 +21,8 @@ struct BrimLine: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Rectangle()
-            .fill(Palette.hairline)
+        // No track: a line across the page would read as a border.
+        Color.clear
             .frame(height: 2)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
@@ -135,7 +135,7 @@ struct EmptyState: View {
                 .frame(maxWidth: 320)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                     .padding(.top, 4)
             }

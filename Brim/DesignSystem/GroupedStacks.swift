@@ -30,6 +30,16 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         List {
             ForEach(sections) { section in
                 Section {
+                    // The group's title as its first row, not a pinned header:
+                    // a pinned header is drawn on its own band with a rule under it.
+                    Group {
+                        header(section)
+
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+
                     if !isCollapsed(section) {
                         ForEach(visibleRows(section)) { item in
                             row(item)
@@ -45,9 +55,8 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
                                 .listRowSeparator(.hidden)
                         }
                     }
-                } header: {
-                    header(section)
                 }
+                .listSectionSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -137,26 +146,41 @@ extension GroupedStacks where Accessory == EmptyView {
     }
 }
 
-/// A row's hover and selection wash, shared by every page's rows.
+/// A row's hover, press and selection wash: the one highlight every row
+/// in Brim uses, so a row answers the pointer the same way on every page.
+///
+/// The press shows on mouse-down, before the click completes, one step
+/// stronger than hover. That is the click's feedback: a colour change the
+/// eye catches, rather than motion on something clicked all day (HIG,
+/// Motion).
 struct RowHighlight: ViewModifier {
     let isInspected: Bool
     @State private var isHovering = false
+    @GestureState private var isPressed = false
 
     func body(content: Content) -> some View {
         content
             .background(fill, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
             .contentShape(.rect)
             .onHover { hovering in
-                withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
+                withAnimation(Motion.quick) { isHovering = hovering }
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0).updating($isPressed) { _, pressed, _ in pressed = true }
+            )
+            .animation(.easeOut(duration: 0.08), value: isPressed)
+            .animation(Motion.quick, value: isInspected)
             .environment(\.isRowHovered, isHovering)
     }
 
-    private var fill: AnyShapeStyle {
+    private var fill: Color {
         if isInspected {
-            return AnyShapeStyle(.tint.opacity(0.10))
+            return Palette.selected
         }
-        return AnyShapeStyle(isHovering ? Palette.well : Color.clear)
+        if isPressed {
+            return Palette.pressed
+        }
+        return isHovering ? Palette.hover : .clear
     }
 }
 
@@ -180,7 +204,8 @@ struct HoverActions<Content: View>: View {
     @SwiftUI.Environment(\.isRowHovered) private var isHovering
 
     var body: some View {
-        HStack(spacing: 6) { content }
+        HStack(spacing: 8) { content }
+            .padding(.trailing, 4)
             .opacity(isHovering ? 1 : 0)
             .allowsHitTesting(isHovering)
             .accessibilityHidden(!isHovering)
