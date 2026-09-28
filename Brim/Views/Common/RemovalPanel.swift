@@ -23,6 +23,9 @@ struct RemovalPanel: View {
     /// A plan the service already made, reviewed as it is rather than
     /// planned again from the intent. A tool's own cleanup comes this way.
     var plan: Plan?
+    /// Told whenever the review moves between waiting, running and done,
+    /// so the page beside it knows when its own ticks may still change it.
+    var onPhase: (UninstallExecutionModel.Phase) -> Void = { _ in }
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var helperProblem: String?
@@ -45,6 +48,7 @@ struct RemovalPanel: View {
             }
         }
         .task(id: model.helperSteps) { await checkHelper() }
+        .onChange(of: model.phase, initial: true) { _, phase in onPhase(phase) }
         .onKeyPress(.escape) {
             guard model.phase != .executing else { return .ignored }
             close()
