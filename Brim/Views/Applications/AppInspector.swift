@@ -101,12 +101,12 @@ struct AppInspector: View {
                 .foregroundStyle(Palette.inkSecondary)
         } else {
             HStack(spacing: 8) {
-                Button("Remove \(app.name)…", action: remove)
+                Button("Remove", action: remove)
                     .buttonStyle(.glassProminent)
                 // Reset keeps the app and its licence and clears its state:
                 // "make it work again" is a different job from "get rid of
                 // it", and people reach for the second wanting the first.
-                Button("Reset…", action: reset)
+                Button("Reset", action: reset)
                     .buttonStyle(.glass)
             }
             .buttonBorderShape(.capsule)
