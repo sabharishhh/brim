@@ -21,8 +21,8 @@ struct LeftoversView: View {
 
     @SceneStorage("leftovers.grouping") private var grouping = LeftoverGrouping.smart
     @State private var reviewRequest: PlanIntent?
-    /// Locations removed while the review sheet was open, for the toast.
-    @State private var removedInSheet = 0
+    /// Locations removed while the review was open, for the toast.
+    @State private var removedInReview = 0
 
     var body: some View {
         // Fixed panes rather than an HSplitView: a split view relays out
@@ -33,6 +33,12 @@ struct LeftoversView: View {
                 content
             }
             .frame(minWidth: 480, maxWidth: .infinity)
+            // Held still while a review is open: the plan is of what was
+            // picked when Review was pressed, and a tick now would not be
+            // in it. Dimmed a little so the review reads as the focus.
+            .opacity(reviewRequest == nil ? 1 : 0.55)
+            .allowsHitTesting(reviewRequest == nil)
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
             Divider()
             inspector
                 .frame(width: 340)
@@ -58,23 +64,6 @@ struct LeftoversView: View {
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
         .tray(trayContents)
-        .sheet(item: $reviewRequest) { intent in
-            RemovalSheet(
-                intent: intent,
-                service: service,
-                title: "Remove leftovers",
-                subtitle: Self.locations(intent.explicitTargets.count),
-                onRemoved: { paths in
-                    // Rows go the moment the check proves them gone, with
-                    // the sheet still open, because that is when it became
-                    // true.
-                    removedInSheet += paths.count
-                    model.forget(paths: paths)
-                },
-                onFinished: { Task { await model.load(service: service) } },
-                onProven: offerPutBack
-            )
-        }
     }
 
     // MARK: - Header
@@ -113,10 +102,6 @@ struct LeftoversView: View {
         .padding(.bottom, 8)
     }
 
-    static func locations(_ count: Int) -> String {
-        count == 1 ? "1 location" : "\(count) locations"
-    }
-
     private var summary: String {
         let groups = model.orphanedGroups + model.unclaimedGroups
         return "\(groups.count) · \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
@@ -148,7 +133,27 @@ struct LeftoversView: View {
 
     @ViewBuilder
     private var inspector: some View {
-        if let group = model.inspected {
+        if let intent = reviewRequest {
+            RemovalPanel(
+                intent: intent, service: service,
+                onRemoved: { paths in
+                    // Rows go the moment the check proves them gone, with
+                    // the review still open, because that is when it
+                    // became true.
+                    removedInReview += paths.count
+                    model.forget(paths: paths)
+                },
+                onClose: { proven in
+                    reviewRequest = nil
+                    if let proven {
+                        offerPutBack(proven)
+                    }
+                },
+                onUnverified: { Task { await model.load(service: service) } }
+            )
+            .id(intent.id)
+            .transition(.opacity)
+        } else if let group = model.inspected {
             LeftoverInspector(
                 group: group,
                 isPicked: model.isSelected(group),
@@ -225,7 +230,7 @@ struct LeftoversView: View {
     /// What is ticked, as the window's Tray. The model keeps the
     /// selection; this only describes it.
     private var trayContents: TrayContents? {
-        guard !model.selectedItems.isEmpty else { return nil }
+        guard !model.selectedItems.isEmpty, reviewRequest == nil else { return nil }
         let blocked = model.blockedSelection.count
         return TrayContents(
             count: model.selectedItems.count, bytes: model.selectedBytes,
@@ -243,13 +248,15 @@ struct LeftoversView: View {
     }
 
     private func review() {
-        removedInSheet = 0
-        reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+        removedInReview = 0
+        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+        }
     }
 
     /// After a removal the check proved: say so, and offer it back.
     private func offerPutBack(_ planId: UUID) {
-        let count = removedInSheet
+        let count = removedInReview
         guard count > 0 else { return }
         shell.show(ToastMessage(
             symbol: "checkmark.circle.fill",
