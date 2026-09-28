@@ -135,7 +135,8 @@ public struct BackgroundItemSurface: RegistrationSurface {
                 // Xcode on every scan would make the section feel broken.
                 signing: (isSystemOwned || !targetExists) ? nil : resolved.map {
                     CodeSignature.state(of: $0, recordedTeam: record.teamIdentifier)
-                }
+                },
+                atLogin: record.type?.contains("login item") == true
             )
         }
     }
