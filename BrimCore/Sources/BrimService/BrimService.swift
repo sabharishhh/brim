@@ -991,16 +991,48 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return await withInstallDates(applications)
     }
 
-    /// Each application's install date, from the snapshot it first
-    /// appeared in, including the one just written.
+    /// Each application's install date: the snapshot it first appeared
+    /// in, when the evidence says it arrived then.
+    ///
+    /// First appearing is not the same as arriving. When the inventory
+    /// began listing the apps inside Xcode, Icon Composer, FileMerge and
+    /// five more were in the next snapshot and not the one before, and
+    /// Home announced them all as installed today, years after Xcode put
+    /// them there. So an appearance counts only when nothing shows the
+    /// bundle was already on the disk at Brim's previous look: Spotlight's
+    /// date added can move later on an update but never earlier, so a date
+    /// before that look is proof. An app inside another arrives with its
+    /// host and takes the host's date.
     private func withInstallDates(_ applications: [InstalledApplication]) async -> [InstalledApplication] {
-        let appeared = await (try? index?.appearances()) ?? [:]
-        return applications.map { application in
+        let windows = await (try? index?.appearanceWindows()) ?? [:]
+        let byPath = Dictionary(applications.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
+        func arrival(_ application: InstalledApplication) -> Date? {
+            if let host = application.hostURL {
+                return byPath[host.path].flatMap(arrival)
+            }
+            guard let bundleID = application.identity.bundleID, let window = windows[bundleID] else { return nil }
+            if let added = application.addedAt, added < window.previousLook {
+                return nil
+            }
+            return window.seen
+        }
+        var alreadyHere: Set<String> = []
+        let dated = applications.map { application in
             var dated = application
-            dated.installedAt = application.identity.bundleID.flatMap { appeared[$0] }
+            dated.installedAt = arrival(application)
+            if dated.installedAt == nil, let bundleID = application.identity.bundleID, windows[bundleID] != nil {
+                alreadyHere.insert(bundleID)
+            }
             return dated
         }
+        appearedButAlreadyHere = alreadyHere
+        return dated
     }
+
+    /// Apps that are new to the list but were on the disk before, from the
+    /// latest listing. `whatChanged` is asked after listing, and leaves
+    /// these out of what it calls installed.
+    private var appearedButAlreadyHere: Set<String> = []
 
     private func recordSnapshot(of applications: [InstalledApplication]) async {
         guard let index else { return }
@@ -1178,7 +1210,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func whatChanged() async -> InstallHistory {
         guard let index else { return InstallHistory(changes: [], snapshots: 0) }
         return InstallHistory(
-            changes: (try? await index.changesSinceLastScan()) ?? [],
+            changes: ((try? await index.changesSinceLastScan()) ?? []).filter {
+                !($0.kind == .appeared && appearedButAlreadyHere.contains($0.bundleID))
+            },
             snapshots: (try? await index.snapshotCount()) ?? 0
         )
     }
