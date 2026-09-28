@@ -625,7 +625,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 .filter { removedPaths.contains($0.standardizedFileURL.path) }
         }
 
-        let (followUps, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+        let (found, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+        var followUps = found
         // A failed step whose path is still there is explained with that
         // path. Saying "some planned actions could not be completed" as
         // well added a vaguer copy of the same news.
@@ -645,6 +646,14 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
         
+        // Teams' device was still offered in every app's microphone list
+        // after its driver had gone, because Core Audio had it loaded.
+        let removedDriver = plan.steps.contains { step in
+            step.kind.targetIsPath && !pathsRemaining.contains(step.target)
+                && (step.target as NSString).deletingLastPathComponent.hasSuffix("/Audio/Plug-Ins/HAL")
+        }
+        if removedDriver { followUps.append(.restartForAudioDevice) }
+
         return VerificationResult(
             planId: planId,
             expectedBytes: plan.expectedTotalBytes,
