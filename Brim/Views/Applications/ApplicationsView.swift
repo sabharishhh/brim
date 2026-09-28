@@ -67,7 +67,15 @@ struct ApplicationsView: View {
             ))
             return
         }
-        review = AppReview(app: app, type: .uninstall)
+        review = AppReview(app: removalTarget(app), type: .uninstall)
+    }
+
+    /// What removing an app removes. An app shipped inside another cannot
+    /// be taken out of it without breaking the host's signature, so its
+    /// removal is the host's, and the review says so by showing the host.
+    private func removalTarget(_ app: InstalledApplication) -> InstalledApplication {
+        guard let host = app.hostURL else { return app }
+        return model.applications.first { $0.url.path == host.path } ?? app
     }
 
     private func finished(_ review: AppReview) {
@@ -148,7 +156,7 @@ struct ApplicationsView: View {
                 } else {
                     AppStacks(
                         model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
-                        opened: opened, remove: { review = AppReview(app: $0, type: .uninstall) }
+                        opened: opened, remove: { review = AppReview(app: removalTarget($0), type: .uninstall) }
                     )
                     // A new grouping is a new order to hold.
                     .id(grouping)
@@ -173,7 +181,7 @@ struct ApplicationsView: View {
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
-                remove: { review = AppReview(app: app, type: .uninstall) },
+                remove: { review = AppReview(app: removalTarget(app), type: .uninstall) },
                 reset: { review = AppReview(app: app, type: .reset) }
             )
             .refreshing(model.isLoading)
