@@ -16,10 +16,9 @@ import Foundation
 /// inherits its provenance, so an application that runs shell commands
 /// stamps whatever those commands create, `~/.npm` included. So both have to
 /// hold: the name ties the item to the application, and the provenance
-/// proves the application wrote it. And the value has to be this
-/// application's alone: when another installed bundle carries it, as it
-/// would for applications that arrived through the same installer, it says
-/// nothing about which of them wrote a file, and nothing is claimed.
+/// proves the application wrote it. When another installed bundle carries
+/// the same value and is named for the same item, the two cannot be told
+/// apart and nothing is claimed.
 ///
 /// Only the first level of the places applications keep data is read, so
 /// this costs one listing and a few attribute reads per folder.
@@ -35,10 +34,17 @@ public struct ProvenanceSource: EvidenceSource {
               let stamp = Self.provenance(bundlePath) else { return EvidenceFindings(evidence: []) }
         let inventory = await Task.detached { InstalledBundleInventory.read(in: root) }.value
         let subject = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
-        let shared = inventory.bundles.contains {
-            $0.resolvingSymlinksInPath().path != subject && Self.provenance($0.path) == stamp
+        // Bundles carrying the same value. One is enough to make the value
+        // ambiguous for anything named for it too, and says nothing about
+        // anything named only for this application.
+        let resolver = IdentityResolver(root: root)
+        var others: [Owner] = []
+        for bundle in inventory.bundles where bundle.resolvingSymlinksInPath().path != subject
+            && Self.provenance(bundle.path) == stamp {
+            let other = await resolver.resolve(bundleURL: bundle)
+            others.append(Owner(stamp: stamp, identifiers: other.searchBundleIdentifiers.map { $0.lowercased() },
+                                names: Self.names(for: other)))
         }
-        guard !shared else { return EvidenceFindings(evidence: []) }
 
         let identifiers = identity.searchBundleIdentifiers.map { $0.lowercased() }
         let names = Self.names(for: identity)
@@ -47,7 +53,9 @@ public struct ProvenanceSource: EvidenceSource {
         for (directory, hiddenOnly) in Self.places(in: root) {
             guard case let .listed(entries) = DirectoryEntries.read(directory) else { continue }
             for entry in entries where !hiddenOnly || entry.hasPrefix(".") {
-                guard Self.isNamed(entry, identifiers: identifiers, names: names) else { continue }
+                guard Self.isNamed(entry, identifiers: identifiers, names: names),
+                      !others.contains(where: { Self.isNamed(entry, identifiers: $0.identifiers, names: $0.names) })
+                else { continue }
                 let url = directory.appendingPathComponent(entry)
                 guard Self.provenance(url.path) == stamp else { continue }
                 evidence.append(Evidence(url: url, tier: .B, mechanism: "ProvenanceSource",
@@ -107,27 +115,34 @@ public struct ProvenanceSource: EvidenceSource {
         let names: [String]
     }
 
-    /// Every installed application whose provenance is its own. A value two
-    /// bundles share says nothing about which of them wrote a file.
+    /// Every installed application with a provenance value.
+    ///
+    /// Two bundles can share one: anything an application creates carries
+    /// its value, bundles included. Claude Code's URL handler was created
+    /// from inside Visual Studio Code and carries Visual Studio Code's, and
+    /// a rule that gave up whenever a value was shared left all of Visual
+    /// Studio Code's data unclaimed. Sharing is settled per item instead, in
+    /// `owner(of:among:)`.
     public static func owners(of identities: [Identity]) -> [Owner] {
-        let stamped = identities.compactMap { identity -> (Data, Identity)? in
+        identities.compactMap { identity in
             guard let path = identity.bundlePath, let stamp = provenance(path) else { return nil }
-            return (stamp, identity)
-        }
-        let counts = Dictionary(grouping: stamped, by: \.0).mapValues(\.count)
-        return stamped.filter { counts[$0.0] == 1 }.map { stamp, identity in
-            Owner(stamp: stamp, identifiers: identity.searchBundleIdentifiers.map { $0.lowercased() },
-                  names: names(for: identity))
+            return Owner(stamp: stamp, identifiers: identity.searchBundleIdentifiers.map { $0.lowercased() },
+                         names: names(for: identity))
         }
     }
 
-    /// The installed application that wrote this and that it is named for.
+    /// The installed application that wrote this and that it is named for,
+    /// when exactly one bundle with that value is named for it.
     public static func owner(of url: URL, among owners: [Owner]) -> Owner? {
         guard !owners.isEmpty, let stamp = provenance(url.path) else { return nil }
-        return owners.first { owner in
-            owner.stamp == stamp
-                && isNamed(url.lastPathComponent, identifiers: owner.identifiers, names: owner.names)
+        return owner(named: url.lastPathComponent, stamp: stamp, among: owners)
+    }
+
+    static func owner(named name: String, stamp: Data, among owners: [Owner]) -> Owner? {
+        let claimants = owners.filter { owner in
+            owner.stamp == stamp && isNamed(name, identifiers: owner.identifiers, names: owner.names)
         }
+        return claimants.count == 1 ? claimants[0] : nil
     }
 
     /// The raw `com.apple.provenance` value, without following a link.
