@@ -1,6 +1,7 @@
 import AppKit
 import BrimCore
 import Foundation
+import os
 
 /// Application icons, kept after the application has gone.
 ///
@@ -30,8 +31,28 @@ public struct IconMemory: Sendable {
         return directory.appendingPathComponent(String(safe) + ".png")
     }
 
+    /// Whether an icon is saved for this app. Answered from memory: rows
+    /// ask while they draw, and a `fileExists` per row per frame is disk
+    /// work a scroll waits on. The folder is listed once, and saves and
+    /// clears keep the answer current.
     public func has(_ bundleID: String) -> Bool {
-        FileManager.default.fileExists(atPath: url(for: bundleID).path)
+        let name = url(for: bundleID).lastPathComponent
+        return Self.saved.withLock { cache in
+            if cache[directory.path] == nil {
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+                cache[directory.path] = Set(names)
+            }
+            return cache[directory.path]?.contains(name) ?? false
+        }
+    }
+
+    /// Saved file names, per folder.
+    private static let saved = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
+
+    private func noteSaved(_ file: URL) {
+        Self.saved.withLock { cache in
+            cache[directory.path]?.insert(file.lastPathComponent)
+        }
     }
 
     /// Saves an installed application's icon, unless a copy at least as
@@ -44,7 +65,9 @@ public struct IconMemory: Sendable {
         }
         guard let png = Self.png(of: NSWorkspace.shared.icon(forFile: appURL.path)) else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? png.write(to: target, options: .atomic)
+        if (try? png.write(to: target, options: .atomic)) != nil {
+            noteSaved(target)
+        }
     }
 
     /// How many icons are saved and the space they take, for Settings.
@@ -65,6 +88,9 @@ public struct IconMemory: Sendable {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         for file in files where file.pathExtension == "png" {
             try? FileManager.default.removeItem(at: file)
+        }
+        Self.saved.withLock { cache in
+            cache[directory.path] = nil
         }
     }
 
