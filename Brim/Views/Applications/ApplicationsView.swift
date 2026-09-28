@@ -118,13 +118,18 @@ struct ApplicationsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage, model.applications.isEmpty {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
-        } else if asTable {
-            AppTable(model: model, opened: opened)
         } else {
-            AppStacks(
-                model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
-                opened: opened, remove: { uninstalling = $0 }
-            )
+            Group {
+                if asTable {
+                    AppTable(model: model, opened: opened)
+                } else {
+                    AppStacks(
+                        model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
+                        opened: opened, remove: { uninstalling = $0 }
+                    )
+                }
+            }
+            .refreshing(model.isLoading)
         }
     }
 
@@ -137,14 +142,14 @@ struct ApplicationsView: View {
                 app: app, model: model, access: access, opened: opened[app.id],
                 remove: { uninstalling = app }, reset: { resetting = app }
             )
+            .refreshing(model.isLoading)
             // Keyed on the app and a crossfade only, so arrowing through
             // the list does not make the pane swim.
             .id(app.id)
             .transition(.opacity)
             .animation(Motion.inspector, value: app.id)
         } else {
-            ContentUnavailableView("Select an app", systemImage: "square.grid.2x2")
-                .foregroundStyle(Palette.inkSecondary)
+            PanePlaceholder(symbol: "square.grid.2x2", title: "Select an app")
         }
     }
 
