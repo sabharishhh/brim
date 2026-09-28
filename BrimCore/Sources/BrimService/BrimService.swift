@@ -797,8 +797,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// ready. Nothing else in the service knows the daemon exists, which
     /// keeps the privileged path to one line in one place.
     public func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {
+        privilegedRemover = remover
         await executor.setPrivilegedRemover(remover)
     }
+
+    /// Kept for updates, which replace a root-owned application the same
+    /// way a removal sets one aside.
+    private var privilegedRemover: (@Sendable (String) async -> String?)?
 
     public func usePrivilegedReceiptForgetter(
         _ forgetter: (@Sendable (String) async -> String?)?
@@ -1142,42 +1147,40 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
     }
 
-    /// Checks every application that has a route to a new version.
+    /// Whether each application has a newer version, from its own source.
     ///
-    /// On a press, never during a scan: this is the only thing in the
-    /// product that reaches the network, and it contacts nothing the
-    /// installed software would not contact itself.
-    public func checkForUpdates() async -> [AvailableUpdate] {
-        let report = await updateReport()
-        let checker = UpdateChecker()
-        let outdated = await checker.outdatedCasks()
-        var available: [AvailableUpdate] = []
+    /// Reaches the network: Apple's catalogue, the feeds applications read
+    /// themselves, and Homebrew's public catalogue at most once a day.
+    public func checkForUpdates() async -> UpdateCheck {
+        let applications = await ApplicationInventory(root: root).installedApplications()
+        return await UpdateFinder(catalogueDirectory: Self.updatesDirectory.appendingPathComponent("Catalogue"))
+            .check(applications)
+    }
 
-        for entry in report.coverage {
-            guard let bundleID = entry.application.identity.bundleID else { continue }
-
-            if let cask = entry.homebrewCask, let newer = outdated[cask] {
-                available.append(AvailableUpdate(
-                    bundleID: bundleID, name: entry.application.name,
-                    installed: newer.installed ?? entry.application.version,
-                    latest: newer.latest, source: .homebrewCask(name: cask)
-                ))
-                continue
-            }
-
-            for source in entry.sources {
-                guard case .sparkle(let feed) = source else { continue }
-                guard let latest = await checker.latestVersion(fromFeed: feed),
-                      UpdateChecker.isNewer(latest, than: entry.application.version)
-                else { continue }
-                available.append(AvailableUpdate(
-                    bundleID: bundleID, name: entry.application.name,
-                    installed: entry.application.version, latest: latest, source: source
-                ))
-            }
+    /// Puts one update in place. Homebrew updates what it installed; the
+    /// rest Brim downloads, checks and swaps, or hands to Installer.
+    public func installUpdate(
+        _ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void
+    ) async -> UpdateOutcome {
+        switch update.route {
+        case .homebrew:
+            guard case .homebrew(let cask) = update.origin else { return .failed("Homebrew does not know this app.") }
+            if let problem = await UpdateChecker().upgradeCask(cask) { return .failed(problem) }
+            let info = NSDictionary(contentsOf: update.appURL.appendingPathComponent("Contents/Info.plist"))
+            return .installed(version: info?["CFBundleShortVersionString"] as? String ?? update.latestVersion)
+        case .appStore, .website:
+            return .failed("This update is installed from its page.")
+        case .replace, .installer:
+            return await UpdateInstaller(
+                workspace: Self.updatesDirectory.appendingPathComponent("Downloads"),
+                remover: privilegedRemover
+            ).install(update, progress: progress)
         }
+    }
 
-        return available.sorted { $0.name < $1.name }
+    static var updatesDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("com.sabharishhh.brim/Updates", isDirectory: true)
     }
 
     /// Casks Homebrew still tracks whose application is gone.
