@@ -51,9 +51,10 @@ private let log = BrimLog.make("app")
                     Text(selfUninstallProblem ?? "")
                 }
         }
-        // The widest section needs the sidebar (200) plus a two pane split
-        // (620), so 900 is the floor, and `.contentMinSize` stops the window
-        // being dragged below what the layout supports.
+        // The widest page needs the sidebar (200), a list (440) and a review
+        // pane (440), so 1100 is the floor (`Metrics.windowMinWidth`), and
+        // `.contentMinSize` stops the window being dragged below it from any
+        // edge or corner.
         //
         // The 1200x800 default is not currently honoured on this machine:
         // the window opens at roughly half the display width whatever is
