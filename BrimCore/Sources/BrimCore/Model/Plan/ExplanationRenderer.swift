@@ -71,6 +71,7 @@ public struct ExplanationRenderer: Sendable {
         case "GroupContainerSource": return "A shared folder the application's own entitlements name."
         case "SandboxContainerSource": return "The private folder macOS keeps for this application."
         case "InstallerReceiptSource": return "The installer's record of this package."
+        case "InstallerPayloadSource": return "Installed by the same installer as the application."
         case "TeamIDSource": return "Signed by the same developer as the application."
         case "BundleIdentifierComponentSource": return "Named after the application's bundle identifier."
         case "HeuristicSource": return "Named after the application or its vendor."

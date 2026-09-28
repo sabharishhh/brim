@@ -47,6 +47,9 @@ public enum HelperRoute {
         if let domain = PrivilegedLinkRemoval.Domain.allCases.first(where: { $0.directory == folder }) {
             return await helper.removeBrokenCommand(domain: domain, name: name)
         }
+        if let domain = PrivilegedBundleRemoval.Domain.allCases.first(where: { $0.directory == folder }) {
+            return await helper.removeInstalledBundle(domain: domain, name: name)
+        }
         return "Brim's helper does not remove things from \(folder)."
     }
 
