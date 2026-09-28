@@ -38,7 +38,8 @@ public struct EvidenceEngine: Sendable {
             AppBundleSource(), SandboxContainerSource(), InstallerReceiptSource(),
             BundleIdentifierComponentSource(), LocationInventorySource(),
             SymlinkIntoBundleSource(), GroupContainerSource(), BundleIdentifierStateSource(),
-            TeamIDSource(), LaunchServicesSource(), SMAppServiceSource(), LaunchdSource()
+            TeamIDSource(), LaunchServicesSource(), SMAppServiceSource(), LaunchdSource(),
+            ProvenanceSource()
         ])
     }
 

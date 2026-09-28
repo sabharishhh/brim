@@ -62,7 +62,7 @@ public struct LocationInventorySource: EvidenceSource {
             let candidates = Self.candidates(for: location, identity: identity)
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
-                 .applicationNameDelimitedPrefix:
+                 .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService:
                 true
             default:
                 false

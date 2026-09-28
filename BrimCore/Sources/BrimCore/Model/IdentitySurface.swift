@@ -50,10 +50,33 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
 
     public var searchableBundleIdentifiers: [String] {
         let ownerTeam = components.first?.teamIdentifier
+        let ownerVendor = components.first?.bundleIdentifier.flatMap { Self.vendor(of: $0) }
         return Self.unique(components.filter { component in
-            component.path == bundlePath || ownerTeam == nil
+            guard component.path == bundlePath || ownerTeam == nil
                 || component.teamIdentifier == nil || component.teamIdentifier == ownerTeam
+            else { return false }
+            return !Self.isLibraryHelper(component, ownerVendor: ownerVendor)
         }.flatMap { [$0.bundleIdentifier, $0.signingIdentifier].compactMap(\.self) })
+    }
+
+    /// A helper that lives inside a framework and is named in somebody
+    /// else's namespace belongs to the library, not the application.
+    /// Sparkle's downloader is `org.sparkle-project.DownloaderService` in
+    /// every application that ships Sparkle, re-signed by each, so its
+    /// cookies were offered up with IINA and again with ChatGPT.
+    static func isLibraryHelper(_ component: Component, ownerVendor: String?) -> Bool {
+        guard let ownerVendor, component.path.contains(".framework/"),
+              let identifier = component.bundleIdentifier ?? component.signingIdentifier,
+              let vendor = vendor(of: identifier) else { return false }
+        return vendor != ownerVendor
+    }
+
+    /// The first two labels of a reverse domain identifier, which name the
+    /// developer rather than the product.
+    static func vendor(of identifier: String) -> String? {
+        let labels = identifier.lowercased().split(separator: ".")
+        guard labels.count >= 3 else { return nil }
+        return labels.prefix(2).joined(separator: ".")
     }
 
     public var names: [String] {

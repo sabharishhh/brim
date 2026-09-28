@@ -33,11 +33,18 @@ public struct SandboxContainerSource: EvidenceSource {
                 let url = directory.appendingPathComponent(identifier)
                 guard FileManager.default.fileExists(atPath: url.path) else { return nil }
                 let direct = identifier == identity.bundleID
+                // macOS names a container after the executable it made it
+                // for, so one named inside this application's identifier is
+                // a component's own. Ranked as a guess, the widget's and the
+                // background agent's containers were left unticked and
+                // outlived every uninstall.
+                let owned = identity.ownsIdentifier(identifier)
                 return Evidence(
-                    url: url, tier: direct ? .A : .C,
+                    url: url, tier: owned ? .A : .C,
                     mechanism: "SandboxContainerSource",
                     humanSentence: direct
                         ? "Sandbox container keyed to this bundle identifier"
+                        : owned ? "Sandbox container of a part of this application."
                         : "Container keyed to an embedded component."
                 )
             }
