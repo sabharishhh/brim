@@ -36,6 +36,12 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
     /// Code, Teams and eleven more "recently installed" when every one of
     /// them had only been updated.
     public var installedAt: Date?
+    /// The application this one ships inside, when it is nested: Icon
+    /// Composer, Instruments and FileMerge live in Xcode's
+    /// `Contents/Applications`. Such an app is listed, because people look
+    /// for it, and never removed on its own, because that would break the
+    /// signature of the app that carries it.
+    public var enclosingApp: String?
 
     public var id: String { url.path }
     public var name: String { identity.name }
