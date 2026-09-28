@@ -29,7 +29,7 @@ let package = Package(
             "BrimCore",
             .product(name: "GRDB", package: "GRDB.swift")
         ]),
-        .target(name: "BrimOps", dependencies: ["BrimScanShim"]),
+        .target(name: "BrimOps", dependencies: ["BrimScanShim", "BrimCore"]),
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
         .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
         // Deliberately depends on nothing. A root daemon should be small

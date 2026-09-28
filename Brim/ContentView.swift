@@ -223,7 +223,9 @@ struct ContentView: View {
         if shell.selection == .apps {
             ToolbarItem(placement: .principal) {
                 Picker("View", selection: $shell.appsLens) {
-                    ForEach(AppsLens.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(AppsLens.allCases, id: \.self) { lens in
+                        LensTitle(lens: lens, updates: models.updates).tag(lens)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
@@ -303,5 +305,20 @@ private struct DockBadge: View {
     private var count: Int {
         guard isOn else { return 0 }
         return session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id))).count
+    }
+}
+
+/// A lens's name, with the number of updates beside Updates once a check
+/// has counted them.
+private struct LensTitle: View {
+    let lens: AppsLens
+    @ObservedObject var updates: UpdatesModel
+
+    var body: some View {
+        if lens == .updates, let count = updates.count, count > 0 {
+            Text("\(lens.rawValue) \(count)")
+        } else {
+            Text(lens.rawValue)
+        }
     }
 }
