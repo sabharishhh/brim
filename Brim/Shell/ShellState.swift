@@ -103,6 +103,18 @@ final class ShellState: Equatable {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
+    /// A folder opens as a Finder window of what is inside it; anything
+    /// else, an app bundle included, is revealed selected. `open` is never
+    /// used here, because on an app or a document it would launch it.
+    func showInFinder(_ url: URL) {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        if values?.isDirectory == true, values?.isPackage != true {
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+        } else {
+            reveal([url])
+        }
+    }
+
     func copyPaths(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
