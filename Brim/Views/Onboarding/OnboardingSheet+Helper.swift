@@ -1,3 +1,4 @@
+import BrimCore
 import BrimPrivileged
 import BrimUI
 import SwiftUI
@@ -6,46 +7,56 @@ extension OnboardingSheet {
     /// Asked here, once, while the person is paying attention to setup,
     /// rather than in the middle of a removal. Most leftovers need nothing:
     /// on the Mac this was measured on, 164 of 184 were in folders the
-    /// person owns. The rest sit where only an administrator can write.
+    /// person owns. The rest sit where only an administrator can write, and
+    /// the first scan, running behind this sheet, says how many here.
     var helperStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(
-                "Leftovers in system folders",
-                "Most of what Brim removes is in your own folders and needs nothing. A few "
-                    + "leftovers sit where only macOS can make changes, such as broken commands "
-                    + "in /usr/local/bin. Brim's helper moves those aside for you, where they can "
-                    + "still be put back."
-            )
-
+        VStack(alignment: .leading, spacing: 22) {
+            title("System folders", "A few leftovers sit where only macOS can write")
+            evidence
             if helperState == .ready {
                 status(
-                    "checkmark.circle.fill", .green,
-                    "Brim's helper is on.",
-                    "Nothing more to do here."
+                    "checkmark.circle.fill", .accentColor, "Helper on", "Moves those aside, where they can be put back"
                 )
             } else {
                 status(
-                    "lock.shield", .secondary,
-                    helperState == .waitingForApproval
-                        ? "Waiting for you in Login Items."
-                        : "Brim's helper is off.",
-                    "macOS asks you to allow it once, in Login Items. It runs only while Brim "
-                        + "is removing something, and it will only move leftovers it can prove are "
-                        + "unused."
+                    "lock.shield", Palette.inkSecondary,
+                    helperState == .waitingForApproval ? "Waiting in Login Items" : "Helper off",
+                    "Runs only while Brim removes something"
                 )
-
-                HStack {
+                HStack(spacing: 8) {
                     Button {
                         HelperRoute.turnOn()
                         helperState = HelperRoute.currentState()
                     } label: {
-                        Label("Turn On Brim's Helper", systemImage: "lock.shield")
+                        Label("Turn On Helper", systemImage: "lock.shield")
                     }
-                    .controlSize(.large)
+                    .buttonStyle(.glass)
                     Button("Check Again") { helperState = HelperRoute.currentState() }
+                        .buttonStyle(.borderless)
                 }
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
             }
         }
         .onAppear { helperState = HelperRoute.currentState() }
+    }
+
+    /// What the helper would do on this Mac, from the scan behind the sheet.
+    @ViewBuilder
+    private var evidence: some View {
+        let count = leftovers.all.count { $0.capability == .needsHelper }
+        HStack(spacing: 8) {
+            if leftovers.checkedAt == nil {
+                ProgressView().controlSize(.small)
+                Text("Checking this Mac")
+            } else {
+                Image(systemName: count == 0 ? "checkmark" : "folder.badge.gearshape")
+                Text(count == 0 ? "None on this Mac today" : count == 1
+                    ? "1 leftover here needs it" : "\(count) leftovers here need it")
+            }
+        }
+        .font(.brimFacts)
+        .foregroundStyle(Palette.inkSecondary)
+        .animation(Motion.standard, value: leftovers.checkedAt == nil)
     }
 }

@@ -133,7 +133,7 @@ struct ContentView: View {
                 }
             }
         )) {
-            OnboardingSheet(service: service) {
+            OnboardingSheet(service: service, leftovers: models.leftovers) {
                 hasFinishedSetup = true
                 needsSetup = false
             }
@@ -162,7 +162,7 @@ struct ContentView: View {
         case .developer:
             DeveloperView(model: models.developer)
         case .journal:
-            RemovalHistoryView(model: models.history, recovery: models.recovery)
+            JournalView(model: models.history, recovery: models.recovery, applications: models.applications)
         }
     }
 
