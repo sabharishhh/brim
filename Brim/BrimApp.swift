@@ -14,6 +14,15 @@ private let log = BrimLog.make("app")
     @FocusedValue(\.selectedItems) var selectedItems
     
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
+    /// The Dock's menu, and apps dropped on its icon.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// What outlives a launch: kept items, what was seen, saved icons.
+    /// One for the app, so Settings and the window agree.
+    @State private var session = AppSession()
+
+    init() {
+        BrimTips.configure()
+    }
     
     @State private var showSelfUninstall = false
 
@@ -25,9 +34,22 @@ private let log = BrimLog.make("app")
     @State private var selfUninstallProblem: String?
 
     var body: some Scene {
+        mainWindow
+        Settings {
+            SettingsView()
+                .environment(session)
+        }
+        Window("Keyboard Shortcuts", id: ShortcutsView.windowID) {
+            ShortcutsView()
+        }
+        .windowResizability(.contentSize)
+    }
+
+    private var mainWindow: some Scene {
         WindowGroup {
             root
                 .environment(\.brimService, client)
+                .environment(session)
                 .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
                     Button("Uninstall", role: .destructive) {
@@ -65,7 +87,14 @@ private let log = BrimLog.make("app")
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .help) {
+                ShortcutsMenuItem()
+            }
             CommandMenu("Go") {
+                Button("Go To or Find") { shell?.showsCommandBar.toggle() }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .disabled(shell == nil)
+                Divider()
                 Button("Back") { shell?.goBack() }
                     .keyboardShortcut("[", modifiers: .command)
                     .disabled(!(shell?.canGoBack ?? false))

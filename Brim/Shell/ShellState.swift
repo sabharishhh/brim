@@ -30,6 +30,13 @@ final class ShellState: Equatable {
     private(set) var toast: ToastMessage?
     private var toastDismissal: Task<Void, Never>?
 
+    /// The ⌘K panel.
+    var showsCommandBar = false
+    /// An app whose removal was asked for from outside the window, by a
+    /// Shortcut or Spotlight. Apps opens its review and clears this. The
+    /// review is all it opens: approval still comes from this window.
+    var pendingRemoval: URL?
+
     nonisolated static func == (lhs: ShellState, rhs: ShellState) -> Bool {
         lhs === rhs
     }
