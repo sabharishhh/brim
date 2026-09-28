@@ -1,0 +1,143 @@
+import BrimCore
+import Foundation
+
+/// What macOS records this application as having written, where it is also
+/// named for the application (Tier B).
+///
+/// Since Ventura, a file created by an application that came through
+/// Gatekeeper carries `com.apple.provenance`, and the application's own
+/// bundle carries the same value. That is the system's record of who wrote
+/// something, which no name can give. ChatGPT's uninstall claimed 1.6 GB
+/// and left 2.9 GB: `~/.codex`, `~/.cache/codex-runtimes` and folders called
+/// `Codex` were all matched on a name or not at all, while every one of
+/// them carried ChatGPT's provenance and a tool's folder beside them did not.
+///
+/// **Provenance alone is not ownership.** A process an application starts
+/// inherits its provenance, so an application that runs shell commands
+/// stamps whatever those commands create, `~/.npm` included. So both have to
+/// hold: the name ties the item to the application, and the provenance
+/// proves the application wrote it. And the value has to be this
+/// application's alone: when another installed bundle carries it, as it
+/// would for applications that arrived through the same installer, it says
+/// nothing about which of them wrote a file, and nothing is claimed.
+///
+/// Only the first level of the places applications keep data is read, so
+/// this costs one listing and a few attribute reads per folder.
+public struct ProvenanceSource: EvidenceSource {
+    public init() {}
+
+    public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
+        await scan(for: identity, in: root).evidence
+    }
+
+    public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
+        guard let bundlePath = identity.bundlePath,
+              let stamp = Self.provenance(bundlePath) else { return EvidenceFindings(evidence: []) }
+        let inventory = await Task.detached { InstalledBundleInventory.read(in: root) }.value
+        let subject = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
+        let shared = inventory.bundles.contains {
+            $0.resolvingSymlinksInPath().path != subject && Self.provenance($0.path) == stamp
+        }
+        guard !shared else { return EvidenceFindings(evidence: []) }
+
+        let identifiers = identity.searchBundleIdentifiers.map { $0.lowercased() }
+        let names = Self.names(for: identity)
+        let sentence = "macOS records that \(identity.name) created this, and it is named for it."
+        var evidence: [Evidence] = []
+        for (directory, hiddenOnly) in Self.places(in: root) {
+            guard case let .listed(entries) = DirectoryEntries.read(directory) else { continue }
+            for entry in entries where !hiddenOnly || entry.hasPrefix(".") {
+                guard Self.isNamed(entry, identifiers: identifiers, names: names) else { continue }
+                let url = directory.appendingPathComponent(entry)
+                guard Self.provenance(url.path) == stamp else { continue }
+                evidence.append(Evidence(url: url, tier: .B, mechanism: "ProvenanceSource",
+                                         humanSentence: sentence))
+            }
+        }
+        return EvidenceFindings(evidence: evidence)
+    }
+
+    /// Where applications keep their own data, and whether only hidden
+    /// entries count there. The home folder itself holds the person's own
+    /// things, so only its dot folders are considered.
+    static func places(in root: FileSystemRoot) -> [(URL, Bool)] {
+        let library = root.url(for: .userLibrary)
+        let home = library.deletingLastPathComponent()
+        return [(home, true)]
+            + [FileSystemRoot.Domain.userDotConfig, .userDotCache, .userDotLocalShare, .userDotLocalState,
+               .userApplicationSupport, .userCaches, .userLogs, .darwinUserCache, .darwinUserTemp]
+                .map { (root.url(for: $0), false) }
+            + ["Sounds", "HTTPStorages", "WebKit", "Saved Application State"]
+                .map { (library.appendingPathComponent($0), false) }
+    }
+
+    /// The application's names as a folder would spell them: its own name,
+    /// the bundle's names, and the last label of its identifier, which is
+    /// usually the product (`codex` in `com.openai.codex`). Component names
+    /// are left out: Sparkle's `Updater` is in half the applications here.
+    static func names(for identity: Identity) -> [String] {
+        let generic: Set<String> = [
+            "client", "desktop", "macos", "application", "helper", "agent", "launcher",
+            "service", "electron", "main", "native", "mac", "app"
+        ]
+        let lastLabel = identity.bundleID?.split(separator: ".").last.map(String.init)
+        let candidates = [identity.name, identity.bundleName, lastLabel].compactMap(\.self)
+        var seen = Set<String>()
+        return candidates.map { $0.lowercased() }
+            .filter { $0.count >= 4 && !generic.contains($0) && seen.insert($0).inserted }
+    }
+
+    /// Named for the application: an identifier, or a name followed by a
+    /// separator, as in `codex-runtimes` or `.codex`.
+    static func isNamed(_ entry: String, identifiers: [String], names: [String]) -> Bool {
+        let lowered = entry.lowercased()
+        let visible = lowered.hasPrefix(".") ? String(lowered.dropFirst()) : lowered
+        if identifiers.contains(where: { visible == $0 || visible.hasPrefix($0 + ".") }) {
+            return true
+        }
+        return names.contains { name in
+            visible == name || ["-", "_", ".", " "].contains { visible.hasPrefix(name + $0) }
+        }
+    }
+
+    /// An installed application as provenance knows it.
+    public struct Owner: Sendable {
+        let stamp: Data
+        let identifiers: [String]
+        let names: [String]
+    }
+
+    /// Every installed application whose provenance is its own. A value two
+    /// bundles share says nothing about which of them wrote a file.
+    public static func owners(of identities: [Identity]) -> [Owner] {
+        let stamped = identities.compactMap { identity -> (Data, Identity)? in
+            guard let path = identity.bundlePath, let stamp = provenance(path) else { return nil }
+            return (stamp, identity)
+        }
+        let counts = Dictionary(grouping: stamped, by: \.0).mapValues(\.count)
+        return stamped.filter { counts[$0.0] == 1 }.map { stamp, identity in
+            Owner(stamp: stamp, identifiers: identity.searchBundleIdentifiers.map { $0.lowercased() },
+                  names: names(for: identity))
+        }
+    }
+
+    /// The installed application that wrote this and that it is named for.
+    public static func owner(of url: URL, among owners: [Owner]) -> Owner? {
+        guard !owners.isEmpty, let stamp = provenance(url.path) else { return nil }
+        return owners.first { owner in
+            owner.stamp == stamp
+                && isNamed(url.lastPathComponent, identifiers: owner.identifiers, names: owner.names)
+        }
+    }
+
+    /// The raw `com.apple.provenance` value, without following a link.
+    static func provenance(_ path: String) -> Data? {
+        let name = "com.apple.provenance"
+        let size = getxattr(path, name, nil, 0, 0, XATTR_NOFOLLOW)
+        guard size > 0, size <= 64 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        let read = getxattr(path, name, &buffer, size, 0, XATTR_NOFOLLOW)
+        guard read == size else { return nil }
+        return Data(buffer)
+    }
+}

@@ -25,6 +25,8 @@ public struct TierSVetoEngine: Sendable {
         let groupClaims = hasGroupTarget
             ? await otherGroupClaims(besides: footprint.identity) : (owners: [String: String](), complete: true)
 
+        let others = await otherApplicationIdentifiers(besides: footprint.identity)
+
         for item in footprint.items {
             // Unticked rows can be promoted by the planner. Veto them now too.
             if case .excluded = item.selection {
@@ -52,7 +54,20 @@ public struct TierSVetoEngine: Sendable {
                     }
                 }
 
-                if let sharedWith = await checkSharedClaims(
+                if let owner = Self.namedFor(targetURL, among: others, besides: footprint.identity) {
+                    vettedItems.append(EvaluatedItem(
+                        footprintItem: item.footprintItem,
+                        selection: .excluded(reason: "Named for \(owner), which is still installed."),
+                        costOfError: item.costOfError
+                    ))
+                    continue
+                }
+
+                // The installer's own record already says whose this is:
+                // a driver installed in the same run carries its own
+                // identifier, and that is not a second owner.
+                if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
+                   let sharedWith = await checkSharedClaims(
                     for: targetURL, identity: footprint.identity, resolver: resolver
                 ) {
                     vettedItems.append(EvaluatedItem(
@@ -69,6 +84,46 @@ public struct TierSVetoEngine: Sendable {
         return EvaluatedFootprint(
             identity: footprint.identity, items: vettedItems, completeness: footprint.completeness
         )
+    }
+
+    /// The installed application an identifier-named item belongs to, when
+    /// that application's identifier is more specific than this one's.
+    ///
+    /// Prefix rules take `com.google.Chrome.canary.plist` for Chrome,
+    /// because it begins with Chrome's identifier and a dot. It is Chrome
+    /// Canary's, and Canary is still installed.
+    static func namedFor(_ url: URL, among others: [String: String], besides identity: Identity) -> String? {
+        var name = url.lastPathComponent.lowercased()
+        if name.hasPrefix(".") { name.removeFirst() }
+        for suffix in [".plist", ".binarycookies", ".savedstate"] where name.hasSuffix(suffix) {
+            name.removeLast(suffix.count)
+        }
+        let own = identity.searchBundleIdentifiers.map { $0.lowercased() }
+            .filter { name == $0 || name.hasPrefix($0 + ".") }
+            .map(\.count).max() ?? 0
+        guard own > 0 else { return nil }
+        return others.first { identifier, _ in
+            identifier.count > own && (name == identifier || name.hasPrefix(identifier + "."))
+        }?.value
+    }
+
+    /// Every other installed application's identifier, lowercased, with
+    /// its name.
+    private func otherApplicationIdentifiers(besides identity: Identity) async -> [String: String] {
+        let root = root
+        return await Task.detached {
+            let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+            var found: [String: String] = [:]
+            for bundle in InstalledBundleInventory.read(in: root).bundles {
+                // Its own parts are not somebody else.
+                let path = bundle.resolvingSymlinksInPath().path
+                if let subject, path == subject || path.hasPrefix(subject + "/") { continue }
+                let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
+                guard let identifier = info?["CFBundleIdentifier"] as? String else { continue }
+                found[identifier.lowercased()] = bundle.deletingPathExtension().lastPathComponent
+            }
+            return found
+        }.value
     }
 
     private static func isGroupPath(_ url: URL) -> Bool {
@@ -105,10 +160,18 @@ public struct TierSVetoEngine: Sendable {
         // Cross-identity resolution
         // If the path resolves to an identity that is NOT the footprint's identity, it is shared/owned by someone else
         let resolved = await resolver.resolve(bundleURL: url)
-        if let resolvedID = resolved.bundleID, let footprintID = identity.bundleID, resolvedID != footprintID {
-            return resolved
+        guard let resolvedID = resolved.bundleID, let footprintID = identity.bundleID,
+              resolvedID != footprintID else { return nil }
+        // A bundle named inside one of this application's own identifiers
+        // is a part of it: ChatGPT's sign-in plug-in is
+        // `com.openai.sky.CUAService.AuthorizationPlugin`, inside its Computer
+        // Use component. Vetoed as somebody else's, the review said it was
+        // "claimed by CodexComputerUseAuthorizationPlugin", which is itself.
+        let lowered = resolvedID.lowercased()
+        let own = identity.searchBundleIdentifiers.map { $0.lowercased() }
+        if own.contains(where: { lowered == $0 || lowered.hasPrefix($0 + ".") }) {
+            return nil
         }
-
-        return nil
+        return resolved
     }
 }

@@ -111,7 +111,18 @@ public enum BundleSurfaceReader {
         private static let packagingFolders = [
             "Contents/Frameworks", "Contents/PlugIns", "Contents/Plugins", "Contents/XPCServices",
             "Contents/Helpers", "Contents/Library/LoginItems", "Contents/Library/SystemExtensions",
-            "Contents/Library/LaunchServices", "Helpers", "XPCServices", "PlugIns"
+            "Contents/Library/LaunchServices", "Contents/Library/LaunchAgents",
+            "Contents/Library/LaunchDaemons", "Contents/SharedSupport", "Contents/MacOS",
+            "Helpers", "XPCServices", "PlugIns"
+        ]
+        /// Folders whose helpers can be a bare executable rather than a
+        /// bundle. Teams' background agent is one: a signed, sandboxed
+        /// binary in `Contents/Library/LaunchAgents` with its own identifier
+        /// and its own container, which nothing read, so the container
+        /// outlived every uninstall.
+        private static let rawHelperFolders: Set<String> = [
+            "Contents/Library/LaunchServices", "Contents/Library/LaunchAgents",
+            "Contents/Library/LaunchDaemons"
         ]
 
         // swiftlint:disable:next cyclomatic_complexity function_body_length
@@ -160,10 +171,19 @@ public enum BundleSurfaceReader {
 
             for folder in Self.packagingFolders {
                 for child in entries(url.appendingPathComponent(folder)) {
-                    let isRawHelper = folder.hasSuffix("LaunchServices") && child.pathExtension != "plist"
+                    let isRawHelper = Self.rawHelperFolders.contains(folder) && child.pathExtension != "plist"
                     if Self.codeExtensions.contains(child.pathExtension.lowercased()) || isRawHelper {
                         visit(child, signature: signature)
                     }
+                }
+            }
+            // Applications shipped as resources rather than as helpers.
+            // ChatGPT carries its Computer Use app six folders down inside
+            // a Node module, with its own identifier and its own caches,
+            // preferences and group container; none of them were found.
+            if url.standardizedFileURL.path == bundle.standardizedFileURL.path {
+                for nested in nestedApplications(in: url.appendingPathComponent("Contents/Resources")) {
+                    visit(nested, signature: signature)
                 }
             }
             // Framework helpers may live in a concrete version rather than at the root.
@@ -235,6 +255,28 @@ public enum BundleSurfaceReader {
             let data = try handle.read(upToCount: limit + 1) ?? Data()
             guard data.count <= limit else { throw CocoaError(.fileReadTooLarge) }
             return data
+        }
+
+        /// Application bundles anywhere under a resources folder, not
+        /// looking inside any bundle, bounded so a folder of Node modules
+        /// cannot take the scan with it.
+        mutating func nestedApplications(in resources: URL) -> [URL] {
+            guard !budget.hasRunOut,
+                  let walk = FileManager.default.enumerator(
+                      at: resources, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                      options: [.skipsPackageDescendants, .skipsHiddenFiles]
+                  ) else { return [] }
+            var found: [URL] = []
+            var seen = 0
+            while let next = walk.nextObject() as? URL {
+                seen += 1
+                guard seen <= 50_000, !budget.hasRunOut else { timedOut.insert(resources.path); break }
+                if walk.level >= 8 { walk.skipDescendants() }
+                guard next.pathExtension.lowercased() == "app" else { continue }
+                let values = try? next.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                if values?.isDirectory == true, values?.isSymbolicLink != true { found.append(next) }
+            }
+            return found
         }
 
         mutating func entries(_ url: URL) -> [URL] {

@@ -91,6 +91,7 @@ public struct FileSystemRoot: Sendable {
         case systemAudioVST3
         case systemAudioCLAP
         case systemAudioHAL
+        case systemSecurityAgentPlugins
         case systemAudioMAS
         case systemAudioAvid
         case systemExtensionsFolder
@@ -141,7 +142,10 @@ public struct FileSystemRoot: Sendable {
         switch domain {
         case .usrLocalBin, .usrLocalEtc, .usrLocalOpt,
              .usrLocalSbin, .usrLocalShare, .usrLocalVar,
-             .darwinUserCache, .darwinUserTemp,
+             // Not the Darwin per-user folders: what sits there is named
+             // after a bundle identifier, the same proof as `~/Library/Caches`.
+             // Counted as name-only, a folder called exactly
+             // `com.openai.codex.helper` was a guess and outlived the app.
              .sharedUser, .sharedApplicationSupport,
              // Nothing under `$HOME` carries a bundle identifier. A folder
              // there is linked to an application by a shared name and
@@ -239,6 +243,7 @@ public struct FileSystemRoot: Sendable {
         case .systemAudioVST3:        return system("Library/Audio/Plug-Ins/VST3")
         case .systemAudioCLAP:        return system("Library/Audio/Plug-Ins/CLAP")
         case .systemAudioHAL:         return system("Library/Audio/Plug-Ins/HAL")
+        case .systemSecurityAgentPlugins: return system("Library/Security/SecurityAgentPlugins")
         case .systemAudioMAS:         return system("Library/Audio/Plug-Ins/MAS")
         case .systemAudioAvid:        return system("Library/Application Support/Avid/Audio/Plug-Ins")
         case .systemExtensionsFolder: return system("Library/Extensions")
