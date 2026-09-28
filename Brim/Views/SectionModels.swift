@@ -47,7 +47,7 @@ final class ScanActivity: ObservableObject {
     private var subscription: AnyCancellable?
 
     init(models: SectionModels) {
-        let apps = Publishers.CombineLatest(models.applications.$isLoading, models.updates.$isLoading)
+        let apps = Publishers.CombineLatest(models.applications.$isLoading, models.updates.$isChecking)
             .map { $0 || $1 }
         let mac = Publishers.CombineLatest4(
             models.background.$isLoading, models.storage.$isLoading, models.developer.$isScanning,

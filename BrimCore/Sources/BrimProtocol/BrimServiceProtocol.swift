@@ -64,11 +64,10 @@ public protocol BrimServiceProtocol: Sendable {
     /// with no network request of any kind.
     func updateReport() async -> UpdateReport
     /// Energy per application, accumulated across restarts.
-    /// Checks for newer versions. Reaches the network, so only ever on a
-    /// press.
-    func checkForUpdates() async -> [AvailableUpdate]
-    /// Installs one update by delegation.
-    func installUpdate(_ update: AvailableUpdate) async -> String?
+    /// Checks every application for a newer version. Reaches the network.
+    func checkForUpdates() async -> UpdateCheck
+    /// Puts one update in place, reporting download progress from 0 to 1.
+    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome
     /// Casks Homebrew still tracks whose application is gone.
     func orphanedCasks() async -> [OrphanedCask]
     func forgetCask(_ name: String) async -> String?
@@ -121,9 +120,11 @@ public extension BrimServiceProtocol {
     func updateReport() async -> UpdateReport {
         UpdateReport(coverage: [], agents: [], homebrewPresent: false)
     }
-    func checkForUpdates() async -> [AvailableUpdate] { [] }
-    func installUpdate(_ update: AvailableUpdate) async -> String? {
-        "Not supported here."
+    func checkForUpdates() async -> UpdateCheck {
+        UpdateCheck(updates: [], checked: 0, unchecked: [], checkedAt: Date())
+    }
+    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
+        .failed("Not supported here.")
     }
     func orphanedCasks() async -> [OrphanedCask] { [] }
     func forgetCask(_ name: String) async -> String? { "Not supported here." }
