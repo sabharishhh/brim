@@ -19,6 +19,8 @@ private let log = BrimLog.make("app")
     /// What outlives a launch: kept items, what was seen, saved icons.
     /// One for the app, so Settings and the window agree.
     @State private var session = AppSession()
+    /// View ▸ Compact Rows, for everyone who prefers density.
+    @AppStorage("rows.compact") private var compactRows = false
 
     init() {
         BrimTips.configure()
@@ -50,6 +52,7 @@ private let log = BrimLog.make("app")
             root
                 .environment(\.brimService, client)
                 .environment(session)
+                .environment(\.compactRows, compactRows)
                 .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
                     Button("Uninstall", role: .destructive) {
@@ -112,6 +115,9 @@ private let log = BrimLog.make("app")
                 }
             }
             CommandGroup(before: .sidebar) {
+                Toggle("Compact Rows", isOn: $compactRows)
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                Divider()
                 Button("Check Again") { shell?.requestCheck() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(shell == nil)

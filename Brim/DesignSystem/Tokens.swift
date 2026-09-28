@@ -56,6 +56,15 @@ enum Metrics {
     static let compactRowIcon: CGFloat = 24
     static let rowHeight: CGFloat = 52
     static let compactRowHeight: CGFloat = 34
+
+    static func rowIcon(compact: Bool) -> CGFloat {
+        compact ? compactRowIcon : rowIcon
+    }
+
+    static func rowHeight(compact: Bool) -> CGFloat {
+        compact ? compactRowHeight : rowHeight
+    }
+
     /// A card shows this many rows, then "Show all". Seven is about what
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7

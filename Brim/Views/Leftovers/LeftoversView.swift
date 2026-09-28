@@ -128,6 +128,8 @@ struct LeftoversView: View {
                 model: model, grouping: grouping, keptIDs: keptIDs, newItems: newItems,
                 pick: pick, keep: toggleKeep, changePick: changePick
             )
+            // A new grouping is a new order to hold.
+            .id(grouping)
             .refreshing(model.isScanning)
         }
     }

@@ -142,20 +142,25 @@ private struct JournalRow: View {
     let entry: JournalEntry
     let isPuttingBack: Bool
     let putBack: () -> Void
+    /// Denser rows, from View ▸ Compact Rows.
+    @SwiftUI.Environment(\.compactRows) private var compact
 
     var body: some View {
         HStack(spacing: 12) {
-            BrimIcon(source: icon, badge: isRemoval ? .removed : nil)
+            BrimIcon(source: icon, size: Metrics.rowIcon(compact: compact), badge: isRemoval ? .removed : nil)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name)
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                Text(facts)
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
+                if !compact {
+                    Text(facts)
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
             }
             .lineLimit(1)
+            .accessibilityHidden(true)
             Spacer(minLength: 8)
             trailing
             Text(entry.time)
@@ -163,9 +168,10 @@ private struct JournalRow: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkTertiary)
                 .frame(width: 56, alignment: .trailing)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 12)
-        .frame(height: Metrics.rowHeight)
+        .frame(height: Metrics.rowHeight(compact: compact))
         .rowHighlight(isInspected: false)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(spoken)
@@ -223,14 +229,20 @@ private struct JournalRow: View {
                 Text(reason)
                     .font(.caption)
                     .foregroundStyle(Palette.inkTertiary)
+                    .accessibilityHidden(true)
             }
         }
     }
 
+    /// One sentence for the row, so a reader hears one event rather than
+    /// four fragments. Put Back, where there is one, stays its own button.
     private var spoken: String {
         switch entry.event {
-        case .installed: "\(entry.name), installed, \(entry.time)"
-        case let .removed(record): "\(record.spoken) \(entry.time)"
+        case .installed:
+            return "\(entry.name), installed, \(entry.time)"
+        case let .removed(record):
+            let state = record.canUndo ? "can be put back" : (record.unavailableReason ?? "")
+            return [entry.name, facts, state, entry.time].filter { !$0.isEmpty }.joined(separator: ", ")
         }
     }
 }

@@ -64,6 +64,8 @@ struct DeveloperRow: View {
     let isInspected: Bool
     let pick: () -> Void
     let inspect: () -> Void
+    /// Denser rows, from View ▸ Compact Rows.
+    @SwiftUI.Environment(\.compactRows) private var compact
 
     var body: some View {
         HStack(spacing: 12) {
@@ -73,14 +75,20 @@ struct DeveloperRow: View {
                     .labelsHidden()
                     .help(isPicked ? "Remove from Tray" : "Add to Tray")
             }
-            BrimIcon(source: ToolIcon.source(cache.tool), badge: cache.cost == .rebuilt ? .regenerates : nil)
+            BrimIcon(
+                source: ToolIcon.source(cache.tool),
+                size: Metrics.rowIcon(compact: compact),
+                badge: cache.cost == .rebuilt ? .regenerates : nil
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(cache.title)
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                Text(cache.consequence)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
+                if !compact {
+                    Text(cache.consequence)
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                }
             }
             .lineLimit(1)
             .accessibilityElement(children: .ignore)
@@ -100,7 +108,7 @@ struct DeveloperRow: View {
                 .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .frame(height: Metrics.rowHeight)
+        .frame(height: Metrics.rowHeight(compact: compact))
         .rowHighlight(isInspected: isInspected)
         .onTapGesture(perform: inspect)
     }
