@@ -41,7 +41,7 @@ struct AppStacks: View {
                         ForEach(visibleRows(group)) { app in
                             AppRow(
                                 app: app, opened: opened[app.id], isSelected: model.selected?.id == app.id,
-                                select: { model.select(app) }, remove: { remove(app) }
+                                select: { model.select(app) }
                             )
                             .contextMenu { menu(app) }
                             .listRowBackground(Color.clear)
