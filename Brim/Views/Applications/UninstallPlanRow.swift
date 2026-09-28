@@ -10,6 +10,9 @@ struct UninstallPlanRow: View {
     let kind: StepKind?
     let tier: EvidenceTier?
     var selection: Binding<Bool>?
+    /// More than one item, shown as one row: the target is then the folder
+    /// they share. 682 scratch folders were 682 identical rows.
+    var count = 1
 
     @State private var showsDetails = false
 
@@ -50,7 +53,7 @@ struct UninstallPlanRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text(target)
+                    Text(Self.abbreviated(count > 1 ? target : (target as NSString).deletingLastPathComponent))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .truncationMode(.middle)
@@ -66,25 +69,28 @@ struct UninstallPlanRow: View {
             }
         }
         .padding(.vertical, 1)
+        // Regions are told apart by space and headings, never by rules.
+        .listRowSeparator(.hidden)
         .accessibilityElement(children: .contain)
     }
 
+    /// The item's own name. The group heading already says what kind of
+    /// thing it is, and "Cache" under "Cache (1)" said it twice while
+    /// leaving out the one thing that told two rows apart.
     private var title: String {
+        if count > 1 { return "\(count) items" }
         switch kind {
         case .clearImmutableFlag: return "Locked file"
-        case .forgetReceipt: return "Installer record"
+        case .forgetReceipt: return target
         case .revealVendorUninstaller: return "Vendor uninstaller"
-        default: break
+        default: return URL(fileURLWithPath: target).lastPathComponent
         }
-        let url = URL(fileURLWithPath: target)
-        if url.pathExtension == "app" {
-            return "Application"
-        }
-        if url.pathExtension == "sfl4" {
-            return "Recent documents list"
-        }
-        let domain = LeftoverDomain.of(url)
-        return domain == .other ? url.lastPathComponent : domain.title
+    }
+
+    /// Home written as `~`, the way the inspector and Leftovers show it.
+    static func abbreviated(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
     private var action: String? {
@@ -93,6 +99,8 @@ struct UninstallPlanRow: View {
         case .forgetReceipt: return "Remove record"
         case .revealVendorUninstaller: return "Show in Finder"
         case .archivePath: return "Archive"
+        // Root's items go to the helper's holding folder, not the Trash.
+        case .trashPathPrivileged: return "Set aside"
         default:
             guard let disposition else { return nil }
             return disposition == .delete ? "Delete permanently" : "To Trash"

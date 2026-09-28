@@ -11,12 +11,13 @@ struct StayingSection: View {
 
     var body: some View {
         if !items.isEmpty {
-            Section("Staying (\(items.count))") {
+            Section {
+                ReviewHeading(title: "Staying (\(items.count))")
                 ForEach(items, id: \.target) { item in
                     let name = URL(fileURLWithPath: item.target).lastPathComponent
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name).font(.callout)
-                        Text(item.target)
+                        Text(UninstallPlanRow.abbreviated((item.target as NSString).deletingLastPathComponent))
                             .font(.caption).foregroundColor(.secondary)
                             .truncationMode(.middle).lineLimit(1)
                         Text(item.reason)
@@ -24,11 +25,13 @@ struct StayingSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.vertical, 1)
+                    .listRowSeparator(.hidden)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(name), staying. \(item.reason)")
                     .accessibilityAddTraits(.isStaticText)
                 }
             }
+            .listSectionSeparator(.hidden)
         }
     }
 }
