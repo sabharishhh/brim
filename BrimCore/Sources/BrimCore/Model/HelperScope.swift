@@ -45,7 +45,54 @@ public enum HelperScope {
             return extensions.contains((name as NSString).pathExtension.lowercased())
                 && !isApples(bundleAt: path)
         }
-        return false
+        if cacheFolders.contains(folder) {
+            let lowered = name.lowercased()
+            return !lowered.hasPrefix("com.apple") && !lowered.hasPrefix("com.sabharishhh.brim")
+                && !isLink(path)
+        }
+        return payloadPackage(for: path) != nil && !isApples(bundleAt: path)
+    }
+
+    /// Caches only root can empty. A cache is rebuilt by its owner, so the
+    /// helper asks only whose it is.
+    public static let cacheFolders: Set<String> = ["/Library/Caches"]
+
+    public static let receipts = URL(fileURLWithPath: "/private/var/db/receipts")
+
+    /// The package whose receipt puts this application where the helper
+    /// will take it from: directly inside the folder the package installed
+    /// into, at least three levels into `/Library`. Microsoft AutoUpdate,
+    /// installed by Teams' installer into Application Support, is the case.
+    public static func payloadPackage(for path: String, receipts: URL = receipts) -> String? {
+        let folder = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+        guard (name as NSString).pathExtension.lowercased() == "app", !name.hasPrefix("."),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: receipts.path)
+        else { return nil }
+        for file in names where file.hasSuffix(".plist") && !file.lowercased().hasPrefix("com.apple.") {
+            let packageID = String(file.dropLast(".plist".count))
+            guard let plist = NSDictionary(contentsOf: receipts.appendingPathComponent(file)),
+                  let prefix = plist["InstallPrefixPath"] as? String,
+                  installFolder(prefix: prefix) == folder
+            else { continue }
+            return packageID
+        }
+        return nil
+    }
+
+    static func installFolder(prefix: String) -> String? {
+        let parts = prefix.split(separator: "/").map(String.init)
+        guard parts.count >= 3, parts[0] == "Library",
+              !parts.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }),
+              !["Apple", "Security", "Audio", "LaunchAgents", "LaunchDaemons", "PrivilegedHelperTools"]
+                .contains(parts[1])
+        else { return nil }
+        return "/" + parts.joined(separator: "/")
+    }
+
+    static func isLink(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) != 0 || (info.st_mode & S_IFMT) == S_IFLNK
     }
 
     /// The helper also checks the signature, which a plan cannot do
