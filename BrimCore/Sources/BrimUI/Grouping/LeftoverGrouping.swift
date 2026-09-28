@@ -21,15 +21,6 @@ public enum LeftoverGrouping: String, CaseIterable, Sendable {
 public struct LeftoverGrouper {
     public init() {}
 
-    /// How sure Brim is that a group belongs to what it is named after: a
-    /// recorded owner, a name that is an app's identifier, or only a name.
-    public static func confidence(_ group: LeftoverGroup) -> EvidenceTier {
-        if group.category == .orphaned {
-            return .A
-        }
-        return group.identifier == nil ? .C : .B
-    }
-
     static func bySize(_ lhs: LeftoverGroup, _ rhs: LeftoverGroup) -> Bool {
         lhs.totalBytes > rhs.totalBytes
     }
