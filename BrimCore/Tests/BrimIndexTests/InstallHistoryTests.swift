@@ -65,6 +65,24 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(appeared, ["com.b": later])
     }
 
+    /// First appearing is not arriving. When the list began including the
+    /// apps inside Xcode, they were in the next snapshot and not the one
+    /// before, and Home called them installed today. The window says when
+    /// Brim last looked before, so the service can check the bundle's own
+    /// date against it.
+    func testAnAppearanceKnowsWhenBrimLastLookedBeforeIt() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        let second = first.addingTimeInterval(3600)
+        let third = second.addingTimeInterval(3600)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: first)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: third)
+
+        let windows = try await index.appearanceWindows()
+        XCTAssertEqual(windows, ["com.b": AppearanceWindow(seen: third, previousLook: second)])
+    }
+
     func testSomethingInstalledBetweenLooksIsFound() async throws {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
