@@ -47,7 +47,7 @@ struct EnergyView: View {
                     .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
-            Button(model.isSampling ? "Reading…" : "Take a reading") {
+            Button(model.isSampling ? "Reading" : "Take a Reading") {
                 Task { await model.sample(service: service) }
             }
             .disabled(model.isSampling)

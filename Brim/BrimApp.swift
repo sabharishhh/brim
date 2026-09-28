@@ -112,7 +112,7 @@ private let log = BrimLog.make("app")
                 Button("About Brim") {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
-                Button("Uninstall Brim…") {
+                Button("Uninstall Brim") {
                     showSelfUninstall = true
                 }
             }
