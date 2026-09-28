@@ -35,6 +35,7 @@ struct ApplicationsView: View {
                 content
             }
             .frame(minWidth: 480, maxWidth: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
             // Held still while a review is open, and dimmed a little so the
             // review reads as the focus.
             .opacity(review == nil ? 1 : 0.55)

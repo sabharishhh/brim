@@ -33,6 +33,10 @@ struct LeftoversView: View {
                 content
             }
             .frame(minWidth: 480, maxWidth: .infinity)
+            // The Tray belongs to the list it collects from, so it is
+            // centred on this column at any window width rather than on
+            // the list and the inspector together.
+            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
             // Held still while a review is open: the plan is of what was
             // picked when Review was pressed, and a tick now would not be
             // in it. Dimmed a little so the review reads as the focus.
@@ -63,7 +67,6 @@ struct LeftoversView: View {
         .onChange(of: keptIDs) { _, kept in model.keptGroups = kept }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
-        .tray(trayContents)
     }
 
     // MARK: - Header
