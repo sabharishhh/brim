@@ -43,6 +43,18 @@ import Security
         withReply reply: @escaping (String?) -> Void
     )
 
+    /// Sets aside an application an installer put outside the
+    /// Applications folders, found through the package's own receipt. See
+    /// `PrivilegedPayloadRemoval`. Nil when it worked, otherwise why not.
+    func removeInstalledPayload(
+        packageID: String, name: String,
+        withReply reply: @escaping (String?) -> Void
+    )
+
+    /// Sets aside one item in `/Library/Caches`. See
+    /// `PrivilegedCacheRemoval`. Nil when it worked, otherwise why not.
+    func removeSystemCache(name: String, withReply reply: @escaping (String?) -> Void)
+
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
@@ -69,7 +81,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "5"
+    public static let version = "6"
 
     public static let teamID = "9LY29YLFG2"
 

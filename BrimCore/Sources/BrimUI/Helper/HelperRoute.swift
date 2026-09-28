@@ -50,6 +50,12 @@ public enum HelperRoute {
         if let domain = PrivilegedBundleRemoval.Domain.allCases.first(where: { $0.directory == folder }) {
             return await helper.removeInstalledBundle(domain: domain, name: name)
         }
+        if folder == PrivilegedCacheRemoval.directory {
+            return await helper.removeSystemCache(name: name)
+        }
+        if let packageID = PrivilegedPayloadRemoval.package(for: path) {
+            return await helper.removeInstalledPayload(packageID: packageID, name: name)
+        }
         return "Brim's helper does not remove things from \(folder)."
     }
 

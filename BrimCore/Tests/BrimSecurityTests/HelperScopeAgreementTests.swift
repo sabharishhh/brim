@@ -57,6 +57,55 @@ final class HelperScopeAgreementTests: XCTestCase {
         }
     }
 
+    func testThePlanAndTheHelperNameTheSameCacheFolders() {
+        XCTAssertEqual(HelperScope.cacheFolders, [PrivilegedCacheRemoval.directory])
+        XCTAssertThrowsError(try PrivilegedCacheRemoval.target(name: "com.apple.aned"))
+        XCTAssertThrowsError(try PrivilegedCacheRemoval.target(name: "../Keychains"))
+        XCTAssertThrowsError(try PrivilegedCacheRemoval.target(name: "com.sabharishhh.brim"))
+        XCTAssertEqual(try PrivilegedCacheRemoval.target(name: "com.vendor.updater").path,
+                       "/Library/Caches/com.vendor.updater")
+    }
+
+    /// An application an installer put in Application Support is taken
+    /// only on the package's own receipt, and the plan reads the receipt
+    /// the way the helper does. Microsoft AutoUpdate, left by Teams, is
+    /// the case this exists for.
+    func testThePlanAndTheHelperReadAPackagesInstallFolderTheSameWay() throws {
+        let receipts = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("receipts-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: receipts, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: receipts) }
+        let prefixes = [
+            "com.vendor.updater": "Library/Application Support/Vendor/MAU2.0",
+            "com.vendor.shallow": "Library/Application Support",
+            "com.vendor.system": "System/Library/Vendor/Thing",
+            "com.vendor.security": "Library/Security/Vendor/Thing",
+            "com.apple.pkg.Thing": "Library/Application Support/Apple/Thing"
+        ]
+        for (package, prefix) in prefixes {
+            try PropertyListSerialization.data(fromPropertyList: ["InstallPrefixPath": prefix], format: .binary, options: 0)
+                .write(to: receipts.appendingPathComponent("\(package).plist"))
+        }
+        let paths = [
+            "/Library/Application Support/Vendor/MAU2.0/Vendor Updater.app",
+            "/Library/Application Support/Vendor/MAU2.0/Nested/Vendor Updater.app",
+            "/Library/Application Support/Vendor/MAU2.0/notes.txt",
+            "/Library/Application Support/Other.app",
+            "/System/Library/Vendor/Thing/Other.app",
+            "/Library/Security/Vendor/Thing/Other.app",
+            "/Library/Application Support/Apple/Thing/Other.app"
+        ]
+        for path in paths {
+            XCTAssertEqual(HelperScope.payloadPackage(for: path, receipts: receipts),
+                           PrivilegedPayloadRemoval.package(for: path, receipts: receipts), path)
+        }
+        XCTAssertEqual(HelperScope.payloadPackage(for: paths[0], receipts: receipts), "com.vendor.updater")
+        XCTAssertEqual(paths.dropFirst().compactMap { HelperScope.payloadPackage(for: $0, receipts: receipts) }, [])
+        XCTAssertThrowsError(try PrivilegedPayloadRemoval.target(packageID: "com.vendor.updater", name: "../x.app",
+                                                                  receipts: receipts))
+        XCTAssertThrowsError(try PrivilegedPayloadRemoval.target(packageID: "../com.vendor.updater", name: "x.app",
+                                                                  receipts: receipts))
+    }
+
     func testTheHelperIsNeverPromisedAnythingElse() {
         for path in [
             "/Library/Preferences/org.cups.printers.plist",
