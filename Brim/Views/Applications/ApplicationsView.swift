@@ -149,6 +149,10 @@ struct ApplicationsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage, model.applications.isEmpty {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
+        } else if model.visibleApplications.isEmpty, !model.searchText.isEmpty {
+            // A blank list after a search read as the list failing to load.
+            EmptyState(symbol: "magnifyingglass", title: "No matches",
+                       message: "No installed app matches \"\(model.searchText)\"")
         } else {
             Group {
                 if asTable {
