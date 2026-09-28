@@ -38,7 +38,7 @@ struct JournalView: View {
         .onChange(of: recovery.items) { _, _ in
             Task { await model.reload() }
         }
-        .task(id: Signature(records: model.records, apps: applications.applications.count)) {
+        .task(id: Signature(model.records, apps: applications.applications.count)) {
             let entries = JournalTimeline.entries(records: model.records, applications: applications.applications)
             withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
                 groups = JournalTimeline.groups(entries)
@@ -46,10 +46,19 @@ struct JournalView: View {
         }
     }
 
-    /// What the timeline is rebuilt on.
+    /// What the timeline is rebuilt on: which removals, whether each can
+    /// still be put back, and how many apps. Not the records themselves,
+    /// whose equality compares every step of every plan on each update.
     private struct Signature: Equatable {
-        let records: [RemovalRecord]
+        let records: [UUID]
+        let putBack: [Bool]
         let apps: Int
+
+        init(_ records: [RemovalRecord], apps: Int) {
+            self.records = records.map(\.id)
+            putBack = records.map(\.canUndo)
+            self.apps = apps
+        }
     }
 
     // MARK: - Header
@@ -59,7 +68,6 @@ struct JournalView: View {
             Text("Journal")
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
-                .pageMorph("page.journal")
             if !model.records.isEmpty {
                 Text(summary)
                     .font(.brimFacts)
@@ -73,8 +81,8 @@ struct JournalView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 
@@ -99,6 +107,22 @@ struct JournalView: View {
             List {
                 ForEach(groups) { group in
                     Section {
+                        // The group's title as its first row, not a pinned header:
+                        // a pinned header is drawn on its own band with a rule under it.
+                        Group {
+                            Text(group.title)
+                                .font(.brimDayHeader)
+                                .foregroundStyle(Palette.ink)
+                                .padding(.horizontal, 24)
+                                .padding(.top, 14)
+                                .padding(.bottom, 4)
+                                .accessibilityAddTraits(.isHeader)
+
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+
                         ForEach(group.items) { entry in
                             JournalRow(
                                 entry: entry,
@@ -110,15 +134,8 @@ struct JournalView: View {
                             .listRowSeparator(.hidden)
                             .transition(.brimRow(reduceMotion: reduceMotion))
                         }
-                    } header: {
-                        Text(group.title)
-                            .font(.brimDayHeader)
-                            .foregroundStyle(Palette.ink)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 14)
-                            .padding(.bottom, 4)
-                            .accessibilityAddTraits(.isHeader)
                     }
+                    .listSectionSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
@@ -170,7 +187,7 @@ private struct JournalRow: View {
                 .frame(width: 56, alignment: .trailing)
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
         .rowHighlight(isInspected: false)
         .accessibilityElement(children: .contain)
@@ -222,7 +239,7 @@ private struct JournalRow: View {
                 // Only where it would do something: a disabled button on
                 // every row is thirty-nine controls that do nothing.
                 Button("Put Back", action: putBack)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             } else if let reason = record.unavailableReason {

@@ -14,7 +14,6 @@ struct AppRow: View {
 
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
-    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -38,17 +37,14 @@ struct AppRow: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 6) {
+            HoverActions {
                 RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([app.url])
                 }
                 if !app.isSystemProtected {
-                    RowAction(symbol: "trash", help: "Remove \(app.name)", action: remove)
+                    RowAction(symbol: "trash", help: "Remove", action: remove)
                 }
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
-            .accessibilityHidden(!isHovering)
 
             Text(ByteText.short(app.bundleSizeBytes))
                 .font(.brimFacts)
@@ -56,14 +52,10 @@ struct AppRow: View {
                 .foregroundStyle(Palette.inkSecondary)
                 .frame(width: 72, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .background(highlight, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
-        .contentShape(.rect)
+        .rowHighlight(isInspected: isSelected)
         .onTapGesture(perform: select)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(app.name), \(facts), \(ByteText.short(app.bundleSizeBytes))")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -79,10 +71,4 @@ struct AppRow: View {
             .compactMap(\.self).joined(separator: " · ")
     }
 
-    private var highlight: AnyShapeStyle {
-        if isSelected {
-            return AnyShapeStyle(.tint.opacity(0.10))
-        }
-        return AnyShapeStyle(isHovering ? Palette.well : Color.clear)
-    }
 }

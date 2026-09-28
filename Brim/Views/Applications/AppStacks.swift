@@ -27,6 +27,16 @@ struct AppStacks: View {
         List {
             ForEach(shown) { group in
                 Section {
+                    // The group's title as its first row, not a pinned header:
+                    // a pinned header is drawn on its own band with a rule under it.
+                    Group {
+                        header(group)
+
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+
                     if !isCollapsed(group) {
                         ForEach(visibleRows(group)) { app in
                             AppRow(
@@ -45,9 +55,8 @@ struct AppStacks: View {
                                 .listRowSeparator(.hidden)
                         }
                     }
-                } header: {
-                    header(group)
                 }
+                .listSectionSeparator(.hidden)
             }
         }
         .onAppear { remembered = StableOrder.positions(groups) }

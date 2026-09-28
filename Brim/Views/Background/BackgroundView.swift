@@ -28,6 +28,8 @@ struct BackgroundView: View {
     @State private var removedInReview = 0
     /// Worked out once per scan: resolving an icon reads the disk.
     @State private var icons: [String: IconSource] = [:]
+    /// Each record's file for Finder, by registration id, for the same reason.
+    @State private var reveals: [String: URL] = [:]
 
     init(model: BackgroundModel) {
         self.model = model
@@ -46,13 +48,15 @@ struct BackgroundView: View {
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
-            Divider()
             inspector
                 .frame(width: reviewRequest == nil ? 340 : 440)
-                .background(Palette.surface.opacity(0.5))
         }
         .task { await model.loadIfNeeded(service: service) }
-        .task(id: model.revision) { icons = Self.icons(for: sections) }
+        .task(id: model.revision) {
+            icons = Self.icons(for: sections)
+            reveals = Self.reveals(for: sections)
+        }
+        .environment(\.backgroundReveals, reveals)
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
         .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
     }
@@ -62,7 +66,7 @@ struct BackgroundView: View {
     }
 
     private var inspectedURLs: [URL] {
-        inspected?.group.items.compactMap(\.revealableURL) ?? []
+        inspected?.group.items.compactMap { reveals[$0.id] } ?? []
     }
 
     private var inspected: BackgroundEntry? {
@@ -78,7 +82,6 @@ struct BackgroundView: View {
                 Text("Background")
                     .font(.brimPageTitle)
                     .foregroundStyle(Palette.ink)
-                    .pageMorph("page.background")
                 if hasData {
                     Text(summary)
                         .font(.brimFacts)
@@ -96,8 +99,8 @@ struct BackgroundView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Search background items")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 
@@ -153,7 +156,7 @@ struct BackgroundView: View {
             inspect: { inspectedID = entry.id }
         )
         .contextMenu {
-            let urls = entry.group.items.compactMap(\.revealableURL)
+            let urls = entry.group.items.compactMap { reveals[$0.id] }
             if !urls.isEmpty {
                 ItemMenuItems(urls: urls)
             }
@@ -215,6 +218,14 @@ struct BackgroundView: View {
         } else {
             PanePlaceholder(symbol: "gearshape.2", title: "Select an item")
         }
+    }
+
+    private static func reveals(for sections: [ItemGroup<BackgroundEntry>]) -> [String: URL] {
+        var reveals: [String: URL] = [:]
+        for item in sections.flatMap(\.items).flatMap(\.group.items) {
+            reveals[item.id] = item.revealableURL
+        }
+        return reveals
     }
 
     private static func icons(for sections: [ItemGroup<BackgroundEntry>]) -> [String: IconSource] {
@@ -355,7 +366,7 @@ struct Notice: View {
             Spacer(minLength: 8)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             }

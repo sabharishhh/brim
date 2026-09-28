@@ -44,7 +44,7 @@ struct BrimIcon: View {
                 if isNew {
                     Circle()
                         .fill(.tint)
-                        .stroke(Palette.surface, lineWidth: 1.5)
+                        .stroke(Palette.canvas, lineWidth: 1.5)
                         .frame(width: size * 0.28, height: size * 0.28)
                         .offset(x: size * 0.08, y: -size * 0.08)
                         .transition(.opacity)
@@ -143,13 +143,12 @@ struct BadgeMark: View {
 
     var body: some View {
         Circle()
-            .fill(Palette.surface)
+            .fill(Palette.canvas)
             .overlay {
                 Image(systemName: badge.symbolName)
                     .font(.system(size: size * 0.52, weight: .bold))
                     .foregroundStyle(badge == .shared || badge == .helper ? Palette.caution : Palette.inkSecondary)
             }
-            .overlay { Circle().stroke(Palette.hairline) }
             .frame(width: size, height: size)
     }
 }

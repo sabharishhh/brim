@@ -39,6 +39,12 @@ extension Registration {
     }
 }
 
+extension EnvironmentValues {
+    /// Each record's file to show in Finder, by registration id. Worked out
+    /// once per scan: finding it asks the disk, and rows ask while drawing.
+    @Entry var backgroundReveals: [String: URL] = [:]
+}
+
 extension BackgroundEntry {
     /// The application's icon while it is installed, the saved one once it
     /// is gone, otherwise a symbol for the kind of registration. Reads the
@@ -73,6 +79,7 @@ struct BackgroundRow: View {
     let isInspected: Bool
     let pick: () -> Void
     let inspect: () -> Void
+    @SwiftUI.Environment(\.backgroundReveals) private var reveals
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
 
@@ -102,7 +109,7 @@ struct BackgroundRow: View {
             .accessibilityLabel("\(entry.group.displayName), \(entry.facts)")
             .accessibilityAction { inspect() }
             Spacer(minLength: 8)
-            if let url = entry.group.items.lazy.compactMap(\.revealableURL).first {
+            if let url = entry.group.items.lazy.compactMap({ reveals[$0.id] }).first {
                 HoverActions {
                     RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -110,7 +117,7 @@ struct BackgroundRow: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
         .rowHighlight(isInspected: isInspected)
         .onTapGesture(perform: inspect)

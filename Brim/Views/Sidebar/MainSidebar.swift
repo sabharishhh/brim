@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Where the window can be. Seven places in two groups of three, plus the
-/// Journal on its own: few enough that the sidebar is read at a glance.
+/// Where the window can be: two short groups, plus the Journal on its own,
+/// few enough that the sidebar is read at a glance.
 ///
-/// Updates and Energy are not places any more. They are lenses on Apps
-/// (`AppsLens`), because both are questions about applications.
+/// Updates is a lens on Apps (`AppsLens`), because it is a question about
+/// applications. Energy is a place under Your Mac, because it is about
+/// what the Mac is doing now.
 enum Destination: String, Hashable, CaseIterable {
     case home = "Home"
     case apps = "Apps"
@@ -12,10 +13,11 @@ enum Destination: String, Hashable, CaseIterable {
     case background = "Background"
     case space = "Space"
     case developer = "Developer"
+    case energy = "Energy"
     case journal = "Journal"
 
     static let brim: [Destination] = [.home, .apps, .leftovers]
-    static let yourMac: [Destination] = [.background, .space, .developer]
+    static let yourMac: [Destination] = [.background, .energy, .space, .developer]
 
     /// The order the person sees, and the only order anything may use.
     ///
@@ -43,6 +45,7 @@ enum Destination: String, Hashable, CaseIterable {
         case .background: "gearshape.2"
         case .space: "internaldrive"
         case .developer: "hammer"
+        case .energy: "bolt"
         case .journal: "book.closed"
         }
     }
@@ -50,9 +53,8 @@ enum Destination: String, Hashable, CaseIterable {
 
 /// The views of Apps that used to be sections of their own.
 enum AppsLens: String, Hashable, CaseIterable {
-    case all = "All Apps"
+    case all = "Apps"
     case updates = "Updates"
-    case energy = "Energy"
 }
 
 /// A command a view offers to the menu bar, equal to any other with the
@@ -121,7 +123,7 @@ struct MainSidebar: View {
     private func rows(_ destinations: [Destination]) -> some View {
         ForEach(destinations, id: \.self) { destination in
             HStack {
-                Label(destination.rawValue, systemImage: destination.icon)
+                SidebarLabel(destination: destination, isSelected: selection == destination)
                 Spacer()
                 if activity.busy.contains(destination) {
                     ProgressView()
@@ -132,6 +134,31 @@ struct MainSidebar: View {
             }
             .animation(.easeInOut(duration: 0.2), value: activity.busy.contains(destination))
             .tag(destination)
+        }
+    }
+}
+
+/// A sidebar row's label. Its symbol gives one small bounce when the row
+/// becomes selected, so a click is answered by the thing clicked rather
+/// than only by the highlight moving. Never on the row being left, and
+/// never under Reduce Motion.
+private struct SidebarLabel: View {
+    let destination: Destination
+    let isSelected: Bool
+    @State private var arrivals = 0
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Label {
+            Text(destination.rawValue)
+        } icon: {
+            Image(systemName: destination.icon)
+                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+        }
+        .onChange(of: isSelected) { _, selected in
+            if selected, !reduceMotion {
+                arrivals += 1
+            }
         }
     }
 }

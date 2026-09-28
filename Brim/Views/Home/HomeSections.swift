@@ -166,13 +166,12 @@ struct DropWell: View {
             Spacer()
         }
         .padding(20)
-        .background {
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .strokeBorder(
-                    isTargeted ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary.opacity(0.5)),
-                    style: StrokeStyle(lineWidth: 1.5, dash: isTargeted ? [] : [6, 5])
-                )
-        }
+        // A card like the others at rest, with no outline. It lights with
+        // the accent only while something is over it.
+        .background(
+            isTargeted ? AnyShapeStyle(.tint.opacity(0.14)) : AnyShapeStyle(Palette.surface),
+            in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous)
+        )
         .glassEffect(
             isTargeted ? .regular.tint(.accentColor.opacity(0.12)) : .identity,
             in: .rect(cornerRadius: Metrics.cardRadius)

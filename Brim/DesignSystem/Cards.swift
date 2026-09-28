@@ -89,7 +89,6 @@ struct StatCard<Detail: View>: View {
     let figure: String
     let status: CardStatus
     let phrase: String
-    var morphID: String?
     /// Showing the last scan's figures while a new scan runs: they go grey
     /// until the new ones arrive. The card still opens its page.
     var isRefreshing = false
@@ -107,7 +106,6 @@ struct StatCard<Detail: View>: View {
                     Text(title)
                         .font(.brimGroupTitle)
                         .foregroundStyle(Palette.ink)
-                        .pageMorph(morphID ?? title)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -149,7 +147,7 @@ struct StatCard<Detail: View>: View {
                         .opacity(isRefreshing ? 0.4 : 1)
                 }
             }
-            .padding(18)
+            .padding(20)
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
             .animation(Motion.standard, value: status == .checking)
             .animation(.smooth(duration: isRefreshing ? 0.25 : 0.6), value: isRefreshing)
@@ -168,11 +166,11 @@ struct StatCard<Detail: View>: View {
 extension StatCard where Detail == EmptyView {
     init(
         title: String, symbol: String, figure: String, status: CardStatus, phrase: String,
-        morphID: String? = nil, isRefreshing: Bool = false, action: @escaping () -> Void
+        isRefreshing: Bool = false, action: @escaping () -> Void
     ) {
         self.init(
             title: title, symbol: symbol, figure: figure, status: status, phrase: phrase,
-            morphID: morphID, isRefreshing: isRefreshing, detail: { EmptyView() }, action: action
+            isRefreshing: isRefreshing, detail: { EmptyView() }, action: action
         )
     }
 }

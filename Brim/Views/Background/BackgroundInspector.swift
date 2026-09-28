@@ -14,6 +14,7 @@ struct BackgroundInspector: View {
     /// Brim's helper is set up and can take the jobs that need it.
     let helperIsReady: Bool
     let pick: () -> Void
+    @SwiftUI.Environment(\.backgroundReveals) private var reveals
 
     var body: some View {
         List {
@@ -77,17 +78,17 @@ struct BackgroundInspector: View {
 
     @ViewBuilder
     private var actions: some View {
-        let urls = entry.group.items.compactMap(\.revealableURL)
+        let urls = entry.group.items.compactMap { reveals[$0.id] }
         if entry.state == .gone || !urls.isEmpty {
             HStack(spacing: 8) {
                 if entry.state == .gone {
                     Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.borderedProminent)
                         .disabled(!canPick)
                 }
                 if !urls.isEmpty {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(urls) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.bordered)
                 }
             }
             .buttonBorderShape(.capsule)
@@ -101,7 +102,7 @@ private struct RecordRow: View {
     let helperIsReady: Bool
 
     @SwiftUI.Environment(ShellState.self) private var shell
-    @State private var isHovering = false
+    @SwiftUI.Environment(\.backgroundReveals) private var reveals
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -144,20 +145,17 @@ private struct RecordRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let url = registration.revealableURL {
-                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") { shell.reveal([url]) }
-                    .opacity(isHovering ? 1 : 0)
-                    .allowsHitTesting(isHovering)
+            if let url = reveals[registration.id] {
+                HoverActions {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") { shell.reveal([url]) }
+                }
             }
         }
-        .padding(8)
-        .background(isHovering ? Palette.well : .clear, in: .rect(cornerRadius: 10))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
-        }
+        .padding(10)
+        .rowHighlight(isInspected: false)
         .contentShape(.rect)
         .onTapGesture(count: 2) {
-            if let url = registration.revealableURL {
+            if let url = reveals[registration.id] {
                 shell.showInFinder(url)
             }
         }
