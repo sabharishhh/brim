@@ -38,6 +38,9 @@ public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
     case vendorUninstaller
     case vpnSettings
     case restoreAppForPrivacyReset
+    /// Core Audio keeps a device driver loaded until it restarts, so a
+    /// removed driver's device stays in the Sound list until then.
+    case restartForAudioDevice
 
     public var sentence: String {
         switch self {
@@ -47,6 +50,8 @@ public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
             "If listed, remove the configuration in System Settings > VPN."
         case .restoreAppForPrivacyReset:
             "If permissions remain, reinstall the app and reset them."
+        case .restartForAudioDevice:
+            "Its audio device stays in the Sound list until you restart."
         }
     }
 }
