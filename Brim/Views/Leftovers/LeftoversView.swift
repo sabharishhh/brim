@@ -140,6 +140,7 @@ struct LeftoversView: View {
                 model: model, grouping: grouping, keptIDs: keptIDs, newItems: newItems,
                 pick: pick, keep: toggleKeep, changePick: changePick
             )
+            .refreshing(model.isScanning)
         }
     }
 
@@ -155,14 +156,14 @@ struct LeftoversView: View {
                 pick: { pick(group) },
                 keep: { toggleKeep(group) }
             )
+            .refreshing(model.isScanning)
             // Keyed on the group and a crossfade only, so arrowing through
             // the list does not make the pane swim.
             .id(group.id)
             .transition(.opacity)
             .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: group.id)
         } else {
-            ContentUnavailableView("Select a leftover", systemImage: "shippingbox")
-                .foregroundStyle(Palette.inkSecondary)
+            PanePlaceholder(symbol: "shippingbox", title: "Select a leftover")
         }
     }
 
@@ -228,7 +229,8 @@ struct LeftoversView: View {
         let blocked = model.blockedSelection.count
         return TrayContents(
             count: model.selectedItems.count, bytes: model.selectedBytes,
-            canReview: model.canRemoveSelection,
+            // Not while a rescan is replacing what the Tray points at.
+            canReview: model.canRemoveSelection && !model.isScanning,
             note: blocked == 0 ? nil : "\(blocked) need Full Disk Access",
             review: review,
             clear: clearTray

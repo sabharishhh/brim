@@ -152,7 +152,7 @@ struct HomeView: View {
             figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
             status: volume == nil ? .checking : .neutral,
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
-            morphID: "page.space"
+            morphID: "page.space", isRefreshing: storage.isLoading && volume != nil
         ) {
             if let volume {
                 // Three facts, never added into one: what is used, what
@@ -181,7 +181,8 @@ struct HomeView: View {
         return StatCard(
             title: "Leftovers", symbol: "shippingbox",
             figure: checked ? ByteText.short(rebuilds + data) : "…",
-            status: summary.status, phrase: summary.phrase, morphID: "page.leftovers"
+            status: summary.status, phrase: summary.phrase, morphID: "page.leftovers",
+            isRefreshing: leftovers.isScanning && checked
         ) {
             if checked, rebuilds + data > 0 {
                 MeterBar(segments: [
@@ -193,22 +194,27 @@ struct HomeView: View {
     }
 
     private var backgroundCard: some View {
-        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: !background.isLoading)
+        // A first load shows placeholders; a reload keeps the last figures,
+        // greyed, until the new ones arrive.
+        let hasData = !background.isLoading || !background.live.isEmpty || !background.stale.isEmpty
+        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData)
         return StatCard(
             title: "Background", symbol: "gearshape.2",
-            figure: background.isLoading ? "…" : "\(background.live.count) running",
-            status: summary.status, phrase: summary.phrase, morphID: "page.background"
+            figure: "\(background.live.count) running",
+            status: summary.status, phrase: summary.phrase, morphID: "page.background",
+            isRefreshing: background.isLoading && hasData
         ) { shell.go(to: .background) }
     }
 
     private var developerCard: some View {
         let count = developer.caches.count
+        let firstLoad = developer.isScanning && developer.caches.isEmpty
         return StatCard(
             title: "Developer", symbol: "hammer",
-            figure: developer.isScanning ? "…" : ByteText.short(developer.totalBytes),
-            status: developer.isScanning ? .checking : .neutral,
-            phrase: developer.isScanning ? "Checking" : (count == 1 ? "1 build cache" : "\(count) build caches"),
-            morphID: "page.developer"
+            figure: ByteText.short(developer.totalBytes),
+            status: firstLoad ? .checking : .neutral,
+            phrase: count == 1 ? "1 build cache" : "\(count) build caches",
+            morphID: "page.developer", isRefreshing: developer.isScanning && !firstLoad
         ) { shell.go(to: .developer) }
     }
 

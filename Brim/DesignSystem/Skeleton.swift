@@ -78,3 +78,34 @@ struct SkeletonRows: View {
         .accessibilityLabel("Checking")
     }
 }
+
+extension View {
+    /// Results from the last scan while a new one runs.
+    ///
+    /// The old rows are no longer the answer, so they go grey and stop
+    /// taking clicks the moment a rescan starts, quickly, so the change is
+    /// seen. When the new results arrive they come back to full colour more
+    /// slowly, which is the scan's finish made visible without a word of
+    /// text. A tick or a removal against results that are being replaced
+    /// would act on something that may no longer be true.
+    func refreshing(_ isRefreshing: Bool) -> some View {
+        modifier(Refreshing(isRefreshing: isRefreshing))
+    }
+}
+
+private struct Refreshing: ViewModifier {
+    let isRefreshing: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .saturation(isRefreshing ? 0 : 1)
+            .opacity(isRefreshing ? 0.4 : 1)
+            .disabled(isRefreshing)
+            .allowsHitTesting(!isRefreshing)
+            .animation(
+                reduceMotion ? Motion.reduced : .smooth(duration: isRefreshing ? 0.25 : 0.6),
+                value: isRefreshing
+            )
+    }
+}

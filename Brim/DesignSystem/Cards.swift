@@ -90,6 +90,9 @@ struct StatCard<Detail: View>: View {
     let status: CardStatus
     let phrase: String
     var morphID: String?
+    /// Showing the last scan's figures while a new scan runs: they go grey
+    /// until the new ones arrive. The card still opens its page.
+    var isRefreshing = false
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
@@ -122,28 +125,34 @@ struct StatCard<Detail: View>: View {
                     .transition(.opacity)
                     .accessibilityLabel("Checking")
                 } else {
-                    Text(figure)
-                        .font(.brimFigure)
-                        .foregroundStyle(Palette.ink)
-                        .contentTransition(.numericText())
-                        .transition(.opacity)
-                    HStack(spacing: 6) {
-                        StatusDot(status: status)
-                        Text(phrase)
-                            .font(.brimFacts)
-                            .foregroundStyle(Palette.inkSecondary)
-                            .lineLimit(1)
+                    Group {
+                        Text(figure)
+                            .font(.brimFigure)
+                            .foregroundStyle(Palette.ink)
+                            .contentTransition(.numericText())
+                        HStack(spacing: 6) {
+                            StatusDot(status: status)
+                            Text(phrase)
+                                .font(.brimFacts)
+                                .foregroundStyle(Palette.inkSecondary)
+                                .lineLimit(1)
+                        }
                     }
+                    .saturation(isRefreshing ? 0 : 1)
+                    .opacity(isRefreshing ? 0.4 : 1)
                     .transition(.opacity)
                 }
                 Spacer(minLength: 0)
                 if status != .checking {
                     detail
+                        .saturation(isRefreshing ? 0 : 1)
+                        .opacity(isRefreshing ? 0.4 : 1)
                 }
             }
             .padding(18)
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
             .animation(Motion.standard, value: status == .checking)
+            .animation(.smooth(duration: isRefreshing ? 0.25 : 0.6), value: isRefreshing)
             .card()
             .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
             .offset(y: isHovering ? -2 : 0)
@@ -159,11 +168,11 @@ struct StatCard<Detail: View>: View {
 extension StatCard where Detail == EmptyView {
     init(
         title: String, symbol: String, figure: String, status: CardStatus, phrase: String,
-        morphID: String? = nil, action: @escaping () -> Void
+        morphID: String? = nil, isRefreshing: Bool = false, action: @escaping () -> Void
     ) {
         self.init(
             title: title, symbol: symbol, figure: figure, status: status, phrase: phrase,
-            morphID: morphID, detail: { EmptyView() }, action: action
+            morphID: morphID, isRefreshing: isRefreshing, detail: { EmptyView() }, action: action
         )
     }
 }
