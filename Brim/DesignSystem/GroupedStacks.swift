@@ -155,21 +155,36 @@ extension GroupedStacks where Accessory == EmptyView {
 /// stronger than hover. That is the click's feedback: a colour change the
 /// eye catches, rather than motion on something clicked all day (HIG,
 /// Motion).
+///
+/// The row's click is attached here, before the press tracking, and only
+/// here. Tracking the press as a gesture inside a row whose click was added
+/// outside it took every click for itself, and no row opened its inspector.
+/// A row with no click of its own gets no press tracking, so a row inside a
+/// button leaves the button its click.
 struct RowHighlight: ViewModifier {
     let isInspected: Bool
+    var action: (() -> Void)?
     @State private var isHovering = false
     @GestureState private var isPressed = false
 
     func body(content: Content) -> some View {
-        content
+        let shaped = content
             .background(fill, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
             .contentShape(.rect)
             .onHover { hovering in
                 withAnimation(Motion.quick) { isHovering = hovering }
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0).updating($isPressed) { _, pressed, _ in pressed = true }
-            )
+        Group {
+            if let action {
+                shaped
+                    .onTapGesture(perform: action)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0).updating($isPressed) { _, pressed, _ in pressed = true }
+                    )
+            } else {
+                shaped
+            }
+        }
             .animation(.easeOut(duration: 0.08), value: isPressed)
             .animation(Motion.quick, value: isInspected)
             .environment(\.isRowHovered, isHovering)
@@ -195,8 +210,8 @@ extension EnvironmentValues {
 }
 
 extension View {
-    func rowHighlight(isInspected: Bool) -> some View {
-        modifier(RowHighlight(isInspected: isInspected))
+    func rowHighlight(isInspected: Bool, action: (() -> Void)? = nil) -> some View {
+        modifier(RowHighlight(isInspected: isInspected, action: action))
     }
 }
 

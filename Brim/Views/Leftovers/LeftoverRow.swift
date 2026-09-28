@@ -76,8 +76,7 @@ struct LeftoverRow: View {
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .rowHighlight(isInspected: isInspected)
-        .onTapGesture(perform: inspect)
+        .rowHighlight(isInspected: isInspected, action: inspect)
     }
 
     private var canPick: Bool {
