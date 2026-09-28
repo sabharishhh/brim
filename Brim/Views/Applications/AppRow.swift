@@ -10,7 +10,6 @@ struct AppRow: View {
     let opened: String?
     let isSelected: Bool
     let select: () -> Void
-    let remove: () -> Void
 
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
@@ -41,9 +40,6 @@ struct AppRow: View {
                 RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([app.url])
                 }
-                if !app.isSystemProtected {
-                    RowAction(symbol: "trash", help: "Remove", action: remove)
-                }
             }
 
             Text(ByteText.short(app.bundleSizeBytes))
@@ -54,8 +50,7 @@ struct AppRow: View {
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .rowHighlight(isInspected: isSelected)
-        .onTapGesture(perform: select)
+        .rowHighlight(isInspected: isSelected, action: select)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(app.name), \(facts), \(ByteText.short(app.bundleSizeBytes))")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
