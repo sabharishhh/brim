@@ -192,7 +192,9 @@ struct PanePlaceholder: View {
 /// collects from.
 struct TrayBar: View {
     let count: Int
-    let bytes: Int64
+    /// Nil for things that take no space worth counting, such as a
+    /// background job's file, where a size would only read as "Zero KB".
+    let bytes: Int64?
     var canReview = true
     let review: () -> Void
     let clear: () -> Void
@@ -206,9 +208,11 @@ struct TrayBar: View {
                     .foregroundStyle(.tint)
                 Text(count == 1 ? "1 item" : "\(count) items")
                     .contentTransition(.numericText(value: Double(count)))
-                Text(ByteText.short(bytes))
-                    .foregroundStyle(Palette.inkSecondary)
-                    .contentTransition(.numericText(value: Double(bytes)))
+                if let bytes {
+                    Text(ByteText.short(bytes))
+                        .foregroundStyle(Palette.inkSecondary)
+                        .contentTransition(.numericText(value: Double(bytes)))
+                }
                 Button("Clear", action: clear)
                     .buttonStyle(.borderless)
                     .foregroundStyle(Palette.inkSecondary)
