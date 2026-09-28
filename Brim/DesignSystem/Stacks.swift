@@ -132,7 +132,7 @@ struct StackRow<Accessory: View, Actions: View>: View {
                         SizeBar(fraction: sizeFraction)
                     }
                 }
-                .frame(width: 72, alignment: .trailing)
+                .frame(minWidth: 56, alignment: .trailing)
             }
         }
         .padding(.horizontal, 12)
