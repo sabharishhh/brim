@@ -92,6 +92,38 @@ public enum PreferenceDomains {
     /// `kCFPreferencesAnyApplication` and the global domain are the two
     /// that would do real damage: clearing `.GlobalPreferences` resets
     /// system-wide settings that belong to no application at all.
+    /// A property list holding an empty dictionary: what `cfprefsd` writes
+    /// for a domain that has been cleared. It holds no settings.
+    public static func isEmptyStub(atPath path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path), data.count <= 4096,
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return false }
+        return plist.isEmpty
+    }
+
+    /// Removes the empty copy `cfprefsd` writes back after a domain is
+    /// cleared and its file trashed.
+    ///
+    /// Clearing the keys is what stops the daemon writing the settings
+    /// back, and it also marks the domain changed, so about nine seconds
+    /// later the daemon writes the now empty domain out to the path the
+    /// file was moved from. Measured on every attempt with a test domain;
+    /// on the first real uninstall it left IINA a 42 byte plist and a
+    /// result screen saying something remained. Nothing orders around it,
+    /// so this waits for it. Only an empty dictionary is removed: a file
+    /// that comes back with settings in it is reported, not hidden.
+    public static func removeEmptyWriteBack(at paths: [String], within seconds: TimeInterval = 15) async {
+        var waiting = Set(paths)
+        let deadline = Date().addingTimeInterval(seconds)
+        while !waiting.isEmpty, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(500))
+            for path in waiting where FileManager.default.fileExists(atPath: path) {
+                if isEmptyStub(atPath: path) { try? FileManager.default.removeItem(atPath: path) }
+                waiting.remove(path)
+            }
+        }
+    }
+
     public static func isPlausibleDomain(_ domain: String) -> Bool {
         guard !domain.isEmpty, domain.contains("."), !domain.contains("/") else { return false }
         let forbidden = [

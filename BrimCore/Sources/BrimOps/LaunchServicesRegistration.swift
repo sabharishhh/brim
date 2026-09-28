@@ -52,6 +52,32 @@ public enum LaunchServicesRegistration {
 
     /// Registers a bundle, used to put back a registration an uninstall
     /// retracted when that uninstall is undone.
+    /// Every application bundle inside a folder, found before the folder
+    /// is removed so their records can be retracted afterwards.
+    ///
+    /// Unregistering the application left the ones inside it registered:
+    /// after Muse went, Launch Services still listed Sparkle's `Updater.app`
+    /// inside `Muse.app` and two more copies Sparkle keeps in its cache
+    /// folder, all pointing at nothing.
+    public static func nestedApplications(in path: String, limit: Int = 20_000) -> [String] {
+        var isDirectory: ObjCBool = false
+        // Relative paths, joined to the path as given: a URL enumerator
+        // answers `/private/var` for `/var`, and a record is retracted by
+        // the spelling it was registered under.
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let walk = FileManager.default.enumerator(atPath: path) else { return [] }
+        var found: [String] = []
+        var seen = 0
+        while let relative = walk.nextObject() as? String {
+            seen += 1
+            if seen > limit { break }
+            if (relative as NSString).pathExtension.lowercased() == "app" {
+                found.append((path as NSString).appendingPathComponent(relative))
+            }
+        }
+        return found
+    }
+
     public static func register(
         bundlePath: String,
         runner: ((String, [String]) throws -> Int32)? = nil
