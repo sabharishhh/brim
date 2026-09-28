@@ -60,6 +60,8 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
             }
         }
         .listStyle(.plain)
+        // Room below the last group, so it never sits on the window's edge.
+        .contentMargins(.bottom, 28, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .onKeyPress(.downArrow) { move(by: 1) }
         .onKeyPress(.upArrow) { move(by: -1) }

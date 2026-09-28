@@ -84,6 +84,8 @@ struct LeftoverStacks: View {
         }
         .onAppear { remembered = StableOrder.positions(grouped) }
         .listStyle(.plain)
+        // Room below the last group, so it never sits on the window's edge.
+        .contentMargins(.bottom, 28, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .quickLookOnSpace(inspectedURLs, shell: shell)
         .onKeyPress(.downArrow) { moveInspection(by: 1, in: sections) }
