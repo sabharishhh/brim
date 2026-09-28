@@ -34,13 +34,12 @@ extension View {
 
 // MARK: - Tray
 
-/// What a section has picked to remove, offered to the window's Tray.
+/// What a page has picked to remove, drawn as its Tray.
 ///
-/// The section keeps the selection, and this only describes it, so there
-/// is one reading of what is picked rather than a copy to keep in step.
+/// The page keeps the selection, and this only describes it, so there is
+/// one reading of what is picked rather than a copy to keep in step.
 /// Compares without the closures, for the same reason `FocusedAction`
-/// does: a closure is never equal to the last one, and a preference that
-/// always changes redraws the window forever.
+/// does: a closure is never equal to the last one.
 struct TrayContents: Equatable {
     let count: Int
     let bytes: Int64
@@ -52,20 +51,6 @@ struct TrayContents: Equatable {
 
     static func == (lhs: TrayContents, rhs: TrayContents) -> Bool {
         (lhs.count, lhs.bytes, lhs.canReview, lhs.note) == (rhs.count, rhs.bytes, rhs.canReview, rhs.note)
-    }
-}
-
-struct TrayKey: PreferenceKey {
-    static let defaultValue: TrayContents? = nil
-
-    static func reduce(value: inout TrayContents?, nextValue: () -> TrayContents?) {
-        value = nextValue() ?? value
-    }
-}
-
-extension View {
-    func tray(_ contents: TrayContents?) -> some View {
-        preference(key: TrayKey.self, value: contents)
     }
 }
 

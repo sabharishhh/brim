@@ -14,8 +14,6 @@ struct ContentView: View {
     @StateObject private var models = SectionModels()
     /// What outlives a launch: kept items, what was seen, saved icons.
     @State private var session = AppSession()
-    /// What the current page has picked to remove, shown as the Tray.
-    @State private var tray: TrayContents?
     /// What a Home tile's title morphs through into its page.
     @Namespace private var pages
     @Environment(\.brimService) private var service
@@ -53,8 +51,13 @@ struct ContentView: View {
             // column would animate every scroll and every checkbox too.
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: shell.selection)
             .environment(\.pageNamespace, pages)
-            .onPreferenceChange(TrayKey.self) { tray = $0 }
-            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: tray) }
+            // Pages with a list column centre the Tray and toast on that
+            // column themselves; the rest show the toast across the page.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if ![.leftovers, .apps].contains(shell.selection) {
+                    ShellOverlay(tray: nil)
+                }
+            }
             .toolbar { toolbar }
         }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
