@@ -21,6 +21,10 @@ struct LeftoversView: View {
 
     @SceneStorage("leftovers.grouping") private var grouping = LeftoverGrouping.smart
     @State private var reviewRequest: PlanIntent?
+    /// Where the open review is, so ticking knows whether it may re-plan.
+    @State private var reviewPhase: UninstallExecutionModel.Phase?
+
+    private var reviewIsRunning: Bool { reviewPhase == .executing }
     /// Locations removed while the review was open, for the toast.
     @State private var removedInReview = 0
 
@@ -37,14 +41,22 @@ struct LeftoversView: View {
             // centred on this column at any window width rather than on
             // the list and the inspector together.
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
-            // Held still while a review is open: the plan is of what was
-            // picked when Review was pressed, and a tick now would not be
-            // in it. Dimmed a little so the review reads as the focus.
-            .opacity(reviewRequest == nil ? 1 : 0.55)
-            .allowsHitTesting(reviewRequest == nil)
-            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
+            // Held still only while a removal runs. The list used to freeze
+            // for as long as a review was open, so changing one's mind meant
+            // closing the review, fixing the ticks and starting again; ticks
+            // now plan the review again as they change (`onChange` below).
+            .opacity(reviewIsRunning ? 0.55 : 1)
+            .allowsHitTesting(!reviewIsRunning)
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewIsRunning)
             inspector
                 .frame(width: 340)
+        }
+        .onChange(of: model.selection) { _, selection in
+            // Only a plan still waiting for approval follows the ticks. A
+            // finished one stays on screen: the rows it removed leave the
+            // selection, and that is not a change of mind.
+            guard reviewRequest != nil, reviewPhase == .ready else { return }
+            reviewRequest = selection.isEmpty ? nil : model.removalIntent(requesterIdentity: NSUserName())
         }
         .task { await model.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
@@ -147,11 +159,13 @@ struct LeftoversView: View {
                 },
                 onClose: { proven in
                     reviewRequest = nil
+                    reviewPhase = nil
                     if let proven {
                         offerPutBack(proven)
                     }
                 },
-                onUnverified: { Task { await model.load(service: service) } }
+                onUnverified: { Task { await model.load(service: service) } },
+                onPhase: { reviewPhase = $0 }
             )
             .id(intent.id)
             .transition(.opacity)
