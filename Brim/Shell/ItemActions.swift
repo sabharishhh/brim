@@ -42,7 +42,7 @@ extension View {
 /// does: a closure is never equal to the last one.
 struct TrayContents: Equatable {
     let count: Int
-    let bytes: Int64
+    let bytes: Int64?
     let canReview: Bool
     /// Why Review is unavailable, or what to know first.
     var note: String?
