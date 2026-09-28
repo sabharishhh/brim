@@ -215,6 +215,35 @@ public actor Index {
         }
     }
 
+    /// For each application first seen after Brim's first look: when it
+    /// was first seen, and when Brim had last looked before that. An app
+    /// whose bundle was already on the disk before that earlier look was
+    /// not installed in between; the list simply had not included it.
+    public nonisolated func appearanceWindows() async throws -> [String: AppearanceWindow] {
+        try await dbManager.dbPool.read { database in
+            let scans = try Row.fetchAll(database, sql: """
+            SELECT scan_id, MAX(observed_at) AS at, MIN(id) AS first FROM observation
+            WHERE scan_id IS NOT NULL GROUP BY scan_id ORDER BY first
+            """)
+            guard scans.count > 1 else { return [:] }
+            var previousLook: [String: Date] = [:]
+            for index in 1 ..< scans.count {
+                previousLook[scans[index]["scan_id"]] = scans[index - 1]["at"]
+            }
+            let firsts = try Row.fetchAll(database, sql: """
+            SELECT identity_id, scan_id, observed_at FROM observation
+            WHERE id IN (SELECT MIN(id) FROM observation WHERE scan_id IS NOT NULL GROUP BY identity_id)
+            """)
+            var windows: [String: AppearanceWindow] = [:]
+            for row in firsts {
+                let scan: String = row["scan_id"]
+                guard let before = previousLook[scan] else { continue }
+                windows[row["identity_id"]] = AppearanceWindow(seen: row["observed_at"], previousLook: before)
+            }
+            return windows
+        }
+    }
+
     /// How many snapshots are on record, so the UI can say "first look"
     /// rather than "nothing changed".
     public nonisolated func snapshotCount() async throws -> Int {
@@ -230,5 +259,17 @@ public actor Index {
         try await dbManager.dbPool.read { db in
             return try String.fetchOne(db, sql: "SELECT name FROM identity WHERE bundle_id = ?", arguments: [bundleID])
         }
+    }
+}
+
+/// When an application first appeared in a snapshot, and when Brim had
+/// last looked before that.
+public struct AppearanceWindow: Sendable, Equatable {
+    public let seen: Date
+    public let previousLook: Date
+
+    public init(seen: Date, previousLook: Date) {
+        self.seen = seen
+        self.previousLook = previousLook
     }
 }
