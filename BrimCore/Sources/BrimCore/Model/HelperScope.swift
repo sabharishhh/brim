@@ -80,7 +80,7 @@ public enum HelperScope {
         return nil
     }
 
-    static func installFolder(prefix: String) -> String? {
+    public static func installFolder(prefix: String) -> String? {
         let parts = prefix.split(separator: "/").map(String.init)
         guard parts.count >= 3, parts[0] == "Library",
               !parts.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }),
