@@ -107,7 +107,7 @@ struct DeveloperRow: View {
                 .foregroundStyle(Palette.inkSecondary)
                 .frame(width: 72, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
         .rowHighlight(isInspected: isInspected)
         .onTapGesture(perform: inspect)
@@ -166,7 +166,7 @@ struct DeveloperInspector: View {
         switch cache.cost {
         case .rebuilt:
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
         case .refetched:
             // The exact command, shown before anything is approved:
@@ -181,7 +181,7 @@ struct DeveloperInspector: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Palette.well, in: .rect(cornerRadius: 8))
                     Button("Clean Up with \(cache.tool)", action: cleanUp)
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.capsule)
                 }
             }

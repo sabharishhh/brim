@@ -43,10 +43,8 @@ struct LeftoversView: View {
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
-            Divider()
             inspector
                 .frame(width: 340)
-                .background(Palette.surface.opacity(0.5))
         }
         .task { await model.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
@@ -77,7 +75,6 @@ struct LeftoversView: View {
                 Text("Leftovers")
                     .font(.brimPageTitle)
                     .foregroundStyle(Palette.ink)
-                    .pageMorph("page.leftovers")
                 if model.checkedAt != nil {
                     Text(summary)
                         .font(.brimFacts)
@@ -100,8 +97,8 @@ struct LeftoversView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Search leftovers")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 

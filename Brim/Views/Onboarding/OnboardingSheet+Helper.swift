@@ -30,7 +30,7 @@ extension OnboardingSheet {
                     } label: {
                         Label("Turn On Helper", systemImage: "lock.shield")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     Button("Check Again") { helperState = HelperRoute.currentState() }
                         .buttonStyle(.borderless)
                 }

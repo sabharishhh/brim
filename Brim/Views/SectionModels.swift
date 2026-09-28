@@ -47,11 +47,11 @@ final class ScanActivity: ObservableObject {
     private var subscription: AnyCancellable?
 
     init(models: SectionModels) {
-        let apps = Publishers.CombineLatest3(
-            models.applications.$isLoading, models.updates.$isLoading, models.energy.$isSampling
-        ).map { $0 || $1 || $2 }
-        let mac = Publishers.CombineLatest3(
-            models.background.$isLoading, models.storage.$isLoading, models.developer.$isScanning
+        let apps = Publishers.CombineLatest(models.applications.$isLoading, models.updates.$isLoading)
+            .map { $0 || $1 }
+        let mac = Publishers.CombineLatest4(
+            models.background.$isLoading, models.storage.$isLoading, models.developer.$isScanning,
+            models.energy.$isSampling
         )
         subscription = Publishers.CombineLatest4(
             models.leftovers.$isScanning, apps, mac, models.history.$isLoading
@@ -72,6 +72,9 @@ final class ScanActivity: ObservableObject {
             }
             if mac.2 {
                 busy.insert(.developer)
+            }
+            if mac.3 {
+                busy.insert(.energy)
             }
             if journal {
                 busy.insert(.journal)

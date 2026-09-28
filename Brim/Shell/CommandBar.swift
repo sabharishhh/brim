@@ -33,12 +33,25 @@ struct CommandBar: View {
                     .font(.title3)
                     .focused($isFocused)
                     .accessibilityLabel("Go to or find")
+                    // On the field itself: it has focus, and a text field
+                    // takes the arrow keys and Escape before its container.
+                    .onKeyPress(.downArrow) {
+                        highlighted = min(highlighted + 1, max(results.count - 1, 0))
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        highlighted = max(highlighted - 1, 0)
+                        return .handled
+                    }
+                    .onKeyPress(.escape) {
+                        shell.showsCommandBar = false
+                        return .handled
+                    }
                     .onSubmit { run(results) }
             }
             .padding(.horizontal, 18)
             .frame(height: 52)
             if !results.isEmpty {
-                Divider()
                 ScrollView {
                     VStack(spacing: 2) {
                         ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
@@ -62,18 +75,6 @@ struct CommandBar: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Metrics.cardRadius))
         .onAppear { isFocused = true }
         .onChange(of: query) { highlighted = 0 }
-        .onKeyPress(.downArrow) {
-            highlighted = min(highlighted + 1, max(results.count - 1, 0))
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            highlighted = max(highlighted - 1, 0)
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            shell.showsCommandBar = false
-            return .handled
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command bar")
     }
@@ -99,8 +100,8 @@ struct CommandBar: View {
         .padding(.horizontal, 10)
         .frame(height: 38)
         .background(
-            isHighlighted ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear),
-            in: .rect(cornerRadius: 10, style: .continuous)
+            isHighlighted ? Palette.selected : Color.clear,
+            in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous)
         )
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)

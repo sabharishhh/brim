@@ -2,35 +2,6 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// The namespace page changes morph through: a Home tile's title becomes
-/// the title of the page it opens, and Back reverses it.
-extension EnvironmentValues {
-    @Entry var pageNamespace: Namespace.ID?
-}
-
-extension View {
-    /// Ties this view to the same element on another page. Nothing happens
-    /// outside the window's namespace or under Reduce Motion, where a page
-    /// change is a crossfade.
-    func pageMorph(_ id: String) -> some View {
-        modifier(PageMorph(id: id))
-    }
-}
-
-private struct PageMorph: ViewModifier {
-    let id: String
-    @SwiftUI.Environment(\.pageNamespace) private var namespace
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func body(content: Content) -> some View {
-        if let namespace, !reduceMotion {
-            content.matchedGeometryEffect(id: id, in: namespace, properties: .position)
-        } else {
-            content
-        }
-    }
-}
-
 extension SectionModels {
     /// Opens a dropped application in Apps, or says it is not one Brim
     /// lists. Shared by Home's drop well and a drop anywhere on the window.

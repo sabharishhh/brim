@@ -41,18 +41,18 @@ struct UpdatesView: View {
             Spacer()
             if model.available.contains(where: \.canInstall) {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .disabled(!model.installing.isEmpty)
             }
             Button(model.hasChecked ? "Check Again" : "Check for Updates") {
                 Task { await model.check(service: service) }
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .disabled(model.isChecking || model.isLoading)
         }
         .buttonBorderShape(.capsule)
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 
@@ -155,11 +155,11 @@ struct UpdatesView: View {
             .accessibilityLabel("\(title(item)), \(facts(item))")
             Spacer(minLength: 8)
             action(item)
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight)
         .rowHighlight(isInspected: false)
     }

@@ -34,7 +34,6 @@ struct LeftoverRow: View {
 
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
-    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -62,15 +61,12 @@ struct LeftoverRow: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 6) {
+            HoverActions {
                 RowAction(symbol: isKept ? "pin.slash" : "pin", help: isKept ? "Stop Keeping" : "Keep", action: keep)
                 RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(group.items.map(\.url))
                 }
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
-            .accessibilityHidden(!isHovering)
 
             Text(ByteText.short(group.totalBytes))
                 .font(.brimFacts)
@@ -78,14 +74,10 @@ struct LeftoverRow: View {
                 .foregroundStyle(Palette.inkSecondary)
                 .frame(width: 72, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .background(highlight, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
-        .contentShape(.rect)
+        .rowHighlight(isInspected: isInspected)
         .onTapGesture(perform: inspect)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
-        }
     }
 
     private var canPick: Bool {
@@ -113,13 +105,6 @@ struct LeftoverRow: View {
             return .regenerates
         }
         return nil
-    }
-
-    private var highlight: AnyShapeStyle {
-        if isInspected {
-            return AnyShapeStyle(.tint.opacity(0.10))
-        }
-        return AnyShapeStyle(isHovering ? Palette.well : Color.clear)
     }
 
     /// "3 places · Cache · Settings", each word with its symbol.
@@ -156,7 +141,7 @@ struct RowAction: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
-                .frame(width: 26, height: 26)
+                .frame(width: 28, height: 28)
                 .contentShape(.rect)
         }
         .buttonStyle(.borderless)

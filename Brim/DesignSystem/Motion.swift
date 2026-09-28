@@ -9,8 +9,10 @@ import SwiftUI
 enum Motion {
     /// Hover, press, toggles.
     static let quick = Animation.snappy(duration: 0.2)
-    /// Panels, layout, page changes.
+    /// Panels, layout.
     static let standard = Animation.smooth(duration: 0.35)
+    /// A change of page: quick enough that the next click never waits.
+    static let page = Animation.smooth(duration: 0.28)
     /// The tray, a drop, the proof. One of these per flow.
     static let emphasis = Animation.spring(response: 0.45, dampingFraction: 0.82)
     /// Numbers and bars.
@@ -37,14 +39,38 @@ extension AnyTransition {
         )
     }
 
-    /// A page arriving. The sidebar order is vertical space: moving down
-    /// it drifts content up, and moving up drifts it down.
+    /// A page arriving: it comes into focus, rising a little from the
+    /// direction of travel through the sidebar, while the one leaving
+    /// softens and fades. Nothing is carried from one page to the next;
+    /// a title flying into a card read as a trick rather than a place.
     static func brimPage(movingDown: Bool, reduceMotion: Bool) -> AnyTransition {
         guard !reduceMotion else { return .opacity }
         return .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: movingDown ? 8 : -8)),
-            removal: .opacity
+            insertion: .modifier(
+                active: PageFocus(blur: 6, scale: 0.99, offset: movingDown ? 10 : -10, opacity: 0),
+                identity: PageFocus()
+            ),
+            removal: .modifier(
+                active: PageFocus(blur: 4, scale: 1.005, offset: 0, opacity: 0),
+                identity: PageFocus()
+            )
         )
+    }
+}
+
+/// One frame of a page coming into or out of focus.
+private struct PageFocus: ViewModifier {
+    var blur: CGFloat = 0
+    var scale: CGFloat = 1
+    var offset: CGFloat = 0
+    var opacity: Double = 1
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .scaleEffect(scale)
+            .offset(y: offset)
+            .opacity(opacity)
     }
 }
 

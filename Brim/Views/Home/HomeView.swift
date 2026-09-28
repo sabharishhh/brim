@@ -152,7 +152,7 @@ struct HomeView: View {
             figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
             status: volume == nil ? .checking : .neutral,
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
-            morphID: "page.space", isRefreshing: storage.isLoading && volume != nil
+            isRefreshing: storage.isLoading && volume != nil
         ) {
             if let volume {
                 // Three facts, never added into one: what is used, what
@@ -181,8 +181,7 @@ struct HomeView: View {
         return StatCard(
             title: "Leftovers", symbol: "shippingbox",
             figure: checked ? ByteText.short(rebuilds + data) : "…",
-            status: summary.status, phrase: summary.phrase, morphID: "page.leftovers",
-            isRefreshing: leftovers.isScanning && checked
+            status: summary.status, phrase: summary.phrase, isRefreshing: leftovers.isScanning && checked
         ) {
             if checked, rebuilds + data > 0 {
                 MeterBar(segments: [
@@ -201,8 +200,7 @@ struct HomeView: View {
         return StatCard(
             title: "Background", symbol: "gearshape.2",
             figure: "\(background.live.count) running",
-            status: summary.status, phrase: summary.phrase, morphID: "page.background",
-            isRefreshing: background.isLoading && hasData
+            status: summary.status, phrase: summary.phrase, isRefreshing: background.isLoading && hasData
         ) { shell.go(to: .background) }
     }
 
@@ -214,7 +212,7 @@ struct HomeView: View {
             figure: ByteText.short(developer.totalBytes),
             status: firstLoad ? .checking : .neutral,
             phrase: count == 1 ? "1 build cache" : "\(count) build caches",
-            morphID: "page.developer", isRefreshing: developer.isScanning && !firstLoad
+            isRefreshing: developer.isScanning && !firstLoad
         ) { shell.go(to: .developer) }
     }
 
@@ -282,10 +280,10 @@ private struct HomeNote: View {
             }
             Spacer(minLength: 12)
             Button(actionTitle, action: action)
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
         }
-        .padding(16)
+        .padding(18)
         .card()
     }
 }

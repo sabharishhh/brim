@@ -102,12 +102,12 @@ struct AppInspector: View {
         } else {
             HStack(spacing: 8) {
                 Button("Remove", action: remove)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                 // Reset keeps the app and its licence and clears its state:
                 // "make it work again" is a different job from "get rid of
                 // it", and people reach for the second wanting the first.
                 Button("Reset", action: reset)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
             }
             .buttonBorderShape(.capsule)
             .disabled(model.isInspecting || model.footprint == nil)
@@ -179,7 +179,6 @@ struct AppInspector: View {
 private struct FootprintRow: View {
     let item: FootprintItem
     @SwiftUI.Environment(ShellState.self) private var shell
-    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -197,23 +196,20 @@ private struct FootprintRow: View {
             }
             .lineLimit(1)
             Spacer(minLength: 6)
-            RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
-                shell.reveal([item.evidence.url])
+            HoverActions {
+                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                    shell.reveal([item.evidence.url])
+                }
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
             Text(ByteText.short(item.sizeBytes))
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
                 .frame(width: 64, alignment: .trailing)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 40)
-        .background(isHovering ? Palette.well : .clear, in: .rect(cornerRadius: 8))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
-        }
+        .padding(.horizontal, 10)
+        .frame(height: 44)
+        .rowHighlight(isInspected: false)
         .contentShape(.rect)
         .onTapGesture(count: 2) { shell.showInFinder(item.evidence.url) }
         .contextMenu { ItemMenuItems(urls: [item.evidence.url]) }
