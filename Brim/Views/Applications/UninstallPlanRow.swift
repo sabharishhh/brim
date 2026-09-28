@@ -1,4 +1,5 @@
 import BrimCore
+import BrimUI
 import SwiftUI
 
 /// The evidence stays visible both before and after a person includes a row.
@@ -17,61 +18,82 @@ struct UninstallPlanRow: View {
     @State private var showsDetails = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             if let selection {
                 Toggle("Include \(target)", isOn: selection)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
                     .accessibilityHint("\(title), \(ByteText.short(bytes))")
             }
+            icon
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
                     Text(title)
-                        .font(.callout)
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     if tier == .C {
                         Text("Name match")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(ByteText.short(bytes))
-                        .font(.callout)
-                        .monospacedDigit()
-                    Button("Details", systemImage: "info.circle") {
-                        showsDetails = true
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Details for \(target)")
-                    .popover(isPresented: $showsDetails) {
-                        Text(evidence)
-                            .font(.callout)
-                            .padding()
-                            .frame(width: 320, alignment: .leading)
+                            .foregroundStyle(Palette.inkTertiary)
                     }
                 }
                 HStack(spacing: 6) {
                     Text(Self.abbreviated(count > 1 ? target : (target as NSString).deletingLastPathComponent))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.inkTertiary)
                         .truncationMode(.middle)
                         .lineLimit(1)
                         .help(target)
-
                     if let action {
                         Text(action)
-                            .font(.caption2)
-                            .foregroundStyle(disposition == .delete ? .orange : .secondary)
+                            .foregroundStyle(disposition == .delete ? Palette.caution : Palette.inkSecondary)
                     }
                 }
+                .font(.caption)
+            }
+            Spacer(minLength: 8)
+            Text(ByteText.short(bytes))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+            Button("Details", systemImage: "info.circle") {
+                showsDetails = true
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.inkTertiary)
+            .accessibilityLabel("Details for \(target)")
+            .popover(isPresented: $showsDetails) {
+                Text(evidence)
+                    .font(.callout)
+                    .padding()
+                    .frame(width: 320, alignment: .leading)
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 4)
         // Regions are told apart by space and headings, never by rules.
         .listRowSeparator(.hidden)
         .accessibilityElement(children: .contain)
+    }
+
+    /// Finder's own icon, so a folder reads as a folder and a file as a
+    /// file before anything is read. Every row used to be two lines of text
+    /// and nothing to tell them apart at a glance.
+    @ViewBuilder
+    private var icon: some View {
+        let url = URL(fileURLWithPath: target)
+        if kind == .forgetReceipt {
+            Image(systemName: "shippingbox")
+                .font(.system(size: 17))
+                .foregroundStyle(Palette.inkSecondary)
+                .frame(width: 26, height: 26)
+        } else if count == 1, url.pathExtension == "app" {
+            BrimIcon(source: .bundle(url), size: 26)
+        } else {
+            BrimIcon(source: .finder(url), size: 26)
+        }
     }
 
     /// The item's own name. The group heading already says what kind of

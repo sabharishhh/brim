@@ -12,7 +12,7 @@ struct StayingSection: View {
     var body: some View {
         if !items.isEmpty {
             Section {
-                ReviewHeading(title: "Staying (\(items.count))")
+                ReviewHeading(title: "Staying", count: items.count)
                 ForEach(items, id: \.target) { item in
                     let name = URL(fileURLWithPath: item.target).lastPathComponent
                     VStack(alignment: .leading, spacing: 2) {
