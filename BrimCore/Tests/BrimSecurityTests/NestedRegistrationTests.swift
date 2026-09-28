@@ -21,4 +21,21 @@ final class NestedRegistrationTests: XCTestCase {
                        [cached.path])
         XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: folder.appendingPathComponent("none").path), [])
     }
+
+    /// Teams' embedded browser had already moved to a newer version folder,
+    /// and three helpers in the old one stayed registered through the
+    /// uninstall: nothing on disk named them any more.
+    func testRecordsInsideARemovedPathThatPointAtNothingAreFound() {
+        let dump = """
+        path:                       /Applications/Gone.app/Contents/Frameworks/Edge.framework/Versions/1/Helpers/Helper (GPU).app (0x653c)
+        path:                       /Applications/Gone.app (0x6864)
+        path:                       /Applications/GoneToo.app (0x6865)
+        path:                       /System/Applications/Notes.app (0x1)
+        name:                       Something else
+        """
+        XCTAssertEqual(
+            LaunchServicesRegistration.staleRecords(inside: ["/Applications/Gone.app"], dump: dump),
+            ["/Applications/Gone.app/Contents/Frameworks/Edge.framework/Versions/1/Helpers/Helper (GPU).app"]
+        )
+    }
 }

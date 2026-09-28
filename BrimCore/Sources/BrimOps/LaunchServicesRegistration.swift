@@ -78,6 +78,46 @@ public enum LaunchServicesRegistration {
         return found
     }
 
+    /// Records Launch Services holds inside any of these paths that point
+    /// at nothing.
+    ///
+    /// Finding the applications inside a bundle before it goes misses the
+    /// ones an update already removed: Teams' embedded browser had moved to
+    /// a new version folder, and three helpers in the old one stayed
+    /// registered through its uninstall. Only the database knows those. A
+    /// full dump takes seconds, so this runs after a removal, not during.
+    public static func staleRecords(inside prefixes: [String], dump: String? = nil) -> [String] {
+        let prefixes = prefixes.map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+        guard !prefixes.isEmpty, let listing = dump ?? readDump() else { return [] }
+        var found = Set<String>()
+        for line in listing.split(separator: "\n") where line.hasPrefix("path:") {
+            var path = line.dropFirst("path:".count).trimmingCharacters(in: .whitespaces)
+            if let marker = path.range(of: " (0x", options: .backwards) {
+                path = String(path[..<marker.lowerBound])
+            }
+            guard prefixes.contains(where: { path.hasPrefix($0) }),
+                  !FileManager.default.fileExists(atPath: path) else { continue }
+            found.insert(path)
+        }
+        return found.sorted()
+    }
+
+    private static func readDump() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: lsregisterPath)
+        process.arguments = ["-dump"]
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("brim-ls-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: file.path, contents: nil),
+              let handle = try? FileHandle(forWritingTo: file) else { return nil }
+        defer { try? FileManager.default.removeItem(at: file) }
+        process.standardOutput = handle
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        process.waitUntilExit()
+        try? handle.close()
+        return try? String(contentsOf: file, encoding: .utf8)
+    }
+
     public static func register(
         bundlePath: String,
         runner: ((String, [String]) throws -> Int32)? = nil

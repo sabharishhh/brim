@@ -78,6 +78,16 @@ public actor Executor {
             for path in nestedApplications where !FileManager.default.fileExists(atPath: path) {
                 try? LaunchServicesRegistration.unregister(bundlePath: path)
             }
+            let removedFolders = sortedSteps
+                .filter { [.trashPath, .trashPathPrivileged].contains($0.kind) && journal.stepOutcomes[$0.index] == "ok" }
+                .map(\.target)
+            if !removedFolders.isEmpty {
+                Task.detached(priority: .utility) {
+                    for path in LaunchServicesRegistration.staleRecords(inside: removedFolders) {
+                        try? LaunchServicesRegistration.unregister(bundlePath: path)
+                    }
+                }
+            }
             // Not awaited: the daemon's empty copy arrives seconds after
             // the removal has finished, and nobody should wait for it.
             if !clearedPreferenceFiles.isEmpty {
