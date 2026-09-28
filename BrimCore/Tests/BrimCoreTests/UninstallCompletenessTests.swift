@@ -70,6 +70,46 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(names.contains("com.vendor.unrelated.bom"), "a different run is a different install")
     }
 
+    /// Teams' installer also put Microsoft AutoUpdate in Application
+    /// Support. Every `.app` in a package was read as another product, so
+    /// AutoUpdate and the caches named for it stayed after Teams went.
+    func testAnUpdaterTheInstallerPutOutsideApplicationsComesWithTheApplication() async throws {
+        try receipt("com.test.app", token: "T1", prefix: "Applications")
+        try receipt("com.vendor.updater", token: "T1", prefix: "Library/Application Support/Vendor/Updater")
+        let updater = try bundle("Library/Application Support/Vendor/Updater/Vendor Updater.app", "com.vendor.updater")
+        let cache = rootURL.appendingPathComponent("Library/Caches/com.vendor.updater.helper")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let engine = EvidenceEngine(sources: [
+            InstallerReceiptSource(payload: { id, _ in id == "com.vendor.updater" ? ["Vendor Updater.app"] : nil }),
+            LocationInventorySource()
+        ])
+
+        let found = try await engine.discover(identity: Identity(bundleID: "com.test.app", name: "Test"), in: root)
+        let byName = Dictionary(found.evidence.map { ($0.url.lastPathComponent, $0) }, uniquingKeysWith: { a, _ in a })
+
+        XCTAssertEqual(byName[updater.lastPathComponent]?.mechanism, "InstallerPayloadSource")
+        XCTAssertNotNil(byName["com.vendor.updater.bom"])
+        XCTAssertEqual(byName["com.vendor.updater.helper"]?.humanSentence,
+                       "Belongs to Vendor Updater, which was installed with Test.")
+        XCTAssertNotEqual(byName["com.vendor.updater.helper"]?.tier, .A)
+    }
+
+    /// The same updater serves the developer's other packaged applications,
+    /// so it stays while one of them is installed.
+    func testAnUpdaterStaysWhileTheDevelopersOtherPackagedApplicationIsInstalled() async throws {
+        try receipt("com.test.app", token: "T1", prefix: "Applications")
+        try receipt("com.vendor.updater", token: "T1", prefix: "Library/Application Support/Vendor/Updater")
+        try receipt("com.vendor.word", token: "T2", prefix: "Applications")
+        _ = try bundle("Library/Application Support/Vendor/Updater/Vendor Updater.app", "com.vendor.updater")
+        _ = try bundle("Applications/Word.app", "com.vendor.word")
+        let payloads = ["com.vendor.updater": ["Vendor Updater.app"], "com.vendor.word": ["Word.app"]]
+        let source = InstallerReceiptSource(payload: { id, _ in payloads[id] })
+
+        let found = await source.scan(for: Identity(bundleID: "com.test.app", name: "Test"), in: root).evidence
+        XCTAssertFalse(found.contains { $0.url.lastPathComponent == "Vendor Updater.app" })
+        XCTAssertFalse(found.contains { $0.url.lastPathComponent == "com.vendor.updater.bom" })
+    }
+
     // MARK: - Parts of the application
 
     func testAPartNamedInsideTheApplicationIsTheApplicationsOwn() {
@@ -255,6 +295,17 @@ final class UninstallCompletenessTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func bundle(_ path: String, _ identifier: String) throws -> URL {
+        let url = rootURL.appendingPathComponent(path)
+        let contents = url.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier,
+                                                              "CFBundleName": url.deletingPathExtension().lastPathComponent],
+                                           format: .xml, options: 0)
+            .write(to: contents.appendingPathComponent("Info.plist"))
+        return url
+    }
 
     private func component(_ path: String, _ identifier: String) -> IdentitySurface.Component {
         IdentitySurface.Component(path: path, bundleIdentifier: identifier,
