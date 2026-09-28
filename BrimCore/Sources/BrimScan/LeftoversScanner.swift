@@ -122,10 +122,14 @@ public actor LeftoversScanner {
         // Support` and the caches dominating while the small domains
         // waited their turn. Sorted afterwards, so the answer does not
         // depend on which domain finished first.
+        // What installed applications wrote, by macOS's own record. ChatGPT's
+        // 1.6 GB `~/.cache/codex-runtimes` was offered as a leftover with no
+        // owner while ChatGPT was installed and using it.
+        let writers = ProvenanceSource.owners(of: activeIdentities)
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
             walkDomain(domain, search, activeIdentities, pastIdentities,
                        activeBundleIDs, activeNames,
-                       activeGroupContainers, activeTeamIDs, inventoryRoots)
+                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers)
         }
         let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
@@ -158,7 +162,8 @@ public actor LeftoversScanner {
         _ activeNames: Set<String>,
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>,
-        _ inventoryRoots: Set<String>
+        _ inventoryRoots: Set<String>,
+        _ writers: [ProvenanceSource.Owner]
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
         let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
@@ -259,7 +264,8 @@ public actor LeftoversScanner {
                     containerOwner: containerOwner,
                     locationRules: locationRules, activeIdentities: activeIdentities,
                     activeBundleIDs: activeBundleIDs, activeNames: activeNames,
-                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs
+                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs,
+                    writers: writers
                 )
                 if belongsToInstalledApp {
                     continue
@@ -732,9 +738,13 @@ public actor LeftoversScanner {
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
-        activeTeamIDs: Set<String>
+        activeTeamIDs: Set<String>,
+        writers: [ProvenanceSource.Owner] = []
     ) -> Bool {
         let name = item.lastPathComponent
+        if ProvenanceSource.owner(of: item, among: writers) != nil {
+            return true
+        }
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
            activeNames.contains(name.lowercased()) {
             return true
@@ -1025,6 +1035,7 @@ public actor LeftoversScanner {
             identities.append(Identity(bundleID: identity.bundleID, teamID: identity.teamID,
                                        name: identity.name, bundleName: identity.bundleName,
                                        groupContainers: claims.surface.groups,
+                                       bundlePath: bundle.path,
                                        identitySurface: claims.surface))
         }
         return (identities, complete)
