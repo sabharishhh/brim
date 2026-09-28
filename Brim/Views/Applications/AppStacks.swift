@@ -61,6 +61,8 @@ struct AppStacks: View {
         }
         .onAppear { remembered = StableOrder.positions(groups) }
         .listStyle(.plain)
+        // Room below the last group, so it never sits on the window's edge.
+        .contentMargins(.bottom, 28, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .quickLookOnSpace(model.selected.map { [$0.url] } ?? [], shell: shell)
         .onKeyPress(.downArrow) { move(by: 1) }

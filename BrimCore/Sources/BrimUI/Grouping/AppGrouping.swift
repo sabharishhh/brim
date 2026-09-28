@@ -100,51 +100,36 @@ public struct AppGrouper {
 
     // MARK: - Smart
 
-    /// First match wins, tried in the order that keeps each claim honest:
-    /// Apple's own apps are taken first so none is offered as unused, then
-    /// what is new, what is unused, what is large, suites, everyday use.
-    /// Shown with the most actionable first and Apple last, collapsed.
+    /// Two groups, by the one question that decides what can be done:
+    /// the apps you installed, which Brim can remove, and the ones that
+    /// cannot go, macOS's own and apps shipped inside another. Each is
+    /// ordered by use, most recent first, so what you live in is at the top
+    /// and what you have forgotten sinks.
+    ///
+    /// This replaced six smart groups (recently installed, unused, larger
+    /// than 1 GB, suites, opened this week, everything else). Each was true
+    /// and together they scattered one list across the page, with no group
+    /// that answered what someone opens Apps to find.
     private func smart(_ apps: [InstalledApplication]) -> [ItemGroup<InstalledApplication>] {
-        let unusedFirst: (InstalledApplication, InstalledApplication) -> Bool = {
-            ($0.lastOpened ?? $0.addedAt ?? .distantPast) < ($1.lastOpened ?? $1.addedAt ?? .distantPast)
-        }
-        let early: [GroupRule<InstalledApplication>] = [
-            GroupRule(id: "apple", title: "From Apple", collapsed: true, matches: Self.isApple, order: Self.byName),
-            GroupRule(id: "recent", title: "Recently installed", matches: isRecentlyInstalled) {
-                ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast)
-            },
-            GroupRule(id: "unused", title: "Not opened in 3 months", matches: isUnused, order: unusedFirst),
-            GroupRule(
-                id: "large", title: "Larger than 1 GB", matches: { $0.bundleSizeBytes > Self.largeBytes },
-                order: Self.bySizeDescending
-            )
-        ]
-        // A suite is two or more apps from one developer among what the
-        // earlier rules left, so one Adobe app that is unused is not a
-        // suite of one sitting beside it.
-        let left = apps.filter { app in !early.contains { $0.matches(app) } }
-        let suiteKeys = Set(Dictionary(grouping: left, by: Self.suiteKey).filter { $0.key != nil && $0.value.count > 1 }
-            .compactMap(\.key))
-        let rules = early + [
-            GroupRule(
-                id: "suites", title: "Suites", matches: { Self.suiteKey($0).map(suiteKeys.contains) ?? false },
-                order: { (Self.suiteTitle($0), $0.name) < (Self.suiteTitle($1), $1.name) }
-            ),
-            GroupRule(id: "everyday", title: "Opened this week", matches: isEveryday) {
-                ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast)
-            }
-        ]
-        var groups = Grouping.assign(
-            apps, rules: rules,
-            otherwise: GroupRule(id: "rest", title: "Everything else", matches: { _ in true }, order: Self.byName),
-            display: ["recent", "unused", "large", "suites", "everyday", "rest", "apple"]
+        Grouping.assign(
+            apps,
+            rules: [
+                GroupRule(id: "builtin", title: "Built in", matches: \.isSystemProtected, order: Self.byUse)
+            ],
+            otherwise: GroupRule(id: "yours", title: "Your apps", matches: { _ in true }, order: Self.byUse),
+            display: ["yours", "builtin"]
         )
-        if let index = groups.firstIndex(where: { $0.id == "suites" }) {
-            groups[index].subgroups = Dictionary(grouping: groups[index].items, by: Self.suiteTitle)
-                .map { ItemGroup(id: "suite-\($0.key)", title: $0.key, items: $0.value) }
-                .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    /// Most recently opened first. Apps Spotlight has no date for follow,
+    /// by name, rather than being placed as though they were never used.
+    static func byUse(_ lhs: InstalledApplication, _ rhs: InstalledApplication) -> Bool {
+        switch (lhs.lastOpened, rhs.lastOpened) {
+        case let (left?, right?): left > right
+        case (.some, nil): true
+        case (nil, .some): false
+        case (nil, nil): byName(lhs, rhs)
         }
-        return groups
     }
 
     /// The signing team when there is one, since two apps from one team

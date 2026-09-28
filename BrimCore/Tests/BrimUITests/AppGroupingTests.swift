@@ -24,66 +24,27 @@ final class AppGroupingTests: XCTestCase {
         )
     }
 
-    private func smart(_ apps: [InstalledApplication]) -> [String: [String]] {
-        let groups = AppGrouper(now: now).groups(apps, by: .smart)
-        XCTAssertEqual(groups.flatMap(\.items).count, apps.count, "Every app in exactly one group")
-        return Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.items.map(\.name)) })
-    }
-
-    func testApplesOwnAppsAreNeverOfferedAsUnusedAndComeLast() {
-        let chess = app("Chess", bundleID: "com.apple.Chess", source: .apple, lastOpened: daysAgo(900))
-        let old = app("OldTool", lastOpened: daysAgo(200))
-        let groups = AppGrouper(now: now).groups([chess, old], by: .smart)
-        XCTAssertEqual(groups.map(\.id), ["unused", "apple"])
-        XCTAssertTrue(groups.last?.startsCollapsed ?? false)
-    }
-
-    func testNoSpotlightRecordIsNotUnused() {
-        // "Did not look" is not "nothing found": with Spotlight off there
-        // is no date at all, and calling the app unused would be invented.
-        let groups = smart([app("Unindexed")])
-        XCTAssertEqual(groups["rest"], ["Unindexed"])
-        XCTAssertNil(groups["unused"])
-    }
-
-    func testMigratedAndNeverOpenedHereIsUnused() {
-        // IINA on this Mac: arrived 14 September, last opened 7 August.
-        let groups = smart([app("IINA", lastOpened: daysAgo(40), addedAt: daysAgo(20))])
-        XCTAssertEqual(groups["unused"], ["IINA"])
-    }
-
-    func testASuiteNeedsTwoAppsTheEarlierRulesLeft() {
-        let apps = [
-            app("Photoshop", team: "ADOBE", developer: "Adobe Inc.", lastOpened: daysAgo(10)),
-            app("Illustrator", team: "ADOBE", developer: "Adobe Inc.", lastOpened: daysAgo(12)),
-            app("Acrobat", team: "ADOBE", developer: "Adobe Inc.", lastOpened: daysAgo(300)),
-            app("Word", team: "MSFT", developer: "Microsoft", lastOpened: daysAgo(10)),
-            app("Teams", team: "MSFT", developer: "Microsoft", lastOpened: daysAgo(400))
-        ]
-        let groups = AppGrouper(now: now).groups(apps, by: .smart)
-        let suites = groups.first { $0.id == "suites" }
-        XCTAssertEqual(suites?.items.map(\.name), ["Illustrator", "Photoshop"])
-        XCTAssertEqual(suites?.subgroups.map(\.title), ["Adobe Inc."])
-        XCTAssertEqual(groups.first { $0.id == "unused" }?.items.map(\.name), ["Teams", "Acrobat"], "Oldest first")
-        XCTAssertEqual(groups.first { $0.id == "rest" }?.items.map(\.name), ["Word"], "A suite of one is not one")
-    }
-
-    func testRecentlyInstalledComesFirst() {
-        let groups = AppGrouper(now: now).groups(
-            [app("Zed", installedAt: daysAgo(2)), app("Old", lastOpened: daysAgo(3))], by: .smart
+    /// Smart is two groups: what you installed, and what cannot be removed.
+    func testSmartSplitsWhatCanGoFromWhatCannot() {
+        var chess = app("Chess", bundleID: "com.apple.Chess", source: .apple, lastOpened: daysAgo(1))
+        chess = InstalledApplication(
+            identity: chess.identity, url: chess.url, bundleSizeBytes: 1, isSystemProtected: true,
+            lastOpened: chess.lastOpened
         )
-        XCTAssertEqual(groups.map(\.id), ["recent", "everyday"])
+        let xcode = app("Xcode", bundleID: "com.apple.dt.Xcode", source: .appStore, lastOpened: daysAgo(3))
+        let groups = AppGrouper(now: now).groups([chess, xcode], by: .smart)
+
+        XCTAssertEqual(groups.map(\.id), ["yours", "builtin"])
+        // Xcode is Apple's, and still something you installed and can remove.
+        XCTAssertEqual(groups.first?.items.map(\.name), ["Xcode"])
     }
 
-    func testOnlyFourGroupsStartOpen() {
+    func testMostRecentlyUsedComeFirstAndUndatedLast() {
         let apps = [
-            app("New", installedAt: daysAgo(1)), app("Unused", lastOpened: daysAgo(200)),
-            app("Huge", size: 5_000_000_000, lastOpened: daysAgo(20)), app("Daily", lastOpened: daysAgo(1)),
-            app("Other", lastOpened: daysAgo(20))
+            app("Old", lastOpened: daysAgo(200)), app("Unindexed"), app("Today", lastOpened: daysAgo(0.1))
         ]
-        let groups = AppGrouper(now: now).groups(apps, by: .smart)
-        XCTAssertEqual(groups.map(\.id), ["recent", "unused", "large", "everyday", "rest"])
-        XCTAssertEqual(groups.map(\.startsCollapsed), [false, false, false, false, true])
+        let names = AppGrouper(now: now).groups(apps, by: .smart).first?.items.map(\.name)
+        XCTAssertEqual(names, ["Today", "Old", "Unindexed"])
     }
 }
 
