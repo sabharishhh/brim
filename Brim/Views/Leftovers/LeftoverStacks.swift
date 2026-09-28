@@ -21,6 +21,9 @@ struct LeftoverStacks: View {
     @State private var expanded: Set<String> = []
     /// Cards whose open or closed state the person flipped from the default.
     @State private var flipped: Set<String> = []
+    /// Where each row was when the page opened, so nothing reorders under
+    /// the pointer while it is open (`StableOrder`).
+    @State private var remembered: [String: Int] = [:]
 
     var body: some View {
         stacks
@@ -31,6 +34,10 @@ struct LeftoverStacks: View {
     }
 
     private var sections: [ItemGroup<LeftoverGroup>] {
+        StableOrder.apply(grouped, remembered: remembered)
+    }
+
+    private var grouped: [ItemGroup<LeftoverGroup>] {
         LeftoverGrouper().groups(
             model.visibleOrphanedGroups + model.visibleUnclaimedGroups, by: grouping,
             isKept: { keptIDs.contains($0.id) }
@@ -66,6 +73,7 @@ struct LeftoverStacks: View {
                 }
             }
         }
+        .onAppear { remembered = StableOrder.positions(grouped) }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .quickLookOnSpace(inspectedURLs, shell: shell)
