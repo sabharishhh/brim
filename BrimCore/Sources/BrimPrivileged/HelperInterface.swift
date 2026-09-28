@@ -35,6 +35,14 @@ import Security
     /// The reply carries nil when it worked, or a sentence saying why not.
     func forgetReceipt(packageID: String, withReply reply: @escaping (String?) -> Void)
 
+    /// Sets aside an application or plug-in an installer left owned by
+    /// root. See `PrivilegedBundleRemoval` for what it will and will not
+    /// take. Nil when it worked, otherwise why not.
+    func removeInstalledBundle(
+        domain: String, name: String,
+        withReply reply: @escaping (String?) -> Void
+    )
+
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
@@ -61,7 +69,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "4"
+    public static let version = "5"
 
     public static let teamID = "9LY29YLFG2"
 

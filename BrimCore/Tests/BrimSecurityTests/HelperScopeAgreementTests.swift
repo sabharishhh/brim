@@ -25,6 +25,38 @@ final class HelperScopeAgreementTests: XCTestCase {
         )
     }
 
+    func testThePlanAndTheHelperNameTheSameBundleFolders() {
+        XCTAssertEqual(
+            HelperScope.bundleFolders,
+            Dictionary(uniqueKeysWithValues: PrivilegedBundleRemoval.Domain.allCases.map {
+                ($0.directory, $0.extensions)
+            })
+        )
+    }
+
+    /// A root helper that moves bundles has to refuse by its own reading,
+    /// whatever it is asked: nothing that is not a plain name with the
+    /// place's own extension, and nothing macOS's or Brim's.
+    func testTheHelperRefusesAnythingButAnInstalledBundle() throws {
+        XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "applications", name: "../Safari.app"))
+        XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "applications", name: "notes.txt"))
+        XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "halPlugIns", name: "Vendor.app"))
+        XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "library", name: "Vendor.app"))
+        XCTAssertEqual(try PrivilegedBundleRemoval.target(domain: "applications", name: "Vendor.app").path,
+                       "/Applications/Vendor.app")
+
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("bundle-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        for (name, identifier) in [("Apple.app", "com.apple.Notes"), ("Brim.app", "com.sabharishhh.brim")] {
+            let contents = folder.appendingPathComponent("\(name)/Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier],
+                                               format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+            XCTAssertThrowsError(try PrivilegedBundleRemoval.check(bundle: folder.appendingPathComponent(name)))
+        }
+    }
+
     func testTheHelperIsNeverPromisedAnythingElse() {
         for path in [
             "/Library/Preferences/org.cups.printers.plist",

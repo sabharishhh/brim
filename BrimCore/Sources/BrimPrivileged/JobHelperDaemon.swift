@@ -143,6 +143,21 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
+    func removeInstalledBundle(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
+        do {
+            let target = try PrivilegedBundleRemoval.target(domain: domain, name: name)
+            try setAsideBundle(target)
+            log.info("set aside \(target.path, privacy: .public)")
+            reply(nil)
+        } catch let refusal as PrivilegedBundleRemoval.Refusal {
+            log.error("refused \(domain)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch {
+            log.error("failed \(domain)/\(name, privacy: .public): \(error.localizedDescription)")
+            reply(error.localizedDescription)
+        }
+    }
+
     func removeBrokenCommand(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
         do {
             let target = try PrivilegedLinkRemoval.target(domain: domain, name: name)
@@ -270,6 +285,31 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
     /// Renames the file into the quarantine rather than unlinking it, so a
     /// mistake can be undone. Both directories are on the same volume, so
     /// this is one atomic rename and never a partial copy.
+    /// Judged and moved through one descriptor for the folder, so a link
+    /// swapped in after the check is not what moves.
+    private func setAsideBundle(_ target: URL) throws {
+        let directory = target.deletingLastPathComponent().path
+        let name = target.lastPathComponent
+        let parent = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard parent >= 0 else { throw PrivilegedBundleRemoval.Refusal.notThere }
+        defer { close(parent) }
+
+        var info = stat()
+        guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw PrivilegedBundleRemoval.Refusal.notThere
+        }
+        guard (info.st_mode & S_IFMT) == S_IFDIR else { throw PrivilegedBundleRemoval.Refusal.notAFolder }
+        try PrivilegedBundleRemoval.check(bundle: target)
+
+        let holding = try openHoldingFolder(for: directory) { why in
+            PrivilegedBundleRemoval.Refusal.couldNotQuarantine(why)
+        }
+        defer { close(holding) }
+        guard renameat(parent, name, holding, name) == 0 else {
+            throw PrivilegedBundleRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
+        }
+    }
+
     private func moveIntoQuarantine(parent: Int32, name: String, from directory: String) throws {
         let holding = try openHoldingFolder(for: directory) { why in
             PrivilegedJobRemoval.Refusal.couldNotQuarantine(why)
