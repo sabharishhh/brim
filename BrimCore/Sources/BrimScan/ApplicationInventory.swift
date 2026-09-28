@@ -49,7 +49,7 @@ public actor ApplicationInventory {
                 identity: identity,
                 url: bundleURL,
                 bundleSizeBytes: Self.size(of: resolved),
-                isSystemProtected: protected || host != nil || Self.isOSOwned(resolved)
+                isSystemProtected: protected || Self.isOSOwned(resolved)
             )
             application.enclosingApp = host
             describe(&application, resolved: resolved, casks: casks, developers: &developers)
@@ -118,8 +118,11 @@ public actor ApplicationInventory {
             for bundle in bundles(in: domain.url) {
                 found.append(Candidate(url: bundle, protected: domain.protected, host: nil))
                 let host = Self.name(of: bundle)
+                // It stands where its host stands: removable when the host
+                // is yours, protected when the host belongs to macOS.
+                let hostProtected = domain.protected || Self.isOSOwned(bundle.resolvingSymlinksInPath())
                 found.append(contentsOf: Self.embeddedApplications(in: bundle).map {
-                    Candidate(url: $0, protected: true, host: host)
+                    Candidate(url: $0, protected: hostProtected, host: host)
                 })
             }
         }
@@ -132,7 +135,7 @@ public actor ApplicationInventory {
                 let host: String? = placement
                 let protected = searchDomains.contains { $0.protected && url.path.hasPrefix($0.url.path + "/") }
                 found.append(
-                    Candidate(url: url, protected: protected || host != nil, host: host)
+                    Candidate(url: url, protected: protected, host: host)
                 )
             }
         }

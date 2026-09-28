@@ -43,6 +43,14 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
     /// signature of the app that carries it.
     public var enclosingApp: String?
 
+    /// The bundle that carries this one: `Host.app` above
+    /// `Contents/Applications/This.app`. Removing this app means removing
+    /// that one, so this is where a removal goes.
+    public var hostURL: URL? {
+        guard enclosingApp != nil else { return nil }
+        return url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+
     public var id: String { url.path }
     public var name: String { identity.name }
     public var version: String? { identity.version }
