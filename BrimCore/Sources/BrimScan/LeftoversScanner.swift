@@ -55,7 +55,9 @@ public actor LeftoversScanner {
         self.protectedAppURL = protectedAppURL
     }
 
-    public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
+    public func scanLeftovers(
+        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:]
+    ) async throws -> [Leftover] {
         try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
         try Task.checkCancellation()
@@ -129,7 +131,7 @@ public actor LeftoversScanner {
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
             walkDomain(domain, search, activeIdentities, pastIdentities,
                        activeBundleIDs, activeNames,
-                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers)
+                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames)
         }
         let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
@@ -163,7 +165,8 @@ public actor LeftoversScanner {
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>,
         _ inventoryRoots: Set<String>,
-        _ writers: [ProvenanceSource.Owner]
+        _ writers: [ProvenanceSource.Owner],
+        _ knownNames: [String: String]
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
         let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
@@ -310,6 +313,7 @@ public actor LeftoversScanner {
                         bundleID: owner.category == .orphaned && owner.ownerID.contains(".")
                             ? owner.ownerID : nil,
                         name: owner.cask?.capitalized
+                            ?? Self.recordedName(for: owner.ownerID, in: knownNames)
                             ?? Self.readableName(ownerID: owner.ownerID, url: item, qualified: qualified)
                     ),
                     evidence: owner.evidence,
@@ -893,6 +897,16 @@ public actor LeftoversScanner {
 
     /// Something a person can read, instead of a team identifier and a
     /// reverse-DNS name.
+    /// The name Brim recorded for this identifier or the application it is
+    /// inside, the longest match winning, so `com.microsoft.teams2.agent`
+    /// is Microsoft Teams too.
+    static func recordedName(for ownerID: String, in names: [String: String]) -> String? {
+        let owner = ownerID.lowercased()
+        guard !owner.isEmpty, !names.isEmpty else { return nil }
+        return names.filter { owner == $0.key || owner.hasPrefix($0.key + ".") }
+            .max { $0.key.count < $1.key.count }?.value
+    }
+
     static func readableName(ownerID: String, url: URL, qualified: String? = nil) -> String {
         // Inside a vendor folder the vendor is half the name, and
         // dropping it leaves a row saying "Chrome" beside one saying

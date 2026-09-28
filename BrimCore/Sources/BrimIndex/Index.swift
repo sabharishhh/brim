@@ -254,6 +254,21 @@ public actor Index {
         }
     }
 
+    /// Every name Brim has recorded for an application, by bundle
+    /// identifier, including applications that have since been removed.
+    public nonisolated func recordedNames() async throws -> [String: String] {
+        try await dbManager.dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT bundle_id, name FROM identity WHERE bundle_id IS NOT NULL")
+            var names: [String: String] = [:]
+            for row in rows {
+                if let id: String = row["bundle_id"], let name: String = row["name"], !name.isEmpty {
+                    names[id.lowercased()] = name
+                }
+            }
+            return names
+        }
+    }
+
     /// Reads identities asynchronously without blocking the actor's write thread.
     public nonisolated func fetchIdentity(bundleID: String) async throws -> String? {
         try await dbManager.dbPool.read { db in

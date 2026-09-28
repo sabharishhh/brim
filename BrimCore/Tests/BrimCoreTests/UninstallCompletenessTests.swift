@@ -162,6 +162,36 @@ final class UninstallCompletenessTests: XCTestCase {
                        ["spotify"], "a generic last label names nothing")
     }
 
+    /// Claude Code's URL handler was made from inside Visual Studio Code and
+    /// carries its provenance, and refusing every shared value left all of
+    /// Visual Studio Code's data unowned in Leftovers. Sharing only matters
+    /// when both bundles are named for the item.
+    func testASharedProvenanceStillNamesOneOwnerWhenOnlyOneIsNamedForTheItem() {
+        let stamp = Data([1, 2, 0, 0xA3])
+        let owners = ProvenanceSource.owners(of: []) + [
+            ProvenanceSource.Owner(stamp: stamp, identifiers: ["com.microsoft.vscode"],
+                                   names: ["visual studio code", "code", "vscode"]),
+            ProvenanceSource.Owner(stamp: stamp, identifiers: ["com.anthropic.claude-code-url-handler"],
+                                   names: ["claude code url handler"])
+        ]
+        XCTAssertEqual(ProvenanceSource.owner(named: "vscode-cpptools", stamp: stamp, among: owners)?.names.first,
+                       "visual studio code")
+        let twins = owners + [ProvenanceSource.Owner(stamp: stamp, identifiers: [], names: ["vscode"])]
+        XCTAssertNil(ProvenanceSource.owner(named: "vscode-cpptools", stamp: stamp, among: twins),
+                     "two bundles with one value, both named for it, cannot be told apart")
+        XCTAssertNil(ProvenanceSource.owner(named: "vscode-cpptools", stamp: Data([9]), among: owners))
+    }
+
+    /// A leftover of an application Brim has seen is named as Brim saw it.
+    /// Named from the identifier alone, Teams' would read "Teams2".
+    func testALeftoverIsNamedAsBrimRecordedItsApplication() {
+        let names = ["com.microsoft.teams2": "Microsoft Teams", "com.microsoft": "Wrong"]
+        XCTAssertEqual(LeftoversScanner.recordedName(for: "com.microsoft.teams2", in: names), "Microsoft Teams")
+        XCTAssertEqual(LeftoversScanner.recordedName(for: "com.microsoft.teams2.agent", in: names), "Microsoft Teams")
+        XCTAssertNil(LeftoversScanner.recordedName(for: "com.microsoft.teams2beta", in: [:]))
+        XCTAssertNil(LeftoversScanner.recordedName(for: "com.openai.chat", in: names))
+    }
+
     // MARK: - Another application's files
 
     /// A prefix rule took `com.google.Chrome.canary.plist` for Chrome.
