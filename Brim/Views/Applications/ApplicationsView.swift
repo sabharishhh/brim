@@ -14,8 +14,9 @@ struct ApplicationsView: View {
 
     @SceneStorage("apps.grouping") private var grouping = AppGrouping.smart
     @SceneStorage("apps.asTable") private var asTable = false
-    @State private var uninstalling: InstalledApplication?
-    @State private var resetting: InstalledApplication?
+    /// The removal or reset under review in the right pane, if any.
+    @State private var review: AppReview?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// "Opened 3 months ago" for each app, formatted once per load.
     @State private var opened: [String: String] = [:]
 
@@ -34,29 +35,31 @@ struct ApplicationsView: View {
                 content
             }
             .frame(minWidth: 480, maxWidth: .infinity)
+            // Held still while a review is open, and dimmed a little so the
+            // review reads as the focus.
+            .opacity(review == nil ? 1 : 0.55)
+            .allowsHitTesting(review == nil)
             Divider()
             inspector
-                .frame(width: 360)
+                // Wider for a review, whose rows carry more.
+                .frame(width: review == nil ? 360 : 440)
                 .background(Palette.surface.opacity(0.5))
         }
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
         .focusedSceneValue(\.selectedItems, SelectedItems(urls: model.selected.map { [$0.url] } ?? []))
-        .sheet(item: $resetting) { application in
-            UninstallSheet(application: application, service: service, intentType: .reset) {
-                Task { await model.load(service: service) }
-            }
+    }
+
+    private func finished(_ review: AppReview) {
+        if review.type == .uninstall {
+            // Drop the row at once if the bundle really is gone:
+            // re-enumerating every app takes seconds, and a row that
+            // outlives "nothing left" reads as a failure.
+            model.forgetIfRemoved(review.app)
+            AppIcon.forget(review.app.url)
         }
-        .sheet(item: $uninstalling) { application in
-            UninstallSheet(application: application, service: service) {
-                // Drop the row at once if the bundle really is gone:
-                // re-enumerating every app takes seconds, and a row that
-                // outlives "nothing remains" reads as a failure.
-                model.forgetIfRemoved(application)
-                AppIcon.forget(application.url)
-                Task { await model.load(service: service) }
-            }
-        }
+        Task { await model.load(service: service) }
     }
 
     // MARK: - Header
@@ -125,7 +128,7 @@ struct ApplicationsView: View {
                 } else {
                     AppStacks(
                         model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
-                        opened: opened, remove: { uninstalling = $0 }
+                        opened: opened, remove: { review = AppReview(app: $0, type: .uninstall) }
                     )
                 }
             }
@@ -137,10 +140,19 @@ struct ApplicationsView: View {
 
     @ViewBuilder
     private var inspector: some View {
-        if let app = model.selected {
+        if let review {
+            UninstallPanel(
+                application: review.app, service: service, intentType: review.type,
+                onFinished: { finished(review) },
+                onClose: { self.review = nil }
+            )
+            .id(review.id)
+            .transition(.opacity)
+        } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
-                remove: { uninstalling = app }, reset: { resetting = app }
+                remove: { review = AppReview(app: app, type: .uninstall) },
+                reset: { review = AppReview(app: app, type: .reset) }
             )
             .refreshing(model.isLoading)
             // Keyed on the app and a crossfade only, so arrowing through
@@ -167,5 +179,14 @@ struct ApplicationsView: View {
             }
         }
         return text
+    }
+}
+
+/// An app and what is being done to it, for the review in the right pane.
+struct AppReview: Identifiable, Equatable {
+    let app: InstalledApplication
+    let type: IntentType
+    var id: String {
+        "\(type.rawValue):\(app.id)"
     }
 }

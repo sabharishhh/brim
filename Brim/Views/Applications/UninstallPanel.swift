@@ -3,13 +3,13 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// The deep uninstall, shown before it happens and proven after.
+/// The deep uninstall, reviewed and proven in the Apps page's right pane.
 ///
-/// Unlike the Review Queue sheet, nothing here names a path. The plan is
-/// built from the application's identity alone, so what the user sees is
-/// what the evidence engine discovered — and after applying, the sheet
-/// reports the re-check rather than simply closing.
-struct UninstallSheet: View {
+/// Nothing here names a path. The plan is built from the application's
+/// identity alone, so what the person sees is what the evidence engine
+/// found, and after applying, the panel shows the re-check in place of the
+/// button. It used to be a sheet, which hid the page it was about.
+struct UninstallPanel: View {
     let application: InstalledApplication
     let service: any BrimServiceProtocol
     /// Uninstall removes the application and everything it wrote. Reset
@@ -17,23 +17,27 @@ struct UninstallSheet: View {
     /// it starts as if new. One sheet for both, because the review and
     /// the approval are identical and only the plan differs.
     var intentType: IntentType = .uninstall
+    /// The work is done: the page reads the Mac again.
     let onFinished: () -> Void
+    /// The panel is closed, whatever happened.
+    let onClose: () -> Void
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var showingSearchDetails = false
-    @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
+            content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             footer
         }
-        // A fixed presentation size keeps scrolling from feeding the list's
-        // changing ideal size back into AppKit's sheet constraint solver.
-        .frame(width: 660, height: 520)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: model.phase)
+        .onKeyPress(.escape) {
+            guard model.phase != .executing else { return .ignored }
+            close()
+            return .handled
+        }
         .task {
             // Identity only — no specific targets. This is the difference
             // between uninstalling an application and tidying a folder.
@@ -50,37 +54,39 @@ struct UninstallSheet: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            AppIconView(url: application.url, size: 40)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(intentType == .reset ? "Reset" : "Uninstall") \(application.name)")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                if let bundleID = application.identity.bundleID {
-                    Text(bundleID)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+        HStack(alignment: .center, spacing: 12) {
+            BrimIcon(source: .bundle(application.url), size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isReset ? "Reset" : "Review")
+                    .font(.brimPageTitle)
+                    .foregroundStyle(Palette.ink)
+                Text(application.name)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+                    .lineLimit(1)
             }
             Spacer()
-            Button(isFinished ? "Done" : "Cancel") {
-                if isFinished {
-                    onFinished()
-                }
-                dismiss()
-            }
-            .keyboardShortcut(.escape, modifiers: [])
-            .disabled(model.phase == .executing)
+            RowAction(symbol: "xmark", help: "Close", action: close)
+                .disabled(model.phase == .executing)
         }
-        .padding()
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
     }
 
     private var isFinished: Bool {
-        if case .verified = model.phase {
-            return true
+        switch model.phase {
+        case .verified, .appliedButUnverified, .failed: true
+        default: false
         }
-        return false
+    }
+
+    private func close() {
+        switch model.phase {
+        case .verified, .appliedButUnverified: onFinished()
+        default: break
+        }
+        onClose()
     }
 
     /// One sheet serves both jobs, and every sentence in it used to be
@@ -97,22 +103,22 @@ struct UninstallSheet: View {
     private var content: some View {
         switch model.phase {
         case .preparing:
-            ProgressView("Finding app files…")
+            SkeletonRows(count: 5, showsTick: false)
+                .padding(.horizontal, 8)
 
         case let .failed(reason):
             message(title: "Stopped", detail: reason, isError: true)
 
         case let .appliedButUnverified(reason):
             message(
-                title: isReset ? "Reset, but not checked" : "Removed, but not checked",
-                detail: "Verification could not finish: \(reason)",
+                title: isReset ? "Reset, not checked" : "Removed, not checked",
+                detail: reason,
                 isError: false
             )
 
         case .executing:
-            ProgressView(isReset
-                ? "Resetting \(application.name)…"
-                : "Uninstalling \(application.name)…")
+            // The plan stays in view, fixed, while the button says it runs.
+            planList.disabled(true)
 
         case let .verified(result):
             verification(result)
@@ -204,34 +210,39 @@ struct UninstallSheet: View {
 
             StayingSection(items: model.staying)
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     private func verification(_ result: VerificationResult) -> some View {
         VStack(spacing: 10) {
-            Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundColor(result.success ? .green : .orange)
+            Image(systemName: result.success ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(result.success ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.caution))
+                .symbolEffect(.bounce, value: result.success)
 
             Text(headline(for: result))
-                .font(.headline)
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
 
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                ? (isReset
-                    ? "Selected data removed. \(application.name) remains installed."
-                    : "All selected items were removed.")
-                : (result.reason ?? "Some selected items remain."))
-                .foregroundColor(.secondary)
+                ? (isReset ? "App kept, its data cleared" : "Every location checked again")
+                : (result.reason ?? "Some of it remains"))
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal)
 
             if !result.success, !result.remainingPaths.isEmpty {
                 let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
-                Button(urls.count == 1 ? "Show in Finder" : "Show All \(urls.count) in Finder") {
+                Button(urls.count == 1 ? "Show in Finder" : "Show All in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(urls)
                 }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
             }
 
             if let actions = result.followUpActions {
@@ -261,48 +272,69 @@ struct UninstallSheet: View {
         .padding()
         .accessibilityElement(children: .combine)
     }
+}
 
-    private var footer: some View {
-        HStack {
+private extension UninstallPanel {
+    /// One button that carries the work and gives way to Done.
+    var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
             if case .ready = model.phase, let plan = model.plan {
                 if model.isUpdating {
-                    ProgressView("Updating selection…")
-                        .controlSize(.small)
+                    Label("Updating", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
                 } else {
-                    VStack(alignment: .leading, spacing: 2) {
-                        let label = Text("Frees immediately: ").foregroundColor(.secondary)
-                        let amount = Text(ByteText.short(plan.immediatelyFreedBytes)).bold().monospacedDigit()
-                        Text("\(label)\(amount)")
-
-                        if plan.trashedBytes > 0 {
-                            Text("To Trash: \(ByteText.short(plan.trashedBytes))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    Text(freed(plan))
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
                 }
             }
-
-            Spacer()
-
-            if model.phase == .executing {
-                ProgressView().controlSize(.small).padding(.trailing, 4)
-            }
-
-            if !isFinished {
-                Button(isReset ? "Approve and reset" : "Approve and uninstall") {
+            if isFinished {
+                Button(action: close) {
+                    Text("Done").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .keyboardShortcut(.defaultAction)
+            } else {
+                Button {
                     Task { await model.authorize(requesterIdentity: NSUserName()) }
+                } label: {
+                    HStack(spacing: 8) {
+                        if model.phase == .executing {
+                            ProgressView().controlSize(.small).tint(.white)
+                        }
+                        Text(buttonTitle)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(.glassProminent)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }
-        .padding()
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .padding(20)
+    }
+
+    var buttonTitle: String {
+        switch (isReset, model.phase == .executing) {
+        case (true, true): "Resetting"
+        case (true, false): "Reset"
+        case (false, true): "Removing"
+        case (false, false): "Remove"
+        }
+    }
+
+    func freed(_ plan: Plan) -> String {
+        if plan.trashedBytes > 0 {
+            return "Frees \(ByteText.short(plan.immediatelyFreedBytes + plan.trashedBytes)) · "
+                + "\(ByteText.short(plan.trashedBytes)) recoverable from the Trash"
+        }
+        return "Frees \(ByteText.short(plan.immediatelyFreedBytes))"
     }
 }
 
-private extension UninstallSheet {
+private extension UninstallPanel {
     func selection(for path: String) -> Binding<Bool> {
         Binding(
             get: { model.isTickedByHand(path) },
@@ -313,11 +345,11 @@ private extension UninstallSheet {
     }
 
     func headline(for result: VerificationResult) -> String {
-        guard result.success else { return isReset ? "Reset incomplete" : "Removal incomplete" }
+        guard result.success else { return "Some of it remains" }
         if result.followUpActions?.isEmpty == false {
-            return "Follow-up may be needed"
+            return "One more step"
         }
-        return isReset ? "Reset complete" : "Uninstall complete"
+        return isReset ? "Reset" : "Nothing left"
     }
 
     func message(title: String, detail: String, isError: Bool) -> some View {
@@ -326,69 +358,5 @@ private extension UninstallSheet {
             Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
         .padding()
-    }
-}
-
-private struct SearchDetailsView: View {
-    let report: CapabilitySearchReport
-    let onBack: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button("Back to review", action: onBack).padding()
-            List {
-                ForEach(report.checks) { check in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(check.capability.title)
-                        Text("\(declarationText(check.declaration)) · \(coverageText(check.coverage))")
-                            .font(.caption).foregroundColor(.secondary)
-                        if check.coverage.available {
-                            Text("\(check.registrations.count + check.locations.count) found")
-                                .font(.caption).foregroundColor(.secondary)
-                        }
-                        if check.declaration == .declared || !check.registrations.isEmpty || check.followUp != nil {
-                            if let tier = check.removalTier {
-                                Text(removalText(tier))
-                                    .font(.caption).foregroundColor(.secondary)
-                            }
-                            if let followUp = check.followUp {
-                                Text(followUp.sentence)
-                                    .font(.caption).foregroundColor(.secondary)
-                            }
-                        }
-                        ForEach(check.locations, id: \.self) { path in
-                            Text(path).font(.caption2).foregroundColor(.secondary)
-                                .lineLimit(1).truncationMode(.middle)
-                        }
-                    }
-                }
-                ForEach(report.signatureCoverage.indices, id: \.self) { index in
-                    if let limitation = report.signatureCoverage[index].limitation {
-                        LabeledContent("Signature", value: limitation)
-                    }
-                }
-            }
-            .listStyle(.inset)
-        }
-    }
-
-    private func declarationText(_ state: CapabilitySurface.DeclarationState) -> String {
-        switch state {
-        case .declared: "Declared"
-        case .notDeclared: "Not declared"
-        case .unknown: "Unknown"
-        }
-    }
-
-    private func coverageText(_ coverage: RegistrationCoverage) -> String {
-        coverage.available ? "Checked" : (coverage.absence == .byDesign ? "Unavailable" : "Could not read")
-    }
-
-    private func removalText(_ tier: RemovalTier) -> String {
-        switch tier {
-        case .removable: "Brim can remove this"
-        case .destructiveOnly: "macOS clears this after removal"
-        case .detectableOnly: "Requires another action"
-        }
     }
 }
