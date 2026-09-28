@@ -20,6 +20,9 @@ struct RemovalPanel: View {
     let onClose: (UUID?) -> Void
     /// A result the check could not confirm: the page reads the disk again.
     let onUnverified: () -> Void
+    /// A plan the service already made, reviewed as it is rather than
+    /// planned again from the intent. A tool's own cleanup comes this way.
+    var plan: Plan?
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var helperProblem: String?
@@ -35,7 +38,11 @@ struct RemovalPanel: View {
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: model.phase)
         .task(id: intent.id) {
             model.onRemoved = { paths in onRemoved(paths) }
-            await model.prepare(intent: intent, service: service)
+            if let plan {
+                model.adopt(plan: plan, service: service)
+            } else {
+                await model.prepare(intent: intent, service: service)
+            }
         }
         .task(id: model.helperSteps) { await checkHelper() }
         .onKeyPress(.escape) {
@@ -67,10 +74,22 @@ struct RemovalPanel: View {
         .padding(.bottom, 10)
     }
 
+    /// A tool's own cleanup: one command, whose effect the tool decides.
+    private var isToolRun: Bool {
+        guard let steps = model.plan?.steps, !steps.isEmpty else { return false }
+        return steps.allSatisfy { $0.kind == .delegateToolCleanup }
+    }
+
     private var summary: String {
-        let count = intent.explicitTargets.count
+        if isToolRun {
+            return "1 command"
+        }
+        // Counted from the plan once there is one: a tool's own cleanup
+        // names no locations up front, and "0 locations" would read as
+        // nothing to do.
+        let count = model.plan == nil ? intent.explicitTargets.count : model.removalSteps.count
         let places = count == 1 ? "1 location" : "\(count) locations"
-        guard let plan = model.plan else { return places }
+        guard let plan = model.plan else { return count == 0 ? "" : places }
         return "\(places) · \(ByteText.short(plan.immediatelyFreedBytes + plan.trashedBytes))"
     }
 
@@ -129,45 +148,18 @@ struct RemovalPanel: View {
     /// The steps by what happens to each, which is what a person weighs:
     /// back from the Trash, set aside by the helper, or gone for good.
     private var consequences: [(title: String, steps: [Step])] {
-        let all = model.removalSteps
+        let all = model.removalSteps.filter(\.kind.targetIsPath)
         let helper = all.filter { $0.kind == .trashPathPrivileged }
         let permanent = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition == .delete }
         let trash = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition != .delete }
-        return [("To the Trash", trash), ("Set aside by the helper", helper), ("Deleted permanently", permanent)]
-            .filter { !$0.1.isEmpty }
-    }
-
-    private func helperNotice(_ problem: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(
-                model.helperSteps == 1 ? "1 needs Brim's helper" : "\(model.helperSteps) need Brim's helper",
-                systemImage: "lock.shield"
-            )
-            .font(.brimRowTitle)
-            .foregroundStyle(Palette.caution)
-            Text(problem)
-                .font(.brimFacts)
-                .foregroundStyle(Palette.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                Button("Turn On") {
-                    HelperRoute.turnOn()
-                    Task { await checkHelper() }
-                }
-                .buttonStyle(.glass)
-                Button("Check Again") { Task { await checkHelper() } }
-                    .buttonStyle(.glass)
-            }
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
-        }
-        .padding(12)
-        .background(Palette.caution.opacity(0.08), in: .rect(cornerRadius: Metrics.rowRadius))
-    }
-
-    private func checkHelper() async {
-        guard model.helperSteps > 0 else { return }
-        helperProblem = await HelperRoute.problem()
+        let named = model.removalSteps.filter { !$0.kind.targetIsPath }
+        let tool = named.filter { $0.kind == .delegateToolCleanup }
+        let records = named.filter { $0.kind != .delegateToolCleanup }
+        return [
+            ("To the Trash", trash), ("Set aside by the helper", helper), ("Deleted permanently", permanent),
+            ("Run by the tool", tool), ("Records", records)
+        ]
+        .filter { !$0.1.isEmpty }
     }
 
     // MARK: - Result
@@ -255,7 +247,7 @@ struct RemovalPanel: View {
                         if model.phase == .executing {
                             ProgressView().controlSize(.small).tint(.white)
                         }
-                        Text(model.phase == .executing ? "Removing" : "Remove")
+                        Text(buttonTitle)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -268,9 +260,19 @@ struct RemovalPanel: View {
         .padding(20)
     }
 
+    private var buttonTitle: String {
+        if isToolRun {
+            return model.phase == .executing ? "Running" : "Run"
+        }
+        return model.phase == .executing ? "Removing" : "Remove"
+    }
+
     /// Zero is a real and common answer: a set of broken links takes no
     /// space, and saying so stops the removal looking like it will do nothing.
     private func freed(_ plan: Plan) -> String {
+        if isToolRun {
+            return "The tool decides what goes"
+        }
         if plan.immediatelyFreedBytes == 0, plan.trashedBytes == 0 {
             return "Takes no space"
         }
@@ -298,13 +300,70 @@ struct RemovalPanel: View {
     }
 }
 
+extension RemovalPanel {
+    private func helperNotice(_ problem: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                model.helperSteps == 1 ? "1 needs Brim's helper" : "\(model.helperSteps) need Brim's helper",
+                systemImage: "lock.shield"
+            )
+            .font(.brimRowTitle)
+            .foregroundStyle(Palette.caution)
+            Text(problem)
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Turn On") {
+                    HelperRoute.turnOn()
+                    Task { await checkHelper() }
+                }
+                .buttonStyle(.glass)
+                Button("Check Again") { Task { await checkHelper() } }
+                    .buttonStyle(.glass)
+            }
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .background(Palette.caution.opacity(0.08), in: .rect(cornerRadius: Metrics.rowRadius))
+    }
+
+    private func checkHelper() async {
+        guard model.helperSteps > 0 else { return }
+        helperProblem = await HelperRoute.problem()
+    }
+}
+
 /// One step: Finder's icon, the item's name and folder, its size.
 private struct StepRow: View {
     let step: Step
 
     var body: some View {
+        if step.kind.targetIsPath {
+            pathRow
+        } else {
+            // A command rather than a file: what runs, as the tool will run it.
+            HStack(spacing: 10) {
+                Image(systemName: "terminal")
+                    .foregroundStyle(Palette.inkSecondary)
+                    .frame(width: 22, height: 22)
+                Text(step.evidence)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel(step.evidence)
+        }
+    }
+
+    private var pathRow: some View {
         let url = URL(fileURLWithPath: step.target)
-        HStack(spacing: 10) {
+        return HStack(spacing: 10) {
             BrimIcon(source: .finder(url), size: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(url.lastPathComponent)

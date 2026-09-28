@@ -246,6 +246,24 @@ public final class UninstallExecutionModel: ObservableObject {
         }
     }
 
+    /// Reviews a plan the service has already made and saved, as it is.
+    ///
+    /// A tool's own cleanup is planned by `planToolCleanup`, which names
+    /// the command rather than any paths. Handing its intent back to `plan`
+    /// asked for a footprint of something called "npm cache clean --force"
+    /// with no targets, so the plan reviewed was never the one offered.
+    public func adopt(plan adopted: Plan, service: any BrimServiceProtocol) {
+        self.service = service
+        baseIntent = adopted.intent
+        tickedByHand = []
+        generation += 1
+        isUpdating = false
+        plan = adopted
+        reviewGroups = Self.groupedSteps(adopted.steps)
+        offerGroups = Self.groupedOffers(adopted.excludedItems)
+        phase = .ready
+    }
+
     /// Why the disk did not give back what was deleted.
     ///
     /// Deleting a file whose blocks are still referenced by a local
