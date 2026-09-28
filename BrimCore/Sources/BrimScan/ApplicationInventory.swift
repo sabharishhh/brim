@@ -34,26 +34,26 @@ public actor ApplicationInventory {
         let casks = UpdateSourceScanner().installedCasks()
         var developers = DeveloperNames()
 
-        for domain in searchDomains {
-            for bundleURL in bundles(in: domain.url) {
-                // A bundle reachable from two domains is one application.
-                guard seen.insert(bundleURL.standardizedFileURL.path).inserted else { continue }
+        for candidate in candidates() {
+            let (bundleURL, protected, host) = (candidate.url, candidate.protected, candidate.host)
+            // A bundle reachable from two domains is one application.
+            guard seen.insert(bundleURL.standardizedFileURL.path).inserted else { continue }
 
-                let identity = await resolver.resolve(bundleURL: bundleURL)
-                // Judge protection and size by where the bundle actually is,
-                // not by where it is listed: /Applications/Safari.app is a
-                // symlink into a Cryptex, so a check on the listed path alone
-                // would offer Safari for removal and measure it as 0 bytes.
-                let resolved = bundleURL.resolvingSymlinksInPath()
-                var application = InstalledApplication(
-                    identity: identity,
-                    url: bundleURL,
-                    bundleSizeBytes: Self.size(of: resolved),
-                    isSystemProtected: domain.protected || Self.isOSOwned(resolved)
-                )
-                describe(&application, resolved: resolved, casks: casks, developers: &developers)
-                results.append(application)
-            }
+            let identity = await resolver.resolve(bundleURL: bundleURL)
+            // Judge protection and size by where the bundle actually is,
+            // not by where it is listed: /Applications/Safari.app is a
+            // symlink into a Cryptex, so a check on the listed path alone
+            // would offer Safari for removal and measure it as 0 bytes.
+            let resolved = bundleURL.resolvingSymlinksInPath()
+            var application = InstalledApplication(
+                identity: identity,
+                url: bundleURL,
+                bundleSizeBytes: Self.size(of: resolved),
+                isSystemProtected: protected || host != nil || Self.isOSOwned(resolved)
+            )
+            application.enclosingApp = host
+            describe(&application, resolved: resolved, casks: casks, developers: &developers)
+            results.append(application)
         }
 
         return results.sorted {
@@ -94,9 +94,93 @@ public actor ApplicationInventory {
         return values[key] as? String
     }
 
-    /// Top-level `.app` bundles only. Applications nested inside another app's
-    /// bundle belong to that app's footprint, not to this inventory, and
-    /// `/Applications/Utilities` is one level down so it is included.
+    /// An application to describe, with whether it can be removed on its
+    /// own and the app it ships inside, if any.
+    struct Candidate {
+        let url: URL
+        let protected: Bool
+        let host: String?
+    }
+
+    /// Every application to describe, with whether it can be removed on its
+    /// own and the app it ships inside, if any.
+    ///
+    /// The folders are walked first, as before. Then two additions, because
+    /// the walk alone missed applications people use: an app's own
+    /// `Contents/Applications` (Icon Composer, Instruments, FileMerge and
+    /// Simulator all live inside Xcode), and whatever Spotlight has indexed
+    /// as an application anywhere under the same folders, which catches an
+    /// app more than one folder deep. Spotlight adds; it never removes, so
+    /// a Mac with indexing off still gets the full walk.
+    private func candidates() -> [Candidate] {
+        var found: [Candidate] = []
+        for domain in searchDomains {
+            for bundle in bundles(in: domain.url) {
+                found.append(Candidate(url: bundle, protected: domain.protected, host: nil))
+                let host = Self.name(of: bundle)
+                found.append(contentsOf: Self.embeddedApplications(in: bundle).map {
+                    Candidate(url: $0, protected: true, host: host)
+                })
+            }
+        }
+        // Spotlight answers only about the real disk, not a test fixture.
+        if root.rootURL.path == "/" {
+            let known = Set(found.map { $0.url.standardizedFileURL.path })
+            for url in Self.indexedApplications(in: searchDomains.map(\.url))
+            where !known.contains(url.standardizedFileURL.path) {
+                guard let placement = Self.placement(of: url) else { continue }
+                let host: String? = placement
+                let protected = searchDomains.contains { $0.protected && url.path.hasPrefix($0.url.path + "/") }
+                found.append(
+                    Candidate(url: url, protected: protected || host != nil, host: host)
+                )
+            }
+        }
+        return found
+    }
+
+    /// Apps an application carries for people to open, in the one place
+    /// macOS looks for them: `Contents/Applications`. Helpers buried in
+    /// `Frameworks` or `Library` are machinery, not apps anyone launches.
+    static func embeddedApplications(in bundle: URL) -> [URL] {
+        let folder = bundle.appendingPathComponent("Contents/Applications")
+        return entries(of: folder).filter { ($0 as NSString).pathExtension == "app" }
+            .map { folder.appendingPathComponent($0) }
+    }
+
+    /// Where Spotlight's answer sits. Nil for an app inside another bundle
+    /// anywhere but its `Contents/Applications`, which is a helper. The
+    /// outer optional is whether to list it at all, the inner the host.
+    static func placement(of url: URL) -> String?? {
+        let components = url.deletingLastPathComponent().pathComponents
+        guard let hostIndex = components.lastIndex(where: { $0.hasSuffix(".app") }) else {
+            return .some(nil)
+        }
+        let rest = Array(components[(hostIndex + 1)...])
+        guard rest == ["Contents", "Applications"] else { return nil }
+        return .some((components[hostIndex] as NSString).deletingPathExtension)
+    }
+
+    /// Every application bundle Spotlight knows of under these folders,
+    /// through the public Metadata API. Empty when indexing is off.
+    static func indexedApplications(in scopes: [URL]) -> [URL] {
+        let predicate = "kMDItemContentType == 'com.apple.application-bundle'" as CFString
+        guard let query = MDQueryCreate(kCFAllocatorDefault, predicate, nil, nil) else { return [] }
+        MDQuerySetSearchScope(query, scopes.map(\.path) as CFArray, 0)
+        guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else { return [] }
+        return (0 ..< MDQueryGetResultCount(query)).compactMap { index in
+            guard let raw = MDQueryGetResultAtIndex(query, index) else { return nil }
+            let item = Unmanaged<MDItem>.fromOpaque(raw).takeUnretainedValue()
+            return (MDItemCopyAttribute(item, kMDItemPath) as? String).map { URL(fileURLWithPath: $0) }
+        }
+    }
+
+    private static func name(of bundle: URL) -> String {
+        bundle.deletingPathExtension().lastPathComponent
+    }
+
+    /// Top-level `.app` bundles, and one folder down so
+    /// `/Applications/Utilities` is included.
     private func bundles(in directory: URL) -> [URL] {
         var found: [URL] = []
         for name in Self.entries(of: directory) {

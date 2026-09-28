@@ -126,7 +126,8 @@ struct ApplicationsView: View {
     }
 
     private var totalBytes: Int64 {
-        model.applications.reduce(0) { $0 + $1.bundleSizeBytes }
+        // Apps shipped inside another are already in its size.
+        model.applications.filter { $0.enclosingApp == nil }.reduce(0) { $0 + $1.bundleSizeBytes }
     }
 
     // MARK: - List

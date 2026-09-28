@@ -274,6 +274,10 @@ public final class ApplicationsModel: ObservableObject {
     public var uninstallBlockedReason: String? {
         guard let selected else { return nil }
         guard selected.isSystemProtected else { return nil }
+        if let host = selected.enclosingApp {
+            // Taking one app out of another breaks the host's signature.
+            return "Part of \(host), and removed with it"
+        }
         return "macOS protects this application. It is part of the system and cannot be removed."
     }
 }
