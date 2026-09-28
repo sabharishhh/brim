@@ -177,7 +177,8 @@ struct DropWell: View {
             in: .rect(cornerRadius: Metrics.cardRadius)
         )
         .dropDestination(for: URL.self) { urls, _ in
-            onDrop(urls)
+            BrimTips.learned(DropAppTip())
+            return onDrop(urls)
         } isTargeted: { isTargeted = $0 }
         .animation(Motion.quick, value: isTargeted)
         .accessibilityElement(children: .combine)

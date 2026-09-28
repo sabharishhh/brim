@@ -221,7 +221,10 @@ struct TrayBar: View {
                 Button("Clear", action: clear)
                     .buttonStyle(.borderless)
                     .foregroundStyle(Palette.inkSecondary)
-                Button("Review", action: review)
+                Button("Review") {
+                    BrimTips.learned(TrayTip())
+                    review()
+                }
                     .buttonStyle(.glassProminent)
                     // A capsule inside a capsule, so the ends nest.
                     .buttonBorderShape(.capsule)
