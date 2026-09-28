@@ -30,6 +30,19 @@ public struct LocationInventory: Sendable {
         /// A suffix separated from the identifier, such as
         /// `com.example.editor-helper`. Name-derived and therefore Tier C.
         case bundleIdentifierDelimitedPrefix(String)
+        /// Anything named inside the bundle identifier in the per-user
+        /// folders: `<identifier>.<anything>`, or `.<identifier>.<anything>`,
+        /// which is how `mkdtemp` and Chromium name scratch folders that are
+        /// often never removed. ChatGPT had 682 of them, 47 MB, and Teams'
+        /// installer left `com.microsoft.teams2.installer_telemetry`; no
+        /// rule matched either.
+        case temporaryDirectory
+        /// A folder a system service keeps on the application's behalf,
+        /// named `<service>+<identifier>`. WebKit's helper processes make
+        /// three for every application that shows a web view
+        /// (`com.apple.WebKit.GPU+com.meta.endo` and its Networking and
+        /// WebContent siblings), and they outlived Muse's uninstall.
+        case clientOfService
         /// A group explicitly declared by the bundle, or an unverified
         /// `group.<bundle id>` name when no declaration could be read.
         case groupContainer
@@ -89,6 +102,8 @@ public struct LocationInventory: Sendable {
                 return .B
             case .bundleIdentifierDelimitedPrefix:
                 return .C
+            case .temporaryDirectory, .clientOfService:
+                return .B
             case .groupContainer:
                 return .A
             case .applicationName, .applicationNameLowercased,
@@ -106,7 +121,7 @@ public struct LocationInventory: Sendable {
                 return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
             case .bundleIdentifierPrefix:
                 return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
-            case .bundleIdentifierDelimitedPrefix:
+            case .bundleIdentifierDelimitedPrefix, .temporaryDirectory, .clientOfService:
                 return []
             case .groupContainer:
                 if !identity.searchGroupContainers.isEmpty {
@@ -162,29 +177,51 @@ public struct LocationInventory: Sendable {
             switch rule {
             case .bundleIdentifier:
                 guard identity.searchBundleIdentifiers.contains(name) else { return nil }
-                return name == identity.bundleID ? tier : .C
+                return identity.ownsIdentifier(name) ? tier : .C
             case let .bundleIdentifierFile(ext):
                 guard let matched = identity.searchBundleIdentifiers.first(where: {
                     name == "\($0).\(ext)"
                 }) else { return nil }
-                return matched == identity.bundleID ? tier : .C
+                return identity.ownsIdentifier(matched) ? tier : .C
             case .bundleIdentifierPrefix:
                 guard let matched = identity.searchBundleIdentifiers
                     .filter({ name == $0 || name.hasPrefix($0 + ".") })
                     .max(by: { $0.count < $1.count }) else { return nil }
-                return matched == identity.bundleID ? tier : .C
+                return identity.ownsIdentifier(matched) ? tier : .C
             case let .bundleIdentifierDelimitedPrefix(separator):
                 return delimitedPrefixTier(
                     name: name, prefixes: identity.searchBundleIdentifiers, separator: separator
                 )
+            case .temporaryDirectory:
+                guard let matched = identity.searchBundleIdentifiers.first(where: {
+                    Self.isTemporary(name: name, of: $0)
+                }) else { return nil }
+                return identity.ownsIdentifier(matched) ? tier : .C
+            case .clientOfService:
+                guard let plus = name.lastIndex(of: "+"), plus != name.startIndex else { return nil }
+                let client = String(name[name.index(after: plus)...])
+                guard identity.searchBundleIdentifiers.contains(client) else { return nil }
+                return identity.ownsIdentifier(client) ? tier : .C
             case .identifierInsideBundle:
+                // A plug-in is often named inside a component's identifier,
+                // `com.openai.sky.CUAService.AuthorizationPlugin` for one.
                 guard let declaredIdentifier,
-                      identity.searchBundleIdentifiers.contains(declaredIdentifier) else { return nil }
-                return declaredIdentifier == identity.bundleID ? tier : .C
+                      identity.searchBundleIdentifiers.contains(where: {
+                          declaredIdentifier == $0 || declaredIdentifier.hasPrefix($0 + ".")
+                      }) else { return nil }
+                return identity.ownsIdentifier(declaredIdentifier) ? tier : .C
             case .applicationName, .applicationNameLowercased,
                  .applicationNameDelimitedPrefix, .groupContainer:
                 return nil
             }
+        }
+
+        /// Inside the identifier's namespace, hidden or not. Another
+        /// installed application whose identifier is longer is vetoed in
+        /// `TierSVetoEngine.namedFor`.
+        static func isTemporary(name: String, of identifier: String) -> Bool {
+            let visible = name.hasPrefix(".") ? String(name.dropFirst()) : name
+            return visible.hasPrefix(identifier + ".") && visible.count > identifier.count + 1
         }
 
         private func delimitedPrefixTier(
@@ -228,6 +265,9 @@ public struct LocationInventory: Sendable {
     }
 
     static let notWorthSweeping: Set<FileSystemRoot.Domain> = [
+        // Nothing there can be removed by Brim, so a sweep would only offer
+        // rows that refuse.
+        .systemSecurityAgentPlugins,
         .applications, .userApplications, .volumes, .users, .tempDirs,
         // Fonts have no owning application, and a sweep of them is a list
         // of every typeface somebody has ever installed.
@@ -450,6 +490,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemAudioHAL, rule: .identifierInsideBundle,
                  describes: "an audio device plug-in",
                  sentence: "An audio device plug-in whose own Info.plist declares this identifier."),
+        // How the Mac signs in and unlocks. Found so the review can say it
+        // stays and why; never removed (`HelperScope.signInFolders`).
+        Location(domain: .systemSecurityAgentPlugins, rule: .identifierInsideBundle,
+                 describes: "a sign-in plug-in",
+                 sentence: "A plug-in in how this Mac signs in or unlocks, whose own Info.plist "
+                         + "declares this identifier."),
         Location(domain: .systemAudioMAS, rule: .identifierInsideBundle,
                  describes: "an audio plug-in",
                  sentence: "An audio plug-in whose own Info.plist declares this identifier."),
@@ -536,5 +582,14 @@ public struct LocationInventory: Sendable {
         Location(domain: .darwinUserTemp, rule: .bundleIdentifier,
                  describes: "per-boot temporary files",
                  sentence: "Temporary files in the per-user folder macOS makes fresh each boot."),
+        Location(domain: .darwinUserTemp, rule: .temporaryDirectory,
+                 describes: "scratch folders",
+                 sentence: "Named inside the application's identifier, in the per-user folder."),
+        Location(domain: .darwinUserCache, rule: .clientOfService,
+                 describes: "web view caches",
+                 sentence: "Kept by a macOS service on the application's behalf, and named for it."),
+        Location(domain: .darwinUserCache, rule: .temporaryDirectory,
+                 describes: "scratch folders",
+                 sentence: "Named inside the application's identifier, in the per-user folder."),
     ])
 }

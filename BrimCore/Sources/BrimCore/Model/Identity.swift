@@ -81,6 +81,21 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
             .filter(IdentitySurface.isPathComponent).sorted()
     }
 
+    /// Whether an identifier is this application's own: its bundle
+    /// identifier, or one inside it, the way `com.microsoft.teams2.agent`
+    /// is inside `com.microsoft.teams2`. Something named that way was named
+    /// by the developer for this application, and is not a guess.
+    ///
+    /// A component in a different namespace, such as Sparkle's downloader
+    /// or another product from the same vendor, is not: the same identifier
+    /// ships in other applications, so a match on it stays Tier C.
+    public func ownsIdentifier(_ identifier: String) -> Bool {
+        guard let bundleID, !bundleID.isEmpty else { return false }
+        let own = bundleID.lowercased()
+        let other = identifier.lowercased()
+        return other == own || other.hasPrefix(own + ".")
+    }
+
     public var searchGroupContainers: [String] {
         Array(Set(identitySurface?.groups ?? groupContainers))
             .filter(IdentitySurface.isPathComponent).sorted()
