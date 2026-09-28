@@ -67,7 +67,8 @@ struct AppRow: View {
     /// Developer and when it was last opened, the two facts that decide
     /// whether an app can go. The version is in the inspector.
     private var facts: String {
-        [app.developer, opened ?? (app.isSystemProtected ? "Part of macOS" : nil)]
+        let place = app.enclosingApp.map { "Inside \($0)" }
+        return [app.developer, place ?? opened ?? (app.isSystemProtected ? "Part of macOS" : nil)]
             .compactMap(\.self).joined(separator: " · ")
     }
 
