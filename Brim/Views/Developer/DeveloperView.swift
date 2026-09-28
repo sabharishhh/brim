@@ -70,7 +70,7 @@ struct DeveloperView: View {
             if model.canRemove {
                 Text(ByteText.short(model.selectedBytes))
                     .fontWeight(.bold).monospacedDigit()
-                Button("Remove selected…") {
+                Button("Remove Selected") {
                     reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
                 }
                 .buttonStyle(.borderedProminent)

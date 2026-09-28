@@ -54,7 +54,7 @@ struct AppStacks: View {
     private func menu(_ app: InstalledApplication) -> some View {
         ItemMenuItems(urls: [app.url])
         Divider()
-        Button("Remove \(app.name)…") { remove(app) }
+        Button("Remove") { remove(app) }
             .disabled(app.isSystemProtected)
     }
 
