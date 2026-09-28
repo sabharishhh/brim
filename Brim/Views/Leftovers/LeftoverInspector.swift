@@ -158,14 +158,9 @@ private struct LocationRow: View {
                         .foregroundStyle(Palette.caution)
                 }
             }
-            HStack(spacing: 2) {
-                Button { shell.quickLook([item.url]) } label: { Image(systemName: "eye") }
-                    .help("Quick Look")
-                Button { shell.reveal([item.url]) } label: { Image(systemName: "arrow.up.forward.app") }
-                    .help("Reveal in Finder")
+            RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                shell.reveal([item.url])
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(Palette.inkSecondary)
             .opacity(isHovering ? 1 : 0)
             .allowsHitTesting(isHovering)
         }
@@ -174,11 +169,16 @@ private struct LocationRow: View {
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
         }
+        .contentShape(.rect)
+        // Double-click shows it in Finder: a folder opens, a file is
+        // selected in its folder.
+        .onTapGesture(count: 2) { shell.showInFinder(item.url) }
         .contextMenu { ItemMenuItems(urls: [item.url]) }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel("\(domain.title), \(domain.consequence), \(ByteText.short(item.size))")
         .accessibilityValue(item.url.path)
+        .accessibilityAction(named: "Show in Finder") { shell.showInFinder(item.url) }
     }
 
     /// The home folder as `~`, which is how people read their own paths.
