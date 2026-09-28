@@ -587,6 +587,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         for step in plan.steps where step.kind.targetIsPath {
             var statBuf = stat()
             if lstat(step.target, &statBuf) == 0 || (errno != ENOENT && errno != ENOTDIR) {
+                // The preference daemon's empty copy of a cleared domain
+                // holds nothing, and the executor removes it when it lands.
+                if PreferenceDomains.domain(forPlistAt: step.target) != nil,
+                   PreferenceDomains.isEmptyStub(atPath: step.target) { continue }
                 // A skipped path or a failed read is not proof of absence.
                 pathsRemaining.insert(step.target)
             }
@@ -924,7 +928,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if outcome == "refusedByOS" {
             return nil
         }
-        if outcome == "ok" || outcome == "already_gone" || outcome == "unsupported_kind" {
+        // The step worked and the file is back: something wrote it again
+        // after it went. IINA's preferences were reported as "nothing was
+        // recorded to say why" when the journal had recorded exactly that.
+        if outcome == "ok" || outcome.hasPrefix("ok_but_preferences_may_return") {
+            return "Brim removed this, and something wrote it back afterwards."
+        }
+        if outcome == "already_gone" || outcome == "unsupported_kind" {
             return nil
         }
         return "It could not be moved: \(outcome)"

@@ -69,6 +69,22 @@ public actor Executor {
         let sortedSteps = plan.executionOrderedSteps
         
         var hasFailures = false
+        var clearedPreferenceFiles: [String] = []
+        var nestedApplications: [String] = []
+        defer {
+            // Records for applications that were inside something removed.
+            // Best effort: a record outliving its bundle is untidy, not
+            // harmful, and the removal itself has already happened.
+            for path in nestedApplications where !FileManager.default.fileExists(atPath: path) {
+                try? LaunchServicesRegistration.unregister(bundlePath: path)
+            }
+            // Not awaited: the daemon's empty copy arrives seconds after
+            // the removal has finished, and nobody should wait for it.
+            if !clearedPreferenceFiles.isEmpty {
+                let files = clearedPreferenceFiles
+                Task.detached { await PreferenceDomains.removeEmptyWriteBack(at: files) }
+            }
+        }
         
         for step in sortedSteps {
             if hasFailures {
@@ -100,6 +116,10 @@ public actor Executor {
                 continue
             }
             
+            if [.trashPath, .trashPathPrivileged, .removeLaunchdPlist].contains(step.kind) {
+                nestedApplications += LaunchServicesRegistration.nestedApplications(in: step.target)
+            }
+
             do {
                 if step.kind == .trashPathPrivileged {
                     // Something in a folder that belongs to root. The
@@ -135,6 +155,7 @@ public actor Executor {
                     var preferenceDomainForgotten: Bool?
                     if let domain = PreferenceDomains.domain(forPlistAt: step.target) {
                         preferenceDomainForgotten = PreferenceDomains.forget(domain)
+                        clearedPreferenceFiles.append(step.target)
                     }
 
                     switch step.effectiveDisposition {
