@@ -96,10 +96,23 @@ public struct InstallerReceiptSource: EvidenceSource {
             let prefix = root.rootURL.appendingPathComponent(receipt.prefix)
             let installed = items.map { prefix.appendingPathComponent($0) }
             // Another application's package, installed alongside by a suite
-            // installer, is that application's to remove.
+            // installer, is that application's to remove. Only an
+            // application installed where applications go is another
+            // application: Teams' installer also put Microsoft AutoUpdate
+            // in `Library/Application Support`, and reading every `.app` as
+            // a second product left it and its caches behind after Teams
+            // was removed.
             guard !installed.contains(where: {
                 $0.pathExtension == "app" && $0.resolvingSymlinksInPath().path != subject
+                    && Self.isInApplicationsFolder($0, root: root)
             }) else { continue }
+            // A helper application the developer's other packages also
+            // install stays while one of them is still here: AutoUpdate
+            // serves Word as much as it served Teams.
+            if installed.contains(where: { $0.pathExtension == "app" }),
+               stillServes(packageID, besides: tokens, among: names, in: receiptsDir, root: root) {
+                continue
+            }
             let sentence = "Installed in the same run as \(identity.name), by the same installer."
             let bomURL = receiptsDir.appendingPathComponent("\(packageID).bom")
             if FileManager.default.fileExists(atPath: bomURL.path) {
@@ -113,6 +126,44 @@ public struct InstallerReceiptSource: EvidenceSource {
             }
         }
         return found
+    }
+
+    /// Whether a package from the same developer, installed by another run,
+    /// put down an application that is still installed.
+    private func stillServes(
+        _ packageID: String, besides tokens: Set<String>, among names: [String],
+        in receiptsDir: URL, root: FileSystemRoot
+    ) -> Bool {
+        let vendor = Self.vendor(of: packageID)
+        for name in names where name.hasSuffix(".plist") {
+            let other = String(name.dropLast(".plist".count))
+            guard other != packageID, Self.vendor(of: other) == vendor,
+                  let receipt = Self.receipt(receiptsDir, other),
+                  !(receipt.token.map(tokens.contains) ?? false),
+                  let items = payload(other, receiptsDir)
+            else { continue }
+            let prefix = root.rootURL.appendingPathComponent(receipt.prefix)
+            if items.contains(where: { item in
+                let url = prefix.appendingPathComponent(item)
+                return url.pathExtension == "app" && Self.isInApplicationsFolder(url, root: root)
+                    && FileManager.default.fileExists(atPath: url.path)
+            }) { return true }
+        }
+        return false
+    }
+
+    /// The first two labels, the developer's namespace.
+    static func vendor(of packageID: String) -> String {
+        packageID.lowercased().split(separator: ".").prefix(2).joined(separator: ".")
+    }
+
+    /// `/Applications`, or a person's own `~/Applications`, and anything
+    /// in folders under either.
+    static func isInApplicationsFolder(_ url: URL, root: FileSystemRoot) -> Bool {
+        let rootParts = root.rootURL.standardizedFileURL.pathComponents
+        let parts = Array(url.standardizedFileURL.pathComponents.dropFirst(rootParts.count))
+        if parts.first == "Applications" { return true }
+        return parts.count > 3 && parts[0] == "Users" && parts[2] == "Applications"
     }
 
     /// A payload's top level can be a shared folder when a package installs

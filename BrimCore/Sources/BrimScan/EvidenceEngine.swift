@@ -58,6 +58,29 @@ public struct EvidenceEngine: Sendable {
             completeness = completeness.merging(found.completeness)
         }
 
+        // An application the same installer put down outside the
+        // Applications folders is part of this one, and so is what it keeps.
+        // Microsoft AutoUpdate came with Teams and left its caches in
+        // `/Library/Caches` named for itself, which no search for Teams
+        // could find.
+        let helpers = Set(rawEvidence.filter {
+            $0.mechanism == "InstallerPayloadSource" && $0.url.pathExtension == "app"
+        }.map(\.url))
+        for helper in helpers {
+            let part = await IdentityResolver(root: root).resolve(bundleURL: helper)
+            let sentence = "Belongs to \(part.name), which was installed with \(identity.name)."
+            for found in try await scanSources(identity: part, in: root, forPart: true) {
+                completeness = completeness.merging(found.completeness)
+                rawEvidence += found.evidence.map { evidence in
+                    // What a part keeps is known through the part, one step
+                    // further from the application than its own files.
+                    Evidence(url: evidence.url, tier: evidence.tier == .A ? .B : evidence.tier,
+                             mechanism: evidence.mechanism,
+                             humanSentence: evidence.tier == .S ? evidence.humanSentence : sentence)
+                }
+            }
+        }
+
         // Deduplicate and resolve tier conflicts.
         //
         // Keyed on the file itself rather than on the string naming it.
@@ -101,8 +124,15 @@ public struct EvidenceEngine: Sendable {
         )
     }
 
-    private func scanSources(identity: Identity, in root: FileSystemRoot) async throws -> [EvidenceFindings] {
-        try await BoundedTasks.map(sources) { source in
+    /// For a part, the bundle itself is already a payload item, and its
+    /// receipts are the application's, so neither is read again.
+    private func scanSources(
+        identity: Identity, in root: FileSystemRoot, forPart: Bool = false
+    ) async throws -> [EvidenceFindings] {
+        let sources = forPart
+            ? sources.filter { !($0 is InstallerReceiptSource) && !($0 is AppBundleSource) }
+            : sources
+        return try await BoundedTasks.map(sources) { source in
             try await source.scan(for: identity, in: root)
         }
     }
