@@ -56,13 +56,18 @@ struct UninstallPanel: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             BrimIcon(source: .bundle(application.url), size: 36)
+            // The application is the subject. "Review" above its name read
+            // as the name of something, and that this is a review is what
+            // the panel itself shows.
             VStack(alignment: .leading, spacing: 2) {
-                Text(isReset ? "Reset" : "Review")
+                Text(application.name)
                     .font(.brimPageTitle)
                     .foregroundStyle(Palette.ink)
-                Text(application.name)
+                    .lineLimit(1)
+                Text(subtitle)
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
+                    .monospacedDigit()
                     .lineLimit(1)
             }
             Spacer()
@@ -72,6 +77,21 @@ struct UninstallPanel: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 10)
+    }
+
+    /// What the panel is doing, in a few words.
+    private var subtitle: String {
+        switch model.phase {
+        case .preparing: return "Checking"
+        case .executing: return isReset ? "Resetting" : "Removing"
+        case .verified, .appliedButUnverified: return isReset ? "Reset" : "Removed"
+        case .failed: return "Stopped"
+        case .ready:
+            let steps = model.removalSteps
+            let bytes = steps.reduce(0) { $0 + $1.expectedBytes }
+            let count = steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items"
+            return "\(count) · \(ByteText.short(bytes))"
+        }
     }
 
     private var isFinished: Bool {
@@ -152,7 +172,7 @@ struct UninstallPanel: View {
             }
             if model.clearsPrivacyGrants || model.clearsRegistrations {
                 Section {
-                    ReviewHeading(title: "System records")
+                    ReviewHeading(title: "System records", isFirst: true)
                     if model.clearsPrivacyGrants {
                         LabeledContent("Privacy permissions", value: "Reset")
                     }
@@ -164,15 +184,10 @@ struct UninstallPanel: View {
                 .listSectionSeparator(.hidden)
             }
 
-            if !model.reviewGroups.isEmpty {
-                Text("Selected (\(model.removalSteps.count))")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .listRowSeparator(.hidden)
-            }
             ForEach(model.reviewGroups) { group in
                 Section {
-                    ReviewHeading(title: "\(group.title) (\(group.steps.count))")
+                    ReviewHeading(title: group.title, count: group.steps.count,
+                                  bytes: group.steps.reduce(0) { $0 + $1.expectedBytes })
                     ForEach(ReviewRun.runs(of: group.steps)) { run in
                         if run.steps.count > 1 {
                             UninstallPlanRow(
@@ -196,14 +211,16 @@ struct UninstallPanel: View {
             }
 
             if !model.offerGroups.isEmpty {
-                Text("Also include (\(model.rowsToOffer.count))")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                Text("You can also include")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.ink)
+                    .padding(.top, 22)
                     .listRowSeparator(.hidden)
             }
             ForEach(model.offerGroups) { group in
                 Section {
-                    ReviewHeading(title: "\(group.title) (\(group.rows.count))")
+                    ReviewHeading(title: group.title, count: group.rows.count,
+                                  bytes: group.rows.reduce(0) { $0 + ($1.sizeBytes ?? 0) })
                     ForEach(group.rows, id: \.target) { row in
                         UninstallPlanRow(
                             target: row.target, evidence: row.evidence ?? row.reason,
@@ -268,7 +285,11 @@ struct UninstallPanel: View {
                 }
             }
 
-            if result.recoveredBytes > 0 {
+            if let plan = model.plan, !isReset {
+                RemovalSummary(plan: plan, groups: model.reviewGroups,
+                               remaining: result.remainingPaths, freed: result.recoveredBytes)
+                    .padding(.top, 10)
+            } else if result.recoveredBytes > 0 {
                 Text("\(ByteText.short(result.recoveredBytes)) freed")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -409,13 +430,90 @@ struct ReviewRun: Identifiable {
 /// space and type, never by lines.
 struct ReviewHeading: View {
     let title: String
+    var count: Int?
+    var bytes: Int64?
+    var isFirst = false
 
     var body: some View {
-        Text(title)
-            .font(.brimGroupTitle)
-            .foregroundStyle(Palette.inkSecondary)
-            .padding(.top, 8)
-            .listRowSeparator(.hidden)
-            .accessibilityAddTraits(.isHeader)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.brimGroupTitle)
+                .foregroundStyle(Palette.ink)
+            if let count {
+                Text([count.formatted(), bytes.map { ByteText.short($0) }].compactMap(\.self)
+                        .joined(separator: " · "))
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkTertiary)
+            }
+        }
+        // Space is what separates one group from the next.
+        .padding(.top, isFirst ? 2 : 16)
+        .padding(.bottom, 2)
+        .listRowSeparator(.hidden)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// What a removal took and where it went. "448.8 MB freed" was the whole
+/// account of a 4.4 GB removal: everything in the Trash and everything set
+/// aside was left out, so most of what went was never mentioned.
+struct RemovalSummary: View {
+    let plan: Plan
+    let groups: [UninstallReviewGroup]
+    let remaining: Set<String>
+    let freed: Int64
+
+    private func gone(_ steps: [Step]) -> [Step] {
+        steps.filter { !remaining.contains($0.target) }
+    }
+
+    var body: some View {
+        let steps = gone(groups.flatMap(\.steps))
+        let setAside = steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
+            .reduce(0) { $0 + $1.expectedBytes }
+        VStack(alignment: .leading, spacing: 14) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                line("Removed", steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items")
+                if trashed > 0 { line("In the Trash", ByteText.short(trashed)) }
+                if setAside > 0 { line("Set aside", ByteText.short(setAside)) }
+                line("Freed now", ByteText.short(freed))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(groups) { group in
+                    let went = gone(group.steps)
+                    if !went.isEmpty {
+                        HStack {
+                            Text(group.title)
+                                .foregroundStyle(Palette.inkSecondary)
+                            Spacer()
+                            Text("\(went.count.formatted()) · \(ByteText.short(went.reduce(0) { $0 + $1.expectedBytes }))")
+                                .monospacedDigit()
+                                .foregroundStyle(Palette.inkTertiary)
+                        }
+                        .font(.brimFacts)
+                    }
+                }
+            }
+            if trashed > 0 {
+                Text("Space in the Trash comes back when it is emptied.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkTertiary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface.opacity(0.5), in: .rect(cornerRadius: Metrics.rowRadius))
+        .padding(.horizontal, 20)
+    }
+
+    private func line(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label).foregroundStyle(Palette.inkSecondary)
+            Text(value).monospacedDigit().foregroundStyle(Palette.ink)
+        }
+        .font(.brimFacts)
     }
 }
