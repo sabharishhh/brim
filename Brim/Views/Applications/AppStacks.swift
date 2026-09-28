@@ -15,10 +15,17 @@ struct AppStacks: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expanded: Set<String> = []
     @State private var flipped: Set<String> = []
+    /// Where each row was when the page opened, so nothing reorders under
+    /// the pointer while it is open (`StableOrder`).
+    @State private var remembered: [String: Int] = [:]
+
+    private var shown: [ItemGroup<InstalledApplication>] {
+        StableOrder.apply(groups, remembered: remembered)
+    }
 
     var body: some View {
         List {
-            ForEach(groups) { group in
+            ForEach(shown) { group in
                 Section {
                     if !isCollapsed(group) {
                         ForEach(visibleRows(group)) { app in
@@ -43,6 +50,7 @@ struct AppStacks: View {
                 }
             }
         }
+        .onAppear { remembered = StableOrder.positions(groups) }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .quickLookOnSpace(model.selected.map { [$0.url] } ?? [], shell: shell)
@@ -113,7 +121,7 @@ struct AppStacks: View {
     }
 
     private func move(by step: Int) -> KeyPress.Result {
-        let order = groups.filter { !isCollapsed($0) }.flatMap(visibleRows)
+        let order = shown.filter { !isCollapsed($0) }.flatMap(visibleRows)
         guard !order.isEmpty else { return .ignored }
         let current = order.firstIndex { $0.id == model.selected?.id }
         model.select(order[current.map { min(max($0 + step, 0), order.count - 1) } ?? 0])

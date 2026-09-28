@@ -32,6 +32,8 @@ struct LeftoverRow: View {
     let inspect: () -> Void
     let keep: () -> Void
 
+    /// Denser rows, from View ▸ Compact Rows.
+    @SwiftUI.Environment(\.compactRows) private var compact
     @State private var isHovering = false
 
     var body: some View {
@@ -42,13 +44,15 @@ struct LeftoverRow: View {
                 .disabled(!canPick)
                 .help(pickHelp)
 
-            BrimIcon(source: group.ownerIcon, badge: badge, isNew: isNew)
+            BrimIcon(source: group.ownerIcon, size: Metrics.rowIcon(compact: compact), badge: badge, isNew: isNew)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.displayName)
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                facts
+                if !compact {
+                    facts
+                }
             }
             .lineLimit(1)
             .accessibilityElement(children: .ignore)
@@ -75,7 +79,7 @@ struct LeftoverRow: View {
                 .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .frame(height: Metrics.rowHeight)
+        .frame(height: Metrics.rowHeight(compact: compact))
         .background(highlight, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
         .contentShape(.rect)
         .onTapGesture(perform: inspect)

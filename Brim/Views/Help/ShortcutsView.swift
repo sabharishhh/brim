@@ -21,7 +21,8 @@ struct ShortcutsView: View {
             Shortcut(keys: "Space  ⌘Y", action: "Quick Look"),
             Shortcut(keys: "⌥⌘R", action: "Reveal in Finder"),
             Shortcut(keys: "⌥⌘C", action: "Copy path"),
-            Shortcut(keys: "⌘R", action: "Check again")
+            Shortcut(keys: "⌘R", action: "Check again"),
+            Shortcut(keys: "⌥⌘0", action: "Compact rows")
         ]),
         ("Removing", [
             Shortcut(keys: "⌘⌫", action: "Review what is in the Tray"),
