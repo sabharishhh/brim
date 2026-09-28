@@ -111,6 +111,12 @@ struct AppInspector: View {
             }
             .buttonBorderShape(.capsule)
             .disabled(model.isInspecting || model.footprint == nil)
+            // Said before the press: removing it removes the app it ships in.
+            if let host = app.enclosingApp {
+                Label("Removed with \(host)", systemImage: "shippingbox")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+            }
         }
     }
 
