@@ -123,17 +123,23 @@ struct EmptyState: View {
     var action: (() -> Void)?
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
+        // Drawn on the page itself. `ContentUnavailableView` brought its own
+        // shaded band, which read as a box floating in the pane.
+        VStack(spacing: 10) {
+            PanePlaceholder(symbol: symbol, title: title)
             Text(message)
-        } actions: {
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .padding(.top, 4)
             }
         }
-        .foregroundStyle(Palette.ink)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     static func nothingFound(_ title: String, placesChecked: Int) -> EmptyState {
@@ -156,6 +162,26 @@ struct EmptyState: View {
             symbol: "lock", title: "Brim could not look",
             message: reason, actionTitle: "Try Again", action: action
         )
+    }
+}
+
+/// What an empty pane shows: a symbol and a few words, on the pane's own
+/// background with nothing drawn around them.
+struct PanePlaceholder: View {
+    let symbol: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(Palette.inkTertiary)
+            Text(title)
+                .font(.brimRowTitle)
+                .foregroundStyle(Palette.inkSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
