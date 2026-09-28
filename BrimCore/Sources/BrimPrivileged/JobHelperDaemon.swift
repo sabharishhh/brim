@@ -158,6 +158,39 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
+    func removeInstalledPayload(packageID: String, name: String, withReply reply: @escaping (String?) -> Void) {
+        do {
+            let target = try PrivilegedPayloadRemoval.target(packageID: packageID, name: name)
+            try setAsideBundle(target)
+            log.info("set aside \(target.path, privacy: .public)")
+            reply(nil)
+        } catch let refusal as PrivilegedPayloadRemoval.Refusal {
+            log.error("refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch let refusal as PrivilegedBundleRemoval.Refusal {
+            log.error("refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch {
+            log.error("failed \(packageID, privacy: .public)/\(name, privacy: .public): \(error.localizedDescription)")
+            reply(error.localizedDescription)
+        }
+    }
+
+    func removeSystemCache(name: String, withReply reply: @escaping (String?) -> Void) {
+        do {
+            let target = try PrivilegedCacheRemoval.target(name: name)
+            try setAsideCache(target)
+            log.info("set aside \(target.path, privacy: .public)")
+            reply(nil)
+        } catch let refusal as PrivilegedCacheRemoval.Refusal {
+            log.error("refused cache \(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            reply(refusal.explanation)
+        } catch {
+            log.error("failed cache \(name, privacy: .public): \(error.localizedDescription)")
+            reply(error.localizedDescription)
+        }
+    }
+
     func removeBrokenCommand(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
         do {
             let target = try PrivilegedLinkRemoval.target(domain: domain, name: name)
@@ -307,6 +340,31 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         defer { close(holding) }
         guard renameat(parent, name, holding, name) == 0 else {
             throw PrivilegedBundleRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
+        }
+    }
+
+    /// A folder or a file, never a link, moved through the directory's own
+    /// descriptor so nothing can be swapped in between the look and the move.
+    private func setAsideCache(_ target: URL) throws {
+        let directory = target.deletingLastPathComponent().path
+        let name = target.lastPathComponent
+        let parent = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard parent >= 0 else { throw PrivilegedCacheRemoval.Refusal.notThere }
+        defer { close(parent) }
+
+        var info = stat()
+        guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw PrivilegedCacheRemoval.Refusal.notThere
+        }
+        let type = info.st_mode & S_IFMT
+        guard type == S_IFDIR || type == S_IFREG else { throw PrivilegedCacheRemoval.Refusal.isALink }
+
+        let holding = try openHoldingFolder(for: directory) { why in
+            PrivilegedCacheRemoval.Refusal.couldNotQuarantine(why)
+        }
+        defer { close(holding) }
+        guard renameat(parent, name, holding, name) == 0 else {
+            throw PrivilegedCacheRemoval.Refusal.couldNotQuarantine(String(cString: strerror(errno)))
         }
     }
 

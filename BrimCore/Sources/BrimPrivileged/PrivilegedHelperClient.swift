@@ -245,6 +245,35 @@ public final class PrivilegedHelperClient: ObservableObject {
         }
     }
 
+    /// Asks the daemon to set aside an application an installer put outside
+    /// the Applications folders. Nil when it worked, otherwise why not.
+    public func removeInstalledPayload(packageID: String, name: String) async -> String? {
+        await ask { proxy, reply in proxy.removeInstalledPayload(packageID: packageID, name: name, withReply: reply) }
+    }
+
+    /// Asks the daemon to set aside one item in `/Library/Caches`.
+    public func removeSystemCache(name: String) async -> String? {
+        await ask { proxy, reply in proxy.removeSystemCache(name: name, withReply: reply) }
+    }
+
+    private func ask(
+        _ call: @escaping (BrimJobHelperProtocol, @escaping (String?) -> Void) -> Void
+    ) async -> String? {
+        guard state == .ready else {
+            return "Brim's helper is not set up, so it cannot touch anything outside your own Library."
+        }
+        return await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(returning: error.localizedDescription)
+            } as? BrimJobHelperProtocol
+            guard let proxy else {
+                return continuation.resume(returning: "The helper did not answer.")
+            }
+            call(proxy) { continuation.resume(returning: $0) }
+        }
+    }
+
     /// Asks the daemon to set aside a command link that points at
     /// nothing. Nil when it worked, otherwise the daemon's own sentence.
     public func removeBrokenCommand(domain: PrivilegedLinkRemoval.Domain, name: String) async -> String? {
