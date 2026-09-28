@@ -55,7 +55,8 @@ final class ApplicationInventoryTests: XCTestCase {
     }
 }
 
-/// Apps shipped inside another app are listed, and never as removable.
+/// Apps shipped inside another app are listed, and stand where their host
+/// stands: removable when it is, by removing it.
 ///
 /// Icon Composer, Instruments and FileMerge live in Xcode's
 /// `Contents/Applications`. The inventory listed top-level bundles only, so
@@ -76,7 +77,7 @@ final class EmbeddedApplicationTests: XCTestCase {
         XCTAssertEqual(ApplicationInventory.placement(of: url), .some(nil))
     }
 
-    func testXcodesToolsAreListedAndProtected() async throws {
+    func testXcodesToolsAreListedWithTheirHost() async throws {
         try RealEnvironmentFixture.requireEnabled(self)
         let xcode = URL(fileURLWithPath: "/Applications/Xcode.app")
         let embedded = ApplicationInventory.embeddedApplications(in: xcode)
@@ -87,7 +88,9 @@ final class EmbeddedApplicationTests: XCTestCase {
             let listed = apps.first { $0.url.path == url.path }
             XCTAssertNotNil(listed, "\(url.lastPathComponent) is missing from Apps")
             XCTAssertEqual(listed?.enclosingApp, "Xcode")
-            XCTAssertTrue(listed?.isSystemProtected ?? false)
+            // Xcode is the person's own, so what it carries is too.
+            XCTAssertFalse(listed?.isSystemProtected ?? true)
+            XCTAssertEqual(listed?.hostURL?.path, xcode.path)
         }
     }
 }
