@@ -127,7 +127,11 @@ struct EmptyState: View {
         // Drawn on the page itself. `ContentUnavailableView` brought its own
         // shaded band, which read as a box floating in the pane.
         VStack(spacing: 10) {
+            // Its own height only. A placeholder fills its pane, and here
+            // that pushed the message to the bottom of the window, away from
+            // the title it explains.
             PanePlaceholder(symbol: symbol, title: title)
+                .fixedSize(horizontal: false, vertical: true)
             Text(message)
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
