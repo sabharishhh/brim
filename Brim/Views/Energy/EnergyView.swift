@@ -41,12 +41,12 @@ struct EnergyView: View {
             Button(model.isSampling ? "Reading" : "Take a Reading") {
                 Task { await model.sample(service: service) }
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .disabled(model.isSampling)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 

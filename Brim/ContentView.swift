@@ -17,8 +17,6 @@ struct ContentView: View {
     @SwiftUI.Environment(AppSession.self) private var session
     @AppStorage(SettingsKey.dockBadge) private var showsDockBadge = false
     private let requests = ExternalRequests.shared
-    /// What a Home tile's title morphs through into its page.
-    @Namespace private var pages
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Setup runs once and then never again, whether or not the person
@@ -47,13 +45,12 @@ struct ContentView: View {
                     .transition(.brimPage(movingDown: shell.movedDown, reduceMotion: reduceMotion))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Palette.paper)
+            .background(Palette.canvas)
             .overlay(alignment: .top) { ActivityLine(activity: models.activity) }
             // Keyed to the page, so a change of page is animated and
             // nothing inside one inherits it: an animation over the whole
             // column would animate every scroll and every checkbox too.
-            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: shell.selection)
-            .environment(\.pageNamespace, pages)
+            .animation(Motion.resolved(Motion.page, reduceMotion: reduceMotion), value: shell.selection)
             // Pages with a list column centre the Tray and toast on that
             // column themselves; the rest show the toast across the page.
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -62,7 +59,20 @@ struct ContentView: View {
                 }
             }
             .toolbar { toolbar }
+            // One colour from the top of the window to the bottom. The
+            // toolbar painted its own lighter band over pages whose list
+            // did not reach under it, and showed it on hover elsewhere.
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            // Content passing under the toolbar fades out softly; a hard
+            // edge draws a solid band down to the first row of a list.
+            .scrollEdgeEffectStyle(.soft, for: .top)
         }
+        // The window's own background, so the system sidebar is the canvas
+        // seen through glass: a shade apart, with no line between them.
+        .containerBackground(Palette.canvas, for: .window)
+        // The page says where you are. A window titled with the app's name
+        // tells nobody anything (HIG, Toolbars).
+        .toolbar(removing: .title)
         .overlay(alignment: .top) { commandBar }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
         // The preview panel is not the key window, so Escape arrives here.
@@ -158,12 +168,13 @@ struct ContentView: View {
             switch shell.appsLens {
             case .all: ApplicationsView(model: models.applications, access: models.fullDiskAccess)
             case .updates: UpdatesView(model: models.updates)
-            case .energy: EnergyView(model: models.energy)
             }
         case .leftovers:
             LeftoversView(model: models.leftovers, recovery: models.recovery)
         case .background:
             BackgroundView(model: models.background)
+        case .energy:
+            EnergyView(model: models.energy)
         case .space:
             SpaceView(model: models.storage, applications: models.applications, developer: models.developer)
         case .developer:
@@ -217,11 +228,17 @@ struct ContentView: View {
                 .fixedSize()
             }
         }
+        // Keeps Check Again on the trailing edge on every page, including
+        // those with nothing in the middle of the toolbar.
+        ToolbarSpacer(.flexible)
         ToolbarItem(placement: .primaryAction) {
             Button {
                 shell.requestCheck()
             } label: {
                 Label("Check Again", systemImage: "arrow.clockwise")
+                    // Turns once per press, so the click is answered even
+                    // before the check has anything to show.
+                    .symbolEffect(.rotate.clockwise, options: .nonRepeating, value: shell.checkRequests)
             }
             .help("Check this page again (⌘R)")
         }
@@ -238,12 +255,12 @@ struct ContentView: View {
             switch shell.appsLens {
             case .all: await models.applications.load(service: service)
             case .updates: await models.updates.load(service: service)
-            case .energy: await models.energy.sample(service: service)
             }
         case .leftovers: await models.leftovers.load(service: service)
         case .background: await models.background.load(service: service)
         case .space: await models.storage.load(service: service)
         case .developer: await models.developer.load(service: service)
+        case .energy: await models.energy.sample(service: service)
         case .journal: await models.history.load(service: service)
         }
     }

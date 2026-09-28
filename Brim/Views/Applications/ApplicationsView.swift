@@ -40,11 +40,9 @@ struct ApplicationsView: View {
             // review reads as the focus.
             .opacity(review == nil ? 1 : 0.55)
             .allowsHitTesting(review == nil)
-            Divider()
             inspector
                 // Wider for a review, whose rows carry more.
                 .frame(width: review == nil ? 360 : 440)
-                .background(Palette.surface.opacity(0.5))
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
         .task { await model.loadIfNeeded(service: service) }
@@ -122,8 +120,8 @@ struct ApplicationsView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Search apps")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 

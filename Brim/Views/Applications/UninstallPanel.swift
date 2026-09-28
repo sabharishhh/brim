@@ -241,7 +241,7 @@ struct UninstallPanel: View {
                 Button(urls.count == 1 ? "Show in Finder" : "Show All in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(urls)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
             }
 
@@ -293,7 +293,7 @@ private extension UninstallPanel {
                 Button(action: close) {
                     Text("Done").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .keyboardShortcut(.defaultAction)
             } else {
                 Button {
@@ -307,7 +307,7 @@ private extension UninstallPanel {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }

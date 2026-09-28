@@ -5,14 +5,10 @@ import SwiftUI
 // MARK: - Card
 
 extension View {
-    /// A card: surface on paper with a hairline, so a group reads as one
-    /// region before any of it is read.
+    /// A card: one step up from the canvas, and no outline. Regions are
+    /// told apart by shade, never by a line.
     func card(radius: CGFloat = Metrics.cardRadius) -> some View {
         background(Palette.surface, in: .rect(cornerRadius: radius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Palette.hairline)
-            }
     }
 }
 
@@ -197,7 +193,7 @@ struct StackCard<Item: Identifiable, Row: View, HeaderAccessory: View>: View {
                         // keeps `ForEach` diffing cheap.
                         if index > 0 {
                             Rectangle()
-                                .fill(Palette.hairline)
+                                .fill(Palette.well)
                                 .frame(height: 1)
                                 .padding(.leading, (compact ? Metrics.compactRowIcon : Metrics.rowIcon) + 24)
                         }
@@ -270,8 +266,6 @@ struct Tile: View {
     let figure: String
     let caption: String
     var icons: [IconSource] = []
-    /// Morphs into the title of the page this opens (`pageMorph`).
-    var morphID: String?
     let action: () -> Void
 
     @State private var isHovering = false
@@ -283,7 +277,6 @@ struct Tile: View {
                     Text(title)
                         .font(.brimGroupTitle)
                         .foregroundStyle(Palette.ink)
-                        .pageMorph(morphID ?? title)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))

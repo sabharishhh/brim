@@ -3,22 +3,38 @@ import SwiftUI
 
 /// Brim's colours.
 ///
-/// The chrome stays close to monochrome so the colour on screen comes from
-/// the person's own app icons. Paper rather than white, ink rather than
-/// black, and one accent that means "selected, working, or proven". The
-/// accent itself is the `AccentColor` asset, so a person who picked their
-/// own accent in System Settings gets theirs instead.
+/// Surfaces come from the asset catalog (`Canvas`, `Surface`), each with
+/// dark and increased contrast variants, and text and fills are the
+/// system's own semantic colours, so Increase Contrast, Reduce
+/// Transparency and desktop tinting all reach them the way they reach any
+/// Mac app. The colour on screen comes from the person's app icons and one
+/// accent, the `AccentColor` asset, which follows their System Settings
+/// choice.
+///
+/// Regions are told apart by shade, never by a line: the canvas, cards one
+/// step up from it, and the system sidebar.
 enum Palette {
-    static let paper = Color(light: 0xF7F6F2, dark: 0x1B1A18)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x242320)
-    static let ink = Color(light: 0x1C1B19, dark: 0xF2F0EA)
-    static let inkSecondary = Color(light: 0x1C1B19, dark: 0xF2F0EA, alpha: 0.62)
-    static let inkTertiary = Color(light: 0x1C1B19, dark: 0xF2F0EA, alpha: 0.38)
-    static let hairline = Color(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.09)
-    /// Fills behind bars, meters and symbols.
-    static let well = Color(light: 0x1C1B19, dark: 0xF2F0EA, lightAlpha: 0.06, darkAlpha: 0.10)
+    /// The window's one background, under the toolbar, every page and
+    /// every side pane alike.
+    static let canvas = Color("Canvas")
+    /// Cards and floating panels, one step up from the canvas.
+    static let surface = Color("Surface")
+    static let ink = Color(nsColor: .labelColor)
+    static let inkSecondary = Color(nsColor: .secondaryLabelColor)
+    static let inkTertiary = Color(nsColor: .tertiaryLabelColor)
+    /// Fills behind bars, meters, chips and placeholders.
+    static let well = Color(nsColor: .tertiarySystemFill)
+
+    /// A row under the pointer. The same everywhere a row can be hovered.
+    static let hover = Color(nsColor: .quaternarySystemFill)
+    /// A row while the mouse is down on it: one step stronger than hover,
+    /// so a click is felt before anything else changes.
+    static let pressed = Color(nsColor: .tertiarySystemFill)
+    /// The row the inspector is showing, or the highlighted result.
+    static let selected = Color.accentColor.opacity(0.18)
+
     /// The light that sweeps across loading placeholders.
-    static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.75, darkAlpha: 0.07)
+    static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.06)
     /// Staying, needs a look.
     static let caution = Color.orange
     /// Permanent deletion, and nothing else.
@@ -48,7 +64,8 @@ enum Palette {
 enum Metrics {
     static let grid: CGFloat = 8
     static let cardRadius: CGFloat = 20
-    static let rowRadius: CGFloat = 12
+    /// Every highlight shape: rows, results, locations.
+    static let rowRadius: CGFloat = 10
     static let cardPadding: CGFloat = 8
     static let pagePadding: CGFloat = 24
 

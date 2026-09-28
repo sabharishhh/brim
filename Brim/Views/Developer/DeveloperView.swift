@@ -33,10 +33,8 @@ struct DeveloperView: View {
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
-            Divider()
             inspector
                 .frame(width: reviewRequest == nil ? 340 : 440)
-                .background(Palette.surface.opacity(0.5))
         }
         .task { await model.loadIfNeeded(service: service) }
         .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
@@ -54,7 +52,6 @@ struct DeveloperView: View {
             Text("Developer")
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
-                .pageMorph("page.developer")
             if !model.caches.isEmpty {
                 Text("\(model.caches.count) · \(ByteText.short(model.totalBytes))")
                     .font(.brimFacts)
@@ -68,8 +65,8 @@ struct DeveloperView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
         .padding(.bottom, 8)
     }
 

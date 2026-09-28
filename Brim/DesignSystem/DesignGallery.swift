@@ -156,7 +156,7 @@ import SwiftUI
                 .padding(Metrics.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Palette.paper)
+            .background(Palette.canvas)
             .frame(minWidth: 900, minHeight: 600)
         }
 

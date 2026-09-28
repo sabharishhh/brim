@@ -85,10 +85,10 @@ struct LeftoverInspector: View {
     private var actions: some View {
         HStack(spacing: 8) {
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .disabled(!group.isFullyActionable || isKept)
             Button(isKept ? "Stop Keeping" : "Keep", action: keep)
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .popoverTip(KeepTip(), arrowEdge: .top)
         }
         .buttonBorderShape(.capsule)
@@ -110,7 +110,7 @@ struct LeftoverInspector: View {
                 Button(group.items.count == 1 ? "Show in Finder" : "Show All in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(group.items.map(\.url))
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
             }
@@ -128,7 +128,6 @@ private struct LocationRow: View {
     let showsObstacle: Bool
 
     @SwiftUI.Environment(ShellState.self) private var shell
-    @State private var isHovering = false
 
     var body: some View {
         let domain = LeftoverDomain.of(item.url)
@@ -160,17 +159,14 @@ private struct LocationRow: View {
                         .foregroundStyle(Palette.caution)
                 }
             }
-            RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
-                shell.reveal([item.url])
+            HoverActions {
+                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                    shell.reveal([item.url])
+                }
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
         }
-        .padding(8)
-        .background(isHovering ? Palette.well : .clear, in: .rect(cornerRadius: 10))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
-        }
+        .padding(10)
+        .rowHighlight(isInspected: false)
         .contentShape(.rect)
         // Double-click shows it in Finder: a folder opens, a file is
         // selected in its folder.

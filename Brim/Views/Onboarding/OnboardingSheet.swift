@@ -110,7 +110,7 @@ struct OnboardingSheet: View {
                 } label: {
                     Label("Open System Settings", systemImage: "arrow.up.forward.app")
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
                 if access.hasRequested {
@@ -294,7 +294,7 @@ extension OnboardingSheet {
             }
         case .confirm:
             Button("Not Now") { go(to: .ready) }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .disabled(isWorking)
             primary("Confirm") { Task { await enroll() } }
                 .disabled(isWorking)
@@ -305,13 +305,13 @@ extension OnboardingSheet {
 
     private func primary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
     }
 
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             .keyboardShortcut(.defaultAction)
     }
 }
