@@ -223,6 +223,28 @@ public final class PrivilegedHelperClient: ObservableObject {
         }
     }
 
+    /// Asks the daemon to set aside an application or plug-in that an
+    /// installer left owned by root. Nil when it worked, otherwise the
+    /// daemon's own sentence.
+    public func removeInstalledBundle(domain: PrivilegedBundleRemoval.Domain, name: String) async -> String? {
+        guard state == .ready else {
+            return "Brim's helper is not set up, so it cannot touch anything outside your own Library."
+        }
+        return await withCheckedContinuation { continuation in
+            let connection = openConnection()
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(returning: error.localizedDescription)
+            } as? BrimJobHelperProtocol
+
+            guard let proxy else {
+                return continuation.resume(returning: "The helper did not answer.")
+            }
+            proxy.removeInstalledBundle(domain: domain.rawValue, name: name) { refusal in
+                continuation.resume(returning: refusal)
+            }
+        }
+    }
+
     /// Asks the daemon to set aside a command link that points at
     /// nothing. Nil when it worked, otherwise the daemon's own sentence.
     public func removeBrokenCommand(domain: PrivilegedLinkRemoval.Domain, name: String) async -> String? {
