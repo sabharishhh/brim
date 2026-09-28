@@ -32,7 +32,7 @@ struct LeftoversView: View {
                 header
                 content
             }
-            .frame(minWidth: 480, maxWidth: .infinity)
+            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             // The Tray belongs to the list it collects from, so it is
             // centred on this column at any window width rather than on
             // the list and the inspector together.

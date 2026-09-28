@@ -59,6 +59,13 @@ enum Metrics {
     /// A card shows this many rows, then "Show all". Seven is about what
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7
+
+    /// The smallest window the three columns fit in: sidebar 200, list
+    /// 440, review pane 440, dividers. Below this the layout overlaps.
+    static let windowMinWidth: CGFloat = 1100
+    static let windowMinHeight: CGFloat = 640
+    /// A list column never narrower than this.
+    static let listMinWidth: CGFloat = 440
 }
 
 /// Type styles. No serif anywhere. SF Pro for everything read in lists,

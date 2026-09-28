@@ -93,7 +93,12 @@ struct ContentView: View {
         // helped a little and none of it fixed the feel.
         //
         // A minimum is a constant and costs nothing to answer.
-        .frame(minWidth: 900, minHeight: 600)
+        // The narrowest the layout holds together: the sidebar (200), a
+        // list column (440) and a review pane (440), with room to spare.
+        // Every column's minimum must add up to less than this, or a column
+        // asking for more than the window has grows the window and the new
+        // size is saved (`CLAUDE.md`, on minimum widths ratcheting).
+        .frame(minWidth: Metrics.windowMinWidth, minHeight: Metrics.windowMinHeight)
         .focusedSceneValue(\.shell, shell)
         .environment(shell)
         .onAppear {
