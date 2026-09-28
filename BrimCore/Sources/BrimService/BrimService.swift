@@ -1285,16 +1285,21 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             protectedAppURL: brimAppURL
         )
         var knownPastBundleIDs = Set<String>()
+        // What Brim has seen applications called. Without it a leftover
+        // was named from its identifier alone, so Teams' would read "Teams2"
+        // although Brim had recorded "Microsoft Teams" for weeks.
+        var knownNames = (try? await index?.recordedNames()) ?? [:]
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
             if let plan = try? await planStore.load(planId: entry.planId) {
                 if let bid = plan.intent.subjectIdentity.bundleID {
                     knownPastBundleIDs.insert(bid)
+                    knownNames[bid.lowercased()] = plan.intent.subjectIdentity.name
                 }
             }
         }
-        
-        return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs)
+
+        return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
     }
     
     /// Past removals that could still be undone, judged by what is actually
