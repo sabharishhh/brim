@@ -70,7 +70,7 @@ struct DeveloperRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if cache.cost.isBrimRemovable {
-                Toggle("Select \(cache.title)", isOn: Binding(get: { isPicked }, set: { _ in pick() }))
+                Toggle("Select \(cache.title)", isOn: Binding(get: { isPicked }, set: { wanted in if wanted != isPicked { pick() } }))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
                     .help(isPicked ? "Remove from Tray" : "Add to Tray")

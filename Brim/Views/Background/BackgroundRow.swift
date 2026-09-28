@@ -86,7 +86,7 @@ struct BackgroundRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if entry.state == .gone {
-                Toggle("Select \(entry.group.displayName)", isOn: Binding(get: { isPicked }, set: { _ in pick() }))
+                Toggle("Select \(entry.group.displayName)", isOn: Binding(get: { isPicked }, set: { wanted in if wanted != isPicked { pick() } }))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
                     .disabled(!canPick)
