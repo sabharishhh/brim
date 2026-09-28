@@ -214,12 +214,15 @@ private struct FootprintRow: View {
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
         }
+        .contentShape(.rect)
+        .onTapGesture(count: 2) { shell.showInFinder(item.evidence.url) }
         .contextMenu { ItemMenuItems(urls: [item.evidence.url]) }
         .help(item.evidence.humanSentence)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel("\(item.evidence.url.lastPathComponent), \(ByteText.short(item.sizeBytes))")
         .accessibilityValue(item.evidence.url.path)
+        .accessibilityAction(named: "Show in Finder") { shell.showInFinder(item.evidence.url) }
     }
 
     static func abbreviated(_ path: String) -> String {
