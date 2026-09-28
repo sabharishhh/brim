@@ -205,7 +205,7 @@ struct RemovalSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button("Turn On…") {
+            Button("Turn On") {
                 HelperRoute.turnOn()
                 Task { await checkHelper() }
             }

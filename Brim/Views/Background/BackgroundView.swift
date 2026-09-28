@@ -78,7 +78,7 @@ struct BackgroundView: View {
                 }
             }
             Spacer()
-            Button("Remove…") {
+            Button("Remove") {
                 removalRequest = model.removalIntent(requesterIdentity: NSUserName())
             }
             .buttonStyle(.borderedProminent)
