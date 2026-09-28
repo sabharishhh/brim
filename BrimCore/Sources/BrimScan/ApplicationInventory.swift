@@ -139,6 +139,32 @@ public actor ApplicationInventory {
                 )
             }
         }
+        found += packagedElsewhere().map { Candidate(url: $0, protected: false, host: nil) }
+        return found
+    }
+
+    /// Applications an installer package put outside the Applications
+    /// folders, straight into its own folder in `/Library`.
+    ///
+    /// Microsoft AutoUpdate arrives with Teams in
+    /// `/Library/Application Support/Microsoft/MAU2.0`. It runs, it launches
+    /// itself at login, and it outlived Teams on this Mac, yet no list in
+    /// Brim showed it, so there was nothing to remove it from. The rule is
+    /// the helper's (`HelperScope.installFolder`), so whatever is listed
+    /// here is something Brim can also take away.
+    private func packagedElsewhere() -> [URL] {
+        let receipts = root.url(for: .systemReceipts)
+        var found: [URL] = []
+        for file in Self.entries(of: receipts)
+        where file.hasSuffix(".plist") && !file.lowercased().hasPrefix("com.apple.") {
+            guard let plist = NSDictionary(contentsOf: receipts.appendingPathComponent(file)),
+                  let prefix = plist["InstallPrefixPath"] as? String,
+                  let folder = HelperScope.installFolder(prefix: prefix)
+            else { continue }
+            let directory = root.rootURL.appendingPathComponent(String(folder.dropFirst()))
+            found += Self.entries(of: directory).filter { ($0 as NSString).pathExtension == "app" }
+                .map { directory.appendingPathComponent($0) }
+        }
         return found
     }
 

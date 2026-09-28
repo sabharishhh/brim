@@ -110,6 +110,25 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(found.contains { $0.url.lastPathComponent == "com.vendor.updater.bom" })
     }
 
+    /// Microsoft AutoUpdate outlived Teams, and no list in Brim showed it,
+    /// so there was nothing to remove it from. Its package is called
+    /// `com.microsoft.package.Microsoft_AutoUpdate.app`, which its identifier
+    /// would never find.
+    func testAnApplicationAPackagePutInLibraryIsListedWithItsReceipt() async throws {
+        try receipt("com.vendor.package.Updater.app", token: "T9", prefix: "Library/Application Support/Vendor/Updater")
+        let updater = try bundle("Library/Application Support/Vendor/Updater/Vendor Updater.app", "com.vendor.updater2")
+        _ = try bundle("Library/Application Support/Unpackaged/Loose.app", "com.vendor.loose")
+
+        let listed = await ApplicationInventory(root: root).installedApplications()
+        XCTAssertEqual(listed.map(\.url.lastPathComponent), ["Vendor Updater.app"])
+
+        let identity = Identity(bundleID: "com.vendor.updater2", name: "Vendor Updater", bundlePath: updater.path)
+        let source = InstallerReceiptSource(payload: { id, _ in id == "com.vendor.package.Updater.app" ? ["Vendor Updater.app"] : nil })
+        let found = await source.scan(for: identity, in: root).evidence
+        XCTAssertEqual(found.map(\.url.lastPathComponent), ["com.vendor.package.Updater.app.bom"])
+        XCTAssertEqual(found.first?.tier, .A)
+    }
+
     // MARK: - Parts of the application
 
     func testAPartNamedInsideTheApplicationIsTheApplicationsOwn() {
