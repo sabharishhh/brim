@@ -101,13 +101,41 @@ public struct Planner: Sendable {
             index += 1
         }
 
+        // Whatever sits inside something this plan removes goes with it.
+        // Listed on its own it was a second row for the same files, and for
+        // Teams' background agents one that said they stayed, because it
+        // judged them as root's files while the bundle around them left.
+        let removedWhole: [String] = evaluatedItems.compactMap { item in
+            guard case .selected = item.selection else { return nil }
+            let path = item.footprintItem.evidence.url.standardizedFileURL.path
+            let helperOnly = item.footprintItem.capability == .needsHelper
+            return helperOnly && !HelperScope.covers(path) ? nil : path
+        }
+
         for item in evaluatedItems {
             let targetURL = item.footprintItem.evidence.url
             let targetPath = targetURL.path
+            let standardized = targetURL.standardizedFileURL.path
+            if removedWhole.contains(where: { standardized.hasPrefix($0 + "/") }) {
+                continue
+            }
+            // Shown with the reason it stays whatever its tier, and never
+            // offered for ticking: nothing Brim may do would remove it.
+            if HelperScope.signInFolders.contains(targetURL.deletingLastPathComponent().path),
+               let kept = HelperScope.keptOut(targetPath, bytes: item.footprintItem.sizeBytes) {
+                excludedItems.append(kept)
+                continue
+            }
             
             switch item.selection {
             case .selected:
-                // Generate step
+                // A receipt is forgotten below, which removes its files
+                // with it. Trashing the BOM as well offered a second row
+                // for one record, and one that belongs to root.
+                if item.footprintItem.evidence.mechanism == "InstallerReceiptSource",
+                   intent.type == .uninstall, intent.explicitTargets.isEmpty {
+                    continue
+                }
                 
                 // Capture fingerprint for TOCTOU protection
                 var fingerprint: TargetFingerprint? = nil
@@ -209,7 +237,7 @@ public struct Planner: Sendable {
                         reversible: true,
                         costOfError: item.costOfError,
                         executionPhase: item.footprintItem.evidence.mechanism == "LaunchdSource"
-                            ? .launchd : .auxiliary,
+                            ? .launchd : phase,
                         disposition: .trash
                     ))
                     index += 1

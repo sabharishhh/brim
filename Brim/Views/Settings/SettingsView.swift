@@ -75,7 +75,7 @@ private struct AccessSettings: View {
                     }
                 }
             } footer: {
-                Text("Moves leftovers in system folders aside, where they can be put back")
+                Text("Moves things in system folders aside, where they can be put back")
                     .font(.caption)
                     .foregroundStyle(Palette.inkSecondary)
             }
