@@ -158,7 +158,7 @@ struct ContentView: View {
         case .background:
             BackgroundView(model: models.background)
         case .space:
-            StorageView(model: models.storage)
+            SpaceView(model: models.storage, applications: models.applications, developer: models.developer)
         case .developer:
             DeveloperView(model: models.developer)
         case .journal:
