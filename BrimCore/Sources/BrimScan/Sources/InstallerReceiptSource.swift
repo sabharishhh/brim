@@ -47,15 +47,20 @@ public struct InstallerReceiptSource: EvidenceSource {
                 continue
             }
             var anchors: [String] = []
-            for (packageID, tier) in Self.namedPackages(for: identity) {
+            var named = Self.namedPackages(for: identity)
+            if case let .listed(names) = listing, let installer = installerOf(identity, among: names, in: receiptsDir, root: root),
+               !named.contains(where: { $0.0 == installer }) {
+                named.insert((installer, .A), at: 0)
+            }
+            for (packageID, tier) in named {
                 let bomURL = receiptsDir.appendingPathComponent("\(packageID).bom")
                 guard FileManager.default.fileExists(atPath: bomURL.path),
                       !results.contains(where: { $0.url == bomURL }) else { continue }
                 results.append(Evidence(
                     url: bomURL, tier: tier, mechanism: "InstallerReceiptSource",
-                    humanSentence: packageID == identity.packageIdentifier
-                        ? "Installer receipt matching package identifier"
-                        : "Installer receipt matching bundle identifier"
+                    humanSentence: packageID == identity.bundleID
+                        ? "Installer receipt matching bundle identifier"
+                        : "Installer receipt for this app"
                 ))
                 if tier == .A { anchors.append(packageID) }
             }
@@ -64,6 +69,28 @@ public struct InstallerReceiptSource: EvidenceSource {
                 .filter { found in !results.contains(where: { $0.url == found.url }) }
         }
         return EvidenceFindings(evidence: results, completeness: ScanCompleteness(unreadable: unreadable))
+    }
+
+    /// The package that installed this bundle, found by where it put it:
+    /// Microsoft AutoUpdate's package is
+    /// `com.microsoft.package.Microsoft_AutoUpdate.app`, which neither its
+    /// identifier nor its name would find. Only receipts whose install
+    /// folder holds the bundle are asked what they installed.
+    private func installerOf(
+        _ identity: Identity, among names: [String], in receiptsDir: URL, root: FileSystemRoot
+    ) -> String? {
+        guard let bundlePath = identity.bundlePath else { return nil }
+        let bundle = URL(fileURLWithPath: bundlePath).standardizedFileURL
+        let folder = bundle.deletingLastPathComponent().path
+        for name in names where name.hasSuffix(".plist") && !name.hasPrefix("com.apple.") {
+            let packageID = String(name.dropLast(".plist".count))
+            guard let receipt = Self.receipt(receiptsDir, packageID),
+                  root.rootURL.appendingPathComponent(receipt.prefix).standardizedFileURL.path == folder,
+                  payload(packageID, receiptsDir)?.contains(bundle.lastPathComponent) == true
+            else { continue }
+            return packageID
+        }
+        return nil
     }
 
     /// Packages named after the application, and how sure each name is.
