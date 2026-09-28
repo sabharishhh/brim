@@ -136,18 +136,18 @@ struct UninstallPanel: View {
                 isError: false
             )
 
-        case .executing:
-            // The plan stays in view, fixed, while the button says it runs.
-            planList.disabled(true)
-
         case let .verified(result):
             verification(result)
 
-        case .ready:
-            if showingSearchDetails, let report = model.plan?.capabilityReport {
+        // One branch for waiting and running, so it is one list that
+        // becomes disabled. As two branches they were two lists, and the
+        // change of phase cross-faded them: for a moment both were drawn,
+        // row over row.
+        case .ready, .executing:
+            if model.phase == .ready, showingSearchDetails, let report = model.plan?.capabilityReport {
                 SearchDetailsView(report: report) { showingSearchDetails = false }
             } else {
-                planList
+                planList.disabled(model.phase == .executing)
             }
         }
     }
