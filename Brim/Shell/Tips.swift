@@ -2,8 +2,15 @@ import SwiftUI
 import TipKit
 
 /// The three things worth learning once, each shown once and never again
-/// (plan §14). TipKit remembers what was dismissed.
+/// (plan §14).
+///
+/// TipKit only retires a tip that is closed with its own button, so a tip
+/// left open came back every time its panel or the Tray appeared, launch
+/// after launch. Each is now shown at most once, and doing the thing it
+/// describes retires it at once (`BrimTips.learned`).
 struct DropAppTip: Tip {
+    var options: [any TipOption] { [MaxDisplayCount(1)] }
+
     var title: Text {
         Text("The Dock icon works too")
     }
@@ -18,6 +25,8 @@ struct DropAppTip: Tip {
 }
 
 struct KeepTip: Tip {
+    var options: [any TipOption] { [MaxDisplayCount(1)] }
+
     var title: Text {
         Text("Keep what you need")
     }
@@ -32,6 +41,8 @@ struct KeepTip: Tip {
 }
 
 struct TrayTip: Tip {
+    var options: [any TipOption] { [MaxDisplayCount(1)] }
+
     var title: Text {
         Text("Review when ready")
     }
@@ -46,6 +57,11 @@ struct TrayTip: Tip {
 }
 
 enum BrimTips {
+    /// The person did what a tip explains, so it has nothing left to say.
+    static func learned(_ tip: some Tip) {
+        tip.invalidate(reason: .actionPerformed)
+    }
+
     /// Once per launch, before any view asks for a tip. Not under a test
     /// run, where a tip's popover would be a window nobody closes.
     static func configure() {

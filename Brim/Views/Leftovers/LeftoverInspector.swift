@@ -87,7 +87,10 @@ struct LeftoverInspector: View {
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
                 .buttonStyle(.borderedProminent)
                 .disabled(!group.isFullyActionable || isKept)
-            Button(isKept ? "Stop Keeping" : "Keep", action: keep)
+            Button(isKept ? "Stop Keeping" : "Keep") {
+                BrimTips.learned(KeepTip())
+                keep()
+            }
                 .buttonStyle(.bordered)
                 .popoverTip(KeepTip(), arrowEdge: .top)
         }
