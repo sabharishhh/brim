@@ -222,7 +222,6 @@ struct HoverActions<Content: View>: View {
 
     var body: some View {
         HStack(spacing: 8) { content }
-            .padding(.trailing, 4)
             .opacity(isHovering ? 1 : 0)
             .allowsHitTesting(isHovering)
             .accessibilityHidden(!isHovering)
