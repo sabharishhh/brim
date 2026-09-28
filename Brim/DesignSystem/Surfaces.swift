@@ -1,6 +1,7 @@
 import BrimCore
 import BrimUI
 import SwiftUI
+import TipKit
 
 // MARK: - The brim line
 
@@ -221,6 +222,7 @@ struct TrayBar: View {
                     // A capsule inside a capsule, so the ends nest.
                     .buttonBorderShape(.capsule)
                     .disabled(!canReview)
+                    .popoverTip(TrayTip(), arrowEdge: .bottom)
             }
             .font(.body.weight(.medium))
             .monospacedDigit()

@@ -1,6 +1,7 @@
 import BrimCore
 import BrimUI
 import SwiftUI
+import TipKit
 
 /// Everything about one owner: who it is, how Brim knows, what stops it,
 /// and every place it lives.
@@ -88,6 +89,7 @@ struct LeftoverInspector: View {
                 .disabled(!group.isFullyActionable || isKept)
             Button(isKept ? "Stop Keeping" : "Keep", action: keep)
                 .buttonStyle(.glass)
+                .popoverTip(KeepTip(), arrowEdge: .top)
         }
         .buttonBorderShape(.capsule)
     }

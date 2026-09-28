@@ -1,0 +1,55 @@
+import SwiftUI
+import TipKit
+
+/// The three things worth learning once, each shown once and never again
+/// (plan §14). TipKit remembers what was dismissed.
+struct DropAppTip: Tip {
+    var title: Text {
+        Text("The Dock icon works too")
+    }
+
+    var message: Text? {
+        Text("Drop an app on it to open its page")
+    }
+
+    var image: Image? {
+        Image(systemName: "arrow.down.app")
+    }
+}
+
+struct KeepTip: Tip {
+    var title: Text {
+        Text("Keep what you need")
+    }
+
+    var message: Text? {
+        Text("Kept items stay out of the list")
+    }
+
+    var image: Image? {
+        Image(systemName: "pin")
+    }
+}
+
+struct TrayTip: Tip {
+    var title: Text {
+        Text("Review when ready")
+    }
+
+    var message: Text? {
+        Text("Nothing is removed until you press Remove")
+    }
+
+    var image: Image? {
+        Image(systemName: "tray.full")
+    }
+}
+
+enum BrimTips {
+    /// Once per launch, before any view asks for a tip. Not under a test
+    /// run, where a tip's popover would be a window nobody closes.
+    static func configure() {
+        guard NSClassFromString("XCTestCase") == nil else { return }
+        try? Tips.configure([.displayFrequency(.immediate)])
+    }
+}

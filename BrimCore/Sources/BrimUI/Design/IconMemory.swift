@@ -47,6 +47,27 @@ public struct IconMemory: Sendable {
         try? png.write(to: target, options: .atomic)
     }
 
+    /// How many icons are saved and the space they take, for Settings.
+    public func footprint() -> (count: Int, bytes: Int64) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.fileSizeKey]
+        )) ?? []
+        let pngs = files.filter { $0.pathExtension == "png" }
+        let bytes = pngs.reduce(Int64(0)) {
+            $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        return (pngs.count, bytes)
+    }
+
+    /// Clears every saved icon, when the person asks in Settings. Installed
+    /// apps' icons come back on the next scan; removed apps' do not.
+    public func forgetAll() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.pathExtension == "png" {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
     /// Saves every installed app's icon, in the background.
     public func remember(_ applications: [InstalledApplication]) {
         let memory = self

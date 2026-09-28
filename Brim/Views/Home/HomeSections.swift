@@ -1,6 +1,7 @@
 import BrimCore
 import BrimUI
 import SwiftUI
+import TipKit
 
 /// What changed since Brim last looked: two snapshots, subtracted.
 ///
@@ -181,5 +182,6 @@ struct DropWell: View {
         } isTargeted: { isTargeted = $0 }
         .animation(Motion.quick, value: isTargeted)
         .accessibilityElement(children: .combine)
+        .popoverTip(DropAppTip(), arrowEdge: .top)
     }
 }
