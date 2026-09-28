@@ -37,7 +37,11 @@ struct LeftoverRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Toggle("Select \(group.displayName)", isOn: Binding(get: { isPicked }, set: { _ in pick() }))
+            // Sets the state asked for rather than flipping it. `pick`
+            // toggles, so a setter that ignored its value turned any extra
+            // call SwiftUI made while redrawing a row into a tick or an
+            // untick nobody made.
+            Toggle("Select \(group.displayName)", isOn: Binding(get: { isPicked }, set: { wanted in if wanted != isPicked { pick() } }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!canPick)
