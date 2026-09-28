@@ -1,3 +1,4 @@
+import BrimCore
 import BrimProtocol
 import BrimUI
 import QuickLook
@@ -12,12 +13,14 @@ struct ContentView: View {
     /// Owned here so a section change does not throw away a scan. See
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
-    /// What outlives a launch: kept items, what was seen, saved icons.
-    @State private var session = AppSession()
+    /// What outlives a launch, shared with Settings (`BrimAppMain`).
+    @SwiftUI.Environment(AppSession.self) private var session
+    @AppStorage(SettingsKey.dockBadge) private var showsDockBadge = false
+    private let requests = ExternalRequests.shared
     /// What a Home tile's title morphs through into its page.
     @Namespace private var pages
-    @Environment(\.brimService) private var service
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Setup runs once and then never again, whether or not the person
     /// accepted everything in it. Asking again next launch is how an app
     /// trains people to dismiss without reading.
@@ -54,12 +57,13 @@ struct ContentView: View {
             // Pages with a list column centre the Tray and toast on that
             // column themselves; the rest show the toast across the page.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if ![.leftovers, .apps].contains(shell.selection) {
+                if ![.leftovers, .apps, .background, .developer].contains(shell.selection) {
                     ShellOverlay(tray: nil)
                 }
             }
             .toolbar { toolbar }
         }
+        .overlay(alignment: .top) { commandBar }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
         // The preview panel is not the key window, so Escape arrives here.
         .onKeyPress(.escape) {
@@ -115,7 +119,10 @@ struct ContentView: View {
         // Every installed app's icon, saved while the app is here to ask,
         // so its leftovers keep its face after it is removed.
         .onReceive(models.applications.$applications) { session.icons.remember($0) }
-        .environment(session)
+        // Asked from the Dock, a Shortcut or Spotlight, possibly before
+        // this window existed.
+        .task(id: requests.pending.count) { answerExternalRequests() }
+        .background { DockBadge(leftovers: models.leftovers, isOn: showsDockBadge) }
         .task {
             guard needsSetup == nil else { return }
             if hasFinishedSetup {
@@ -163,6 +170,39 @@ struct ContentView: View {
             DeveloperView(model: models.developer)
         case .journal:
             JournalView(model: models.history, recovery: models.recovery, applications: models.applications)
+        }
+    }
+
+    // MARK: - Beyond the window
+
+    @ViewBuilder
+    private var commandBar: some View {
+        if shell.showsCommandBar {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.12)
+                    .ignoresSafeArea()
+                    .onTapGesture { shell.showsCommandBar = false }
+                    .accessibilityHidden(true)
+                CommandBar(shell: shell, applications: models.applications, leftovers: models.leftovers)
+                    .padding(.top, 80)
+            }
+            .transition(.opacity)
+        }
+    }
+
+    private func answerExternalRequests() {
+        for request in requests.drain() {
+            switch request {
+            case let .open(urls):
+                _ = models.openApplication(from: urls, shell: shell)
+            case let .remove(url):
+                shell.go(to: .apps, lens: .all)
+                shell.pendingRemoval = url
+            case let .show(destination):
+                shell.go(to: destination)
+            case .check:
+                shell.requestCheck()
+            }
         }
     }
 
@@ -223,5 +263,27 @@ private struct ActivityLine: View {
         }
         .animation(.easeInOut(duration: 0.3), value: activity.busy.isEmpty)
         .accessibilityHidden(activity.busy.isEmpty)
+    }
+}
+
+/// New leftovers since the last visit on the Dock icon, when the person
+/// asked for it in Settings. Opening Leftovers acknowledges them, which
+/// clears it. Its own view, observing the model directly: read through
+/// `SectionModels` it would never hear of a change (`CLAUDE.md`, on nested
+/// observable objects).
+private struct DockBadge: View {
+    @ObservedObject var leftovers: LeftoversModel
+    let isOn: Bool
+    @SwiftUI.Environment(AppSession.self) private var session
+
+    var body: some View {
+        Color.clear
+            .task(id: count) { NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil }
+            .accessibilityHidden(true)
+    }
+
+    private var count: Int {
+        guard isOn else { return 0 }
+        return session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id))).count
     }
 }
