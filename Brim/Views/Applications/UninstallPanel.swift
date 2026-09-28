@@ -134,11 +134,6 @@ struct UninstallPanel: View {
 
     private var planList: some View {
         List {
-            if model.plan?.capabilityReport != nil {
-                Section {
-                    Button("Search details") { showingSearchDetails = true }
-                }
-            }
             if let gaps = model.plan?.scanCompleteness {
                 if !gaps.unreadable.isEmpty {
                     Section("Could not read") {
@@ -156,7 +151,8 @@ struct UninstallPanel: View {
                 }
             }
             if model.clearsPrivacyGrants || model.clearsRegistrations {
-                Section("System records") {
+                Section {
+                    ReviewHeading(title: "System records")
                     if model.clearsPrivacyGrants {
                         LabeledContent("Privacy permissions", value: "Reset")
                     }
@@ -164,6 +160,8 @@ struct UninstallPanel: View {
                         LabeledContent("File associations", value: "Remove")
                     }
                 }
+                .listRowSeparator(.hidden)
+                .listSectionSeparator(.hidden)
             }
 
             if !model.reviewGroups.isEmpty {
@@ -174,17 +172,27 @@ struct UninstallPanel: View {
             }
             ForEach(model.reviewGroups) { group in
                 Section {
-                    ForEach(group.steps, id: \.index) { step in
-                        UninstallPlanRow(
-                            target: step.target, evidence: step.evidence,
-                            bytes: step.expectedBytes, disposition: step.effectiveDisposition,
-                            kind: step.kind, tier: step.tier,
-                            selection: model.isTickedByHand(step.target) ? selection(for: step.target) : nil
-                        )
+                    ReviewHeading(title: "\(group.title) (\(group.steps.count))")
+                    ForEach(ReviewRun.runs(of: group.steps)) { run in
+                        if run.steps.count > 1 {
+                            UninstallPlanRow(
+                                target: run.folder, evidence: run.steps[0].evidence,
+                                bytes: run.steps.reduce(0) { $0 + $1.expectedBytes },
+                                disposition: run.steps[0].effectiveDisposition,
+                                kind: run.steps[0].kind, tier: run.steps[0].tier, count: run.steps.count
+                            )
+                        } else {
+                            let step = run.steps[0]
+                            UninstallPlanRow(
+                                target: step.target, evidence: step.evidence,
+                                bytes: step.expectedBytes, disposition: step.effectiveDisposition,
+                                kind: step.kind, tier: step.tier,
+                                selection: model.isTickedByHand(step.target) ? selection(for: step.target) : nil
+                            )
+                        }
                     }
-                } header: {
-                    Text("\(group.title) (\(group.steps.count))")
                 }
+                .listSectionSeparator(.hidden)
             }
 
             if !model.offerGroups.isEmpty {
@@ -195,6 +203,7 @@ struct UninstallPanel: View {
             }
             ForEach(model.offerGroups) { group in
                 Section {
+                    ReviewHeading(title: "\(group.title) (\(group.rows.count))")
                     ForEach(group.rows, id: \.target) { row in
                         UninstallPlanRow(
                             target: row.target, evidence: row.evidence ?? row.reason,
@@ -203,12 +212,17 @@ struct UninstallPanel: View {
                             selection: selection(for: row.target)
                         )
                     }
-                } header: {
-                    Text("\(group.title) (\(group.rows.count))")
                 }
+                .listSectionSeparator(.hidden)
             }
 
             StayingSection(items: model.staying)
+
+            if model.plan?.capabilityReport != nil {
+                Button("What Brim checked") { showingSearchDetails = true }
+                    .buttonStyle(.link)
+                    .font(.brimFacts)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -325,12 +339,19 @@ private extension UninstallPanel {
         }
     }
 
+    /// Where the bytes go, said separately. "Frees 1.19 GB · 1.19 GB
+    /// recoverable from the Trash" promised space that only comes back when
+    /// the Trash is emptied, for items that were not going to the Trash at
+    /// all, and the result then said 6.6 MB freed.
     func freed(_ plan: Plan) -> String {
-        if plan.trashedBytes > 0 {
-            return "Frees \(ByteText.short(plan.immediatelyFreedBytes + plan.trashedBytes)) · "
-                + "\(ByteText.short(plan.trashedBytes)) recoverable from the Trash"
-        }
-        return "Frees \(ByteText.short(plan.immediatelyFreedBytes))"
+        let setAside = plan.steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        let trashed = plan.trashedBytes - setAside
+        let parts = [
+            trashed > 0 ? "\(ByteText.short(trashed)) to the Trash" : nil,
+            setAside > 0 ? "\(ByteText.short(setAside)) set aside" : nil,
+            plan.immediatelyFreedBytes > 0 ? "\(ByteText.short(plan.immediatelyFreedBytes)) freed now" : nil
+        ].compactMap(\.self)
+        return parts.isEmpty ? "Nothing to free" : parts.joined(separator: " · ")
     }
 }
 
@@ -358,5 +379,43 @@ private extension UninstallPanel {
             Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
         .padding()
+    }
+}
+
+/// Consecutive steps in one folder, shown as one row once there are more
+/// than five of them.
+struct ReviewRun: Identifiable {
+    let folder: String
+    let steps: [Step]
+    var id: Int { steps[0].index }
+
+    static func runs(of steps: [Step]) -> [ReviewRun] {
+        let byFolder = Dictionary(grouping: steps) { ($0.target as NSString).deletingLastPathComponent }
+        return steps.reduce(into: [ReviewRun]()) { runs, step in
+            let folder = (step.target as NSString).deletingLastPathComponent
+            let siblings = byFolder[folder] ?? []
+            if siblings.count > 5 {
+                guard !runs.contains(where: { $0.folder == folder && $0.steps.count > 1 }) else { return }
+                runs.append(ReviewRun(folder: folder, steps: siblings))
+            } else {
+                runs.append(ReviewRun(folder: folder, steps: [step]))
+            }
+        }
+    }
+}
+
+/// A section's title as its first row. A pinned header draws its own band
+/// and rule over the rows beneath it, and regions here are told apart by
+/// space and type, never by lines.
+struct ReviewHeading: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.brimGroupTitle)
+            .foregroundStyle(Palette.inkSecondary)
+            .padding(.top, 8)
+            .listRowSeparator(.hidden)
+            .accessibilityAddTraits(.isHeader)
     }
 }
