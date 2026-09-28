@@ -18,6 +18,7 @@ struct HomeView: View {
     @ObservedObject private var background: BackgroundModel
     @ObservedObject private var storage: StorageModel
     @ObservedObject private var developer: DeveloperModel
+    @ObservedObject private var updates: UpdatesModel
     private let models: SectionModels
 
     @SwiftUI.Environment(\.brimService) private var service
@@ -33,6 +34,7 @@ struct HomeView: View {
         background = models.background
         storage = models.storage
         developer = models.developer
+        updates = models.updates
     }
 
     var body: some View {
@@ -55,6 +57,7 @@ struct HomeView: View {
                         leftoversCard
                         backgroundCard
                         developerCard
+                        updatesCard
                     }
                     HStack(alignment: .top, spacing: 16) {
                         SinceLastLook(
@@ -78,6 +81,7 @@ struct HomeView: View {
         .task { await background.loadIfNeeded(service: service) }
         .task { await storage.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
+        .task { await updates.loadIfNeeded(service: service) }
         .onAppear { fullDiskAccess.startObserving() }
     }
 
@@ -214,6 +218,17 @@ struct HomeView: View {
             phrase: count == 1 ? "1 build cache" : "\(count) build caches",
             isRefreshing: developer.isScanning && !firstLoad
         ) { shell.go(to: .developer) }
+    }
+
+    private var updatesCard: some View {
+        let count = updates.count
+        return StatCard(
+            title: "Updates", symbol: "arrow.down.circle",
+            figure: count.map { "\($0) available" } ?? "…",
+            status: count == nil ? .checking : (count == 0 ? .clear : .attention),
+            phrase: updates.check.map { "Checked \($0.checked) apps" } ?? "Checking",
+            isRefreshing: updates.isChecking && count != nil
+        ) { shell.go(to: .apps, lens: .updates) }
     }
 
     // MARK: - Recently installed
