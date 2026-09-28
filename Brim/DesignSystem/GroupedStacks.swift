@@ -164,6 +164,8 @@ extension EnvironmentValues {
     /// Whether the row this view sits in is under the pointer, so its
     /// actions can appear without each keeping its own hover state.
     @Entry var isRowHovered = false
+    /// View ▸ Compact Rows: 24 point icons and one line per row.
+    @Entry var compactRows = false
 }
 
 extension View {

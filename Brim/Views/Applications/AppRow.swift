@@ -12,19 +12,27 @@ struct AppRow: View {
     let select: () -> Void
     let remove: () -> Void
 
+    /// Denser rows, from View ▸ Compact Rows.
+    @SwiftUI.Environment(\.compactRows) private var compact
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 12) {
-            BrimIcon(source: .bundle(app.url), badge: app.isSystemProtected ? .helper : nil)
+            BrimIcon(
+                source: .bundle(app.url),
+                size: Metrics.rowIcon(compact: compact),
+                badge: app.isSystemProtected ? .helper : nil
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                Text(facts)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
+                if !compact {
+                    Text(facts)
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                }
             }
             .lineLimit(1)
 
@@ -49,7 +57,7 @@ struct AppRow: View {
                 .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .frame(height: Metrics.rowHeight)
+        .frame(height: Metrics.rowHeight(compact: compact))
         .background(highlight, in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
         .contentShape(.rect)
         .onTapGesture(perform: select)

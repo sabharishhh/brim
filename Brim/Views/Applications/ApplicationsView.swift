@@ -151,6 +151,8 @@ struct ApplicationsView: View {
                         model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
                         opened: opened, remove: { review = AppReview(app: $0, type: .uninstall) }
                     )
+                    // A new grouping is a new order to hold.
+                    .id(grouping)
                 }
             }
             .refreshing(model.isLoading)
