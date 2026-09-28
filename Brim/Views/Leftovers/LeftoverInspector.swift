@@ -64,7 +64,6 @@ struct LeftoverInspector: View {
                 }
             }
             HStack(spacing: 12) {
-                EvidenceMeter(tier: LeftoverGrouper.confidence(group))
                 Text(ByteText.short(group.totalBytes))
                     .font(.brimFacts)
                     .monospacedDigit()

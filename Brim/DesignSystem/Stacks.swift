@@ -39,58 +39,6 @@ struct SizeBar: View {
     }
 }
 
-// MARK: - Evidence meter
-
-/// How sure Brim is, as three steps instead of a tier letter. Shared is not
-/// on the scale (`EvidenceTier.S`), so it shows a shield instead of steps.
-struct EvidenceMeter: View {
-    let tier: EvidenceTier
-    var showsLabel = true
-
-    var label: String {
-        switch tier {
-        case .A: "Sure"
-        case .B: "Likely"
-        case .C: "A guess"
-        case .S: "Shared"
-        }
-    }
-
-    private var steps: Int {
-        switch tier {
-        case .A: 3
-        case .B: 2
-        case .C, .S: 1
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if tier == .S {
-                Image(systemName: "shield.fill")
-                    .font(.caption)
-                    .foregroundStyle(Palette.caution)
-            } else {
-                HStack(spacing: 2) {
-                    ForEach(0 ..< 3, id: \.self) { step in
-                        Capsule()
-                            .fill(step < steps ? Palette.inkSecondary : Palette.well)
-                            .frame(width: 4, height: 10)
-                    }
-                }
-            }
-            if showsLabel {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(Palette.inkSecondary)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(tier == .S ? "Shared with another app" : "Confidence: \(label)")
-        .accessibilityAddTraits(.isStaticText)
-    }
-}
-
 // MARK: - Status chip
 
 /// A word in a capsule for a state the row is in: Kept, Needs the helper,

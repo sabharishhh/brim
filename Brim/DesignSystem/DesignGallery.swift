@@ -91,10 +91,7 @@ import SwiftUI
                             BrimIcon(source: .monogram(Monogram(name: "New")), size: 32, isNew: true)
                         }
                     }
-                    section("Meters and chips") {
-                        HStack(spacing: 20) {
-                            ForEach([EvidenceTier.A, .B, .C, .S], id: \.self) { EvidenceMeter(tier: $0) }
-                        }
+                    section("Chips") {
                         HStack {
                             StatusChip(text: "Kept", symbol: "pin.fill")
                             StatusChip(text: "In the tray", symbol: "tray", tone: .accent)
@@ -113,7 +110,7 @@ import SwiftUI
                                 facts: sample.facts, bytes: sample.bytes,
                                 sizeFraction: Double(sample.bytes) / Double(samples.map(\.bytes).max() ?? 1)
                             ) {
-                                EvidenceMeter(tier: .A, showsLabel: false)
+                                EmptyView()
                             } actions: {
                                 Button("Keep") {}
                                 Button("Add to Tray") {}

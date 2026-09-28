@@ -20,7 +20,7 @@ extension LeftoverDomain {
     }
 }
 
-/// One owner in a stack: tick, icon, name, where it lives, confidence,
+/// One owner in a stack: tick, icon, name, where it lives,
 /// size. A fixed height, so a long list is measured by arithmetic.
 struct LeftoverRow: View {
     let group: LeftoverGroup
@@ -137,10 +137,7 @@ struct LeftoverRow: View {
 
     private var accessibilitySentence: String {
         let places = group.items.count == 1 ? "1 place" : "\(group.items.count) places"
-        let tier = LeftoverGrouper.confidence(group)
-        let confidence = tier == .A ? "sure" : tier == .B ? "likely" : "a guess"
-        return "\(group.displayName), \(places), \(ByteText.short(group.totalBytes)), confidence \(confidence)"
-            + (isKept ? ", kept" : "")
+        return "\(group.displayName), \(places), \(ByteText.short(group.totalBytes))" + (isKept ? ", kept" : "")
     }
 }
 
