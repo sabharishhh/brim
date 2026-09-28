@@ -49,7 +49,27 @@ struct ApplicationsView: View {
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
+        // A removal asked for by a Shortcut or Spotlight: the review opens
+        // here and waits for the person, like any other.
+        .task(id: PendingKey(url: shell.pendingRemoval, loaded: model.applications.count)) { openPendingReview() }
         .focusedSceneValue(\.selectedItems, SelectedItems(urls: model.selected.map { [$0.url] } ?? []))
+    }
+
+    private struct PendingKey: Equatable {
+        let url: URL?
+        let loaded: Int
+    }
+
+    private func openPendingReview() {
+        guard let url = shell.pendingRemoval, !model.applications.isEmpty else { return }
+        shell.pendingRemoval = nil
+        guard model.selectApplication(at: url), let app = model.selected else {
+            shell.show(ToastMessage(
+                symbol: "questionmark.app", text: "\(url.deletingPathExtension().lastPathComponent) is not in the list"
+            ))
+            return
+        }
+        review = AppReview(app: app, type: .uninstall)
     }
 
     private func finished(_ review: AppReview) {

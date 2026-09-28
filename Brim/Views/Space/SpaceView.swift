@@ -51,7 +51,6 @@ struct SpaceView: View {
                 Spacer(minLength: 0)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }

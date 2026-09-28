@@ -31,7 +31,6 @@ struct JournalView: View {
             }
             content
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
         .task { await model.load(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         // Whether something can be put back changes when the Trash does.

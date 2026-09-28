@@ -30,6 +30,12 @@ public final class DecisionStore {
         file.write(kept)
     }
 
+    /// Forgets every decision, when the person asks in Settings.
+    public func forgetAll() {
+        kept = [:]
+        file.write(kept)
+    }
+
     public func unkeep(_ fingerprints: some Sequence<String>) {
         for fingerprint in fingerprints {
             kept[fingerprint] = nil
