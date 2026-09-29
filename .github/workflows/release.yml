@@ -29,6 +29,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Brim-1.0.0.dmg
+          files: |
+            build/Brim-*.dmg
+            build/Brim-*.dmg.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
