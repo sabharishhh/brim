@@ -46,6 +46,17 @@ final class AppGroupingTests: XCTestCase {
         let names = AppGrouper(now: now).groups(apps, by: .smart).first?.items.map(\.name)
         XCTAssertEqual(names, ["Today", "Old", "Unindexed"])
     }
+
+    /// macOS moved every app's date added to 11:04 one morning, and VS Code,
+    /// opened at 4 a.m., read "Not opened on this Mac". A migrated app's use
+    /// is weeks older than its arrival; IINA's was 38 days.
+    func testOnlyAMonthOldUseBeforeArrivalReadsAsMigrated() {
+        let arrived = Date(timeIntervalSince1970: 1_790_000_000)
+        let day: TimeInterval = 24 * 60 * 60
+        XCTAssertFalse(app("Code", lastOpened: arrived - 7 * 60 * 60, addedAt: arrived).isMigratedAndUnopened)
+        XCTAssertFalse(app("uBlock", lastOpened: arrived - 12 * day, addedAt: arrived).isMigratedAndUnopened)
+        XCTAssertTrue(app("IINA", lastOpened: arrived - 38 * day, addedAt: arrived).isMigratedAndUnopened)
+    }
 }
 
 /// Names and categories as a person reads them.
@@ -60,4 +71,5 @@ final class ApplicationFactsTests: XCTestCase {
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.graphics-design"), "Graphics & Design")
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.puzzle-games"), "Games")
     }
+
 }
