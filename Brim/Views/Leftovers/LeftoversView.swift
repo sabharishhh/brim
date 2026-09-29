@@ -152,11 +152,22 @@ struct LeftoversView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The app's own icon when Brim saved one, otherwise the kind of place
+    /// its largest item is in. Letters on a colour said nothing.
+    @ViewBuilder private func ownerIcon(_ group: LeftoverGroup) -> some View {
+        if case .monogram = group.ownerIcon,
+           let largest = group.items.max(by: { $0.size < $1.size }) {
+            LocationIcon(url: largest.url, size: Metrics.rowIcon)
+        } else {
+            BrimIcon(source: group.ownerIcon)
+        }
+    }
+
     private func row(_ group: LeftoverGroup) -> some View {
         let removed = group.category == .orphaned
         let facts = Self.facts(group)
         return HStack(spacing: 12) {
-            BrimIcon(source: group.ownerIcon)
+            ownerIcon(group)
                 .opacity(removed ? 0.85 : 0.6)
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.displayName)
