@@ -215,6 +215,9 @@ public enum UpdateOutcome: Codable, Equatable, Sendable {
     case openedInstaller
     /// The application is still open and would not quit.
     case stillOpen(name: String)
+    /// macOS would not let Brim change the folder the app is in, which is
+    /// App Management's decision. Nothing was changed.
+    case notAllowed(folder: String)
     case failed(String)
 }
 
