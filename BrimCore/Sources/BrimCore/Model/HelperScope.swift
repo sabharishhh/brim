@@ -45,6 +45,11 @@ public enum HelperScope {
             return extensions.contains((name as NSString).pathExtension.lowercased())
                 && !isApples(bundleAt: path)
         }
+        if preferenceFolders.contains(folder) {
+            let lowered = name.lowercased()
+            return isPreferenceFile(name) && !lowered.hasPrefix("com.apple") && !lowered.hasPrefix("com.sabharishhh.brim")
+                && !isInSystemFamily(name) && !isLink(path) && !isFolder(path)
+        }
         if cacheFolders.contains(folder) {
             let lowered = name.lowercased()
             return !lowered.hasPrefix("com.apple") && !lowered.hasPrefix("com.sabharishhh.brim")
@@ -56,6 +61,41 @@ public enum HelperScope {
     /// Caches only root can empty. A cache is rebuilt by its owner, so the
     /// helper asks only whose it is.
     public static let cacheFolders: Set<String> = ["/Library/Caches"]
+
+    /// Preference files an app's installer left for every account. Files
+    /// only, named like a bundle identifier.
+    public static let preferenceFolders: Set<String> = ["/Library/Preferences"]
+
+    static func isPreferenceFile(_ name: String) -> Bool {
+        guard name.hasSuffix(".plist"), !name.hasPrefix(".") else { return false }
+        let labels = name.dropLast(6).split(separator: ".", omittingEmptySubsequences: false)
+        return labels.count >= 3 && labels.allSatisfy { !$0.isEmpty }
+    }
+
+    /// The first two labels of every name macOS itself ships outside
+    /// `com.apple`, such as `org.cups`, read from this Mac's own system
+    /// folders. The printer list is `org.cups.printers.plist`.
+    static func systemFamilies() -> Set<String> {
+        var families = Set<String>()
+        for folder in ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents", "/System/Library/CoreServices"] {
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
+                let labels = name.split(separator: ".")
+                if labels.count >= 3 { families.insert(labels.prefix(2).joined(separator: ".").lowercased()) }
+            }
+        }
+        return families
+    }
+
+    static func isInSystemFamily(_ name: String) -> Bool {
+        let labels = name.lowercased().split(separator: ".")
+        guard labels.count >= 3 else { return false }
+        return systemFamilies().contains(labels.prefix(2).joined(separator: "."))
+    }
+
+    static func isFolder(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR
+    }
 
     public static let receipts = URL(fileURLWithPath: "/private/var/db/receipts")
 

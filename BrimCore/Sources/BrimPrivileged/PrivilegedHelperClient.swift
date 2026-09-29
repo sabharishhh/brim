@@ -256,6 +256,11 @@ public final class PrivilegedHelperClient: ObservableObject {
         await ask { proxy, reply in proxy.removeSystemCache(name: name, withReply: reply) }
     }
 
+    /// Asks the daemon to set aside one preference file in `/Library/Preferences`.
+    public func removeSystemPreference(name: String) async -> String? {
+        await ask { proxy, reply in proxy.removeSystemPreference(name: name, withReply: reply) }
+    }
+
     private func ask(
         _ call: @escaping (BrimJobHelperProtocol, @escaping (String?) -> Void) -> Void
     ) async -> String? {

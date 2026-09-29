@@ -113,3 +113,73 @@ public enum PrivilegedCacheRemoval {
         return URL(fileURLWithPath: directory).appendingPathComponent(name)
     }
 }
+
+/// A preference file a removed application's installer left in
+/// `/Library/Preferences`, which only root can move.
+///
+/// Microsoft AutoUpdate left `com.microsoft.autoupdate2.plist` there, and
+/// it was the one thing a review could not take, so the app stayed listed
+/// as removed with something left behind. Only a plain file named like a
+/// bundle identifier is taken, never a folder: `SystemConfiguration`,
+/// `Audio` and the other folders there are how this Mac is set up. Apple's
+/// own files are refused, and so is `.GlobalPreferences`.
+public enum PrivilegedPreferenceRemoval {
+    public static let directory = "/Library/Preferences"
+
+    public enum Refusal: Error, Equatable, Sendable {
+        case notAPreferenceFile(String)
+        case belongsToApple(String)
+        case notThere
+        case notAFile
+        case couldNotQuarantine(String)
+
+        public var explanation: String {
+            switch self {
+            case .notAPreferenceFile(let name): return "\(name) is not an app's preference file."
+            case .belongsToApple(let name): return "\(name) belongs to macOS."
+            case .notThere: return "It is not there any more."
+            case .notAFile: return "That is not a file."
+            case .couldNotQuarantine(let why): return "It could not be set aside: \(why)"
+            }
+        }
+    }
+
+    public static func target(name: String) throws -> URL {
+        guard PrivilegedPayloadRemoval.isPlainName(name), isPreferenceFile(name) else {
+            throw Refusal.notAPreferenceFile(name)
+        }
+        let lowered = name.lowercased()
+        guard !lowered.hasPrefix("com.apple"), !lowered.hasPrefix("com.sabharishhh.brim"),
+              !isInSystemFamily(name) else {
+            throw Refusal.belongsToApple(name)
+        }
+        return URL(fileURLWithPath: directory).appendingPathComponent(name)
+    }
+
+    /// The first two labels of every name macOS itself ships outside
+    /// `com.apple`, such as `org.cups`, read from this Mac's own system
+    /// folders. The printer list is `org.cups.printers.plist`.
+    static func systemFamilies() -> Set<String> {
+        var families = Set<String>()
+        for folder in ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents", "/System/Library/CoreServices"] {
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
+                let labels = name.split(separator: ".")
+                if labels.count >= 3 { families.insert(labels.prefix(2).joined(separator: ".").lowercased()) }
+            }
+        }
+        return families
+    }
+
+    static func isInSystemFamily(_ name: String) -> Bool {
+        let labels = name.lowercased().split(separator: ".")
+        guard labels.count >= 3 else { return false }
+        return systemFamilies().contains(labels.prefix(2).joined(separator: "."))
+    }
+
+    /// `<reverse-dns>.plist`, three labels at least before the extension.
+    public static func isPreferenceFile(_ name: String) -> Bool {
+        guard name.hasSuffix(".plist"), !name.hasPrefix(".") else { return false }
+        let labels = name.dropLast(6).split(separator: ".", omittingEmptySubsequences: false)
+        return labels.count >= 3 && labels.allSatisfy { !$0.isEmpty }
+    }
+}
