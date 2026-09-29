@@ -12,6 +12,8 @@ extension DeveloperCache {
     /// What clearing it costs, in a few words.
     var consequence: String {
         if let lastBuilt { return Self.built(lastBuilt) }
+        // Two copies of one update are told apart by their file.
+        if isUpdateDownload { return url.lastPathComponent }
         return switch cost {
         case .rebuilt: "Costs one slow build"
         case .refetched: "Downloaded again when needed"
@@ -42,6 +44,8 @@ extension DeveloperCache {
             rules: [
                 GroupRule(id: "projects", title: "Project builds", matches: \.isProject,
                           order: { $0.sizeBytes > $1.sizeBytes }),
+                GroupRule(id: "updates", title: "Update downloads", matches: \.isUpdateDownload,
+                          order: { $0.sizeBytes > $1.sizeBytes }),
                 GroupRule(id: "rebuilt", title: "Rebuilds by itself", matches: { $0.cost == .rebuilt }, order: order),
                 GroupRule(id: "tool", title: "Managed by its tool", matches: { $0.cost == .refetched }, order: order)
             ],
@@ -59,6 +63,11 @@ enum ToolIcon {
         "Docker": "com.docker.docker"
     ]
     private static var cache: [String: IconSource] = [:]
+
+    static func source(_ item: DeveloperCache) -> IconSource {
+        if let app = item.app { return .bundle(app) }
+        return source(item.tool)
+    }
 
     static func source(_ tool: String) -> IconSource {
         if let known = cache[tool] {
@@ -91,7 +100,7 @@ struct DeveloperRow: View {
                     .help(isPicked ? "Remove from Tray" : "Add to Tray")
             }
             BrimIcon(
-                source: ToolIcon.source(cache.tool),
+                source: ToolIcon.source(cache),
                 size: Metrics.rowIcon(compact: compact),
                 badge: cache.cost == .rebuilt ? .regenerates : nil
             )
@@ -142,7 +151,7 @@ struct DeveloperInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                BrimIcon(source: ToolIcon.source(cache.tool), size: 64)
+                BrimIcon(source: ToolIcon.source(cache), size: 64)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(cache.title)
                         .font(.brimPageTitle)
