@@ -488,6 +488,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // state in memory and writes it back out when it quits, so the
         // preferences and caches just removed reappear minutes later and
         // the removal looks as though it silently failed.
+        if plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty {
+            _ = await RunningApplications.quitBackgroundParts(
+                bundleID: plan.intent.subjectIdentity.bundleID,
+                bundlePath: plan.steps.first { $0.executionPhase == .appBundle }?.target
+            )
+        }
         if let refusal = runningApplicationRefusal(for: plan) {
             throw ApplyError.subjectIsRunning(refusal)
         }
@@ -924,8 +930,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         plan: Plan, journal: JournalEntry?, remaining: Set<String>
     ) -> [String: String] {
         var recorded: [String: String] = [:]
+        // One path can carry several steps: an app bundle is moved, and its
+        // Launch Services record retracted after. The step that moves the
+        // file answers for it. Reading the retraction's "ok" said WhatsApp's
+        // bundle had been removed and written back, when it was never moved.
         for step in plan.steps where step.kind.targetIsPath && remaining.contains(step.target) {
-            if let outcome = journal?.stepOutcomes[step.index] {
+            guard let outcome = journal?.stepOutcomes[step.index] else { continue }
+            if step.kind == .unregisterLaunchServices, recorded[step.target] != nil { continue }
+            let moves = step.kind != .unregisterLaunchServices
+            if moves || recorded[step.target] == nil {
                 recorded[step.target] = outcome
             }
         }
@@ -946,8 +959,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if outcome == "skipped_due_to_prior_failures" {
             return "Not attempted, because something before it in the same removal could not go."
         }
+        // The folder's permissions may say nothing, as a sandboxed app's
+        // temporary folder's did, and then "nothing was recorded to say why"
+        // sat above a report saying macOS had refused it.
         if outcome == "refusedByOS" {
-            return nil
+            return "macOS would not let Brim move this."
         }
         // The step worked and the file is back: something wrote it again
         // after it went. IINA's preferences were reported as "nothing was
