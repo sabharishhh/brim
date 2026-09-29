@@ -28,7 +28,7 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            Toggle("Show new leftovers on the Dock icon", isOn: $showsDockBadge)
+            Toggle("Show removed apps that left something on the Dock icon", isOn: $showsDockBadge)
             Text("Clears when you open Leftovers")
                 .font(.caption)
                 .foregroundStyle(Palette.inkSecondary)
