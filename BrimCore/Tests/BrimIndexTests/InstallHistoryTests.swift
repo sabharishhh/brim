@@ -246,4 +246,19 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(Set(removed.keys), ["com.b"], "macOS's own are left out")
         XCTAssertEqual(removed["com.b"], second)
     }
+
+    /// "Replaced by" needs where a removed app was, and only the last place:
+    /// an app that moved away from a path before going was not replaced by
+    /// whatever sits there now.
+    func testTheLastPlaceARemovedAppWasSeenIsRecorded() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        _ = try await index.recordInstalled([app("com.b", "Beta")], at: first)
+        _ = try await index.recordInstalled([InstallObservation(bundleID: "com.b", name: "Beta", version: "1.0",
+                                                                bundlePath: "/Users/x/Applications/Beta.app",
+                                                                sizeBytes: 1)],
+                                            at: first.addingTimeInterval(60))
+        let paths = try await index.lastBundlePaths(of: ["com.b", "com.none"])
+        XCTAssertEqual(paths, ["com.b": "/Users/x/Applications/Beta.app"])
+    }
 }
