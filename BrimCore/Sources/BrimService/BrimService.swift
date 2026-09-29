@@ -539,7 +539,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 && originalStep.effectiveDisposition == newStep.effectiveDisposition
                 && originalStep.capability == newStep.capability
                 && originalStep.executionPhase == newStep.executionPhase
-                && originalStep.archiveDestination == newStep.archiveDestination
             guard sameAction else {
                 throw ApplyError.validationFailed("The required action changed. Review the plan again.")
             }
