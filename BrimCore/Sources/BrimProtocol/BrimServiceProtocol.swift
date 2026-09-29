@@ -60,17 +60,10 @@ public protocol BrimServiceProtocol: Sendable {
     /// looked, worked out by subtracting one snapshot from the one
     /// before it. Nothing watches, and nothing runs at login.
     func whatChanged() async -> InstallHistory
-    /// How each application gets its next version, read from the disk
-    /// with no network request of any kind.
-    func updateReport() async -> UpdateReport
-    /// Energy per application, accumulated across restarts.
     /// Checks every application for a newer version. Reaches the network.
     func checkForUpdates() async -> UpdateCheck
     /// Puts one update in place, reporting download progress from 0 to 1.
     func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome
-    /// Casks Homebrew still tracks whose application is gone.
-    func orphanedCasks() async -> [OrphanedCask]
-    func forgetCask(_ name: String) async -> String?
 }
 
 public extension BrimServiceProtocol {
@@ -117,15 +110,10 @@ public extension BrimServiceProtocol {
     func whatChanged() async -> InstallHistory {
         InstallHistory(changes: [], snapshots: 0)
     }
-    func updateReport() async -> UpdateReport {
-        UpdateReport(coverage: [], agents: [], homebrewPresent: false)
-    }
     func checkForUpdates() async -> UpdateCheck {
         UpdateCheck(updates: [], checked: 0, unchecked: [], checkedAt: Date())
     }
     func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
         .failed("Not supported here.")
     }
-    func orphanedCasks() async -> [OrphanedCask] { [] }
-    func forgetCask(_ name: String) async -> String? { "Not supported here." }
 }
