@@ -5,6 +5,7 @@ import SwiftUI
 /// One step: Finder's icon, the item's name and folder, its size.
 struct StepRow: View {
     let step: Step
+    @State private var hovering = false
 
     var body: some View {
         if step.kind.targetIsPath {
@@ -31,7 +32,7 @@ struct StepRow: View {
     private var pathRow: some View {
         let url = URL(fileURLWithPath: step.target)
         return HStack(spacing: 10) {
-            BrimIcon(source: .finder(url), size: 22)
+            LocationIcon(url: url)
             VStack(alignment: .leading, spacing: 1) {
                 Text(url.lastPathComponent)
                     .font(.brimFacts)
@@ -43,6 +44,11 @@ struct StepRow: View {
             }
             .lineLimit(1)
             Spacer(minLength: 6)
+            if hovering {
+                RevealButton(urls: [url])
+                    .buttonStyle(.borderless)
+                    .transition(.opacity)
+            }
             Text(ByteText.short(step.expectedBytes))
                 .font(.brimFacts)
                 .monospacedDigit()
@@ -50,10 +56,13 @@ struct StepRow: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 38)
+        .contentShape(.rect)
+        .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovering = inside } }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel("\(url.lastPathComponent), \(ByteText.short(step.expectedBytes))")
         .accessibilityValue(step.target)
+        .accessibilityAction(named: "Show in Finder") { RevealButton.reveal([url]) }
     }
 
     static func abbreviated(_ path: String) -> String {
