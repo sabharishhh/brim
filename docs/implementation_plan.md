@@ -1,4 +1,4 @@
-# Brim — Implementation Plan
+# Brim implementation plan
 
 **Status:** authoritative build plan. Derived from Volume I (product research) and Volume II (architecture, agents, security). Those two documents are the specification; this one does not revisit their decisions.
 
@@ -7,6 +7,12 @@
 **Reading order:** §1 (invariants) and §2 (layout) before any code. §3 (frozen contracts) before any task in M1. §13 and §14 are authoritative wherever they conflict with the task catalogue — the catalogue is written first and then cut.
 
 ---
+
+## Status, 30 September 2026
+
+Brim is heading for 1.0 on 4 October. Milestones 0 to 3 are built. Milestone 4 is App Intents only. Milestone 5 is built; reset and archive were removed. Milestone 6 is partly built. Milestone 7's first items are done and its audit criterion is still open. Where the build replaced a task, the task below says so in place, and section 15 lists what was left out or drifted.
+
+The work since the last revision, beyond this plan: Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Removed apps uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
 
 ## 1. Invariants
 
@@ -166,16 +172,21 @@ There is deliberately **no `approve`**. `requestApproval` raises Brim's window a
 
 ### 3.5 Helper protocol
 
+As built, in `BrimPrivileged/HelperInterface.swift`. No call takes a path.
+
 ```swift
-public protocol BrimHelperProtocol {
-  func executeStep(planPath: URL, planHash: String, index: Int,
-                   reply: @escaping (StepOutcome) -> Void)
-  func helperVersion(reply: @escaping (String) -> Void)
-  func uninstallSelf(reply: @escaping (Bool) -> Void)
-}
+func removeDefunctJob(domain:name:withReply:)       // a launch job whose program is gone
+func removeBrokenCommand(domain:name:withReply:)    // a command link that resolves nowhere
+func forgetReceipt(packageID:withReply:)            // never Apple's
+func removeInstalledBundle(domain:name:withReply:)  // a bundle an installer put down
+func removeInstalledPayload(packageID:name:withReply:)
+func removeSystemCache(name:withReply:)
+func removeSystemPreference(name:withReply:)        // /Library/Preferences, files only
+func version(withReply:)                     // "7"
+func uninstallSelf(withReply:)
 ```
 
-The helper reads the plan from a directory writable only by root and Brim's signed components, recomputes `planHash` and refuses on mismatch, then **re-runs the evidence and safety checks for that step using `BrimCore`** before touching anything.
+The helper finds each item from the name it is given, proves it is what the call says (a job whose program is missing, a link that resolves nowhere), and refuses Apple's namespace, Brim's identifier and families macOS ships in `/System/Library`. What it removes it sets aside in a root-owned folder, which it clears in `uninstallSelf` before it is unregistered. `HelperScope` in the app answers the same questions, and a test holds the two to one answer.
 
 ---
 
@@ -375,12 +386,10 @@ executable.
 
 **Goal:** make the process topology and the privilege boundary real, with the security properties tested rather than intended. Nothing user-visible is added.
 
-### T-2.1 · Extract the service over XPC
-- **Objective** One index owner, one permission identity, many clients.
-- **Depends on** M1 complete, S-2.
-- **Work** Move `BrimService` into an XPC service bundle inside the app. Add the XPC `ServiceClient` implementation behind the existing abstraction. An actor wrapper around `NSXPCConnection` to satisfy strict concurrency. Interface whitelisting for collection types. Invalidation and reconnection handling.
-- **Acceptance** All M1 tests pass unchanged against the XPC client. Killing the service mid-request surfaces a clean error and reconnects.
-- **Unlocks** the service running without the app in the foreground.
+### T-2.1 · Service in process, XPC kept ready · changed
+- **As built** `BrimService` runs inside the app. The XPC client, server and `MutualAuthentication` exist and are tested (`XPCAuthenticationTests`), but no XPC service bundle is built. Root work goes through the small helper in T-2.3 instead, which is the only thing that needs another process.
+- **Why** One index owner is still true in process, and an out-of-process service bought nothing the helper does not already give, at the cost of a second signed bundle to ship.
+- **Still true** Approval is minted only in the app's own process (§3.3), and `ApprovalGateTests` holds it.
 
 ### T-2.2 · Mutual code-signing requirements
 - **Objective** Only Brim's own signed components can reach the service or the helper.
@@ -389,12 +398,9 @@ executable.
 - **Acceptance** A test client signed with a different identity is rejected. A grep test asserts `processIdentifier` is never read for an authorisation decision.
 - **Unlocks** the helper.
 
-### T-2.3 · Privileged helper
-- **Objective** Root, with a vocabulary too small to abuse.
-- **Depends on** T-2.2, S-3, T-1.13.
-- **Work** `SMAppService` daemon. Registered on first need, not at launch. Implements §3.5 only. Reads the plan from the protected plan store, recomputes the hash, refuses on mismatch. **Uses `BrimOps` unchanged** — the same code the unprivileged executor uses.
-- **Acceptance** Registration and complete removal both work; the helper refuses a plan whose file has been modified after approval; a direct connection attempt from an unsigned process is rejected.
-- **Unlocks** system-domain removal, BTM access, privileged energy sampling.
+### T-2.3 · Privileged helper · done, narrower than planned
+- **As built** `BrimJobHelper`, an `SMAppService` daemon approved in Login Items during setup. It does not read plans. Each call names a kind of item (a defunct launch job, a broken command link, an installer receipt, an installed bundle or payload, a system cache, a system preference file) and the helper finds and proves the item itself. It never accepts a path, and refuses Apple's namespace, Brim's own identifier and families macOS ships in `/System/Library`. `HelperScope` mirrors those rules in the app so a plan promises only what the helper will do. It reports a version, and Brim replaces a daemon it does not recognise. Current version 7.
+- **Acceptance** A plan never offers a root-owned item the helper will refuse; `HelperScopeAgreementTests` holds the two readings to one answer; an unsigned client is refused.
 
 ### T-2.4 · Independent re-validation in the helper
 - **Objective** A compromised app still cannot cause a bad deletion.
@@ -431,14 +437,12 @@ executable.
 - **Acceptance** A helper binary replaced with a different signed build is refused.
 - **Unlocks** T-6.7 self-policing.
 
-### T-2.9 · Signing, notarisation and release pipeline
-- **Objective** Discover distribution problems now, not at release.
-- **Depends on** S-5, T-2.3.
-- **Work** CI job producing a Developer ID signed, hardened-runtime, notarised, stapled build of the app with its XPC service and daemon. Publish the code-directory hash as a release artefact. Keys in the CI secret store, signing isolated in its own job.
-- **Acceptance** The notarised artefact installs on a clean machine, registers the daemon and passes T-2.8.
-- **Unlocks** every subsequent milestone shipping as a testable build.
+### T-2.9 · Signing and release · changed
+- **As built** `scripts/build_release.sh` archives, signs with the first Developer ID or Apple Development certificate in the keychain, verifies the signature and both requirements, builds a disk image and writes its checksum. It notarises only when `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set.
+- **Decision** 1.0 ships signed with the free Apple Development certificate and not notarised. People open it once through Privacy & Security, Open Anyway. Brim's requirements accept that certificate, and Full Disk Access survives updates because the signature is stable.
+- **Open** `release.yml` builds on a runner that may lack the macOS 27 SDK and has no signing identity. 1.0 is built locally.
 
-**M2 done when:** the service runs out of process, both boundaries authenticate by signature, the helper exists with the §3.5 vocabulary and re-validates independently, the four security tests pass, and CI produces a notarised build.
+**M2 done when (as revised):** both ends of every connection authenticate by signature, the helper exists with the §3.5 vocabulary and proves each item itself, the security tests pass, and a signed release builds locally. The out-of-process service and a notarised CI build were set aside; see T-2.1 and T-2.9.
 
 ---
 
@@ -551,19 +555,12 @@ approval, is what makes the app safe to give root to, adapters or not.
 
 Every task here is an extension of the spine. They parallelise almost completely; the ordering below is by value, not by dependency.
 
-### T-5.1 · Leftovers and orphans
-- **Objective** Volume I's two-category model.
-- **Depends on** T-3.1, T-3.4.
-- **Work** Before declaring anything orphaned, search all mounted volumes, readable user accounts, Launch Services registration and installer receipts for an owner. **Orphaned** = owner recorded present and now gone, or a receipt exists for an absent product; pre-selectable. **Unclaimed** = unattributable after that search; shown, sorted by size, never pre-selected. Use access times to sort, never to justify.
-- **Acceptance** The fixture's second-volume app is not reported as orphaned. The two categories are never merged in the UI or the API.
-- **Unlocks** the leftovers view.
+### T-5.1 · Removed apps (was Leftovers and orphans) · done
+- **As built** The page is Removed. One row per app that has gone and left something, with its saved icon, when Brim saw it go, and Finish Removal, which opens a review. Brim's snapshots are ownership evidence: an app Brim saw installed and now cannot find owns what it left. Items nobody can be named for go into a collapsed "Can't tell whose" list, only from 1 MB, never counted and never ticked. Folders written in the last week, folders holding a `com.apple` file of their own, paths Developer claims and folders named for an installed command are not listed.
+- **Acceptance** Orphaned and unclaimed are never merged; unclaimed items never reach a figure; macOS's own folders are not offered.
 
-### T-5.2 · Reset and archive
-- **Objective** Two lifecycle actions on the existing graph.
-- **Depends on** T-1.8.
-- **Work** **Reset**: the same footprint with a filter that keeps the bundle and identifiable licence/keychain material and removes state. **Archive**: export bundle + data + a manifest, then optionally proceed to uninstall.
-- **Acceptance** A reset app launches as if new and retains its licence. An archived app restores from the export.
-- **Unlocks** two underserved jobs at near-zero cost.
+### T-5.2 · Reset and archive · removed
+- **Removed 30 September 2026.** Both reached the plan types, the planner and the executor, and Reset had a button in the app inspector, but neither was ever run end to end on a real app, and neither is removal or proof. The step kind `archivePath`, the `archive` execution phase, the `reset` and `archive` intents, `ResetFilter` and their tests are gone. Plans stored before this still decode; the extra fields are ignored.
 
 ### T-5.3 · Storage account
 - **Objective** The three numbers, always together.
@@ -601,12 +598,10 @@ dropped with it.
 - **Acceptance** A test asserts no code path deletes a container runtime disk image or an Xcode archive.
 - **Unlocks** the developer audience.
 
-### T-5.8 · Updates
-- **Objective** Coverage without a database.
-- **Depends on** T-1.2.
-- **Work** Discover a Sparkle feed from the bundle, a Homebrew cask match, or App Store provenance. State the source per app, and treat "no automatic update source" as a reportable finding. Install by delegation only — drive Sparkle, invoke `brew`, hand off to the App Store. Network access only on explicit user action, only to URLs already present in installed bundles.
-- **Acceptance** With networking disabled, the view renders from local state and says so. A test asserts no update check occurs without a user action.
-- **Unlocks** a category vacated in January 2026.
+### T-5.8 · Updates · done, beyond the original scope
+- **As built** Sources, first party first: the App Store receipt (the Mac listing, not a shared iPhone one), the app's Sparkle feed, its electron-builder feed, then Homebrew's catalog, falling through when one fails. Brim installs updates itself: it downloads with resume and retries, checks the hash or EdDSA signature, and checks that the new bundle has the same identifier and developer, is newer, runs on this Mac and passes Gatekeeper. It then swaps it in with one atomic exchange, recoverable after a crash, and sends the old copy to the Trash. App Store updates open the store, packages open Installer, Homebrew installs go through `brew`. A refusal by macOS is its own state with a button to App Management.
+- **Checks** When the page opens and the last check is over six hours old, and on Check Again. Never in the background.
+- **Screen** Available, Updated recently (last two weeks, from receipts and snapshots), All apps are up to date, Failed with Retry, and a count of apps that cannot be checked.
 
 ### T-5.9 · Migration hygiene and footprint history
 - **Objective** What came across and never ran here.
@@ -625,11 +620,8 @@ dropped with it.
 - **Work** A reusable `NSTableView`-backed SwiftUI view with selection, sorting, type-select, context menus and column persistence. Every list over ~1,000 rows uses it.
 - **Acceptance** 100k rows: constant memory, 60fps scroll, full keyboard traversal.
 
-### T-6.2 · Review queue
-- **Objective** The landing surface.
-- **Depends on** T-3.4, T-5.9.
-- **Work** Rank findings by confidence times impact. Show a count and a byte total. No score, no percentage, no health colour. Populate progressively as evidence arrives.
-- **Acceptance** The first window on a clean install shows real findings with no permission grant.
+### T-6.2 · Home · changed
+- **As built** Home rather than a ranked queue: what changed since the last look, what needs the person, and a card per page with its figure. No score, no percentage, no health colour.
 
 ### T-6.3 · Explanations
 - **Objective** Deterministic prose from the evidence model.
@@ -655,11 +647,9 @@ dropped with it.
 - **Work** Brim lists its own agent in the background-items view on the same terms as everything else. A self-removal flow that removes the app, the helper, the agent, the index and every registration, then verifies.
 - **Acceptance** After self-removal, a scan from a fresh build finds nothing belonging to Brim.
 
-### T-6.7 · Sparkle and release engineering
-- **Objective** Ship, repeatedly and safely.
-- **Depends on** T-2.9.
-- **Work** Sparkle 2 with signature verification, a compiled-in feed URL and a pinned public key. Versioning, release notes, Homebrew cask, published code-directory hash per release, defensive domain registration, a single documented official origin.
-- **Acceptance** An update from the previous release installs and passes self-verification.
+### T-6.7 · Release engineering · changed
+- **As built** No Sparkle. Brim asks GitHub for its latest release when it opens, at most once a day, and on Check for Brim Updates, and shows a notice in the sidebar that opens the release page. It never replaces itself. A 404 before the first release means nothing newer.
+- **Open** Homebrew cask, published code-directory hash, release notes.
 
 ### T-6.8 · Open-source split and documentation
 - **Objective** The safety claim must be auditable.
@@ -1081,10 +1071,36 @@ Authoritative. Reflects §13.
 | 2 | **Trust boundary** | T-2.1 to T-2.9 | Out-of-process service, mutual signature authentication, helper with closed vocabulary and independent re-validation, four security tests in CI, notarised build |
 | 3 | **Evidence** | T-3.1 to T-3.9 | A real suite application plans correctly; shared veto protects a sibling; background view beats System Settings |
 | 4 | **Agents** | T-4.5 and T-4.6 (T-4.1 to T-4.4 dropped, T-4.7 cut) | A read-only agent surface that cannot remove anything; all bypass attempts fail closed |
-| 5 | **Features** | T-5.1, T-5.2, T-5.3, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9, parallel and ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
+| 5 | **Features** | T-5.1, T-5.3, T-5.5, T-5.6, T-5.7, T-5.8, T-5.9, parallel and ordered by value | Every feature reports its own coverage gaps; no claimed bytes that cannot be delivered |
 | 6 | **Product** | T-6.1 to T-6.8, minus the treemap (C-6) | Accessibility complete; budgets met including Brim's own cost; self-removal verified; update path works |
 | 7 | **Complete removal** | T-7.1 to T-7.6; T-7.7 gated | User-selected applications audited after removal with nothing reachable left behind; checked, declared-absent and refused-by-macOS are distinguishable in a report; sweep and uninstall agree per bundle |
 
 **Not in V1, deliberately:** a model that asserts an attribution rather than restating one (T-7.7, gated); the treemap; standing agent policies that pre-authorise future plans; unattended automation of anything destructive; architecture stripping and language pruning; an install watcher of any kind; any adapter that is not the app itself; fleet or MDM features; and every item on Volume I's rejected list.
 
 **The first three commits, in order:** `Package.swift` with the module graph and the compiler-enforced purity of `BrimCore`; the fixture generator; `FileSystemRoot`. Nothing else can be trusted until those exist.
+
+---
+
+## 15. Left out, or drifted, as of 30 September 2026
+
+Left out of 1.0:
+
+- The removal report (M7): checked, declared-absent and refused-by-macOS as separate counts after a removal. Proof after removal exists; the three-way report does not.
+- Opaque-name classification (T-7.7), still gated, and the plain-language explanation and storage overview (T-7.6).
+- Performance budgets and Brim's own line in the Energy view (T-6.5). There are no signposts or measured budgets; Xcode's review taking 13 seconds was found by hand.
+- The 100k-row table bridge (T-6.1). AppKit's table was tried and removed; lists are SwiftUI.
+- A notarised build from CI (T-2.9), the Homebrew cask and published code-directory hash (T-6.7), and a licence (T-6.8).
+- From the September comparison plan: the three kinds of space with "Free for now", measuring how fast caches come back, large files through Spotlight, removing several apps in one review, brand icons, the old-versions rule for tools, and the paired-device rule for device support.
+- Removed apps' Gone and Kept states with proof history, "Replaced by" for an app's old identity (the old ChatGPT's `com.openai.chat` rows), and "Keep settings".
+
+Drifted from the plan:
+
+- The service runs in process, not as an XPC service (T-2.1).
+- The helper is a closed set of item kinds that proves each item itself, not an executor of plan steps (T-2.3, §3.5).
+- Updates installs directly after verifying, where the plan said delegation only (T-5.8), and checks when its page opens rather than only on an explicit action.
+- Brim checks GitHub for its own new version once a day on launch without being asked (T-6.7). That is the one network call not started by the person.
+- Distribution is a free development certificate without notarisation, not Developer ID (T-2.9).
+- Home replaced the ranked review queue (T-6.2).
+- Leftovers became Removed apps, one row per app (T-5.1).
+- The product rule of two things now names Updates as the one addition.
+- Reset and archive (T-5.2) were built in the engine and then removed.
