@@ -136,6 +136,37 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertTrue(names.contains("GoneTool"), "still finds a real one")
     }
 
+    /// `Knowledge`, `Animoji` and `SiriEntityCache` are macOS's, and each
+    /// had been written that day or the day before when it was offered as
+    /// somebody's leftover. Something writing to a folder is alive.
+    func testAnUnnamedFolderWrittenThisWeekIsInUse() async throws {
+        let old = Date(timeIntervalSinceNow: -60 * 24 * 60 * 60)
+        let live = try put("Users/tester/Library/Application Support/Knowledge/knowledgeC.db", contents: Data([1]))
+        let gone = try put("Users/tester/Library/Application Support/CEF/cache", contents: Data([1]))
+        for url in [gone, gone.deletingLastPathComponent()] {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        }
+        _ = live
+
+        let found = try await LeftoversScanner(root: root, hasFullDiskAccess: true, inUseWithin: 7 * 24 * 60 * 60)
+            .scanLeftovers()
+        let names = Set(found.map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains("Knowledge"))
+        XCTAssertTrue(names.contains("CEF"), "untouched for two months, still listed")
+    }
+
+    /// Notion kept its updater in `Application Support/Caches`, and the row
+    /// was called "Caches". A folder with a container's name is looked
+    /// inside, and what is in it is named.
+    func testAFolderNamedLikeAContainerIsLookedInside() async throws {
+        _ = try put("Users/tester/Library/Application Support/Caches/notion-updater/pending/x.zip", contents: Data([1]))
+        let found = try await LeftoversScanner(root: root, hasFullDiskAccess: true).scanLeftovers()
+        let names = Set(found.map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains("Caches"))
+        XCTAssertTrue(names.contains("notion-updater"))
+        XCTAssertEqual(found.first { $0.url.lastPathComponent == "notion-updater" }?.potentialOwner?.name, "Notion")
+    }
+
     /// What a removed app left carries when Brim last saw the app, so the
     /// list can say "Removed 28 Sep" and count it as the app's.
     func testTracesOfAnAppHistorySawGoAreItsWithTheDate() async throws {
