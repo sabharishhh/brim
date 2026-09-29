@@ -63,7 +63,8 @@ public struct LocationInventorySource: EvidenceSource {
             let candidates = location.candidates(for: subject)
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
-                 .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService:
+                 .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService,
+                 .homeDotFolder, .diagnosticReport:
                 true
             default:
                 false
