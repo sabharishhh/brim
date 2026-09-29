@@ -3,11 +3,13 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// What removed software left behind, grouped by what can safely go.
+/// Apps that have left this Mac and what each one left behind.
 ///
-/// Stacks of owners on the left, one owner in depth on the right, and the
-/// Tray at the bottom holding what is picked. The model keeps the scan and
-/// the selection; this page only arranges them.
+/// One row per app, named and shown as the app was, with when Brim saw it
+/// go. The one action finishes the removal: it opens the same review an
+/// uninstall uses, where what is certain is ticked and what is not is
+/// shown and left. Traces nobody can be named for sit in one folded
+/// section and are never counted.
 struct LeftoversView: View {
     @ObservedObject var model: LeftoversModel
     /// The Trash, shared with Home and the Journal because the Trash is one
@@ -16,98 +18,67 @@ struct LeftoversView: View {
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
     @SwiftUI.Environment(AppSession.self) private var session
-    @SwiftUI.Environment(\.undoManager) private var undoManager
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @SceneStorage("leftovers.grouping") private var grouping = LeftoverGrouping.smart
-    @State private var reviewRequest: PlanIntent?
-    /// Where the open review is, so ticking knows whether it may re-plan.
-    @State private var reviewPhase: UninstallExecutionModel.Phase?
-
-    private var reviewIsRunning: Bool { reviewPhase == .executing }
+    @State private var review: PlanIntent?
     /// Locations removed while the review was open, for the toast.
     @State private var removedInReview = 0
 
+    /// Under a megabyte, a trace nobody can be named for is not worth a row.
+    private static let smallestUnknown: Int64 = 1_000_000
+
     var body: some View {
-        // Fixed panes rather than an HSplitView: a split view relays out
-        // the whole window on every scroll (`CLAUDE.md`).
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                content
-            }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-            // The Tray belongs to the list it collects from, so it is
-            // centred on this column at any window width rather than on
-            // the list and the inspector together.
-            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
-            // Held still only while a removal runs. The list used to freeze
-            // for as long as a review was open, so changing one's mind meant
-            // closing the review, fixing the ticks and starting again; ticks
-            // now plan the review again as they change (`onChange` below).
-            .opacity(reviewIsRunning ? 0.55 : 1)
-            .allowsHitTesting(!reviewIsRunning)
-            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewIsRunning)
-            inspector
-                .frame(width: 340)
+        VStack(spacing: 0) {
+            header
+            content
         }
-        .onChange(of: model.selection) { _, selection in
-            // Only a plan still waiting for approval follows the ticks. A
-            // finished one stays on screen: the rows it removed leave the
-            // selection, and that is not a change of mind.
-            guard reviewRequest != nil, reviewPhase == .ready else { return }
-            reviewRequest = selection.isEmpty ? nil : model.removalIntent(requesterIdentity: NSUserName())
+        .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+        .sheet(item: $review) { intent in
+            RemovalPanel(
+                intent: intent, service: service,
+                onRemoved: { paths in
+                    removedInReview += paths.count
+                    model.forget(paths: paths)
+                },
+                onClose: { proven in
+                    review = nil
+                    if let proven { offerPutBack(proven) }
+                },
+                onUnverified: { Task { await model.load(service: service) } },
+                onPhase: { _ in }
+            )
+            .frame(width: 560, height: 600)
         }
         .task { await model.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
-        // Seen, a moment after it is on screen, so the new dots are seen
-        // before they go.
         .task(id: model.checkedAt) {
             guard model.checkedAt != nil else { return }
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
-                session.visits.acknowledge("leftovers", current: Set(model.all.map(\.id)))
-            }
+            session.visits.acknowledge("leftovers", current: Set(model.all.map(\.id)))
         }
         // Restoring from the Trash puts files back where they were, so
         // their rows belong back in the list.
         .onChange(of: recovery.items) { _, _ in model.reconcileWithDisk() }
-        .onAppear { model.keptGroups = keptIDs }
-        .onChange(of: keptIDs) { _, kept in model.keptGroups = kept }
-        .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
-        .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
     }
 
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Leftovers")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                if model.checkedAt != nil {
-                    Text(summary)
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
-                }
-                if model.isScanning {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Checking")
-                }
-                Spacer()
-                Picker("Group By", selection: $grouping) {
-                    ForEach(LeftoverGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
+        HStack(alignment: .firstTextBaseline) {
+            Text("Removed apps")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+            if model.checkedAt != nil {
+                Text(summary)
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
             }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search leftovers")
+            if model.isScanning {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Checking")
+            }
+            Spacer()
         }
         .padding(.horizontal, 24)
         .padding(.top, 18)
@@ -116,160 +87,114 @@ struct LeftoversView: View {
 
     private var summary: String {
         let groups = model.orphanedGroups
-        guard !groups.isEmpty else { return "None from removed apps" }
-        let apps = groups.count == 1 ? "1 removed app" : "\(groups.count) removed apps"
-        return "From \(apps) · \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
+        guard !groups.isEmpty else { return "Nothing left behind" }
+        let apps = groups.count == 1 ? "1 app" : "\(groups.count) apps"
+        return "\(apps) left \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
     }
 
-    // MARK: - Stacks
+    // MARK: - List
+
+    private var unknowns: [LeftoverGroup] {
+        model.unclaimedGroups.filter { $0.totalBytes >= Self.smallestUnknown }
+    }
+
+    private var sections: [ItemGroup<LeftoverGroup>] {
+        var sections: [ItemGroup<LeftoverGroup>] = []
+        if !model.orphanedGroups.isEmpty {
+            sections.append(ItemGroup(id: "removed", title: "Left something behind",
+                                      items: model.orphanedGroups.sorted { $0.totalBytes > $1.totalBytes }))
+        }
+        if !unknowns.isEmpty {
+            sections.append(ItemGroup(id: "unknown", title: "Can't tell whose",
+                                      items: unknowns.sorted { $0.totalBytes > $1.totalBytes }, startsCollapsed: true))
+        }
+        return sections
+    }
 
     @ViewBuilder
     private var content: some View {
         if model.isScanning, model.all.isEmpty {
-            SkeletonRows()
+            SkeletonRows(showsTick: false)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
-        } else if model.all.isEmpty {
-            EmptyState(symbol: "checkmark.seal", title: "Nothing left behind", message: "No leftovers found.")
+        } else if sections.isEmpty {
+            EmptyState(symbol: "checkmark.circle", title: "Nothing left behind",
+                       message: "No removed app has left anything on this Mac.")
         } else {
-            LeftoverStacks(
-                model: model, grouping: grouping, keptIDs: keptIDs, newItems: newItems,
-                pick: pick, keep: toggleKeep, changePick: changePick
+            if model.orphanedGroups.isEmpty { nothingLeft }
+            GroupedStacks(
+                sections: sections,
+                summary: { "\($0.items.count)" },
+                inspected: nil,
+                inspect: { _ in },
+                row: row
             )
-            // A new grouping is a new order to hold.
-            .id(grouping)
             .refreshing(model.isScanning)
         }
     }
 
-    // MARK: - Inspector
-
-    @ViewBuilder
-    private var inspector: some View {
-        if let intent = reviewRequest {
-            RemovalPanel(
-                intent: intent, service: service,
-                onRemoved: { paths in
-                    // Rows go the moment the check proves them gone, with
-                    // the review still open, because that is when it
-                    // became true.
-                    removedInReview += paths.count
-                    model.forget(paths: paths)
-                },
-                onClose: { proven in
-                    reviewRequest = nil
-                    reviewPhase = nil
-                    if let proven {
-                        offerPutBack(proven)
-                    }
-                },
-                onUnverified: { Task { await model.load(service: service) } },
-                onPhase: { reviewPhase = $0 }
-            )
-            .id(intent.id)
-            .transition(.opacity)
-        } else if let group = model.inspected {
-            LeftoverInspector(
-                group: group,
-                isPicked: model.isSelected(group),
-                isKept: keptIDs.contains(group.id),
-                pick: { pick(group) },
-                keep: { toggleKeep(group) }
-            )
-            .refreshing(model.isScanning)
-            // Keyed on the group and a crossfade only, so arrowing through
-            // the list does not make the pane swim.
-            .id(group.id)
-            .transition(.opacity)
-            .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: group.id)
-        } else {
-            PanePlaceholder(symbol: "shippingbox", title: "Select a leftover")
+    /// Said where the removed apps would be, before the folded unknowns.
+    private var nothingLeft: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
+            Text("No removed app has left anything")
+                .font(.brimRowTitle)
+                .foregroundStyle(Palette.ink)
+            Spacer()
         }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 
-    private var inspectedURLs: [URL] {
-        model.inspected?.items.map(\.url) ?? []
-    }
-
-    // MARK: - Decisions
-
-    private static let keptPrefix = "leftover:"
-
-    private var keptIDs: Set<String> {
-        Set(session.decisions.kept.keys.filter { $0.hasPrefix(Self.keptPrefix) }
-            .map { String($0.dropFirst(Self.keptPrefix.count)) })
-    }
-
-    private var newItems: Set<String> {
-        session.visits.newItems(in: "leftovers", current: Set(model.all.map(\.id)))
-    }
-
-    /// Keep or stop keeping, as one step Command-Z can take back.
-    private func toggleKeep(_ group: LeftoverGroup) {
-        let key = Self.keptPrefix + group.id
-        let decisions = session.decisions
-        let wasKept = decisions.isKept(key)
-        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
-            if wasKept {
-                decisions.unkeep([key])
-            } else {
-                decisions.keep([key])
+    private func row(_ group: LeftoverGroup) -> some View {
+        let removed = group.category == .orphaned
+        let facts = Self.facts(group)
+        return HStack(spacing: 12) {
+            BrimIcon(source: group.ownerIcon)
+                .opacity(removed ? 0.85 : 0.6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.displayName)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                Text(facts)
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
             }
+            .lineLimit(1)
+            .help(group.evidence)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel("\(group.displayName), \(facts)")
+            Spacer(minLength: 8)
+            Button(removed ? "Finish Removal" : "Review") { open(group) }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .disabled(model.isScanning)
         }
-        registerKeepUndo(key: key, keptNow: !wasKept, name: wasKept ? "Stop Keeping" : "Keep")
-        if !wasKept {
-            shell.show(ToastMessage(
-                symbol: "pin.fill", text: "Kept \(group.displayName)", actionTitle: "Undo",
-                action: { [undoManager] in undoManager?.undo() }
-            ))
-        }
+        .padding(.horizontal, 14)
+        .frame(height: Metrics.rowHeight)
     }
 
-    private func registerKeepUndo(key: String, keptNow: Bool, name: String) {
-        guard let undoManager else { return }
-        undoManager.registerUndo(withTarget: session.decisions) { decisions in
-            MainActor.assumeIsolated {
-                if keptNow {
-                    decisions.unkeep([key])
-                } else {
-                    decisions.keep([key])
-                }
-                registerKeepUndo(key: key, keptNow: !keptNow, name: name)
-            }
-        }
-        undoManager.setActionName(name)
+    private static func facts(_ group: LeftoverGroup) -> String {
+        let places = group.items.count == 1 ? "1 place" : "\(group.items.count) places"
+        let size = places + " · " + ByteText.short(group.totalBytes)
+        guard let removed = group.removedAt else { return size }
+        return "Removed " + removed.formatted(.dateTime.day().month(.abbreviated)) + " · " + size
     }
 
-    // MARK: - Tray
+    // MARK: - Removing
 
-    /// What is ticked, as the window's Tray. The model keeps the
-    /// selection; this only describes it.
-    private var trayContents: TrayContents? {
-        guard !model.selectedItems.isEmpty, reviewRequest == nil else { return nil }
-        let blocked = model.blockedSelection.count
-        return TrayContents(
-            count: model.selectedItems.count, bytes: model.selectedBytes,
-            // Not while a rescan is replacing what the Tray points at.
-            canReview: model.canRemoveSelection && !model.isScanning,
-            note: blocked == 0 ? nil : "\(blocked) need Full Disk Access",
-            review: review,
-            clear: clearTray
-        )
-    }
-
-    private var removeSelectedIfPossible: FocusedAction<Void>? {
-        guard model.canRemoveSelection else { return nil }
-        return FocusedAction(name: "remove leftovers") { _ in review() }
-    }
-
-    private func review() {
+    private func open(_ group: LeftoverGroup) {
         removedInReview = 0
-        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
-            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
-        }
+        review = model.removalIntent(for: group, requesterIdentity: NSUserName())
     }
 
     /// After a removal the check proved: say so, and offer it back.
@@ -291,25 +216,6 @@ struct LeftoversView: View {
                     }
                 }
             }
-        ))
-    }
-
-    private func pick(_ group: LeftoverGroup) {
-        let adding = !model.isSelected(group)
-        changePick(adding ? "Add to Tray" : "Remove from Tray") { model.toggle(group) }
-    }
-
-    private func changePick(_ name: String, _ change: () -> Void) {
-        let before = model.selection
-        change()
-        PickUndo.register(undoManager, on: model, name: name, from: before, to: model.selection)
-    }
-
-    private func clearTray() {
-        changePick("Clear Tray") { model.restoreSelection([]) }
-        shell.show(ToastMessage(
-            symbol: "tray", text: "Tray cleared", actionTitle: "Undo",
-            action: { [undoManager] in undoManager?.undo() }
         ))
     }
 }
