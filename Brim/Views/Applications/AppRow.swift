@@ -12,12 +12,23 @@ struct AppRow: View {
     let select: () -> Void
     /// Command-click: mark this app with others for one review.
     var mark: (() -> Void)?
+    /// Choosing with the Select button: the row shows a tick, and a click
+    /// ticks it rather than opening it.
+    var isChoosing = false
 
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
 
     var body: some View {
         HStack(spacing: 12) {
+            if isChoosing {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary))
+                    .opacity(app.isSystemProtected ? 0.35 : 1)
+                    .contentTransition(.symbolEffect(.replace))
+                    .accessibilityHidden(true)
+            }
             BrimIcon(
                 source: .bundle(app.url),
                 size: Metrics.rowIcon(compact: compact),
@@ -38,9 +49,11 @@ struct AppRow: View {
 
             Spacer(minLength: 8)
 
-            HoverActions {
-                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([app.url])
+            if !isChoosing {
+                HoverActions {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([app.url])
+                    }
                 }
             }
 
@@ -52,13 +65,14 @@ struct AppRow: View {
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .rowHighlight(isInspected: isSelected, action: select, commandAction: mark)
+        .rowHighlight(isInspected: isSelected && !isChoosing, action: isChoosing ? (mark ?? select) : select,
+                      commandAction: mark)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(app.name), \(facts), \(ByteText.short(app.bundleSizeBytes))")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         // The default action, so a press from VoiceOver or anything else
         // does what a click does. A named action alone left the row inert.
-        .accessibilityAction(.default, select)
+        .accessibilityAction(.default, isChoosing ? (mark ?? select) : select)
     }
 
     /// Developer and when it was last opened, the two facts that decide
