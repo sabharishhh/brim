@@ -229,4 +229,21 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertTrue(applied.contains("v1"))
         XCTAssertTrue(applied.contains("v2-install-snapshots"))
     }
+
+    /// Teams and Microsoft AutoUpdate were removed, Home said so, and what
+    /// they left was still called owner unknown. An app an earlier snapshot
+    /// saw and the latest did not is the record that it was here and went.
+    func testAnAppAnEarlierSnapshotSawIsRemovedAsOfTheLastTimeItWasSeen() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        let second = first.addingTimeInterval(86_400)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta"),
+                                             app("com.apple.x", "Apple")], at: first)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: second)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second.addingTimeInterval(86_400))
+
+        let removed = try await index.removedApplications()
+        XCTAssertEqual(Set(removed.keys), ["com.b"], "macOS's own are left out")
+        XCTAssertEqual(removed["com.b"], second)
+    }
 }

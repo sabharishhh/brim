@@ -136,6 +136,24 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertTrue(names.contains("GoneTool"), "still finds a real one")
     }
 
+    /// What a removed app left carries when Brim last saw the app, so the
+    /// list can say "Removed 28 Sep" and count it as the app's.
+    func testTracesOfAnAppHistorySawGoAreItsWithTheDate() async throws {
+        _ = try put("Users/tester/Library/Preferences/com.microsoft.autoupdate2.plist", contents: Data([1]))
+        let seen = Date(timeIntervalSince1970: 1_790_000_000)
+        let found = try await LeftoversScanner(
+            root: root,
+            staleRegistrationOwners: ["com.microsoft.autoupdate2": "Brim saw Microsoft AutoUpdate installed until 28 Sep."],
+            removedApplications: ["com.microsoft.autoupdate2": seen],
+            hasFullDiskAccess: true
+        ).scanLeftovers(knownPastBundleIDs: ["com.microsoft.autoupdate2"],
+                        knownNames: ["com.microsoft.autoupdate2": "Microsoft AutoUpdate"])
+        let item = try XCTUnwrap(found.first { $0.url.lastPathComponent == "com.microsoft.autoupdate2.plist" })
+        XCTAssertEqual(item.category, .orphaned)
+        XCTAssertEqual(item.removedAt, seen)
+        XCTAssertEqual(item.potentialOwner?.name, "Microsoft AutoUpdate")
+    }
+
     func testMacOSsPrinterListIsNotALeftover() async throws {
         _ = try put("System/Library/LaunchDaemons/org.cups.cupsd.plist")
         _ = try put("Library/Preferences/org.cups.printers.plist")

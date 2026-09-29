@@ -266,6 +266,30 @@ public actor Index {
         }
     }
 
+    /// Applications an earlier snapshot saw that the latest did not, by
+    /// bundle identifier, with the last time one was seen. macOS's own are
+    /// left out.
+    public nonisolated func removedApplications() async throws -> [String: Date] {
+        try await dbManager.dbPool.read { db in
+            guard let latest = try String.fetchOne(db, sql: """
+                SELECT scan_id FROM observation WHERE scan_id IS NOT NULL ORDER BY id DESC LIMIT 1
+                """) else { return [:] }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT identity_id, MAX(observed_at) AS seen FROM observation
+                WHERE scan_id IS NOT NULL AND identity_id NOT IN (
+                    SELECT identity_id FROM observation WHERE scan_id = ?)
+                GROUP BY identity_id
+                """, arguments: [latest])
+            var removed: [String: Date] = [:]
+            for row in rows {
+                guard let id: String = row["identity_id"], let seen: Date = row["seen"],
+                      !id.lowercased().hasPrefix("com.apple.") else { continue }
+                removed[id] = seen
+            }
+            return removed
+        }
+    }
+
     /// Every name Brim has recorded for an application, by bundle
     /// identifier, including applications that have since been removed.
     public nonisolated func recordedNames() async throws -> [String: String] {
