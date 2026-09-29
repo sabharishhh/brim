@@ -44,9 +44,6 @@ public struct ExplanationRenderer: Sendable {
         if reason.contains("Preserved main application bundle") {
             return "Kept, so the application still runs."
         }
-        if reason.contains("ResetFilter") || reason.contains("reset") {
-            return "Kept: settings or licence material a reset preserves."
-        }
         if reason.contains("Shared with") || reason.contains("Tier S veto") {
             return "Shared with other installed software."
         }

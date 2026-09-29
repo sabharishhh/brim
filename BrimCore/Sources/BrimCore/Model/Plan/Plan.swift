@@ -24,7 +24,6 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     case clearImmutableFlag
     case delegateToolCleanup
     case revealVendorUninstaller
-    case archivePath
     /// Removes the bundle's Launch Services registration, after the bundle
     /// itself is gone. Deleting an app does not retract its registration:
     /// the record survives, so the app keeps appearing in "Open With" and
@@ -44,7 +43,7 @@ public extension StepKind {
             false
         case .trashPath, .trashPathPrivileged, .unloadLaunchdJob, .removeLaunchdPlist,
              .clearImmutableFlag, .revealVendorUninstaller,
-             .archivePath, .unregisterLaunchServices:
+             .unregisterLaunchServices:
             true
         }
     }
@@ -82,7 +81,6 @@ public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     /// bundle is still present: tccutil resolves the bundle through Launch
     /// Services, so after removal the grants can never be cleared again.
     case privacyReset = -2
-    case archive = -1
     case auxiliary = 0
     case launchd = 1
     case appBundle = 2
@@ -128,7 +126,6 @@ public struct Step: Codable, Equatable, Sendable {
     public let reversible: Bool
     public let costOfError: CostOfError
     public let executionPhase: ExecutionPhase
-    public let archiveDestination: String?
     /// Absent in plans written before dispositions existed; those were all
     /// trashed, which `effectiveDisposition` preserves.
     public let disposition: StepDisposition?
@@ -138,7 +135,7 @@ public struct Step: Codable, Equatable, Sendable {
         disposition ?? .trash
     }
 
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, archiveDestination: String? = nil, disposition: StepDisposition? = nil) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -150,7 +147,6 @@ public struct Step: Codable, Equatable, Sendable {
         self.reversible = reversible
         self.costOfError = costOfError
         self.executionPhase = executionPhase
-        self.archiveDestination = archiveDestination
         self.disposition = disposition
     }
 }
@@ -185,8 +181,6 @@ public struct ExcludedItem: Codable, Equatable, Sendable {
 
 public enum IntentType: String, Codable, Equatable, Sendable {
     case uninstall
-    case reset
-    case archive
 }
 
 public struct PlanIntent: Codable, Equatable, Sendable {
@@ -199,8 +193,6 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     /// selection produces a single plan the user approves once. Absent in
     /// plans written before batching existed, hence optional.
     public let specificTargets: [URL]?
-    public let destinationTarget: URL?
-    public let archiveAndUninstall: Bool
     /// Rows Brim found for this application and did not tick, which the
     /// person ticked in the uninstall sheet. Paths, exactly as the plan's
     /// excluded rows name them.
@@ -230,15 +222,13 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         return []
     }
 
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, destinationTarget: URL? = nil, archiveAndUninstall: Bool = false, tickedByHand: [String]? = nil) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, tickedByHand: [String]? = nil) {
         self.type = type
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
         self.specificTarget = specificTarget
         self.specificTargets = specificTargets
-        self.destinationTarget = destinationTarget
-        self.archiveAndUninstall = archiveAndUninstall
         self.tickedByHand = tickedByHand
     }
 
@@ -331,8 +321,8 @@ public struct Plan: Codable, Equatable, Sendable {
         steps.contains { $0.effectiveDisposition == .trash }
     }
 
-    /// Steps in the order they must be applied: archive first so a copy exists
-    /// before anything is destroyed, then auxiliary files, then launchd jobs
+    /// Steps in the order they must be applied: privacy grants while the
+    /// bundle still exists, then auxiliary files, then launchd jobs
     /// (unloaded before their plist goes), and the app bundle last. Ties
     /// within a phase keep the planner's own order.
     public var executionOrderedSteps: [Step] {

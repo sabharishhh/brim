@@ -16,34 +16,6 @@ public struct Planner: Sendable {
         
         var evaluatedItems = evaluatedFootprint.items
         
-        // Handle reset specific filtering
-        if intent.type == .reset {
-            let footprint = Footprint(identity: intent.subjectIdentity, items: evaluatedFootprint.items.map { $0.footprintItem })
-            let (toDelete, toExclude) = ResetFilter.filter(footprint: footprint)
-            
-            // Re-evaluate selections based on ResetFilter
-            var newEvaluatedItems = [EvaluatedItem]()
-            for item in evaluatedFootprint.items {
-                if let excluded = toExclude.first(where: { $0.target == item.footprintItem.evidence.url.path }) {
-                    newEvaluatedItems.append(EvaluatedItem(footprintItem: item.footprintItem, selection: .excluded(reason: excluded.reason), costOfError: item.costOfError))
-                } else if toDelete.contains(where: { $0.evidence.url.path == item.footprintItem.evidence.url.path }) {
-                    // Only select if it was previously selected (or at least not excluded for a harder reason like Safety)
-                    if case .selected = item.selection {
-                        newEvaluatedItems.append(item)
-                    } else if case .unselected = item.selection {
-                         // Reset implies we want to trash state, so if it was merely unselected by default, select it
-                         newEvaluatedItems.append(EvaluatedItem(footprintItem: item.footprintItem, selection: .selected, costOfError: item.costOfError))
-                    } else {
-                         // Preserve safety exclusions
-                         newEvaluatedItems.append(item)
-                    }
-                } else {
-                    newEvaluatedItems.append(item)
-                }
-            }
-            evaluatedItems = newEvaluatedItems
-        }
-
         // Rows the person ticked in the uninstall sheet. Brim left them
         // unticked because it was not sure enough to remove them unasked,
         // which is not the same as not being allowed to remove them: every
@@ -157,34 +129,12 @@ public struct Planner: Sendable {
                 let disposition = StepDisposition.default(for: item.costOfError)
                 let isReversible = disposition == .trash
                 
-                if intent.type == .archive, let dest = intent.destinationTarget {
-                    let archiveStep = Step(
-                        index: index,
-                        kind: .archivePath,
-                        target: targetPath,
-                        targetFingerprint: fingerprint,
-                        tier: item.footprintItem.evidence.tier,
-                        evidence: ExplanationRenderer().render(tier: item.footprintItem.evidence.tier, capability: item.footprintItem.capability, mechanism: item.footprintItem.evidence.mechanism, found: item.footprintItem.evidence.humanSentence),
-                        expectedBytes: sizeBytes,
-                        capability: item.footprintItem.capability,
-                        reversible: true,
-                        costOfError: item.costOfError,
-                        executionPhase: .archive,
-                        archiveDestination: dest.path
-                    )
-                    steps.append(archiveStep)
-                    index += 1
-                }
-                
-                // Only generate destructive steps if intent is NOT archive, OR if archive explicitly requested uninstall
-                let shouldDelete = (intent.type != .archive) || (intent.type == .archive && intent.archiveAndUninstall)
-                
                 // Root's folders need the daemon, decided here so one selection
                 // can mix the person's files with root's in one plan and one
                 // review. Only what the daemon will take becomes a step; the
                 // rest stays out with its reason. See `HelperScope.keptOut`.
                 let needsPrivilege = item.footprintItem.capability == .needsHelper
-                if shouldDelete, needsPrivilege, let kept = HelperScope.keptOut(targetPath, bytes: sizeBytes) {
+                if needsPrivilege, let kept = HelperScope.keptOut(targetPath, bytes: sizeBytes) {
                     expectedTotalBytes -= sizeBytes
                     excludedItems.append(kept)
                     continue
@@ -195,7 +145,7 @@ public struct Planner: Sendable {
                 // shorter list instead of a reason. Unlocking is now a step
                 // of its own, placed before the removal it exists to let
                 // through, and the review sheet shows it.
-                if shouldDelete, let lock = ArtifactLock.on(path: targetPath) {
+                if let lock = ArtifactLock.on(path: targetPath) {
                     if lock.canBeCleared {
                         steps.append(Step(
                             index: index,
@@ -223,7 +173,7 @@ public struct Planner: Sendable {
                     }
                 }
 
-                if shouldDelete, needsPrivilege {
+                if needsPrivilege {
                     steps.append(Step(
                         index: index,
                         kind: .trashPathPrivileged,
@@ -241,7 +191,7 @@ public struct Planner: Sendable {
                         disposition: .trash
                     ))
                     index += 1
-                } else if shouldDelete {
+                } else {
                     if item.footprintItem.evidence.mechanism == "LaunchdSource" {
                         let unloadStep = Step(
                             index: index,

@@ -120,7 +120,6 @@ struct UninstallPlanRow: View {
         case .clearImmutableFlag: return "Unlock"
         case .forgetReceipt: return "Remove record"
         case .revealVendorUninstaller: return "Show in Finder"
-        case .archivePath: return "Archive"
         // Root's items go to the helper's holding folder, not the Trash.
         case .trashPathPrivileged: return "Set aside"
         default:
