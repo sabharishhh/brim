@@ -30,12 +30,10 @@ public enum ToolCleanup {
                 executable: "/usr/bin/env", arguments: ["pip", "cache", "purge"]),
         Command(id: "homebrew.cleanup", displayed: "brew cleanup --prune=all",
                 executable: "/usr/bin/env", arguments: ["brew", "cleanup", "--prune=all"]),
-        Command(id: "cargo.cache", displayed: "cargo cache --autoclean",
-                executable: "/usr/bin/env", arguments: ["cargo", "cache", "--autoclean"]),
         Command(id: "pnpm.store", displayed: "pnpm store prune",
                 executable: "/usr/bin/env", arguments: ["pnpm", "store", "prune"]),
-        Command(id: "gradle.cache", displayed: "gradle --stop", // stops daemons before pruning
-                executable: "/usr/bin/env", arguments: ["gradle", "--stop"]),
+        Command(id: "uv.cache", displayed: "uv cache clean",
+                executable: "/usr/bin/env", arguments: ["uv", "cache", "clean"]),
         Command(id: "xcode.simulators", displayed: "xcrun simctl delete unavailable",
                 executable: "/usr/bin/xcrun", arguments: ["simctl", "delete", "unavailable"])
     ]
@@ -76,10 +74,25 @@ public enum ToolCleanup {
         guard status == 0 else { throw CleanupError.failed(command.displayed, code: status) }
     }
 
+    /// An app opened from Finder gets only the system folders on its PATH,
+    /// so `env` could not find npm, pnpm, brew or uv wherever Homebrew or
+    /// the tool's own installer put them, and every cleanup that needed one
+    /// said the tool was not on this Mac.
+    static func environment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extra = ["/opt/homebrew/bin", "/usr/local/bin", "\(home)/.cargo/bin", "\(home)/.local/bin",
+                     "\(home)/go/bin", "/usr/bin", "/bin"]
+        let current = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        environment["PATH"] = (current + extra.filter { !current.contains($0) }).joined(separator: ":")
+        return environment
+    }
+
     static func execute(_ executable: String, _ arguments: [String]) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = environment()
         process.standardOutput = Pipe()
         process.standardError = Pipe()
         try process.run()
