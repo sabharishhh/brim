@@ -17,5 +17,4 @@ import BrimCore
     func leftovers(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func recoverableItems(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
     func whatChanged(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
-    func updateReport(withReply reply: @escaping @Sendable (Data?, Error?) -> Void)
 }
