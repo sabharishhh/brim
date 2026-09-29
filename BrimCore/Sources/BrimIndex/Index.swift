@@ -99,15 +99,21 @@ public actor Index {
         }
     }
 
-    /// The two most recent snapshots, subtracted.
+    /// The most recent change: the latest two snapshots that differ,
+    /// subtracted.
     ///
     /// Empty when there is only one, which is the honest answer on a
     /// first run: nothing has changed because there is nothing to
     /// compare against, and inventing a list of "new" applications the
     /// first time somebody opens Brim would be a lie that makes every
     /// later list untrustworthy.
+    ///
+    /// Not simply the last two. Every launch takes a snapshot, so a
+    /// relaunch compared two identical ones and Home's Changes emptied
+    /// each time Brim opened. Each change carries the two moments it fell
+    /// between, so an older change still says when it happened.
     public nonisolated func changesSinceLastScan(
-        growthThreshold: Int64 = 50 * 1024 * 1024
+        growthThreshold: Int64 = 50 * 1024 * 1024, lookBack: Int = 60
     ) async throws -> [InstallChange] {
         try await dbManager.dbPool.read { db in
             // Ordered by the rowid, not by the timestamp. Two scans a
@@ -119,60 +125,72 @@ public actor Index {
             let scans = try Row.fetchAll(db, sql: """
                 SELECT scan_id, MAX(observed_at) AS at, MAX(id) AS seq FROM observation
                 WHERE scan_id IS NOT NULL
-                GROUP BY scan_id ORDER BY seq DESC LIMIT 2
-                """)
-            guard scans.count == 2 else { return [] }
+                GROUP BY scan_id ORDER BY seq DESC LIMIT ?
+                """, arguments: [lookBack])
+            guard scans.count >= 2 else { return [] }
 
-            let latest = try Self.snapshot(db, scanID: scans[0]["scan_id"])
-            let previous = try Self.snapshot(db, scanID: scans[1]["scan_id"])
-            let since: Date = scans[1]["at"]
-            let until: Date = scans[0]["at"]
-
-            var changes: [InstallChange] = []
-
-            for (bundleID, now) in latest {
-                guard let before = previous[bundleID] else {
-                    changes.append(InstallChange(
-                        kind: .appeared, bundleID: bundleID, name: now.name,
-                        since: since, until: until
-                    ))
-                    continue
-                }
-                if before.version != now.version {
-                    changes.append(InstallChange(
-                        kind: .updated(from: before.version, to: now.version),
-                        bundleID: bundleID, name: now.name, since: since, until: until
-                    ))
-                    continue
-                }
-                // Size only counts when the version did not move. An
-                // update that grew is just an update, and saying both
-                // would be two rows for one event.
-                if let old = before.sizeBytes, let new = now.sizeBytes {
-                    let delta = new - old
-                    if delta >= growthThreshold {
-                        changes.append(InstallChange(
-                            kind: .grew(by: delta), bundleID: bundleID, name: now.name,
-                            since: since, until: until
-                        ))
-                    } else if -delta >= growthThreshold {
-                        changes.append(InstallChange(
-                            kind: .shrank(by: -delta), bundleID: bundleID, name: now.name,
-                            since: since, until: until
-                        ))
-                    }
-                }
+            var later = try Self.snapshot(db, scanID: scans[0]["scan_id"])
+            for index in 1..<scans.count {
+                let earlier = try Self.snapshot(db, scanID: scans[index]["scan_id"])
+                let changes = Self.difference(
+                    from: earlier, to: later, since: scans[index]["at"], until: scans[index - 1]["at"],
+                    growthThreshold: growthThreshold
+                )
+                if !changes.isEmpty { return changes }
+                later = earlier
             }
+            return []
+        }
+    }
 
-            for (bundleID, before) in previous where latest[bundleID] == nil {
+    static func difference(
+        from previous: [String: InstallObservation], to latest: [String: InstallObservation],
+        since: Date, until: Date, growthThreshold: Int64
+    ) -> [InstallChange] {
+        var changes: [InstallChange] = []
+
+        for (bundleID, now) in latest {
+            guard let before = previous[bundleID] else {
                 changes.append(InstallChange(
-                    kind: .disappeared, bundleID: bundleID, name: before.name,
+                    kind: .appeared, bundleID: bundleID, name: now.name,
                     since: since, until: until
                 ))
+                continue
             }
-
-            return changes.sorted { $0.name < $1.name }
+            if before.version != now.version {
+                changes.append(InstallChange(
+                    kind: .updated(from: before.version, to: now.version),
+                    bundleID: bundleID, name: now.name, since: since, until: until
+                ))
+                continue
+            }
+            // Size only counts when the version did not move. An
+            // update that grew is just an update, and saying both
+            // would be two rows for one event.
+            if let old = before.sizeBytes, let new = now.sizeBytes {
+                let delta = new - old
+                if delta >= growthThreshold {
+                    changes.append(InstallChange(
+                        kind: .grew(by: delta), bundleID: bundleID, name: now.name,
+                        since: since, until: until
+                    ))
+                } else if -delta >= growthThreshold {
+                    changes.append(InstallChange(
+                        kind: .shrank(by: -delta), bundleID: bundleID, name: now.name,
+                        since: since, until: until
+                    ))
+                }
+            }
         }
+
+        for (bundleID, before) in previous where latest[bundleID] == nil {
+            changes.append(InstallChange(
+                kind: .disappeared, bundleID: bundleID, name: before.name,
+                since: since, until: until
+            ))
+        }
+
+        return changes.sorted { $0.name < $1.name }
     }
 
     private static func snapshot(
