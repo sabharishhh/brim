@@ -263,6 +263,33 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
+    /// Choosing, from the Select button: a click ticks an app rather than
+    /// opening it. Command-click did this already and nobody could find it,
+    /// in the list or the table.
+    @Published public private(set) var isChoosing = false
+
+    /// Starts with the app already open, as Command-click does.
+    public func startChoosing() {
+        isChoosing = true
+        marked = selected.map { $0.isSystemProtected ? [] : [$0] } ?? []
+    }
+
+    public func stopChoosing() {
+        isChoosing = false
+        marked = []
+    }
+
+    /// Ticks or unticks one app while choosing. One or none is allowed
+    /// here: the person is still picking.
+    public func toggleChoice(_ application: InstalledApplication) {
+        guard !application.isSystemProtected else { return }
+        if let index = marked.firstIndex(where: { $0.id == application.id }) {
+            marked.remove(at: index)
+        } else {
+            marked.append(application)
+        }
+    }
+
     public func isMarked(_ application: InstalledApplication) -> Bool {
         marked.contains { $0.id == application.id }
     }
@@ -283,6 +310,7 @@ public final class ApplicationsModel: ObservableObject {
 
     public func select(_ application: InstalledApplication?) {
         marked = []
+        isChoosing = false
         selected = application
         footprint = nil
         errorMessage = nil
