@@ -232,72 +232,8 @@ struct UninstallPanel: View {
     }
 
     private func verification(_ result: VerificationResult) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: result.success ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(result.success ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.caution))
-                .symbolEffect(.bounce, value: result.success)
-
-            Text(headline(for: result))
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-
-            // The proof, not a reassurance: the targets were re-checked after
-            // removal and this is what the check found.
-            Text(result.success
-                ? "Every location checked again"
-                : (result.reason ?? "Some of it remains"))
-                .font(.brimFacts)
-                .foregroundStyle(Palette.inkSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal)
-
-            if !result.success, !result.remainingPaths.isEmpty {
-                let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
-                Button(urls.count == 1 ? "Show in Finder" : "Show All in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(urls)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-            }
-
-            if let actions = result.followUpActions {
-                ForEach(actions, id: \.self) { action in
-                    Text(action.sentence)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-
-            if let report = result.report {
-                RemovalReportView(report: report)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-            }
-
-            if let plan = model.plan {
-                RemovalSummary(plan: plan, groups: model.reviewGroups,
-                               remaining: result.remainingPaths, freed: result.recoveredBytes)
-                    .padding(.top, 10)
-            } else if result.recoveredBytes > 0 {
-                Text("\(ByteText.short(result.recoveredBytes)) freed")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .monospacedDigit()
-            }
-
-            if let explanation = model.spaceExplanation {
-                Label(explanation, systemImage: "clock.arrow.circlepath")
-                    .font(.caption).foregroundColor(.orange)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal)
-            }
-        }
-        .padding()
-        .accessibilityElement(children: .combine)
+        RemovalResultView(result: result, plan: model.plan, groups: model.reviewGroups,
+                          spaceExplanation: model.spaceExplanation)
     }
 }
 
@@ -327,7 +263,7 @@ private extension UninstallPanel {
                     Task { await model.authorize(requesterIdentity: NSUserName()) }
                 } label: {
                     HStack(spacing: 8) {
-                        if model.phase == .executing {
+                        if model.phase == .executing || model.phase == .preparing {
                             ProgressView().controlSize(.small).tint(.white)
                         }
                         Text(buttonTitle)
@@ -343,8 +279,15 @@ private extension UninstallPanel {
         .padding(20)
     }
 
+    /// Says what the button is waiting for. WhatsApp's review took forty
+    /// seconds, and a Remove button that could not be pressed yet looked
+    /// like one that would not work.
     var buttonTitle: String {
-        model.phase == .executing ? "Removing" : "Remove"
+        switch model.phase {
+        case .preparing: "Checking"
+        case .executing: "Removing"
+        default: model.isUpdating ? "Updating" : "Remove"
+        }
     }
 
     /// Where the bytes go, said separately. "Frees 1.19 GB · 1.19 GB
@@ -371,14 +314,6 @@ private extension UninstallPanel {
                 Task { await model.setTicked(ticked, path: path) }
             }
         )
-    }
-
-    func headline(for result: VerificationResult) -> String {
-        guard result.success else { return "Some of it remains" }
-        if result.followUpActions?.isEmpty == false {
-            return "One more step"
-        }
-        return "Nothing left"
     }
 
     func message(title: String, detail: String, isError: Bool) -> some View {
@@ -440,67 +375,5 @@ struct ReviewHeading: View {
         .listRowSeparator(.hidden)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// What a removal took and where it went. "448.8 MB freed" was the whole
-/// account of a 4.4 GB removal: everything in the Trash and everything set
-/// aside was left out, so most of what went was never mentioned.
-struct RemovalSummary: View {
-    let plan: Plan
-    let groups: [UninstallReviewGroup]
-    let remaining: Set<String>
-    let freed: Int64
-
-    private func gone(_ steps: [Step]) -> [Step] {
-        steps.filter { !remaining.contains($0.target) }
-    }
-
-    var body: some View {
-        let steps = gone(groups.flatMap(\.steps))
-        let setAside = steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
-        let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
-            .reduce(0) { $0 + $1.expectedBytes }
-        VStack(alignment: .leading, spacing: 14) {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                line("Removed", steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items")
-                if trashed > 0 { line("In the Trash", ByteText.short(trashed)) }
-                if setAside > 0 { line("Set aside", ByteText.short(setAside)) }
-                line("Freed now", freed > 0 ? ByteText.short(freed) : "None yet")
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(groups) { group in
-                    let went = gone(group.steps)
-                    if !went.isEmpty {
-                        HStack {
-                            Text(group.title)
-                                .foregroundStyle(Palette.inkSecondary)
-                            Spacer()
-                            Text("\(went.count.formatted()) · \(ByteText.short(went.reduce(0) { $0 + $1.expectedBytes }))")
-                                .monospacedDigit()
-                                .foregroundStyle(Palette.inkTertiary)
-                        }
-                        .font(.brimFacts)
-                    }
-                }
-            }
-            if trashed > 0 {
-                Text("Space in the Trash comes back when it is emptied.")
-                    .font(.caption)
-                    .foregroundStyle(Palette.inkTertiary)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.surface.opacity(0.5), in: .rect(cornerRadius: Metrics.rowRadius))
-        .padding(.horizontal, 20)
-    }
-
-    private func line(_ label: String, _ value: String) -> some View {
-        GridRow {
-            Text(label).foregroundStyle(Palette.inkSecondary)
-            Text(value).monospacedDigit().foregroundStyle(Palette.ink)
-        }
-        .font(.brimFacts)
     }
 }

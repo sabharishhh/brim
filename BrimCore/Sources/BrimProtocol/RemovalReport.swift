@@ -32,16 +32,37 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     public let keptByMacOS: [Kept]
     /// Still there for another reason: written back, skipped, or failed.
     public let stillThere: Int
+    /// Found, left unticked, and still on the disk. Antigravity's removal
+    /// said "Nothing left" over four of these: every ticked item was gone,
+    /// which is all the sentence was checking, and the person read it as
+    /// everything.
+    public let leftUnticked: [String]
 
     public init(
         checkedGone: Int, registrationsChecked: [DeclaredCapability], declaredNone: [DeclaredCapability],
-        keptByMacOS: [Kept], stillThere: Int
+        keptByMacOS: [Kept], stillThere: Int, leftUnticked: [String] = []
     ) {
         self.checkedGone = checkedGone
         self.registrationsChecked = registrationsChecked
         self.declaredNone = declaredNone
         self.keptByMacOS = keptByMacOS
         self.stillThere = stillThere
+        self.leftUnticked = leftUnticked
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked
+    }
+
+    /// A report recorded before `leftUnticked` existed still reads.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        checkedGone = try c.decode(Int.self, forKey: .checkedGone)
+        registrationsChecked = try c.decode([DeclaredCapability].self, forKey: .registrationsChecked)
+        declaredNone = try c.decode([DeclaredCapability].self, forKey: .declaredNone)
+        keptByMacOS = try c.decode([Kept].self, forKey: .keptByMacOS)
+        stillThere = try c.decode(Int.self, forKey: .stillThere)
+        leftUnticked = try c.decodeIfPresent([String].self, forKey: .leftUnticked) ?? []
     }
 
     /// Built from the plan, what is still on the disk, and what the journal
@@ -59,7 +80,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         staleRegistrations: Int,
         privacyResetFailed: Bool,
         survivingExtensions: Set<String>?,
-        capability: (String) -> Capability = { RemovalCapability.forDeleting($0) }
+        capability: (String) -> Capability = { RemovalCapability.forDeleting($0) },
+        exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> RemovalReport {
         let planned = Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
         var kept: [Kept] = []
@@ -126,7 +148,10 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             registrationsChecked: checked,
             declaredNone: declaredNone,
             keptByMacOS: kept,
-            stillThere: stillThere
+            stillThere: stillThere,
+            leftUnticked: plan.excludedItems
+                .filter { $0.canBeTickedByHand == true && !planned.contains($0.target) && exists($0.target) }
+                .map(\.target).sorted()
         )
     }
 }
