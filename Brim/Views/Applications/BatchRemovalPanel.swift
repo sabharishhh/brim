@@ -1,0 +1,154 @@
+import AppKit
+import BrimCore
+import BrimProtocol
+import BrimUI
+import SwiftUI
+
+/// Several apps in one review. Each app keeps its own plan and its own
+/// report; one press removes them in turn. See `BatchRemovalModel`.
+struct BatchRemovalPanel: View {
+    let apps: [InstalledApplication]
+    let service: any BrimServiceProtocol
+    /// The work is done: the page reads the Mac again.
+    let onFinished: () -> Void
+    let onClose: () -> Void
+
+    @StateObject private var model = BatchRemovalModel()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(model.entries) { entry in
+                        BatchEntryRow(app: entry.app, removal: entry.removal)
+                    }
+                    if !model.isFinished {
+                        Text("To change what is ticked for one app, review it on its own.")
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkTertiary)
+                            .padding(.top, 4)
+                    }
+                }
+                .padding(20)
+            }
+            Divider()
+            footer
+        }
+        .task { await model.prepare(apps, service: service) }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Remove \(model.entries.count) apps")
+                    .font(.brimPageTitle)
+                    .foregroundStyle(Palette.ink)
+                Text(model.isPreparing ? "Checking" : ByteText.short(model.totalBytes))
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isRemoving)
+            .accessibilityLabel("Close")
+        }
+        .padding(20)
+    }
+
+    private var footer: some View {
+        Group {
+            if model.isFinished {
+                Button("Done", action: onFinished)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                Button(model.isRemoving ? "Removing" : "Remove \(model.ready.count) Apps") {
+                    Task { await model.removeAll(requesterIdentity: NSUserName()) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isPreparing || model.isRemoving || model.ready.isEmpty)
+            }
+        }
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
+        .padding(20)
+    }
+}
+
+/// One app in the batch. Observes its own removal, because a model holding
+/// other models does not pass their changes on.
+private struct BatchEntryRow: View {
+    let app: InstalledApplication
+    @ObservedObject var removal: UninstallExecutionModel
+    @State private var showsItems = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                BrimIcon(source: .bundle(app.url))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.name)
+                        .font(.brimRowTitle)
+                        .foregroundStyle(Palette.ink)
+                    Text(status)
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(isTrouble ? Palette.caution : Palette.inkSecondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 8)
+                if removal.plan != nil {
+                    Button(showsItems ? "Hide" : "Details") { showsItems.toggle() }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                }
+            }
+            .accessibilityElement(children: .combine)
+
+            if showsItems {
+                if case let .verified(result) = removal.phase, let report = result.report {
+                    RemovalReportView(report: report)
+                } else if let plan = removal.plan {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(plan.steps, id: \.index) { step in
+                            UninstallPlanRow(
+                                target: step.target, evidence: step.evidence, bytes: step.expectedBytes,
+                                disposition: step.effectiveDisposition, kind: step.kind, tier: step.tier
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Palette.surface.opacity(0.5), in: .rect(cornerRadius: Metrics.rowRadius))
+    }
+
+    private var status: String {
+        switch removal.phase {
+        case .preparing: return "Checking"
+        case .ready:
+            guard let plan = removal.plan else { return "Checking" }
+            let count = plan.steps.count == 1 ? "1 item" : "\(plan.steps.count) items"
+            return count + " · " + ByteText.short(plan.expectedTotalBytes)
+        case .executing: return "Removing"
+        case let .verified(result): return result.success ? "Nothing left" : "Some of it remains"
+        case .appliedButUnverified: return "Removed, not checked"
+        case let .failed(why): return why
+        }
+    }
+
+    private var isTrouble: Bool {
+        switch removal.phase {
+        case .failed, .appliedButUnverified: return true
+        case let .verified(result): return !result.success
+        default: return false
+        }
+    }
+}
