@@ -188,7 +188,7 @@ struct SpaceView: View {
             model.brimCanClearCount == 1 ? "From 1 removed app" : "From \(model.brimCanClearCount) removed apps"
         }
         return StatCard(
-            title: "Removed", symbol: "app.dashed",
+            title: "Remnants", symbol: "app.dashed",
             figure: ByteText.short(model.brimCanClear), status: status, phrase: phrase,
             isRefreshing: model.isLoading && model.startupVolume != nil
         ) { shell.go(to: .leftovers) }
