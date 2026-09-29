@@ -139,17 +139,20 @@ public struct DeveloperCacheScanner: Sendable {
     private let darwinCache: URL
     private let projects: ProjectBuildScanner?
     private let updates: UpdateDownloadScanner?
+    private let oldVersions: OldVersionsScanner?
 
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
         projects: ProjectBuildScanner? = ProjectBuildScanner(),
-        updates: UpdateDownloadScanner? = UpdateDownloadScanner()
+        updates: UpdateDownloadScanner? = UpdateDownloadScanner(),
+        oldVersions: OldVersionsScanner? = OldVersionsScanner()
     ) {
         self.home = home
         self.darwinCache = darwinCache
         self.projects = projects
         self.updates = updates
+        self.oldVersions = oldVersions
     }
 
     /// Every path this catalogue accounts for, so Leftovers leaves them to
@@ -185,6 +188,7 @@ public struct DeveloperCacheScanner: Sendable {
         }
         .sorted { $0.sizeBytes > $1.sizeBytes } + (projects?.scan(home: home) ?? [])
             + (updates?.scan(home: home) ?? [])
+            + (oldVersions?.scan(home: home) ?? [])
     }
 
     /// What removing the folder gives back. A file with several names is
