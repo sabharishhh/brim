@@ -87,6 +87,18 @@ public actor Index {
         return scanID
     }
 
+    /// The version an application had in the last snapshot taken before
+    /// `moment`, or nil when no snapshot saw it before then.
+    public nonisolated func version(of bundleID: String, before moment: Date) async throws -> String? {
+        try await dbManager.dbPool.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT version FROM observation
+                WHERE identity_id = ? AND observed_at < ? AND version IS NOT NULL
+                ORDER BY id DESC LIMIT 1
+                """, arguments: [bundleID, moment])
+        }
+    }
+
     /// The two most recent snapshots, subtracted.
     ///
     /// Empty when there is only one, which is the honest answer on a
