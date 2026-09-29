@@ -81,6 +81,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     public let lastAccessed: Date?
     /// When Brim last saw the app installed, where it knows.
     public let removedAt: Date?
+    /// The installed app that replaced this one, only when every item in
+    /// the group says the same. A group that disagrees makes no claim.
+    public let replacedBy: Replacement?
 
     /// The domains this software touched, strongest meaning first, for the
     /// one-line summary under the name.
@@ -139,6 +142,8 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         isFullyActionable = actionable
         lastAccessed = accessed
         removedAt = removed
+        let replacements = Set(items.map(\.replacedBy))
+        replacedBy = replacements.count == 1 ? replacements.first ?? nil : nil
         sharedObstacle = {
             guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
             return only

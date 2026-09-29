@@ -1276,7 +1276,38 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
 
-        return try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
+        let found = try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
+        return await attachingReplacements(to: found)
+    }
+
+    /// Says which installed app replaced a removed one, where that is
+    /// proven: a record of where the removed app was, an installed app with
+    /// another identifier at exactly that path, and the same developer.
+    private func attachingReplacements(to leftovers: [Leftover]) async -> [Leftover] {
+        let owners = Set(leftovers.compactMap { $0.potentialOwner?.bundleID })
+        guard !owners.isEmpty else { return leftovers }
+        let installed: [Replacement.Installed] = InstalledBundleInventory.read(in: root).bundles.compactMap { url in
+            let info = NSDictionary(contentsOf: url.appendingPathComponent("Contents/Info.plist"))
+            guard let id = info?["CFBundleIdentifier"] as? String else { return nil }
+            return Replacement.Installed(bundleID: id, name: url.deletingPathExtension().lastPathComponent,
+                                         path: url.path)
+        }
+        let seen = (try? await index?.lastBundlePaths(of: Array(owners))) ?? [:]
+        var replacements: [String: Replacement] = [:]
+        for owner in owners {
+            let registered = LaunchServicesRegistration.registeredApplicationURLs(forBundleID: owner).map(\.path)
+            let places = [seen[owner]].compactMap(\.self) + registered
+            if let found = Replacement.find(removed: owner, formerPaths: places, installed: installed) {
+                replacements[owner] = found
+            }
+        }
+        guard !replacements.isEmpty else { return leftovers }
+        return leftovers.map { item in
+            guard let owner = item.potentialOwner?.bundleID, let found = replacements[owner] else { return item }
+            var copy = item
+            copy.replacedBy = found
+            return copy
+        }
     }
     
     /// Past removals that could still be undone, judged by what is actually
