@@ -115,8 +115,10 @@ struct LeftoversView: View {
     }
 
     private var summary: String {
-        let groups = model.orphanedGroups + model.unclaimedGroups
-        return "\(groups.count) · \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
+        let groups = model.orphanedGroups
+        guard !groups.isEmpty else { return "None from removed apps" }
+        let apps = groups.count == 1 ? "1 removed app" : "\(groups.count) removed apps"
+        return "From \(apps) · \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
     }
 
     // MARK: - Stacks

@@ -112,6 +112,12 @@ public struct DeveloperCacheScanner: Sendable {
         self.home = home
     }
 
+    /// Every path this catalogue accounts for, so Leftovers leaves them to
+    /// Developer instead of counting them a second time.
+    public static func claimedPaths(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Set<String> {
+        Set(catalogue.map { home.appendingPathComponent($0.relativePath).standardizedFileURL.path })
+    }
+
     public func scan() async -> [DeveloperCache] {
         let fm = FileManager.default
         return Self.catalogue.compactMap { known -> DeveloperCache? in

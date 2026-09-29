@@ -33,18 +33,25 @@ public actor LeftoversScanner {
     /// record is exactly the kind of evidence that turns an unattributed
     /// folder into a named orphan, and nothing was reading it.
     private let homebrewOrphans: Set<String>
+    /// Paths another part of Brim already accounts for: the Developer
+    /// catalogue's caches. Homebrew's downloads and SwiftPM's cache were
+    /// listed here as "owner unknown" and on Developer as build caches, and
+    /// Space added them twice.
+    private let claimedPaths: Set<String>
 
     public init(
         root: FileSystemRoot,
         launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
+        claimedPaths: Set<String> = [],
         protectedAppURL: URL? = nil,
         hasFullDiskAccess: Bool? = nil,
         commandIsInstalled: (@Sendable (String) -> Bool)? = nil
     ) {
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
+        self.claimedPaths = Set(claimedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
         self.root = root
         resolver = IdentityResolver(root: root)
         self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
@@ -193,7 +200,8 @@ public actor LeftoversScanner {
                 // A parent domain can contain another inventory root.
                 // Its contents are scanned under their own rule; offering
                 // the root itself would claim the whole subtree is residue.
-                if inventoryRoots.contains(item.resolvingSymlinksInPath().path) {
+                if inventoryRoots.contains(item.resolvingSymlinksInPath().path)
+                    || claimedPaths.contains(item.standardizedFileURL.path) {
                     continue
                 }
                 let name = item.lastPathComponent
@@ -316,6 +324,14 @@ public actor LeftoversScanner {
                 // gone product is named in may be shared, an updater or a
                 // licence, and stays while any of that developer's software is
                 // installed. Google's updater serves Chrome from there.
+                // A folder holding a file macOS names for itself is macOS's,
+                // whatever the folder is called: `CallHistoryDB` holds
+                // `com.apple.callhistory.databaseInfo.plist`, and was offered
+                // while macOS wrote to it the same morning.
+                if owner.category == .unclaimed, Self.holdsApplesOwnFile(item) {
+                    continue
+                }
+
                 var evidence = owner.evidence
                 if let vendor, Self.systemDomains.contains(domain), owner.category == .unclaimed {
                     guard !vendors.hasInstalled(vendor) else { continue }
@@ -711,6 +727,10 @@ public actor LeftoversScanner {
         .sharedUser, .sharedApplicationSupport
     ]
 
+    static let commandNamedDomains: Set<FileSystemRoot.Domain> = [
+        .userCaches, .userApplicationSupport, .userLogs
+    ]
+
     static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
         .userDotConfig, .userDotCache, .userDotLocalShare,
         .userDotLocalState, .userDotLocalBin
@@ -892,9 +912,23 @@ public actor LeftoversScanner {
         return false
     }
 
+    /// Whether a folder's own first level holds a file named `com.apple.…`.
+    static func holdsApplesOwnFile(_ url: URL) -> Bool {
+        guard isDirectory(url),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: url.path)
+        else { return false }
+        return names.prefix(200).contains { $0.hasPrefix("com.apple.") }
+    }
+
     private nonisolated func isCommandLineItemActive(
         _ item: URL, in domain: FileSystemRoot.Domain
     ) -> Bool {
+        // A command-line tool keeps its cache and support folder under its
+        // own name, `SwiftLint` for `swiftlint`, with nothing an app
+        // inventory would ever claim.
+        if Self.commandNamedDomains.contains(domain), commandIsInstalled(item.lastPathComponent.lowercased()) {
+            return true
+        }
         guard Self.commandLineDataDomains.contains(domain) else {
             return false
         }

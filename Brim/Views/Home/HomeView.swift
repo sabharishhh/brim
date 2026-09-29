@@ -174,7 +174,7 @@ struct HomeView: View {
     }
 
     private var leftoversCard: some View {
-        let groups = leftovers.orphanedGroups + leftovers.unclaimedGroups
+        let groups = leftovers.orphanedGroups
         let checked = leftovers.checkedAt != nil
         let summary = HomeStatus.leftovers(.init(
             removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedGroups.count,
