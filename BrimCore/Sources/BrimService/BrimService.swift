@@ -1230,15 +1230,28 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // "nobody claims this" instead.
         let orphanCasks = await orphanedCaskNames()
 
+        // An app Brim's own snapshots saw installed and no longer see is the
+        // plainest record there is that it was here and has gone. Teams and
+        // Microsoft AutoUpdate were removed, Home said so, and what they left
+        // was still listed as owner unknown.
+        let removedApps = (try? await index?.removedApplications()) ?? [:]
+        let recorded = (try? await index?.recordedNames()) ?? [:]
+        for (id, seen) in removedApps where staleRegistrationOwners[id] == nil {
+            let name = recorded[id.lowercased()] ?? id
+            staleRegistrationOwners[id] = "Brim saw \(name) installed until "
+                + seen.formatted(.dateTime.day().month(.abbreviated)) + "."
+        }
+
         let scanner = LeftoversScanner(
             root: root,
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
             staleRegistrationOwners: staleRegistrationOwners,
             homebrewOrphans: orphanCasks,
             claimedPaths: DeveloperCacheScanner.claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
+            removedApplications: removedApps,
             protectedAppURL: brimAppURL
         )
-        var knownPastBundleIDs = Set<String>()
+        var knownPastBundleIDs = Set(removedApps.keys)
         // What Brim has seen applications called. Without it a leftover
         // was named from its identifier alone, so Teams' would read "Teams2"
         // although Brim had recorded "Microsoft Teams" for weeks.
