@@ -153,19 +153,10 @@ public actor ApplicationInventory {
     /// the helper's (`HelperScope.installFolder`), so whatever is listed
     /// here is something Brim can also take away.
     private func packagedElsewhere() -> [URL] {
-        let receipts = root.url(for: .systemReceipts)
-        var found: [URL] = []
-        for file in Self.entries(of: receipts)
-        where file.hasSuffix(".plist") && !file.lowercased().hasPrefix("com.apple.") {
-            guard let plist = NSDictionary(contentsOf: receipts.appendingPathComponent(file)),
-                  let prefix = plist["InstallPrefixPath"] as? String,
-                  let folder = HelperScope.installFolder(prefix: prefix)
-            else { continue }
-            let directory = root.rootURL.appendingPathComponent(String(folder.dropFirst()))
-            found += Self.entries(of: directory).filter { ($0 as NSString).pathExtension == "app" }
+        InstalledBundleInventory.packageInstallFolders(in: root).flatMap { directory in
+            Self.entries(of: directory).filter { ($0 as NSString).pathExtension == "app" }
                 .map { directory.appendingPathComponent($0) }
         }
-        return found
     }
 
     /// Apps an application carries for people to open, in the one place
