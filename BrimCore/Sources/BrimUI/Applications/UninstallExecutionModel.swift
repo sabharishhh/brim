@@ -274,7 +274,10 @@ public final class UninstallExecutionModel: ObservableObject {
     public var spaceExplanation: String? {
         guard case let .verified(result) = phase, let plan else { return nil }
         let promised = plan.immediatelyFreedBytes
-        guard promised > 0 else { return nil }
+        // Below this, other activity on the disk moves free space by more
+        // than the removal could, so a shortfall says nothing. Purge's 151 KB
+        // cache raised the snapshot warning over noise.
+        guard promised >= 100_000_000 else { return nil }
 
         // A tenth is slack for other activity on the disk during the
         // removal, not a threshold worth tuning.
