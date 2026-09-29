@@ -11,11 +11,24 @@ extension DeveloperCache {
 
     /// What clearing it costs, in a few words.
     var consequence: String {
-        switch cost {
+        if let lastBuilt { return Self.built(lastBuilt) }
+        return switch cost {
         case .rebuilt: "Costs one slow build"
         case .refetched: "Downloaded again when needed"
         case .configured: "Holds your setup"
         }
+    }
+
+    /// "Built today", "Built 11 days ago": whether you are still working
+    /// on it is the whole question for a project's build output.
+    static func built(_ date: Date, now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "Built today" }
+        if calendar.isDateInYesterday(date) { return "Built yesterday" }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
+                                           to: calendar.startOfDay(for: now)).day ?? 0
+        if days < 60 { return "Built \(days) days ago" }
+        return "Built \(days / 30) months ago"
     }
 
     /// The developer's groups (plan §8), by what clearing each costs.
@@ -27,6 +40,8 @@ extension DeveloperCache {
         return Grouping.assign(
             caches,
             rules: [
+                GroupRule(id: "projects", title: "Project builds", matches: \.isProject,
+                          order: { $0.sizeBytes > $1.sizeBytes }),
                 GroupRule(id: "rebuilt", title: "Rebuilds by itself", matches: { $0.cost == .rebuilt }, order: order),
                 GroupRule(id: "tool", title: "Managed by its tool", matches: { $0.cost == .refetched }, order: order)
             ],
