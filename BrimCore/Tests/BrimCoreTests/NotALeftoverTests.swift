@@ -34,10 +34,10 @@ final class NotALeftoverTests: XCTestCase {
         return url
     }
 
-    private func bundle(_ relative: String, identifier: String) throws -> URL {
-        let plist = try PropertyListSerialization.data(
-            fromPropertyList: ["CFBundleIdentifier": identifier], format: .xml, options: 0
-        )
+    private func bundle(_ relative: String, identifier: String, name: String? = nil) throws -> URL {
+        var info = ["CFBundleIdentifier": identifier]
+        info["CFBundleName"] = name
+        let plist = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         _ = try put(relative + "/Contents/Info.plist", contents: plist)
         return rootURL.appendingPathComponent(relative)
     }
@@ -45,6 +45,53 @@ final class NotALeftoverTests: XCTestCase {
     private func listed() async throws -> Set<String> {
         let found = try await LeftoversScanner(root: root, hasFullDiskAccess: true).scanLeftovers()
         return Set(found.map(\.url.lastPathComponent))
+    }
+
+    /// Teams and Microsoft AutoUpdate were both removed, and
+    /// `/Library/Logs/Microsoft` still held their logs while
+    /// `Application Support/Microsoft/Office365` stayed as well. Neither
+    /// folder name has dots in it, so the sweep read both as macOS's and never
+    /// looked inside. The person found them in Finder.
+    func testADevelopersPlainFolderInLibraryIsLookedInside() async throws {
+        _ = try put("Library/Logs/Microsoft/MSTeams/teams.log", contents: Data([1]))
+        _ = try put("Library/Logs/Microsoft/autoupdate.log", contents: Data([1]))
+        _ = try put("Library/Application Support/Microsoft/Office365/licence.dat", contents: Data([1]))
+        // macOS's own plain folders stay out, including one an Apple
+        // application's name begins with.
+        _ = try put("Library/Application Support/Apple/ParentalControls/data", contents: Data([1]))
+        _ = try put("Library/Caches/ColorSync/Profiles/data", contents: Data([1]))
+        _ = try bundle("System/Applications/Utilities/ColorSync Utility.app",
+                       identifier: "com.apple.ColorSyncUtility", name: "ColorSync Utility")
+
+        let found = try await LeftoversScanner(root: root, hasFullDiskAccess: true).scanLeftovers(
+            knownNames: ["com.microsoft.teams2": "Microsoft Teams", "com.example.sync": "ColorSync Studio"]
+        )
+        let names = Set(found.map(\.url.lastPathComponent))
+        XCTAssertTrue(names.isSuperset(of: ["MSTeams", "autoupdate.log", "Office365"]), "\(names)")
+        XCTAssertFalse(names.contains("Microsoft"), "The developer's folder is never offered whole")
+        XCTAssertFalse(names.contains("ParentalControls"))
+        XCTAssertFalse(names.contains("Profiles"), "ColorSync is Apple's name")
+        XCTAssertEqual(found.first { $0.url.lastPathComponent == "MSTeams" }?.evidence,
+                       "In Microsoft's folder. Nothing from Microsoft is installed.")
+    }
+
+    /// While AutoUpdate is installed it is an application, not a leftover,
+    /// and what Microsoft keeps beside it may be what it uses.
+    func testADevelopersFolderStaysWhileItsSoftwareIsInstalled() async throws {
+        let receipt = try PropertyListSerialization.data(fromPropertyList: [
+            "InstallPrefixPath": "Library/Application Support/Microsoft/MAU2.0"
+        ], format: .xml, options: 0)
+        _ = try put("private/var/db/receipts/com.microsoft.package.Microsoft_AutoUpdate.app.plist",
+                    contents: receipt)
+        _ = try bundle("Library/Application Support/Microsoft/MAU2.0/Microsoft AutoUpdate.app",
+                       identifier: "com.microsoft.autoupdate2", name: "Microsoft AutoUpdate")
+        _ = try put("Library/Application Support/Microsoft/Office365/licence.dat", contents: Data([1]))
+        _ = try put("Library/Logs/Microsoft/autoupdate.log", contents: Data([1]))
+
+        let names = try await listed()
+        XCTAssertFalse(names.contains("MAU2.0"), "The folder an installed application runs from")
+        XCTAssertFalse(names.contains("Office365"))
+        XCTAssertFalse(names.contains("autoupdate.log"))
     }
 
     func testMacOSsPrinterListIsNotALeftover() async throws {
