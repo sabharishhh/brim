@@ -12,7 +12,7 @@
 
 Brim is heading for 1.0 on 4 October. Milestones 0 to 3 are built. Milestone 4 is App Intents only. Milestone 5 is built; reset and archive were removed. Milestone 6 is partly built. Milestone 7's first items are done and its audit criterion is still open. Where the build replaced a task, the task below says so in place, and section 15 lists what was left out or drifted.
 
-The work since the last revision, beyond this plan: Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Removed apps uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
+The work since the last revision, beyond this plan (see also section 15): Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Removed apps uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
 
 ## 1. Invariants
 
@@ -1085,13 +1085,19 @@ Authoritative. Reflects §13.
 
 Left out of 1.0:
 
-- The removal report (M7): checked, declared-absent and refused-by-macOS as separate counts after a removal. Proof after removal exists; the three-way report does not.
 - Opaque-name classification (T-7.7), still gated, and the plain-language explanation and storage overview (T-7.6).
 - Performance budgets and Brim's own line in the Energy view (T-6.5). There are no signposts or measured budgets; Xcode's review taking 13 seconds was found by hand.
 - The 100k-row table bridge (T-6.1). AppKit's table was tried and removed; lists are SwiftUI.
 - A notarised build from CI (T-2.9), the Homebrew cask and published code-directory hash (T-6.7), and a licence (T-6.8).
-- From the September comparison plan: the three kinds of space with "Free for now", measuring how fast caches come back, large files through Spotlight, removing several apps in one review, brand icons, the old-versions rule for tools, and the paired-device rule for device support.
-- Removed apps' Gone and Kept states with proof history, "Replaced by" for an app's old identity (the old ChatGPT's `com.openai.chat` rows), and "Keep settings".
+- From the September comparison plan: the three kinds of space with "Free for now", measuring how fast caches come back, large files through Spotlight, brand icons, and the paired-device rule for device support.
+- Removed apps' Gone and Kept states with proof history, and "Keep settings".
+
+Built on 30 September, after this list was first written:
+
+- The removal report. Verification returns what was checked and gone, what the app's bundle declares it never had, what is still there, and what macOS kept, each counted apart. Both removal panels show it. This meets the report part of M7's criterion.
+- "Replaced by" on Removed apps, only on proof: a record of where the old app was, an installed app with another identifier at exactly that path, and the same developer. The old ChatGPT's rows do not qualify, because nothing records where it was.
+- Removing several apps in one review, by Command-click or a table selection. Each app keeps its own plan, approval and report.
+- Old versions of command line tools, where a command's link shows which version runs.
 
 Drifted from the plan:
 
