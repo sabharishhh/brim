@@ -1,36 +1,114 @@
 # Brim
 
-Brim is a local-first macOS utility designed to completely uninstall applications by scanning the filesystem for associated footprints (evidence) and removing them.
+Brim shows what software has left on your Mac, and proves it is gone when
+you remove it.
 
-## Architecture & Invariants
+Every row says how Brim knows what it claims: an installer receipt, a
+launch job, a record macOS keeps, a matching identifier. Anything another
+installed app still uses stays where it is. Removals go to the Trash first
+and can be put back from History.
 
-Brim is engineered for maximum security and testability. It strictly adheres to several invariant rules:
+Brim runs on macOS 27 or later.
 
-1. **No Absolute Paths**: All file operations are resolved relative to an injected `FileSystemRoot`. There are no `"/Library"` or `"~/Library"` string literals in the core engine. This allows the engine to be tested against a purely synthetic filesystem.
-2. **Strict Safety Gates**: The `SafetyChecker` statically rejects attempts to uninstall protected locations, such as `/System`, iCloud `Mobile Documents`, the Brim app itself, or immutable files.
-3. **Core Isolation**: The business logic (`BrimCore`) is decoupled from the UI. It runs as a pure Swift package.
-4. **Approval Required**: No deletion can occur without a cryptographic execution token minted in Brim's own window. A process holding a service object but no window has no route to one, which is an absence of the machinery rather than a check it might pass. The token is bound to a hash of one specific plan, so an approval cannot be replayed against a different set of targets.
-5. **Honest Accounting**: Recreatable data (caches, temporary files) is deleted outright so the reclaimed space is real; anything holding settings or user data is moved to the Trash and can be restored from History. The two totals are reported separately rather than as one figure.
+## Installing
 
-## Requirements
+1. Download `Brim-<version>.dmg` from
+   [Releases](https://github.com/sabharishhh/brim/releases/latest) and drag
+   Brim to Applications.
+2. Open Brim. macOS says it cannot check it for malicious software and
+   offers only Done or Move to Trash. Choose **Done**.
+3. Open **System Settings, Privacy & Security**, scroll to Security, and
+   choose **Open Anyway** beside the line about Brim. Confirm with your
+   password or Touch ID.
+4. Brim opens. From then on it opens normally.
 
-Brim requires **Full Disk Access** (System Settings › Privacy & Security ›
-Full Disk Access), and must be reopened after it is granted. Without it Brim
-cannot read the protected locations where an application's footprint lives,
-so its results are incomplete rather than merely slower. Every removal also
-requires Touch ID or password authentication — once per authorized plan,
-covering the whole selection.
+macOS asks this because Brim is signed with a free Apple Development
+certificate and not notarised by Apple, which needs a paid developer
+account. The signature is still checked: Brim and its helper refuse to talk
+to anything not signed by the same team (`9LY29YLFG2`). You can check the
+download against the `.sha256` file published beside it:
 
-See [docs/requirements.md](docs/requirements.md) for the full list of
-permissions, what degrades without each, and which data Brim deletes
-permanently versus moves to the Trash.
+```bash
+shasum -a 256 ~/Downloads/Brim-1.0.dmg
+```
 
-## Documentation
+### What Brim asks for
 
-For a comprehensive breakdown of the design rationale and architecture, please read the [Brim Dossier](docs/brim-dossier.html) and [Brim Dossier 2](docs/brim-dossier-2.html) located in the `docs/` folder. The exact implementation roadmap is defined in `docs/implementation_plan.md`.
+Brim asks once, during setup.
 
-## Project Structure
+- **Full Disk Access.** Much of what apps leave behind sits in places macOS
+  only lets an app with this permission read. Without it Brim says what it
+  could not read rather than reporting nothing.
+- **Its helper.** A small background job, approved in System Settings,
+  Login Items, that removes the few things only an administrator can:
+  launch jobs and files an installer put in `/Library`. It checks each item
+  itself and never takes a path from the app.
+- **Touch ID or your password** once per removal that deletes anything
+  permanently. Moving things to the Trash needs nothing.
 
-* **`Brim.xcodeproj`**: The main macOS application project containing the UI, XPC Service, and Privileged Helper.
-* **`BrimCore/`**: The local Swift package containing the backend engine, scanners, and tests.
-* **`docs/`**: Project documentation, architectural decisions, and roadmaps.
+## Privacy
+
+Brim works on your Mac and has no account, analytics or crash reporting.
+It goes online only to check for updates:
+
+- **Your apps.** Updates asks the App Store (`itunes.apple.com`,
+  `apps.apple.com`) about apps installed from it, Homebrew
+  (`formulae.brew.sh`) about apps installed with it, and each other app's
+  own update feed, the one it already checks itself. These requests carry
+  the app's identifier or name.
+- **Brim itself.** Brim asks GitHub for the latest release to tell you when
+  a new version is out.
+
+## Building from source
+
+You need Xcode 27 and a free Apple ID signed in to Xcode.
+
+```bash
+git clone https://github.com/sabharishhh/brim.git
+```
+
+```bash
+cd brim && xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
+```
+
+The app lands in
+`~/Library/Developer/Xcode/DerivedData/Brim-*/Build/Products/Debug/brim.app`.
+Open it by path.
+
+Brim pins its own team identifier when the app and its helper connect, so
+a build signed with another team will not reach its helper. Replace
+`9LY29YLFG2` in `MutualAuthentication.swift` and `HelperInterface.swift`
+with your own team to run your build end to end.
+
+To make a disk image:
+
+```bash
+./scripts/build_release.sh
+```
+
+It signs with the first Developer ID or Apple Development certificate in
+your keychain, and notarises only when `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set.
+
+### Tests
+
+```bash
+swift test --package-path BrimCore
+```
+
+Tests that touch the real machine run only with `BRIM_REAL_ENV=1`.
+
+## Layout
+
+- `Brim/`: the app.
+- `BrimCore/`: the engine, as a Swift package. Detection in `BrimScan`,
+  changes to the disk in `BrimOps`, and the checks everything passes
+  through in `BrimCore`.
+- `Helper/`: the administrator helper.
+- `scripts/`: release build and coverage tools.
+
+## Reporting a problem
+
+Open an [issue](https://github.com/sabharishhh/brim/issues). If Brim
+offered to remove something it should not have, say what the item was and
+which app Brim said it belonged to.
