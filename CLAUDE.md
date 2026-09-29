@@ -57,8 +57,9 @@ full suite before committing.
 **Two things, done properly.** Brim tells people what software has left on
 their Mac and proves it is gone when they remove it. Everything else in the
 app earns its place by serving one of those or it does not ship. A duplicate
-file finder, a command line tool, an MCP server and a machine-wide
-Background Task Management reset were all built and all removed, not because
+file finder, a command line tool, an MCP server, a machine-wide Background
+Task Management reset, and an app reset and archive were all built and all
+removed, not because
 any of them was broken but because none of them was this. The failure mode
 for a utility is not missing a feature, it is becoming the kind of cleaning
 app whose feature list is its argument.

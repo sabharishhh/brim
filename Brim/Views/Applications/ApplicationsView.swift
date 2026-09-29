@@ -14,7 +14,7 @@ struct ApplicationsView: View {
 
     @SceneStorage("apps.grouping") private var grouping = AppGrouping.smart
     @SceneStorage("apps.asTable") private var asTable = false
-    /// The removal or reset under review in the right pane, if any.
+    /// The removal under review in the right pane, if any.
     @State private var review: AppReview?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// "Opened 3 months ago" for each app, formatted once per load.
@@ -67,7 +67,7 @@ struct ApplicationsView: View {
             ))
             return
         }
-        review = AppReview(app: removalTarget(app), type: .uninstall)
+        review = AppReview(app: removalTarget(app))
     }
 
     /// What removing an app removes. An app shipped inside another cannot
@@ -79,13 +79,11 @@ struct ApplicationsView: View {
     }
 
     private func finished(_ review: AppReview) {
-        if review.type == .uninstall {
-            // Drop the row at once if the bundle really is gone:
-            // re-enumerating every app takes seconds, and a row that
-            // outlives "nothing left" reads as a failure.
-            model.forgetIfRemoved(review.app)
-            AppIcon.forget(review.app.url)
-        }
+        // Drop the row at once if the bundle really is gone:
+        // re-enumerating every app takes seconds, and a row that
+        // outlives "nothing left" reads as a failure.
+        model.forgetIfRemoved(review.app)
+        AppIcon.forget(review.app.url)
         Task { await model.load(service: service) }
     }
 
@@ -160,7 +158,7 @@ struct ApplicationsView: View {
                 } else {
                     AppStacks(
                         model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
-                        opened: opened, remove: { review = AppReview(app: removalTarget($0), type: .uninstall) }
+                        opened: opened, remove: { review = AppReview(app: removalTarget($0)) }
                     )
                     // A new grouping is a new order to hold.
                     .id(grouping)
@@ -176,7 +174,7 @@ struct ApplicationsView: View {
     private var inspector: some View {
         if let review {
             UninstallPanel(
-                application: review.app, service: service, intentType: review.type,
+                application: review.app, service: service,
                 onFinished: { finished(review) },
                 onClose: { self.review = nil }
             )
@@ -185,8 +183,7 @@ struct ApplicationsView: View {
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
-                remove: { review = AppReview(app: removalTarget(app), type: .uninstall) },
-                reset: { review = AppReview(app: app, type: .reset) }
+                remove: { review = AppReview(app: removalTarget(app)) }
             )
             .refreshing(model.isLoading)
             // Keyed on the app and a crossfade only, so arrowing through
@@ -219,8 +216,5 @@ struct ApplicationsView: View {
 /// An app and what is being done to it, for the review in the right pane.
 struct AppReview: Identifiable, Equatable {
     let app: InstalledApplication
-    let type: IntentType
-    var id: String {
-        "\(type.rawValue):\(app.id)"
-    }
+    var id: String { app.id }
 }
