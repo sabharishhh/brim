@@ -44,6 +44,13 @@ public struct ExplanationRenderer: Sendable {
         if reason.contains("Preserved main application bundle") {
             return "Kept, so the application still runs."
         }
+        // The claimant's name is the evidence, so it stays. ChatGPT's app
+        // group was kept from its removal as "shared with other installed
+        // software", and with the name gone nobody could say what shared it.
+        if reason.hasPrefix("Shared with "), reason != "Shared with other installed software." {
+            let name = reason.dropFirst("Shared with ".count).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "Shared with \(name), which is still installed."
+        }
         if reason.contains("Shared with") || reason.contains("Tier S veto") {
             return "Shared with other installed software."
         }
