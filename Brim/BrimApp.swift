@@ -27,6 +27,10 @@ private let log = BrimLog.make("app")
     }
     
     @State private var showSelfUninstall = false
+    /// Whether a newer Brim is on GitHub.
+    @StateObject private var release = BrimReleaseCheck()
+    /// What Check for Brim Updates found, while its reply is showing.
+    @State private var releaseAnswer: BrimReleaseCheck.Answer?
 
     /// What went wrong removing Brim, when something did.
     ///
@@ -53,6 +57,21 @@ private let log = BrimLog.make("app")
                 .environment(\.brimService, client)
                 .environment(session)
                 .environment(\.compactRows, compactRows)
+                .environmentObject(release)
+                .task { await release.checkIfDue() }
+                .alert(releaseTitle, isPresented: Binding(
+                    get: { releaseAnswer != nil },
+                    set: { if !$0 { releaseAnswer = nil } }
+                )) {
+                    if case let .newer(found) = releaseAnswer {
+                        Button("Download") { NSWorkspace.shared.open(found.page) }
+                        Button("Later", role: .cancel) {}
+                    } else {
+                        Button("OK", role: .cancel) {}
+                    }
+                } message: {
+                    Text(releaseMessage)
+                }
                 .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
                     Button("Uninstall", role: .destructive) {
@@ -148,6 +167,11 @@ private let log = BrimLog.make("app")
                 Button("About Brim") {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
+                Button("Check for Brim Updates…") {
+                    Task { releaseAnswer = await release.check() }
+                }
+                .disabled(release.isChecking)
+                Divider()
                 Button("Uninstall Brim") {
                     showSelfUninstall = true
                 }
@@ -155,6 +179,22 @@ private let log = BrimLog.make("app")
         }
     }
     
+    private var releaseTitle: String {
+        switch releaseAnswer {
+        case let .newer(found): return "Brim \(found.version) is available"
+        case let .current(version): return "Brim \(version) is the latest"
+        default: return "Couldn't reach GitHub"
+        }
+    }
+
+    private var releaseMessage: String {
+        switch releaseAnswer {
+        case .newer: return "Download it from GitHub and replace this copy in Applications."
+        case .current: return "You have the newest version."
+        default: return "Check your connection and try again."
+        }
+    }
+
     /// The app, or in a debug build launched with `-designGallery YES`,
     /// every design system component on one page.
     @ViewBuilder private var root: some View {
