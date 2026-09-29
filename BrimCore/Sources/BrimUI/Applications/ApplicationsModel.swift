@@ -85,6 +85,9 @@ public final class ApplicationsModel: ObservableObject {
     @Published public var searchText = ""
 
     @Published public private(set) var selected: InstalledApplication?
+    /// Apps marked with Command-click for one review together. Empty, or at
+    /// least two: a single mark is just a selection.
+    @Published public private(set) var marked: [InstalledApplication] = []
     @Published public private(set) var footprint: Footprint? {
         didSet { footprintGroups = makeFootprintGroups() }
     }
@@ -201,6 +204,7 @@ public final class ApplicationsModel: ObservableObject {
     public func forgetIfRemoved(_ application: InstalledApplication) -> Bool {
         guard !FileManager.default.fileExists(atPath: application.url.path) else { return false }
         applications.removeAll { $0.id == application.id }
+        marked.removeAll { $0.id == application.id }
         if selected?.id == application.id {
             inspectionTask?.cancel()
             selected = nil
@@ -238,7 +242,47 @@ public final class ApplicationsModel: ObservableObject {
         return true
     }
 
+    /// Command-click: adds the app to the ones marked, or takes it out.
+    /// The app already selected is the first mark, as in Finder. Apps that
+    /// are part of macOS cannot be removed, so they cannot be marked.
+    public func toggleMark(_ application: InstalledApplication) {
+        var next = marked
+        if next.isEmpty, let selected, selected.id != application.id, !selected.isSystemProtected {
+            next = [selected]
+        }
+        if let index = next.firstIndex(where: { $0.id == application.id }) {
+            next.remove(at: index)
+        } else if !application.isSystemProtected {
+            next.append(application)
+        }
+        if next.count >= 2 {
+            marked = next
+        } else {
+            marked = []
+            select(next.first ?? application)
+        }
+    }
+
+    public func isMarked(_ application: InstalledApplication) -> Bool {
+        marked.contains { $0.id == application.id }
+    }
+
+    public func clearMarks() {
+        marked = []
+    }
+
+    /// A table's selection, which can be several rows at once.
+    public func mark(_ applications: [InstalledApplication]) {
+        let removable = applications.filter { !$0.isSystemProtected }
+        if removable.count >= 2 {
+            marked = removable
+        } else {
+            select(applications.first)
+        }
+    }
+
     public func select(_ application: InstalledApplication?) {
+        marked = []
         selected = application
         footprint = nil
         errorMessage = nil
