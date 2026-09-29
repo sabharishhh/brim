@@ -69,6 +69,11 @@ public actor Executor {
         let sortedSteps = plan.executionOrderedSteps
         
         var hasFailures = false
+        // What keeps the app bundle in place. Every failure does, except
+        // macOS refusing an ordinary support file: that says nothing about
+        // whether the app can go. WhatsApp's removal left the whole app
+        // because macOS would not move its extension's temporary folder.
+        var blocksBundle = false
         var clearedPreferenceFiles: [String] = []
         var nestedApplications: [String] = []
         defer {
@@ -97,7 +102,7 @@ public actor Executor {
         }
         
         for step in sortedSteps {
-            if hasFailures {
+            if blocksBundle {
                 if step.executionPhase == .appBundle {
                     journal.stepOutcomes[step.index] = "skipped_due_to_prior_failures"
                     continue
@@ -134,11 +139,13 @@ public actor Executor {
                     guard let privilegedRemover else {
                         journal.stepOutcomes[step.index] = "needs_helper_not_set_up"
                         hasFailures = true
+                        blocksBundle = true
                         continue
                     }
                     if let refusal = await privilegedRemover(step.target) {
                         journal.stepOutcomes[step.index] = "helper_refused: \(refusal)"
                         hasFailures = true
+                        blocksBundle = true
                     } else {
                         journal.stepOutcomes[step.index] = "ok"
                     }
@@ -259,6 +266,7 @@ public actor Executor {
                         journal.stepOutcomes[step.index] =
                             "still_locked: \(error.localizedDescription)"
                         hasFailures = true
+                        blocksBundle = true
                     }
                 } else if step.kind == .revealVendorUninstaller {
                     // Brim opens Finder and stops. It never runs a vendor's
@@ -298,19 +306,24 @@ public actor Executor {
                 } else {
                     journal.stepOutcomes[step.index] = "unsupported_kind"
                     hasFailures = true
+                    blocksBundle = true
                 }
             } catch let SafeOpsError.failedToRename(err) where err == EPERM {
                 journal.stepOutcomes[step.index] = "refusedByOS"
                 hasFailures = true
+                if !Self.isSupportFile(step) { blocksBundle = true }
             } catch let SafeOpsError.failedToUnlink(err) where err == EPERM {
                 journal.stepOutcomes[step.index] = "refusedByOS"
                 hasFailures = true
+                if !Self.isSupportFile(step) { blocksBundle = true }
             } catch {
                 let nsErr = error as NSError
                 if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr.code == EPERM || (nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM) {
                     journal.stepOutcomes[step.index] = "refusedByOS"
+                    if !Self.isSupportFile(step) { blocksBundle = true }
                 } else {
                     journal.stepOutcomes[step.index] = error.localizedDescription
+                    blocksBundle = true
                 }
                 hasFailures = true
             }
@@ -342,5 +355,11 @@ public actor Executor {
         try await journalStore.write(entry: journal)
         
         return journal
+    }
+
+    /// An ordinary file or folder outside the app, moved to the Trash. A
+    /// refusal there leaves that item behind and nothing else at risk.
+    static func isSupportFile(_ step: Step) -> Bool {
+        step.kind == .trashPath && step.executionPhase == .auxiliary
     }
 }

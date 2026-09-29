@@ -18,11 +18,14 @@ public enum RunningApplications {
         public let bundleIdentifier: String?
         public let name: String
         public let bundlePath: String?
+        /// No window and no Dock icon: an extension, an agent, a login item.
+        public let isBackground: Bool
 
-        public init(bundleIdentifier: String?, name: String, bundlePath: String?) {
+        public init(bundleIdentifier: String?, name: String, bundlePath: String?, isBackground: Bool = false) {
             self.bundleIdentifier = bundleIdentifier
             self.name = name
             self.bundlePath = bundlePath
+            self.isBackground = isBackground
         }
     }
 
@@ -33,9 +36,64 @@ public enum RunningApplications {
             Running(
                 bundleIdentifier: $0.bundleIdentifier,
                 name: $0.localizedName ?? $0.bundleURL?.lastPathComponent ?? "an application",
-                bundlePath: $0.bundleURL?.resolvingSymlinksInPath().path
+                bundlePath: $0.bundleURL?.resolvingSymlinksInPath().path,
+                isBackground: $0.activationPolicy != .regular
             )
         }
+    }
+
+    /// Quits the app's own background parts, when nothing with a window is
+    /// open, and says whether they all went.
+    ///
+    /// WhatsApp's notification extension was still running an hour after
+    /// the app had quit, launched by macOS rather than by anybody, and the
+    /// removal told the person to quit it. There is nothing to quit it
+    /// from: it has no window and no Dock icon. It lives inside the bundle
+    /// being removed and holds no work of the person's, so quitting it is
+    /// part of the removal they asked for. It is asked first and forced
+    /// only if it will not go. Anything with a window stays the person's to
+    /// quit, because it may hold something unsaved.
+    public static func quitBackgroundParts(bundleID: String?, bundlePath: String?) async -> Bool {
+        guard partsBrimMayQuit(bundleID: bundleID, bundlePath: bundlePath) != nil else { return false }
+        // The running applications themselves, matched the same way, so the
+        // one asked to quit is the one that was found.
+        let parts = await MainActor.run {
+            NSWorkspace.shared.runningApplications.filter { app in
+                app.bundleIdentifier != Bundle.main.bundleIdentifier
+                    && !whatIsRunning(bundleID: bundleID, bundlePath: bundlePath, among: [
+                        Running(bundleIdentifier: app.bundleIdentifier, name: "",
+                                bundlePath: app.bundleURL?.resolvingSymlinksInPath().path)
+                    ]).isEmpty
+            }
+        }
+        guard !parts.isEmpty else { return true }
+        await MainActor.run { parts.forEach { $0.terminate() } }
+        for _ in 0..<15 where await stillUp(parts) {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        if await stillUp(parts) {
+            await MainActor.run { parts.forEach { $0.forceTerminate() } }
+            for _ in 0..<10 where await stillUp(parts) {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
+        return await !stillUp(parts)
+    }
+
+    /// What Brim may quit for a removal: every running part of the app, if
+    /// none of them has a window. Nil when one does, because then the
+    /// person quits the app.
+    public static func partsBrimMayQuit(
+        bundleID: String?, bundlePath: String?, among running: [Running] = current(),
+        selfBundleID: String? = Bundle.main.bundleIdentifier
+    ) -> [Running]? {
+        let up = whatIsRunning(bundleID: bundleID, bundlePath: bundlePath, among: running)
+            .filter { $0.bundleIdentifier != selfBundleID }
+        return up.allSatisfy(\.isBackground) ? up : nil
+    }
+
+    private static func stillUp(_ parts: [NSRunningApplication]) async -> Bool {
+        await MainActor.run { parts.contains { !$0.isTerminated } }
     }
 
     /// Whether this identity, or anything living inside its bundle, is up.

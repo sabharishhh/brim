@@ -102,7 +102,11 @@ final class ExecutorTests: XCTestCase {
     }
 
     
-    func testExecutorPartialFailureLeavesBundle() async throws {
+    /// macOS refusing an ordinary support file leaves that file and nothing
+    /// else. WhatsApp's removal kept the whole app because macOS would not
+    /// move its extension's temporary folder; the app now goes and the
+    /// file is reported as still there.
+    func testASupportFileMacOSRefusesDoesNotKeepTheApp() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let journalStoreDir = tempDir.appendingPathComponent("Journals")
         let journalStore = JournalStore(directoryURL: journalStoreDir)
@@ -150,7 +154,40 @@ final class ExecutorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: okURL.path))
         XCTAssertEqual(journal.stepOutcomes[2], "ok")
         
-        // App bundle should be skipped
+        XCTAssertEqual(journal.stepOutcomes[1], "refusedByOS")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bundleURL.path), "the app goes")
+        XCTAssertEqual(journal.stepOutcomes[0], "ok")
+    }
+
+    /// A launch job file that cannot go still keeps the app: removing the
+    /// app would leave a job pointing at a program that is no longer there.
+    func testAFailureOutsideSupportFilesStillKeepsTheApp() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let executor = Executor(journalStore: JournalStore(directoryURL: tempDir.appendingPathComponent("J")))
+        let bundleURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("App.app")
+        let jobURL = tempDir.resolvingSymlinksInPath().appendingPathComponent("com.app.job.plist")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        try Data([1]).write(to: jobURL)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: jobURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: jobURL.path)
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        let plan = Plan(
+            planId: UUID(), createdAt: Date(), engineVersion: "1", osVersion: "1",
+            intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.app", name: "App")),
+            steps: [
+                Step(index: 0, kind: .trashPath, target: bundleURL.path, targetFingerprint: getFP(for: bundleURL.path),
+                     tier: .A, evidence: "app", expectedBytes: 0, capability: .ok, reversible: true,
+                     costOfError: .low, executionPhase: .appBundle),
+                Step(index: 1, kind: .removeLaunchdPlist, target: jobURL.path, targetFingerprint: getFP(for: jobURL.path),
+                     tier: .A, evidence: "job", expectedBytes: 0, capability: .ok, reversible: true,
+                     costOfError: .low, executionPhase: .launchd)
+            ],
+            excludedItems: [], expectedTotalBytes: 0
+        )
+        let journal = try await executor.execute(plan: plan)
+        XCTAssertNotEqual(journal.stepOutcomes[1], "ok")
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundleURL.path))
         XCTAssertEqual(journal.stepOutcomes[0], "skipped_due_to_prior_failures")
     }
