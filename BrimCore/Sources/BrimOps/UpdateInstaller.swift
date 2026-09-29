@@ -32,6 +32,8 @@ public struct UpdateInstaller: Sendable {
         case installedIsUnsigned
         case replace(String)
         case packageNotSignedBySameDeveloper
+        /// macOS refused to let Brim change the folder the app is in.
+        case notAllowed(folder: String)
 
         public var errorDescription: String? {
             switch self {
@@ -46,6 +48,9 @@ public struct UpdateInstaller: Sendable {
             case .installedIsUnsigned: return "The installed app is not signed, so the new version cannot be checked against it."
             case .replace(let why): return why
             case .packageNotSignedBySameDeveloper: return "The installer package is not signed by the app's developer."
+            case .notAllowed(let folder):
+                return "macOS did not let Brim change \(folder). Allow Brim in System Settings, "
+                    + "Privacy & Security, App Management."
             }
         }
     }
@@ -81,6 +86,8 @@ public struct UpdateInstaller: Sendable {
             let candidate = try Self.unpack(file, into: unpacked, bundleID: update.bundleID)
             if let refusal = try Self.verify(candidate, replacing: update.appURL) { return refusal }
             return try await replace(update.appURL, with: candidate)
+        } catch Failure.notAllowed(let folder) {
+            return .notAllowed(folder: folder)
         } catch {
             return .failed(error.localizedDescription)
         }
@@ -294,7 +301,7 @@ public struct UpdateInstaller: Sendable {
         do {
             try FileManager.default.moveItem(at: candidate, to: staged)
         } catch {
-            throw Failure.replace(Self.permissionSentence(error, folder: folder))
+            throw Self.refusal(error, folder: folder)
         }
         let intent = Intent(installed: installed.path, staged: staged.path, version: Self.shortVersion(of: staged),
                             pid: getpid())
@@ -317,7 +324,7 @@ public struct UpdateInstaller: Sendable {
                 _ = try SafeOps.trashItem(targetPath: installed.path, expectedDev: info.st_dev, expectedIno: info.st_ino)
             } catch {
                 guard let remover, await remover(installed.path) == nil else {
-                    throw Failure.replace(Self.permissionSentence(swapError, folder: folder))
+                    throw Self.refusal(swapError, folder: folder)
                 }
             }
             do {
@@ -437,14 +444,16 @@ public struct UpdateInstaller: Sendable {
     }
 
     /// macOS asks for App Management before one developer's app replaces
-    /// another's, and says nothing to the app that was refused.
-    static func permissionSentence(_ error: Error, folder: URL) -> String {
+    /// another's, and says nothing to the app that was refused. Full Disk
+    /// Access covered it on macOS 27 when VS Code was updated, so Brim does
+    /// not ask up front; a refusal is its own outcome, and the row offers
+    /// the setting rather than a sentence about it.
+    static func refusal(_ error: Error, folder: URL) -> Failure {
         let code = (error as NSError).code
         guard [NSFileWriteNoPermissionError, NSFileReadNoPermissionError, Int(EPERM), Int(EACCES)].contains(code)
                 || ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)?.code == Int(EPERM)
-        else { return error.localizedDescription }
-        return "macOS did not let Brim change \(folder.lastPathComponent). Allow Brim in System Settings, "
-            + "Privacy & Security, App Management."
+        else { return .replace(error.localizedDescription) }
+        return .notAllowed(folder: folder.lastPathComponent)
     }
 
     // MARK: - Small things
