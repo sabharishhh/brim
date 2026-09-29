@@ -352,6 +352,10 @@ public enum AppStoreCatalog {
         public let notes: String?
         public let released: Date?
         public let minimumSystem: String?
+        /// A listing shared with iPhone and iPad carries one version for
+        /// all of them, and it can be the iPhone's. Prime Video's said
+        /// 10.150.2 while the Mac build was 10.148.
+        public var isShared = false
     }
 
     /// Apple's lookup, which answers for many identifiers in one request.
@@ -378,9 +382,29 @@ public enum AppStoreCatalog {
                 notes: result["releaseNotes"] as? String,
                 released: (result["currentVersionReleaseDate"] as? String)
                     .flatMap { ISO8601DateFormatter().date(from: $0) },
-                minimumSystem: result["minimumOsVersion"] as? String
+                minimumSystem: result["minimumOsVersion"] as? String,
+                isShared: (result["kind"] as? String) != "mac-software"
             )
         }
         return listings
+    }
+
+    /// The App Store's page for the Mac edition, which states the Mac
+    /// build's own version.
+    public static func macPageURL(trackID: Int, region: String) -> URL? {
+        URL(string: "https://apps.apple.com/\(region.lowercased())/app/id\(trackID)?platform=mac")
+    }
+
+    /// The newest version the Mac page lists: the first entry of its
+    /// version history, or the version under "What's New".
+    public static func macVersion(fromPage html: String) -> String? {
+        for pattern in [#""primarySubtitle":"Version ([0-9][^"]*)""#, #">Version ([0-9][0-9A-Za-z.\-]*)</"#] {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                  let range = Range(match.range(at: 1), in: html)
+            else { continue }
+            return String(html[range])
+        }
+        return nil
     }
 }
