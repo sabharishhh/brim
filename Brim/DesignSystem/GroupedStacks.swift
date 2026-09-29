@@ -164,6 +164,10 @@ extension GroupedStacks where Accessory == EmptyView {
 struct RowHighlight: ViewModifier {
     let isInspected: Bool
     var action: (() -> Void)?
+    /// Command-click, where the row offers one. Its own gesture, because a
+    /// list takes a Command-click as its own selection gesture and a plain
+    /// tap never hears it.
+    var commandAction: (() -> Void)?
     @State private var isHovering = false
     @GestureState private var isPressed = false
 
@@ -178,6 +182,9 @@ struct RowHighlight: ViewModifier {
             if let action {
                 shaped
                     .onTapGesture(perform: action)
+                    .highPriorityGesture(
+                        TapGesture().modifiers(.command).onEnded { (commandAction ?? action)() }
+                    )
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0).updating($isPressed) { _, pressed, _ in pressed = true }
                     )
@@ -210,8 +217,10 @@ extension EnvironmentValues {
 }
 
 extension View {
-    func rowHighlight(isInspected: Bool, action: (() -> Void)? = nil) -> some View {
-        modifier(RowHighlight(isInspected: isInspected, action: action))
+    func rowHighlight(
+        isInspected: Bool, action: (() -> Void)? = nil, commandAction: (() -> Void)? = nil
+    ) -> some View {
+        modifier(RowHighlight(isInspected: isInspected, action: action, commandAction: commandAction))
     }
 }
 
