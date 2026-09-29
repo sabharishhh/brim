@@ -52,6 +52,10 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
     /// For an update an app downloaded, the installed app it is for.
     public let app: URL?
     public var isUpdateDownload: Bool { app != nil }
+    /// For an old version of a command line tool, the version its command
+    /// runs instead.
+    public let versionInUse: String?
+    public var isOldVersion: Bool { versionInUse != nil }
 
     public var id: String { url.path }
 
@@ -67,7 +71,7 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         name: String, tool: String, url: URL, sizeBytes: Int64,
         cost: Cost, explanation: String,
         cleanupID: String? = nil, cleanupCommand: String? = nil, lastBuilt: Date? = nil,
-        app: URL? = nil
+        app: URL? = nil, versionInUse: String? = nil
     ) {
         self.name = name
         self.tool = tool
@@ -79,5 +83,6 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         self.cleanupCommand = cleanupCommand
         self.lastBuilt = lastBuilt
         self.app = app
+        self.versionInUse = versionInUse
     }
 }
