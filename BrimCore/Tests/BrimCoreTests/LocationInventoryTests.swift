@@ -389,4 +389,29 @@ final class FailClosedScanTests: XCTestCase {
             ScanCompleteness(unreadable: ["/a"]).explanation?.contains("1 place") ?? false
         )
     }
+
+    /// Matching now looks identifiers up in a set and walks a name's own
+    /// dotted prefixes, instead of testing every identifier against every
+    /// file. Xcode has 135 identifiers and finding what it keeps took six
+    /// seconds of the thirteen its removal review spent loading. The
+    /// boundaries have to be exactly the ones the string comparison had.
+    func testMatchingKeepsItsBoundariesWithManyIdentifiers() {
+        let identity = Identity(bundleID: "com.vendor.app", name: "App")
+        func tier(_ rule: LocationInventory.Rule, _ name: String, declared: String? = nil) -> EvidenceTier? {
+            LocationInventory.Location(domain: .userCaches, rule: rule, describes: "", sentence: "")
+                .matchTier(name: name, identity: identity, declaredIdentifier: declared)
+        }
+        XCTAssertNotNil(tier(.bundleIdentifierPrefix, "com.vendor.app"))
+        XCTAssertNotNil(tier(.bundleIdentifierPrefix, "com.vendor.app.plist"))
+        XCTAssertNotNil(tier(.bundleIdentifierPrefix, "com.vendor.app.helper.cache"))
+        XCTAssertNil(tier(.bundleIdentifierPrefix, "com.vendor.apple"), "a longer word is not a prefix")
+        XCTAssertNil(tier(.bundleIdentifierPrefix, "com.vendor"))
+        XCTAssertNotNil(tier(.bundleIdentifierFile("plist"), "com.vendor.app.plist"))
+        XCTAssertNil(tier(.bundleIdentifierFile("plist"), "com.vendor.app.helper.plist"))
+        XCTAssertNotNil(tier(.clientOfService, "com.apple.WebKit.GPU+com.vendor.app"))
+        XCTAssertNotNil(tier(.identifierInsideBundle, "Plugin.bundle", declared: "com.vendor.app.plugin"))
+        XCTAssertNil(tier(.identifierInsideBundle, "Plugin.bundle", declared: "com.vendor.apps"))
+        XCTAssertEqual(tier(.groupContainer, "group.com.vendor.app"), .C)
+        XCTAssertNil(tier(.groupContainer, "group.com.vendor"))
+    }
 }

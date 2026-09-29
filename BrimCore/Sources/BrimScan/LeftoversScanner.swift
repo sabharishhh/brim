@@ -201,8 +201,12 @@ public actor LeftoversScanner {
         let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
         let ownerLookup = OwnerLookup(
             domain: domain, locationRules: locationRules,
-            pastIdentities: pastIdentities, search: search
+            pastIdentities: pastIdentities,
+            pastSubjects: pastIdentities.map(LocationInventory.Subject.init), search: search
         )
+        // Matching reads each identity's identifiers once per file, so they
+        // are worked out once per domain rather than once per question.
+        let activeSubjects = activeIdentities.map(LocationInventory.Subject.init)
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -317,6 +321,7 @@ public actor LeftoversScanner {
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
                     locationRules: locationRules, activeIdentities: activeIdentities,
+                    activeSubjects: activeSubjects,
                     activeBundleIDs: activeBundleIDs, activeNames: activeNames,
                     activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs,
                     writers: writers
@@ -422,6 +427,7 @@ public actor LeftoversScanner {
         let domain: FileSystemRoot.Domain
         let locationRules: [LocationInventory.Location]
         let pastIdentities: [Identity]
+        let pastSubjects: [LocationInventory.Subject]
         let search: OwnershipSearch
     }
 
@@ -438,12 +444,12 @@ public actor LeftoversScanner {
     ) -> ResolvedOwner? {
         let embeddedID = lookup.locationRules.contains { $0.rule == .identifierInsideBundle }
             ? LocationInventorySource.declaredIdentifier(at: item) : declared
-        let recordedOwner = lookup.pastIdentities.first { identity in
+        let recordedOwner = zip(lookup.pastIdentities, lookup.pastSubjects).first { _, subject in
             lookup.locationRules.contains {
-                $0.matchTier(name: name, identity: identity,
+                $0.matchTier(name: name, subject: subject,
                              declaredIdentifier: embeddedID) != nil
             }
-        }?.bundleID
+        }?.0.bundleID
         let ownerID = recordedOwner ?? containerOwner ?? declared
             ?? extractOwnerIdentifier(from: item, in: lookup.domain)
 
@@ -834,6 +840,7 @@ public actor LeftoversScanner {
         containerOwner: String?,
         locationRules: [LocationInventory.Location],
         activeIdentities: [Identity],
+        activeSubjects: [LocationInventory.Subject],
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
@@ -866,12 +873,7 @@ public actor LeftoversScanner {
             return true
         }
         if let containerOwner {
-            let ownerIsActive = activeIdentities.contains { identity in
-                identity.searchBundleIdentifiers.contains(containerOwner)
-                    || identity.searchBundleIdentifiers.contains(where: {
-                        containerOwner.hasPrefix($0 + ".")
-                    })
-            }
+            let ownerIsActive = activeSubjects.contains { $0.longestIdentifier(prefixing: containerOwner) != nil }
             if ownerIsActive {
                 return true
             }
@@ -883,8 +885,8 @@ public actor LeftoversScanner {
             ? LocationInventorySource.declaredIdentifier(at: item) : nil
 
         if locationRules.contains(where: { location in
-            activeIdentities.contains { identity in
-                location.matchTier(name: name, identity: identity,
+            activeSubjects.contains { subject in
+                location.matchTier(name: name, subject: subject,
                                    declaredIdentifier: declaredIdentifier) != nil
             }
         }) {

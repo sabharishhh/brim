@@ -114,26 +114,28 @@ public struct LocationInventory: Sendable {
 
         /// Names the forward search can test without reading a bundle.
         public func candidates(for identity: Identity) -> [String] {
+            candidates(for: Subject(identity))
+        }
+
+        public func candidates(for subject: Subject) -> [String] {
             switch rule {
             case .bundleIdentifier:
-                return identity.searchBundleIdentifiers
+                return subject.identifiers
             case let .bundleIdentifierFile(ext):
-                return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
+                return subject.identifiers.map { "\($0).\(ext)" }
             case .bundleIdentifierPrefix:
-                return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
+                return subject.identifiers.flatMap { ["\($0).plist", $0] }
             case .bundleIdentifierDelimitedPrefix, .temporaryDirectory, .clientOfService:
                 return []
             case .groupContainer:
-                if !identity.searchGroupContainers.isEmpty {
-                    return identity.searchGroupContainers
+                if !subject.groups.isEmpty {
+                    return subject.groups
                 }
-                return identity.searchBundleIdentifiers.map { "group.\($0)" }
+                return subject.identifiers.map { "group.\($0)" }
             case .applicationName:
-                return identity.searchNames
+                return subject.names
             case .applicationNameLowercased:
-                var seen = Set<String>()
-                return identity.searchNames.map { $0.lowercased() }
-                    .filter { seen.insert($0).inserted }
+                return subject.lowercasedNames
             case .applicationNameDelimitedPrefix:
                 return []
             case .identifierInsideBundle:
@@ -144,72 +146,59 @@ public struct LocationInventory: Sendable {
         /// The same ownership rule is used when searching from an app and
         /// when checking whether a swept path still belongs to one.
         public func matchTier(name: String, identity: Identity, declaredIdentifier: String? = nil) -> EvidenceTier? {
-            switch rule {
-            case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix:
-                nameTier(name: name, identity: identity)
-            case .groupContainer:
-                groupTier(name: name, identity: identity)
-            default:
-                identifierTier(
-                    name: name, identity: identity,
-                    declaredIdentifier: declaredIdentifier
-                )
-            }
+            matchTier(name: name, subject: Subject(identity), declaredIdentifier: declaredIdentifier)
         }
 
-        private func nameTier(name: String, identity: Identity) -> EvidenceTier? {
+        public func matchTier(name: String, subject: Subject, declaredIdentifier: String? = nil) -> EvidenceTier? {
             switch rule {
-            case .applicationName, .applicationNameLowercased:
-                candidates(for: identity).contains(name) ? tier : nil
+            case .applicationName:
+                subject.nameSet.contains(name) ? tier : nil
+            case .applicationNameLowercased:
+                subject.lowercasedNameSet.contains(name) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
-                delimitedPrefixTier(
-                    name: name, prefixes: identity.searchNames, separator: separator
-                )
+                delimitedPrefixTier(name: name, prefixes: subject.names, separator: separator)
+            case .groupContainer:
+                groupTier(name: name, subject: subject)
             default:
-                nil
+                identifierTier(name: name, subject: subject, declaredIdentifier: declaredIdentifier)
             }
         }
 
         private func identifierTier(
-            name: String, identity: Identity, declaredIdentifier: String?
+            name: String, subject: Subject, declaredIdentifier: String?
         ) -> EvidenceTier? {
             switch rule {
             case .bundleIdentifier:
-                guard identity.searchBundleIdentifiers.contains(name) else { return nil }
-                return identity.ownsIdentifier(name) ? tier : .C
+                guard subject.identifierSet.contains(name) else { return nil }
+                return subject.owns(name) ? tier : .C
             case let .bundleIdentifierFile(ext):
-                guard let matched = identity.searchBundleIdentifiers.first(where: {
-                    name == "\($0).\(ext)"
-                }) else { return nil }
-                return identity.ownsIdentifier(matched) ? tier : .C
+                guard name.hasSuffix("." + ext) else { return nil }
+                let stem = String(name.dropLast(ext.count + 1))
+                guard subject.identifierSet.contains(stem) else { return nil }
+                return subject.owns(stem) ? tier : .C
             case .bundleIdentifierPrefix:
-                guard let matched = identity.searchBundleIdentifiers
-                    .filter({ name == $0 || name.hasPrefix($0 + ".") })
-                    .max(by: { $0.count < $1.count }) else { return nil }
-                return identity.ownsIdentifier(matched) ? tier : .C
+                guard let matched = subject.longestIdentifier(prefixing: name) else { return nil }
+                return subject.owns(matched) ? tier : .C
             case let .bundleIdentifierDelimitedPrefix(separator):
                 return delimitedPrefixTier(
-                    name: name, prefixes: identity.searchBundleIdentifiers, separator: separator
+                    name: name, prefixes: subject.identifiers, separator: separator
                 )
             case .temporaryDirectory:
-                guard let matched = identity.searchBundleIdentifiers.first(where: {
+                guard let matched = subject.identifiers.first(where: {
                     Self.isTemporary(name: name, of: $0)
                 }) else { return nil }
-                return identity.ownsIdentifier(matched) ? tier : .C
+                return subject.owns(matched) ? tier : .C
             case .clientOfService:
                 guard let plus = name.lastIndex(of: "+"), plus != name.startIndex else { return nil }
                 let client = String(name[name.index(after: plus)...])
-                guard identity.searchBundleIdentifiers.contains(client) else { return nil }
-                return identity.ownsIdentifier(client) ? tier : .C
+                guard subject.identifierSet.contains(client) else { return nil }
+                return subject.owns(client) ? tier : .C
             case .identifierInsideBundle:
                 // A plug-in is often named inside a component's identifier,
                 // `com.openai.sky.CUAService.AuthorizationPlugin` for one.
                 guard let declaredIdentifier,
-                      identity.searchBundleIdentifiers.contains(where: {
-                          declaredIdentifier == $0 || declaredIdentifier.hasPrefix($0 + ".")
-                      }) else { return nil }
-                return identity.ownsIdentifier(declaredIdentifier) ? tier : .C
+                      subject.longestIdentifier(prefixing: declaredIdentifier) != nil else { return nil }
+                return subject.owns(declaredIdentifier) ? tier : .C
             case .applicationName, .applicationNameLowercased,
                  .applicationNameDelimitedPrefix, .groupContainer:
                 return nil
@@ -232,14 +221,65 @@ public struct LocationInventory: Sendable {
             }) ? .C : nil
         }
 
-        private func groupTier(name: String, identity: Identity) -> EvidenceTier? {
-            if identity.searchGroupContainers.contains(name) {
+        private func groupTier(name: String, subject: Subject) -> EvidenceTier? {
+            if subject.groupSet.contains(name) {
                 return .A
             }
-            guard identity.searchGroupContainers.isEmpty,
-                  identity.searchBundleIdentifiers.contains(where: { name == "group.\($0)" })
+            guard subject.groups.isEmpty, name.hasPrefix("group."),
+                  subject.identifierSet.contains(String(name.dropFirst(6)))
             else { return nil }
             return .C
+        }
+    }
+
+    /// What one identity answers to, worked out once.
+    ///
+    /// `Identity` derives its identifiers and names every time it is asked,
+    /// and matching asked once per file per location. Xcode carries 135
+    /// identifiers, so finding what it keeps took six seconds, nearly all
+    /// of it rebuilding the same sorted list.
+    public struct Subject: Sendable {
+        public let identifiers: [String]
+        let identifierSet: Set<String>
+        let names: [String]
+        let nameSet: Set<String>
+        let lowercasedNames: [String]
+        let lowercasedNameSet: Set<String>
+        let groups: [String]
+        let groupSet: Set<String>
+        private let own: String?
+
+        public init(_ identity: Identity) {
+            identifiers = identity.searchBundleIdentifiers
+            identifierSet = Set(identifiers)
+            names = identity.searchNames
+            nameSet = Set(names)
+            var seen = Set<String>()
+            lowercasedNames = names.map { $0.lowercased() }.filter { seen.insert($0).inserted }
+            lowercasedNameSet = seen
+            groups = identity.searchGroupContainers
+            groupSet = Set(groups)
+            own = identity.bundleID.flatMap { $0.isEmpty ? nil : $0.lowercased() }
+        }
+
+        /// The same answer as `Identity.ownsIdentifier`.
+        func owns(_ identifier: String) -> Bool {
+            guard let own else { return false }
+            let other = identifier.lowercased()
+            return other == own || other.hasPrefix(own + ".")
+        }
+
+        /// The longest identifier that is the name or a dotted prefix of
+        /// it, found by walking the name's own prefixes.
+        public func longestIdentifier(prefixing name: String) -> String? {
+            if identifierSet.contains(name) { return name }
+            var end = name.endIndex
+            while let dot = name[..<end].lastIndex(of: ".") {
+                let prefix = String(name[..<dot])
+                if identifierSet.contains(prefix) { return prefix }
+                end = dot
+            }
+            return nil
         }
     }
 
