@@ -1,3 +1,4 @@
+import AppKit
 import BrimCore
 import BrimUI
 import SwiftUI
@@ -40,8 +41,16 @@ struct AppStacks: View {
                     if !isCollapsed(group) {
                         ForEach(visibleRows(group)) { app in
                             AppRow(
-                                app: app, opened: opened[app.id], isSelected: model.selected?.id == app.id,
-                                select: { model.select(app) }
+                                app: app, opened: opened[app.id],
+                                isSelected: model.marked.isEmpty ? model.selected?.id == app.id : model.isMarked(app),
+                                // Command-click marks several for one review, as in Finder.
+                                select: {
+                                    if NSEvent.modifierFlags.contains(.command) {
+                                        model.toggleMark(app)
+                                    } else {
+                                        model.select(app)
+                                    }
+                                }
                             )
                             .contextMenu { menu(app) }
                             .listRowBackground(Color.clear)
@@ -149,8 +158,8 @@ struct AppTable: View {
 
     var body: some View {
         Table(sorted, selection: Binding(
-            get: { model.selected?.id },
-            set: { id in model.select(model.applications.first { $0.id == id }) }
+            get: { model.marked.isEmpty ? Set([model.selected?.id].compactMap(\.self)) : Set(model.marked.map(\.id)) },
+            set: { ids in model.mark(sorted.filter { ids.contains($0.id) }) }
         ), sortOrder: $order) {
             TableColumn("Name", value: \.name, comparator: .localizedStandard) { app in
                 HStack(spacing: 8) {
