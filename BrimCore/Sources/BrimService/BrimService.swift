@@ -624,7 +624,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 .filter { removedPaths.contains($0.standardizedFileURL.path) }
         }
 
-        let (found, privacyResetFailed) = await removalFollowUps(plan: plan, journal: journal)
+        let (found, privacyResetFailed, survivingExtensions) = await removalFollowUps(plan: plan, journal: journal)
         var followUps = found
         // A failed step whose path is still there is explained with that
         // path. Saying "some planned actions could not be completed" as
@@ -638,9 +638,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
             && !privacyResetFailed && !otherActionsFailed
+        let recorded = Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining)
         let reason = Self.verificationReason(
             pathsRemaining: pathsRemaining,
-            recorded: Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining),
+            recorded: recorded,
             staleRegistrations: staleRegistrations,
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
@@ -660,11 +661,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             success: success,
             reason: reason,
             remainingPaths: pathsRemaining,
-            followUpActions: followUps.isEmpty ? nil : followUps
+            followUpActions: followUps.isEmpty ? nil : followUps,
+            report: RemovalReport.build(
+                plan: plan, remaining: pathsRemaining, recorded: recorded,
+                staleRegistrations: staleRegistrations.count, privacyResetFailed: privacyResetFailed,
+                survivingExtensions: survivingExtensions
+            )
         )
     }
 
-    private func removalFollowUps(plan: Plan, journal: JournalEntry?) async -> ([RemovalFollowUp], Bool) {
+    private func removalFollowUps(
+        plan: Plan, journal: JournalEntry?
+    ) async -> ([RemovalFollowUp], Bool, Set<String>?) {
         let privacyResetFailed = journal != nil && plan.steps.contains { step in
             step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
         }
@@ -690,7 +698,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if needsPrivacyFollowUp, !actions.contains(.restoreAppForPrivacyReset) {
             actions.append(.restoreAppForPrivacyReset)
         }
-        return (actions, privacyResetFailed)
+        return (actions, privacyResetFailed, survivingExtensionIDs)
     }
 
     private static func verificationReason(
