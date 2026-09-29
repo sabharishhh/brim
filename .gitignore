@@ -5,3 +5,6 @@ skills/
 .swiftpm/
 Brim.xcodeproj/build/
 __pycache__/
+node_modules/
+branding/landing/dist/
+.DS_Store
