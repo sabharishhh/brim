@@ -169,10 +169,25 @@ final class InstallHistoryTests: XCTestCase {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta"), app("com.c", "Gamma")])
+
+        let changes = try await index.changesSinceLastScan()
+        XCTAssertEqual(changes.map(\.bundleID), ["com.c"], "Beta appeared two looks ago, not since the last one")
+    }
+
+    /// Every launch takes a snapshot, so a relaunch compared two identical
+    /// ones and Home's Changes emptied each time Brim opened. The last
+    /// change stands until there is a newer one, dated when it happened.
+    func testARelaunchDoesNotEmptyTheLastChange() async throws {
+        let index = try makeIndex()
+        _ = try await index.recordInstalled([app("com.a", "Alpha")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
 
         let changes = try await index.changesSinceLastScan()
-        XCTAssertTrue(changes.isEmpty, "Beta appeared two looks ago, not since the last one")
+        XCTAssertEqual(changes.map(\.bundleID), ["com.b"])
+        XCTAssertEqual(changes.first?.kind, .appeared)
     }
 
     /// T-1.4's acceptance criterion, and the one nobody finds out about

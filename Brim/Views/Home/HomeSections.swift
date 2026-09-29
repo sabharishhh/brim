@@ -3,7 +3,8 @@ import BrimUI
 import SwiftUI
 import TipKit
 
-/// What changed since Brim last looked: two snapshots, subtracted.
+/// The last thing that changed: the latest two snapshots that differ,
+/// subtracted.
 ///
 /// "Since Brim last looked" rather than "since your last visit": the
 /// comparison is between enumerations, and saying which is the honest
@@ -27,8 +28,10 @@ struct SinceLastLook: View {
                 Text("Changes")
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)
-                if let since = history.changes.first?.since {
-                    Text("since " + Self.day(since))
+                // When Brim saw it, which is not always since the last look:
+                // the last change stands until there is a newer one.
+                if let seen = history.changes.first?.until {
+                    Text("seen " + Self.day(seen))
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 }
