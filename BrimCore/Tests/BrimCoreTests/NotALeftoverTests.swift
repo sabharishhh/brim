@@ -94,6 +94,23 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertFalse(names.contains("autoupdate.log"))
     }
 
+    /// A plug-in bundle's file name is two words at most, `Flash
+    /// Player.prefPane`, so the rule that keeps macOS's plainly named
+    /// folders out of the sweep kept every third-party plug-in in `/Library`
+    /// out as well. A bundle says whose it is in its `Info.plist`.
+    func testAPlugInBundleInLibraryIsJudgedByItsIdentifier() async throws {
+        _ = try bundle("Library/PreferencePanes/Flash Player.prefPane",
+                       identifier: "com.adobe.flashplayer.installmanager")
+        _ = try put("Library/PreferencePanes/Flash Player.prefPane/Contents/Resources/data", contents: Data([1]))
+        _ = try bundle("Library/QuickLook/Viewer.qlgenerator", identifier: "com.example.viewer.quicklook")
+        _ = try put("Library/QuickLook/Viewer.qlgenerator/Contents/MacOS/Viewer", contents: Data([1]))
+        _ = try bundle("Library/PreferencePanes/Network Link.prefPane", identifier: "com.apple.preference.link")
+
+        let names = try await listed()
+        XCTAssertTrue(names.isSuperset(of: ["Flash Player.prefPane", "Viewer.qlgenerator"]), "\(names)")
+        XCTAssertFalse(names.contains("Network Link.prefPane"))
+    }
+
     func testMacOSsPrinterListIsNotALeftover() async throws {
         _ = try put("System/Library/LaunchDaemons/org.cups.cupsd.plist")
         _ = try put("Library/Preferences/org.cups.printers.plist")
