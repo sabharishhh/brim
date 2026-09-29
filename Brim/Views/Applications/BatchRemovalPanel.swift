@@ -9,7 +9,9 @@ import SwiftUI
 struct BatchRemovalPanel: View {
     let apps: [InstalledApplication]
     let service: any BrimServiceProtocol
-    /// The work is done: the page reads the Mac again.
+    /// Every app has been through its removal.
+    var onRemoved: () -> Void = {}
+    /// The panel is done with.
     let onFinished: () -> Void
     let onClose: () -> Void
 
@@ -79,7 +81,10 @@ struct BatchRemovalPanel: View {
                     .keyboardShortcut(.defaultAction)
             } else {
                 Button(model.isRemoving ? "Removing" : "Remove \(model.ready.count) Apps") {
-                    Task { await model.removeAll(requesterIdentity: NSUserName()) }
+                    Task {
+                        await model.removeAll(requesterIdentity: NSUserName())
+                        onRemoved()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isPreparing || model.isRemoving || model.ready.isEmpty)
@@ -122,11 +127,14 @@ private struct BatchEntryRow: View {
             .accessibilityElement(children: .combine)
 
             if showsItems {
-                if case let .verified(result) = removal.phase, let report = result.report {
-                    RemovalReportView(report: report)
-                } else if let plan = removal.plan {
+                if case let .verified(result) = removal.phase {
+                    RemovalResultView(result: result, plan: removal.plan, groups: removal.reviewGroups, scrolls: false)
+                } else if removal.plan != nil {
+                    // What the single review shows: files, not the records
+                    // kept alongside them. A privacy reset listed here read as
+                    // a file to be deleted permanently.
                     VStack(alignment: .leading, spacing: 2) {
-                        ForEach(plan.steps, id: \.index) { step in
+                        ForEach(removal.removalSteps, id: \.index) { step in
                             UninstallPlanRow(
                                 target: step.target, evidence: step.evidence, bytes: step.expectedBytes,
                                 disposition: step.effectiveDisposition, kind: step.kind, tier: step.tier
@@ -145,10 +153,14 @@ private struct BatchEntryRow: View {
         case .preparing: return "Checking"
         case .ready:
             guard let plan = removal.plan else { return "Checking" }
-            let count = plan.steps.count == 1 ? "1 item" : "\(plan.steps.count) items"
+            let steps = removal.removalSteps.count
+            let count = steps == 1 ? "1 item" : "\(steps) items"
             return count + " · " + ByteText.short(plan.expectedTotalBytes)
         case .executing: return "Removing"
-        case let .verified(result): return result.success ? "Nothing left" : "Some of it remains"
+        case let .verified(result):
+            guard result.success else { return "Some of it remains" }
+            let unticked = result.report?.leftUnticked.count ?? 0
+            return unticked == 0 ? "Nothing left" : "Removed, \(unticked) unticked stay"
         case .appliedButUnverified: return "Removed, not checked"
         case let .failed(why): return why
         }

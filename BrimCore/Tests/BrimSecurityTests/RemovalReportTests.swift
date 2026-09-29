@@ -29,10 +29,11 @@ final class RemovalReportTests: XCTestCase {
         )
     }
 
-    private func plan(_ steps: [Step], checks: [CapabilitySearchReport.Check] = []) -> Plan {
+    private func plan(_ steps: [Step], checks: [CapabilitySearchReport.Check] = [],
+                      excluded: [ExcludedItem] = []) -> Plan {
         Plan(planId: UUID(), createdAt: Date(), engineVersion: "t", osVersion: "t",
              intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "com.x.app", name: "X")),
-             steps: steps, excludedItems: [], expectedTotalBytes: 0)
+             steps: steps, excludedItems: excluded, expectedTotalBytes: 0)
             .attaching(checks.isEmpty ? nil : CapabilitySearchReport(checks: checks, signatureCoverage: []))
     }
 
@@ -119,5 +120,28 @@ final class RemovalReportTests: XCTestCase {
                                    stepOutcomes: [1: "skipped_due_to_prior_failures", 22: "ok"])
         XCTAssertEqual(BrimService.recordedOutcomes(plan: subject, journal: journal, remaining: [app])[app],
                        "skipped_due_to_prior_failures")
+    }
+
+    /// Antigravity's removal said "Nothing left" while four name matches the
+    /// person had not ticked were still on the disk. The report names them,
+    /// and leaves out a vetoed item and one that has since gone.
+    func testUntickedItemsStillOnDiskAreReported() throws {
+        let subject = plan([step(0, "/u/Library/Caches/x")], excluded: [
+            ExcludedItem(target: "/u/.x-ide", reason: "", canBeTickedByHand: true, tier: .C),
+            ExcludedItem(target: "/u/.cache/x", reason: "", canBeTickedByHand: true, tier: .C),
+            ExcludedItem(target: "/u/Library/Group Containers/shared", reason: "", canBeTickedByHand: false)
+        ])
+        let report = RemovalReport.build(
+            plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
+            privacyResetFailed: false, survivingExtensions: nil, capability: { _ in .ok },
+            exists: { $0 != "/u/.cache/x" }
+        )
+        XCTAssertEqual(report.leftUnticked, ["/u/.x-ide"])
+
+        // A report saved before the field existed still decodes.
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as! [String: Any]
+        json.removeValue(forKey: "leftUnticked")
+        let old = try JSONDecoder().decode(RemovalReport.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(old.leftUnticked, [])
     }
 }
