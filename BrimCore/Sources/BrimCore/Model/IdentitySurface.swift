@@ -37,11 +37,16 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
     public let bundlePath: String
     public let components: [Component]
     public let helperRequirements: [String: String]
+    /// Dot folders in the home folder the bundle itself names as its own.
+    /// Optional so a plan saved before this existed still reads.
+    public let homeFolders: [String]?
 
-    public init(bundlePath: String, components: [Component], helperRequirements: [String: String] = [:]) {
+    public init(bundlePath: String, components: [Component], helperRequirements: [String: String] = [:],
+                homeFolders: [String] = []) {
         self.bundlePath = bundlePath
         self.components = components
         self.helperRequirements = helperRequirements
+        self.homeFolders = homeFolders.isEmpty ? nil : homeFolders
     }
 
     public var bundleIdentifiers: [String] {

@@ -129,6 +129,11 @@ public struct FileSystemRoot: Sendable {
         case userDotLocalShare
         case userDotLocalState
         case userDotLocalBin
+        /// The home folder itself, for the dot folders software keeps
+        /// there: `~/.vscode`, `~/.antigravity-ide`. Only names beginning
+        /// with a dot are ever considered, because the rest of the home
+        /// folder is the person's own.
+        case userHomeDotFolders
     }
 
     /// Whether a domain can only be matched on a name, which makes
@@ -151,7 +156,7 @@ public struct FileSystemRoot: Sendable {
              // there is linked to an application by a shared name and
              // nothing else, which is the definition of Tier C.
              .userDotConfig, .userDotCache, .userDotLocalShare,
-             .userDotLocalState, .userDotLocalBin:
+             .userDotLocalState, .userDotLocalBin, .userHomeDotFolders:
             return true
         default:
             return false
@@ -268,6 +273,7 @@ public struct FileSystemRoot: Sendable {
         case .userDotLocalShare:      return home(".local/share")
         case .userDotLocalState:      return home(".local/state")
         case .userDotLocalBin:        return home(".local/bin")
+        case .userHomeDotFolders:     return rootURL.appendingPathComponent("Users/\(userName)")
         }
     }
 

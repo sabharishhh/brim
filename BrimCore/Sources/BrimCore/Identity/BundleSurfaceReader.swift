@@ -86,10 +86,28 @@ public enum BundleSurfaceReader {
         reader.visit(bundle, signature: signature)
         return (
             IdentitySurface(bundlePath: bundle.path, components: reader.components,
-                            helperRequirements: reader.helperRequirements),
+                            helperRequirements: reader.helperRequirements,
+                            homeFolders: declaredHomeFolders(of: bundle)),
             CapabilitySurface(declarations: reader.declarations, signatureGaps: reader.signatureGaps,
                               unreadable: Array(reader.unreadable).sorted(), timedOut: Array(reader.timedOut).sorted())
         )
+    }
+
+    /// The folder in the home folder an Electron editor says it keeps its
+    /// data in. Every editor built from Visual Studio Code carries a
+    /// `product.json` naming it: `.vscode`, `.cursor`, `.antigravity-ide`.
+    /// Nothing about the application's name predicts `.vscode` or the
+    /// `-ide` suffix, and Antigravity's 400 MB of extensions outlived its
+    /// removal because of it. The bundle's own declaration is a record, so
+    /// it is trusted where a name alone is not.
+    static func declaredHomeFolders(of bundle: URL) -> [String] {
+        let product = bundle.appendingPathComponent("Contents/Resources/app/product.json")
+        guard let data = try? Data(contentsOf: product), data.count < 1_000_000,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let folder = json["dataFolderName"] as? String,
+              folder.hasPrefix("."), folder.count > 2, IdentitySurface.isPathComponent(folder)
+        else { return [] }
+        return [folder]
     }
 
     private struct Reader {

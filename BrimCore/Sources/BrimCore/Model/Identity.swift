@@ -96,6 +96,11 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         return other == own || other.hasPrefix(own + ".")
     }
 
+    /// Home dot folders the bundle declares, such as `.vscode`.
+    public var searchHomeFolders: [String] {
+        (identitySurface?.homeFolders ?? []).filter(IdentitySurface.isPathComponent)
+    }
+
     public var searchGroupContainers: [String] {
         Array(Set(identitySurface?.groups ?? groupContainers))
             .filter(IdentitySurface.isPathComponent).sorted()
