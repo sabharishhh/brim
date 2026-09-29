@@ -42,10 +42,12 @@ struct AppStacks: View {
                         ForEach(visibleRows(group)) { app in
                             AppRow(
                                 app: app, opened: opened[app.id],
-                                isSelected: model.marked.isEmpty ? model.selected?.id == app.id : model.isMarked(app),
+                                isSelected: model.marked.isEmpty && !model.isChoosing
+                                    ? model.selected?.id == app.id : model.isMarked(app),
                                 select: { model.select(app) },
                                 // Command-click marks several for one review, as in Finder.
-                                mark: { model.toggleMark(app) }
+                                mark: { model.isChoosing ? model.toggleChoice(app) : model.toggleMark(app) },
+                                isChoosing: model.isChoosing
                             )
                             .contextMenu { menu(app) }
                             .listRowBackground(Color.clear)
@@ -153,11 +155,20 @@ struct AppTable: View {
 
     var body: some View {
         Table(sorted, selection: Binding(
-            get: { model.marked.isEmpty ? Set([model.selected?.id].compactMap(\.self)) : Set(model.marked.map(\.id)) },
-            set: { ids in model.mark(sorted.filter { ids.contains($0.id) }) }
+            get: {
+                model.marked.isEmpty && !model.isChoosing
+                    ? Set([model.selected?.id].compactMap(\.self)) : Set(model.marked.map(\.id))
+            },
+            set: { ids in choose(ids) }
         ), sortOrder: $order) {
             TableColumn("Name", value: \.name, comparator: .localizedStandard) { app in
                 HStack(spacing: 8) {
+                    if model.isChoosing {
+                        Image(systemName: model.isMarked(app) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(model.isMarked(app) ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary))
+                            .opacity(app.isSystemProtected ? 0.35 : 1)
+                            .accessibilityHidden(true)
+                    }
                     BrimIcon(source: .bundle(app.url), size: 20)
                     Text(app.name)
                 }
@@ -177,6 +188,22 @@ struct AppTable: View {
                 Text(app.source?.title ?? "")
             }
             .width(100)
+        }
+        // The page's own background, not the table's white and grey bands.
+        .scrollContentBackground(.hidden)
+        .alternatingRowBackgrounds(.disabled)
+    }
+
+    /// A plain click on a row. Outside choosing it opens that app, even one
+    /// of several selected. While choosing it ticks or unticks the row, the
+    /// way the list does; Shift and Command extend as they always have.
+    private func choose(_ ids: Set<String>) {
+        let rows = sorted.filter { ids.contains($0.id) }
+        guard model.isChoosing else { return model.mark(rows) }
+        if rows.count == 1, let row = rows.first {
+            model.toggleChoice(row)
+        } else if rows.count > 1 {
+            model.mark(rows)
         }
     }
 

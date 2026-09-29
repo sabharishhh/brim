@@ -116,6 +116,12 @@ struct ApplicationsView: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                 }
+                // Several apps in one review. Command-click did this and
+                // nobody found it.
+                Button(model.isChoosing ? "Done" : "Select") {
+                    model.isChoosing ? model.stopChoosing() : model.startChoosing()
+                }
+                .disabled(model.applications.isEmpty)
                 Picker("View", selection: $asTable) {
                     Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
                     Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
@@ -185,18 +191,30 @@ struct ApplicationsView: View {
         } else if let batch {
             BatchRemovalPanel(
                 apps: batch, service: service,
+                // The list catches up as soon as the apps have gone, not
+                // when the panel is closed.
+                onRemoved: {
+                    batch.forEach { model.forgetIfRemoved($0); AppIcon.forget($0.url) }
+                    Task { await model.load(service: service) }
+                },
                 onFinished: {
                     self.batch = nil
-                    model.clearMarks()
-                    Task { await model.load(service: service) }
+                    model.stopChoosing()
                 },
                 onClose: { self.batch = nil }
             )
             .id(batch.map(\.id).joined(separator: ","))
             .transition(.opacity)
-        } else if model.marked.count >= 2 {
-            MarkedApps(apps: model.marked) { batch = model.marked.map(removalTarget) }
-                .transition(.opacity)
+        } else if model.marked.count >= 2 || model.isChoosing {
+            MarkedApps(apps: model.marked) {
+                if model.marked.count == 1, let app = model.marked.first {
+                    review = AppReview(app: removalTarget(app))
+                    model.stopChoosing()
+                } else {
+                    batch = model.marked.map(removalTarget)
+                }
+            }
+            .transition(.opacity)
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
@@ -236,12 +254,20 @@ struct AppReview: Identifiable, Equatable {
     var id: String { app.id }
 }
 
-/// Two or more apps marked with Command-click, before their review.
+/// The apps ticked with Select or Command-click, before their review.
 private struct MarkedApps: View {
     let apps: [InstalledApplication]
     let review: () -> Void
 
     var body: some View {
+        if apps.isEmpty {
+            PanePlaceholder(symbol: "checkmark.circle", title: "Tick the apps to remove")
+        } else {
+            chosen
+        }
+    }
+
+    private var chosen: some View {
         VStack(spacing: 16) {
             HStack(spacing: -10) {
                 ForEach(apps.prefix(5)) { app in
@@ -249,14 +275,14 @@ private struct MarkedApps: View {
                 }
             }
             .accessibilityHidden(true)
-            Text("\(apps.count) apps selected")
+            Text(apps.count == 1 ? "1 app selected" : "\(apps.count) apps selected")
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
             Text(ByteText.short(apps.reduce(0) { $0 + $1.bundleSizeBytes }))
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
-            Button("Remove \(apps.count) Apps", action: review)
+            Button(apps.count == 1 ? "Review" : "Remove \(apps.count) Apps", action: review)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }

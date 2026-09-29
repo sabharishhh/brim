@@ -85,6 +85,29 @@ final class ApplicationsModelTests: XCTestCase {
         XCTAssertTrue(model.marked.isEmpty, "a plain click ends marking")
     }
 
+    /// The Select button: a click ticks rather than opens, one tick is
+    /// allowed while choosing, the open app starts ticked, and Done or a
+    /// plain selection ends it.
+    func testChoosingTicksAppsOneClickAtATime() {
+        let model = ApplicationsModel()
+        let a = app("Alpha"), b = app("Beta"), system = app("Safari", protected: true)
+        model.select(a)
+        model.startChoosing()
+        XCTAssertEqual(model.marked.map(\.name), ["Alpha"])
+        model.toggleChoice(a)
+        XCTAssertTrue(model.marked.isEmpty)
+        XCTAssertTrue(model.isChoosing, "no ticks is still choosing")
+        model.toggleChoice(b)
+        model.toggleChoice(system)
+        XCTAssertEqual(model.marked.map(\.name), ["Beta"])
+        model.stopChoosing()
+        XCTAssertFalse(model.isChoosing)
+        XCTAssertTrue(model.marked.isEmpty)
+        model.startChoosing()
+        model.select(b)
+        XCTAssertFalse(model.isChoosing)
+    }
+
     func testATableSelectionOfSeveralRowsMarksThem() {
         let model = ApplicationsModel()
         model.mark([app("Alpha"), app("Beta")])
