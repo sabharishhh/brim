@@ -122,7 +122,7 @@ struct HomeView: View {
     private var newLeftoverOwners: Int {
         let new = session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id)))
         guard !new.isEmpty else { return 0 }
-        return (leftovers.orphanedGroups + leftovers.unclaimedGroups)
+        return leftovers.orphanedGroups
             .filter { $0.items.contains { new.contains($0.id) } }.count
     }
 
