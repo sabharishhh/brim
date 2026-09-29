@@ -45,7 +45,7 @@ struct BatchRemovalPanel: View {
                 Text("Remove \(model.entries.count) apps")
                     .font(.brimPageTitle)
                     .foregroundStyle(Palette.ink)
-                Text(model.isPreparing ? "Checking" : ByteText.short(model.totalBytes))
+                Text(model.isPreparing ? "Checking" : model.isFinished ? outcome : ByteText.short(model.totalBytes))
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -59,6 +59,16 @@ struct BatchRemovalPanel: View {
             .accessibilityLabel("Close")
         }
         .padding(20)
+    }
+
+    /// "2 removed · 1 needs you", once they have all run.
+    private var outcome: String {
+        let done = model.entries.filter {
+            if case let .verified(result) = $0.removal.phase { result.success } else { false }
+        }.count
+        let rest = model.entries.count - done
+        return ["\(done) removed", rest > 0 ? "\(rest) \(rest == 1 ? "needs" : "need") you" : nil]
+            .compactMap(\.self).joined(separator: " · ")
     }
 
     private var footer: some View {

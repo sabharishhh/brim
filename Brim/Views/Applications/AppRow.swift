@@ -10,6 +10,8 @@ struct AppRow: View {
     let opened: String?
     let isSelected: Bool
     let select: () -> Void
+    /// Command-click: mark this app with others for one review.
+    var mark: (() -> Void)?
 
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
@@ -50,7 +52,7 @@ struct AppRow: View {
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight(compact: compact))
-        .rowHighlight(isInspected: isSelected, action: select)
+        .rowHighlight(isInspected: isSelected, action: select, commandAction: mark)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(app.name), \(facts), \(ByteText.short(app.bundleSizeBytes))")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
