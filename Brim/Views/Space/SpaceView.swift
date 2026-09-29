@@ -185,7 +185,7 @@ struct SpaceView: View {
         } else if model.brimCanClearCount == 0 {
             "Nothing found"
         } else {
-            model.brimCanClearCount == 1 ? "1 leftover" : "\(model.brimCanClearCount) leftovers"
+            model.brimCanClearCount == 1 ? "From 1 removed app" : "From \(model.brimCanClearCount) removed apps"
         }
         return StatCard(
             title: "Leftovers", symbol: "shippingbox",
