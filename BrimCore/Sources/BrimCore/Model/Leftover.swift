@@ -37,6 +37,10 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// snapshots recorded it.
     public var removedAt: Date?
 
+    /// The installed app that took the removed app's place, when that is
+    /// proven. See `Replacement`. Information only: it selects nothing.
+    public var replacedBy: Replacement?
+
     public var id: String { url.path }
 
     /// Whether Brim can take this away, itself or through its helper.

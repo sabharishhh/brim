@@ -179,7 +179,7 @@ struct LeftoversView: View {
                     .foregroundStyle(Palette.inkSecondary)
             }
             .lineLimit(1)
-            .help(group.evidence)
+            .help([group.evidence, group.replacedBy?.sentence].compactMap(\.self).joined(separator: "\n\n"))
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel("\(group.displayName), \(facts)")
@@ -205,9 +205,14 @@ struct LeftoversView: View {
 
     private static func facts(_ group: LeftoverGroup) -> String {
         let places = group.items.count == 1 ? "1 place" : "\(group.items.count) places"
-        let size = places + " · " + ByteText.short(group.totalBytes)
-        guard let removed = group.removedAt else { return size }
-        return "Removed " + removed.formatted(.dateTime.day().month(.abbreviated)) + " · " + size
+        var parts = [places + " · " + ByteText.short(group.totalBytes)]
+        if let removed = group.removedAt {
+            parts.insert("Removed " + removed.formatted(.dateTime.day().month(.abbreviated)), at: 0)
+        }
+        if let replacement = group.replacedBy {
+            parts.append("Replaced by " + replacement.name)
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Removing
