@@ -63,6 +63,13 @@ any of them was broken but because none of them was this. The failure mode
 for a utility is not missing a feature, it is becoming the kind of cleaning
 app whose feature list is its argument.
 
+Updates is the one addition, and it was argued for rather than drifted into.
+Keeping an app current is part of controlling what is installed, and it runs
+on the same evidence: a new version replaces the old only if the same
+developer signed it, it is newer, it runs on this Mac and Gatekeeper trusts
+it, and the old copy goes to the Trash. It checks when the page opens and
+when asked. Nothing runs in the background.
+
 **Evidence, never assertion.** Every row a user might act on says how Brim
 knows. "Orphaned" is a claim and has to name the record that orphaned it.
 
@@ -168,6 +175,13 @@ a module cache by hand leaves the tool confused. Stateful artefacts are
 reported and routed, never touched: Xcode archives, simulator devices and
 container disk images are always in this class whatever their size, and
 `DeveloperSafetyTests` holds the line.
+
+**Recent writing only ever keeps something out.** A folder nothing names
+that something wrote to this week belongs to something alive, and is not
+listed as a removed app's. Knowledge, Animoji and SiriEntityCache are
+macOS's and were offered as leftovers the day they were written. The rule
+never works the other way: an old write says nothing about whether the
+owner is gone.
 
 **Savings are what comes back, not what was counted.** Two identical files
 on APFS often share their blocks already, so removing one frees nothing.
@@ -419,6 +433,24 @@ conversation. Split unrelated changes rather than staging everything.
   difference. Wrap the action in `FocusedAction`, which compares by name.
   Measure an idle window with the app frontmost before blaming a list.
 
+- **A shared App Store listing reports the iPhone version.** The iTunes
+  lookup for Prime Video answered 10.150.2 while the Mac build was older,
+  and Updates offered an update that did not exist. When the lookup's
+  `kind` is not `mac-software`, read the version from the listing's Mac
+  page instead.
+- **Full Disk Access was enough to replace another developer's app on
+  macOS 27.** Updates replaced Visual Studio Code, signed by Microsoft,
+  with no App Management grant in the system privacy database. If that
+  changes, the refusal is its own outcome and the row opens the setting.
+- **GitHub answers 404 for the latest release until there is one.** That is
+  "nothing newer", not "could not reach GitHub".
+- **`Identity` derives its identifiers every time it is asked.** Matching
+  asked once per file per location, and Xcode has 135 identifiers, so its
+  removal review took 13 seconds. Build a `LocationInventory.Subject` once
+  and match against that.
+- **Hard links are counted once.** Cargo links build outputs between `deps`
+  and `debug`, and counting every name made a 20 GB `target` read 35 GB.
+
 ## Build and run
 
 There is no `timeout` on this machine, so a command that wraps the suite
@@ -438,6 +470,12 @@ The app is at
 `~/Library/Developer/Xcode/DerivedData/Brim-*/Build/Products/Debug/brim.app`.
 Launch it by path. Never by bundle identifier, because Launch Services has
 resolved that to a stale build before now.
+
+A release is `scripts/build_release.sh`. It signs with the first Developer
+ID or Apple Development certificate in the keychain, notarises only when
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set, and
+writes a checksum beside the disk image. 1.0 ships with the free
+development certificate, not notarised.
 
 Docs live in `docs/` and are gitignored. `implementation_plan.md` holds the
 task numbering, the frozen step vocabulary in §3.1, and the acceptance
