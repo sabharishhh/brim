@@ -14,6 +14,8 @@ struct ApplicationsView: View {
 
     @SceneStorage("apps.grouping") private var grouping = AppGrouping.smart
     @SceneStorage("apps.asTable") private var asTable = false
+    /// Apps being removed together, in the right pane.
+    @State private var batch: [InstalledApplication]?
     /// The removal under review in the right pane, if any.
     @State private var review: AppReview?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -180,6 +182,21 @@ struct ApplicationsView: View {
             )
             .id(review.id)
             .transition(.opacity)
+        } else if let batch {
+            BatchRemovalPanel(
+                apps: batch, service: service,
+                onFinished: {
+                    self.batch = nil
+                    model.clearMarks()
+                    Task { await model.load(service: service) }
+                },
+                onClose: { self.batch = nil }
+            )
+            .id(batch.map(\.id).joined(separator: ","))
+            .transition(.opacity)
+        } else if model.marked.count >= 2 {
+            MarkedApps(apps: model.marked) { batch = model.marked.map(removalTarget) }
+                .transition(.opacity)
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
@@ -217,4 +234,33 @@ struct ApplicationsView: View {
 struct AppReview: Identifiable, Equatable {
     let app: InstalledApplication
     var id: String { app.id }
+}
+
+/// Two or more apps marked with Command-click, before their review.
+private struct MarkedApps: View {
+    let apps: [InstalledApplication]
+    let review: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: -10) {
+                ForEach(apps.prefix(5)) { app in
+                    BrimIcon(source: .bundle(app.url), size: 48)
+                }
+            }
+            .accessibilityHidden(true)
+            Text("\(apps.count) apps selected")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+            Text(ByteText.short(apps.reduce(0) { $0 + $1.bundleSizeBytes }))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+            Button("Remove \(apps.count) Apps", action: review)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
