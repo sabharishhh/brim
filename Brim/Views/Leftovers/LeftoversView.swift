@@ -173,11 +173,20 @@ struct LeftoversView: View {
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel("\(group.displayName), \(facts)")
             Spacer(minLength: 8)
-            Button(removed ? "Finish Removal" : "Review") { open(group) }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
-                .disabled(model.isScanning)
+            if group.items.contains(where: \.canBeRemovedByBrim) {
+                Button(removed ? "Finish Removal" : "Review") { open(group) }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .disabled(model.isScanning)
+            } else {
+                // Nothing Brim can take: what is left is for the person, and
+                // a review with nothing to remove only says so again.
+                RevealButton(urls: group.items.map(\.url), title: "Show in Finder")
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+            }
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight)
