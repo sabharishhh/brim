@@ -155,6 +155,39 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertTrue(check.unchecked.isEmpty)
     }
 
+    /// Prime Video's App Store listing is shared with iPhone and iPad, and
+    /// its version, 10.150.2, was the iPhone's. The Mac build was 10.148 and
+    /// the App Store offered nothing, while Brim offered an update. The Mac
+    /// page decides for a shared listing, and one that cannot be read is
+    /// not checked rather than guessed.
+    func testASharedStoreListingIsCheckedAgainstTheMacPage() async throws {
+        let video = try app("Prime Video", "com.amazon.aiv.AIVApp", "10.148", receipt: true)
+        let blocker = try app("uBlock Origin Lite", "net.raymondhill.uBlock-Origin-Lite", "2026.920.1710", receipt: true)
+        let silent = try app("Silent", "com.example.silent", "1.0", receipt: true)
+        let finder = UpdateFinder(fetch: { request in
+            let url = request.url!
+            let ok = { (body: String) in
+                (Data(body.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            if url.host == "itunes.apple.com" {
+                return ok(#"{"results":["#
+                    + #"{"bundleId":"com.amazon.aiv.AIVApp","kind":"software","version":"10.150.2","trackId":1},"#
+                    + #"{"bundleId":"net.raymondhill.uBlock-Origin-Lite","kind":"software","version":"2026.926.2202","trackId":2},"#
+                    + #"{"bundleId":"com.example.silent","kind":"software","version":"2.0","trackId":3}]}"#)
+            }
+            switch url.path {
+            case "/in/app/id1": return ok(#"<p>{"primarySubtitle":"Version 10.148"}</p>"#)
+            case "/in/app/id2": return ok(#"<span class="x">Version 2026.926.2202</span>"#)
+            default: throw URLError(.notConnectedToInternet)
+            }
+        }, catalogueDirectory: folder.appendingPathComponent("none"), platform: sequoia, region: "IN", installedCasks: [])
+
+        let check = await finder.check([video, blocker, silent])
+        XCTAssertEqual(check.updates.map(\.name), ["uBlock Origin Lite"])
+        XCTAssertEqual(check.updates.first?.latestVersion, "2026.926.2202")
+        XCTAssertEqual(check.unchecked.map(\.name), ["Silent"])
+    }
+
     /// No source means not checked, never up to date.
     func testAnApplicationNoSourceAnswersForIsNotCheckedRatherThanCurrent() async throws {
         let lonely = try app("Lonely", "com.example.lonely", "1.0")

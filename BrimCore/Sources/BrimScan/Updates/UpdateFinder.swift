@@ -144,7 +144,7 @@ public struct UpdateFinder: Sendable {
 
     private func answer(for candidate: Candidate, listings: [String: AppStoreCatalog.Listing]?) async -> Answer {
         if candidate.hasReceipt {
-            return appStore(candidate, listings: listings)
+            return await appStore(candidate, listings: listings)
         }
         let cask = UpdateSourceScanner.matchingCask(for: candidate.application, among: installedCasks)
         if let cask, case let answer = await homebrew(candidate, cask: cask), !answer.isSilent { return answer }
@@ -167,16 +167,29 @@ public struct UpdateFinder: Sendable {
         return AppStoreCatalog.listings(from: data)
     }
 
-    private func appStore(_ candidate: Candidate, listings: [String: AppStoreCatalog.Listing]?) -> Answer {
+    private func appStore(_ candidate: Candidate, listings: [String: AppStoreCatalog.Listing]?) async -> Answer {
         guard let bundleID = candidate.bundleID, let listing = listings?[bundleID.lowercased()] else {
             return .noAnswer
         }
         guard VersionOrder.isNewer(listing.version, than: candidate.version) else { return .current }
+        // A shared listing's version may be the iPhone's. The Mac page
+        // decides, and a page that cannot be read means not checked,
+        // never an update the App Store will not offer.
+        var latest = listing.version
+        if listing.isShared {
+            guard let url = AppStoreCatalog.macPageURL(trackID: listing.trackID, region: region),
+                  let (data, response) = try? await fetch(URLRequest(url: url)), response.statusCode == 200,
+                  let mac = AppStoreCatalog.macVersion(fromPage: String(decoding: data, as: UTF8.self))
+            else { return .noAnswer }
+            guard VersionOrder.isNewer(mac, than: candidate.version) else { return .current }
+            latest = mac
+        }
         return .update(AppUpdate(
             bundleID: bundleID, name: candidate.name, appURL: candidate.url,
-            installedVersion: candidate.version, latestVersion: listing.version,
+            installedVersion: candidate.version, latestVersion: latest,
             origin: .appStore(trackID: listing.trackID), route: .appStore,
-            releaseNotes: listing.notes, releasedAt: listing.released,
+            releaseNotes: latest == listing.version ? listing.notes : nil,
+            releasedAt: latest == listing.version ? listing.released : nil,
             pageURL: URL(string: "macappstore://apps.apple.com/app/id\(listing.trackID)")
         ))
     }
