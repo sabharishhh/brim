@@ -43,14 +43,9 @@ struct AppStacks: View {
                             AppRow(
                                 app: app, opened: opened[app.id],
                                 isSelected: model.marked.isEmpty ? model.selected?.id == app.id : model.isMarked(app),
+                                select: { model.select(app) },
                                 // Command-click marks several for one review, as in Finder.
-                                select: {
-                                    if NSEvent.modifierFlags.contains(.command) {
-                                        model.toggleMark(app)
-                                    } else {
-                                        model.select(app)
-                                    }
-                                }
+                                mark: { model.toggleMark(app) }
                             )
                             .contextMenu { menu(app) }
                             .listRowBackground(Color.clear)

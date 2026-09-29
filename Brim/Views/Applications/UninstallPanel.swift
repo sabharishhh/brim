@@ -466,7 +466,7 @@ struct RemovalSummary: View {
                 line("Removed", steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items")
                 if trashed > 0 { line("In the Trash", ByteText.short(trashed)) }
                 if setAside > 0 { line("Set aside", ByteText.short(setAside)) }
-                line("Freed now", ByteText.short(freed))
+                line("Freed now", freed > 0 ? ByteText.short(freed) : "None yet")
             }
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(groups) { group in
