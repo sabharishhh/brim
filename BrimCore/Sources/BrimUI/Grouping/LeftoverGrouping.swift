@@ -41,7 +41,7 @@ public struct LeftoverGrouper {
             )
         ]
         let rest = GroupRule<LeftoverGroup>(
-            id: "rest", title: "Owner unknown", matches: { _ in true }, order: Self.bySize
+            id: "rest", title: "Owner unknown", collapsed: true, matches: { _ in true }, order: Self.bySize
         )
         switch grouping {
         case .smart: return smart(groups, settled: settled, rest: rest)

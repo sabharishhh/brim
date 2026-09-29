@@ -58,7 +58,11 @@ public final class StorageModel: ObservableObject {
         guard !Task.isCancelled else { return }
         volumes = newVolumes
         estimateUnavailable = leftovers == nil
-        brimCanClear = leftovers?.reduce(0) { $0 + $1.size } ?? 0
-        brimCanClearCount = leftovers?.count ?? 0
+        // Only what a record ties to a removed app counts, in apps, the
+        // same way Home and Leftovers count. Something nobody can be
+        // named for is shown in the list and never added to a figure.
+        let orphaned = (leftovers ?? []).filter { $0.category == .orphaned }
+        brimCanClear = orphaned.reduce(0) { $0 + $1.size }
+        brimCanClearCount = orphaned.groupedByOwner().count
     }
 }

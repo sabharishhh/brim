@@ -111,6 +111,31 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertFalse(names.contains("Network Link.prefPane"))
     }
 
+    /// Leftovers listed 97 folders as "owner unknown" on a real Mac, and
+    /// most of the size was one of three things that are not leftovers.
+    /// Homebrew's and SwiftPM's caches, which Developer already counts and
+    /// Space added twice. A command-line tool's own folder, `SwiftLint` for
+    /// `swiftlint`. And macOS's own data, `CallHistoryDB`, which it had
+    /// written to that morning.
+    func testCachesAccountedForElsewhereAndMacOSsOwnDataAreNotLeftovers() async throws {
+        let homebrew = try put("Users/tester/Library/Caches/Homebrew/downloads/bottle", contents: Data([1]))
+            .deletingLastPathComponent().deletingLastPathComponent()
+        _ = try put("Users/tester/Library/Caches/SwiftLint/cache", contents: Data([1]))
+        _ = try put("Users/tester/Library/Application Support/CallHistoryDB/com.apple.callhistory.databaseInfo.plist",
+                    contents: Data([1]))
+        _ = try put("Users/tester/Library/Caches/GoneTool/cache", contents: Data([1]))
+
+        let found = try await LeftoversScanner(
+            root: root, claimedPaths: [homebrew.path], hasFullDiskAccess: true,
+            commandIsInstalled: { $0 == "swiftlint" }
+        ).scanLeftovers()
+        let names = Set(found.map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains("Homebrew"), "Developer counts it")
+        XCTAssertFalse(names.contains("SwiftLint"), "an installed command's own folder")
+        XCTAssertFalse(names.contains("CallHistoryDB"), "holds a file macOS names for itself")
+        XCTAssertTrue(names.contains("GoneTool"), "still finds a real one")
+    }
+
     func testMacOSsPrinterListIsNotALeftover() async throws {
         _ = try put("System/Library/LaunchDaemons/org.cups.cupsd.plist")
         _ = try put("Library/Preferences/org.cups.printers.plist")

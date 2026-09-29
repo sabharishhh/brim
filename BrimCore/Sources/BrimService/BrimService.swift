@@ -1235,6 +1235,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
             staleRegistrationOwners: staleRegistrationOwners,
             homebrewOrphans: orphanCasks,
+            claimedPaths: DeveloperCacheScanner.claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
             protectedAppURL: brimAppURL
         )
         var knownPastBundleIDs = Set<String>()
