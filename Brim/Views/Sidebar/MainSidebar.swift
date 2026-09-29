@@ -9,7 +9,7 @@ import SwiftUI
 enum Destination: String, Hashable, CaseIterable {
     case home = "Home"
     case apps = "Apps"
-    case leftovers = "Leftovers"
+    case leftovers = "Removed"
     case background = "Background"
     case space = "Space"
     case developer = "Developer"
@@ -41,7 +41,7 @@ enum Destination: String, Hashable, CaseIterable {
         switch self {
         case .home: "house"
         case .apps: "square.grid.2x2"
-        case .leftovers: "shippingbox"
+        case .leftovers: "app.dashed"
         case .background: "gearshape.2"
         case .space: "internaldrive"
         case .developer: "hammer"
