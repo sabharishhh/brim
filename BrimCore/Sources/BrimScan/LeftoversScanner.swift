@@ -128,10 +128,14 @@ public actor LeftoversScanner {
         // 1.6 GB `~/.cache/codex-runtimes` was offered as a leftover with no
         // owner while ChatGPT was installed and using it.
         let writers = ProvenanceSource.owners(of: activeIdentities)
+        let vendors = SystemVendors(
+            installed: activeIdentities, recorded: knownNames,
+            packageFolders: InstalledBundleInventory.packageInstallFolders(in: root), root: root
+        )
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
             walkDomain(domain, search, activeIdentities, pastIdentities,
                        activeBundleIDs, activeNames,
-                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames)
+                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames, vendors)
         }
         let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
@@ -166,7 +170,8 @@ public actor LeftoversScanner {
         _ activeTeamIDs: Set<String>,
         _ inventoryRoots: Set<String>,
         _ writers: [ProvenanceSource.Owner],
-        _ knownNames: [String: String]
+        _ knownNames: [String: String],
+        _ vendors: SystemVendors
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
         let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
@@ -237,8 +242,25 @@ public actor LeftoversScanner {
                 // reverse-DNS test above never sees them, and offering to
                 // remove /Library/Application Support/Apple would be a
                 // serious thing to get wrong.
-                if Self.isSystemOwnedByName(name, in: domain) {
-                    continue
+                //
+                // Unless a third party is known by that name. `Microsoft` in
+                // `/Library/Logs` held Teams' logs and AutoUpdate's after both
+                // had gone, and `Office365` sat in `Application Support/Microsoft`,
+                // and the sweep never looked inside either because neither
+                // name has dots in it. A developer's folder is judged by what
+                // it holds; the folder itself is never offered.
+                if vendor == nil, Self.isSystemOwnedByName(name, in: domain) {
+                    switch vendors.claim(name) {
+                    case .application?:
+                        break
+                    case .developer?:
+                        if Self.nestable.contains(domain), Self.isDirectory(item) {
+                            queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
+                        }
+                        continue
+                    case nil:
+                        continue
+                    }
                 }
 
                 // macOS places files it could not migrate during an update
@@ -286,6 +308,16 @@ public actor LeftoversScanner {
                     containerOwner: containerOwner, lookup: ownerLookup
                 ) else { continue }
 
+                // Inside a developer's folder in a system location, anything no
+                // gone product is named in may be shared, an updater or a
+                // licence, and stays while any of that developer's software is
+                // installed. Google's updater serves Chrome from there.
+                var evidence = owner.evidence
+                if let vendor, Self.systemDomains.contains(domain), owner.category == .unclaimed {
+                    guard !vendors.hasInstalled(vendor) else { continue }
+                    evidence = "In \(vendor)'s folder. Nothing from \(vendor) is installed."
+                }
+
                 let size = calculateSize(url: item)
 
                 // An empty folder nobody can name gives back nothing and
@@ -316,7 +348,7 @@ public actor LeftoversScanner {
                             ?? Self.recordedName(for: owner.ownerID, in: knownNames)
                             ?? Self.readableName(ownerID: owner.ownerID, url: item, qualified: qualified)
                     ),
-                    evidence: owner.evidence,
+                    evidence: evidence,
                     capability: capability(for: item, in: domain),
                     lastAccessed: lastAccessed(of: item)
                 )
@@ -431,14 +463,15 @@ public actor LeftoversScanner {
     /// plainly-named folders and anything else unrecognisable stay out.
     /// `jp.co.nikon.UninstallCenter.Receipts` is a leftover;
     /// `iLifeMediaBrowser` is macOS.
+    static let systemDomains: Set<FileSystemRoot.Domain> = [
+        .systemApplicationSupport, .systemCaches, .systemLogs,
+        .systemPreferences, .systemContainers, .systemDiagnosticReports,
+        .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
+        .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
+        .systemPreferencePanes, .systemExtensionsFolder, .startupItems
+    ]
+
     static func isSystemOwnedByName(_ name: String, in domain: FileSystemRoot.Domain) -> Bool {
-        let systemDomains: Set<FileSystemRoot.Domain> = [
-            .systemApplicationSupport, .systemCaches, .systemLogs,
-            .systemPreferences, .systemContainers, .systemDiagnosticReports,
-            .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
-            .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
-            .systemPreferencePanes, .systemExtensionsFolder, .startupItems
-        ]
         guard systemDomains.contains(domain) else { return false }
 
         // Named like a bundle identifier: at least two dot-separated
@@ -747,6 +780,14 @@ public actor LeftoversScanner {
     ) -> Bool {
         let name = item.lastPathComponent
         if ProvenanceSource.owner(of: item, among: writers) != nil {
+            return true
+        }
+        // A folder an installed application runs from. Microsoft AutoUpdate
+        // lives in `Application Support/Microsoft/MAU2.0`.
+        let inside = item.standardizedFileURL.path + "/"
+        if activeIdentities.contains(where: { identity in
+            identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(inside) } ?? false
+        }) {
             return true
         }
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
