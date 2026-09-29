@@ -184,6 +184,13 @@ macOS's and were offered as leftovers the day they were written. The rule
 never works the other way: an old write says nothing about whether the
 owner is gone.
 
+**A claim about another app needs a record, never a resemblance.** "Replaced
+by" is said only when Brim's snapshots or Launch Services say where the old
+app was and an installed app from the same developer is at exactly that
+path. The same name, or the same developer somewhere else, proves nothing.
+The old ChatGPT's rows make no claim, because nothing records where it was,
+and that is the right answer rather than a gap.
+
 **Savings are what comes back, not what was counted.** Two identical files
 on APFS often share their blocks already, so removing one frees nothing.
 Snapshots pin blocks the same way, which is why a deletion can free
