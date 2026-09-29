@@ -1152,9 +1152,45 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Reaches the network: Apple's catalogue, the feeds applications read
     /// themselves, and Homebrew's public catalogue at most once a day.
     public func checkForUpdates() async -> UpdateCheck {
+        // Whatever an earlier run left unfinished is settled first, so the
+        // list below describes the apps as they now are.
+        let interrupted = UpdateInstaller.recoverInterrupted(in: Self.updatesDirectory.appendingPathComponent("Downloads"))
         let applications = await ApplicationInventory(root: root).installedApplications()
-        return await UpdateFinder(catalogueDirectory: Self.updatesDirectory.appendingPathComponent("Catalogue"))
+        var check = await UpdateFinder(catalogueDirectory: Self.updatesDirectory.appendingPathComponent("Catalogue"))
             .check(applications)
+        check.recent = await recentUpdates(applications)
+        check.interrupted = interrupted
+        return check
+    }
+
+    /// Applications that took a new version in the last two weeks.
+    ///
+    /// When is read off the bundle: the App Store rewrites an app's receipt
+    /// when it updates it, and anything else that puts a new copy in place
+    /// sets the date it was added. Only an app Brim's snapshots saw at an
+    /// older version before then counts, so a fresh install is not called
+    /// an update.
+    func recentUpdates(_ applications: [InstalledApplication], now: Date = Date()) async -> [RecentUpdate] {
+        guard let index else { return [] }
+        let window = now.addingTimeInterval(-14 * 86_400)
+        var recent: [RecentUpdate] = []
+        for application in applications where !application.isSystemProtected && application.enclosingApp == nil {
+            guard let bundleID = application.identity.bundleID else { continue }
+            let receipt = application.url.appendingPathComponent("Contents/_MASReceipt/receipt")
+            let receiptDate = (try? receipt.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            let added = (try? application.url.resourceValues(forKeys: [.addedToDirectoryDateKey]))?
+                .addedToDirectoryDate
+            guard let changed = [receiptDate, added].compactMap(\.self).max(), changed > window else { continue }
+            let version = UpdateInstaller.shortVersion(of: application.url)
+            guard !version.isEmpty,
+                  let before = try? await index.version(of: bundleID, before: changed),
+                  VersionOrder.isNewer(version, than: before)
+            else { continue }
+            recent.append(RecentUpdate(name: application.name, appURL: application.url, fromVersion: before,
+                                       toVersion: version, updatedAt: changed))
+        }
+        return recent.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     /// Puts one update in place. Homebrew updates what it installed; the

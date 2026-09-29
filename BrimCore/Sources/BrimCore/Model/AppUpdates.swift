@@ -165,12 +165,43 @@ public struct UpdateCheck: Codable, Equatable, Sendable {
     public let checked: Int
     public let unchecked: [UncheckedApp]
     public let checkedAt: Date
+    /// Applications that took a new version in the last two weeks, by any
+    /// route: the App Store, their own updater, or Brim.
+    public var recent: [RecentUpdate]
+    /// Updates Brim started that did not finish, found and settled the
+    /// next time it looked. Keyed by the application's path.
+    public var interrupted: [String: String]
 
-    public init(updates: [AppUpdate], checked: Int, unchecked: [UncheckedApp], checkedAt: Date) {
+    public init(
+        updates: [AppUpdate], checked: Int, unchecked: [UncheckedApp], checkedAt: Date,
+        recent: [RecentUpdate] = [], interrupted: [String: String] = [:]
+    ) {
         self.updates = updates
         self.checked = checked
         self.unchecked = unchecked
         self.checkedAt = checkedAt
+        self.recent = recent
+        self.interrupted = interrupted
+    }
+}
+
+/// One application that took a new version recently.
+public struct RecentUpdate: Codable, Equatable, Sendable, Identifiable {
+    public let name: String
+    public let appURL: URL
+    /// The version Brim saw before, when it saw one.
+    public let fromVersion: String?
+    public let toVersion: String
+    public let updatedAt: Date
+
+    public var id: String { appURL.path }
+
+    public init(name: String, appURL: URL, fromVersion: String?, toVersion: String, updatedAt: Date) {
+        self.name = name
+        self.appURL = appURL
+        self.fromVersion = fromVersion
+        self.toVersion = toVersion
+        self.updatedAt = updatedAt
     }
 }
 
