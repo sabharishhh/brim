@@ -79,6 +79,8 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     public let sharedObstacle: Capability?
 
     public let lastAccessed: Date?
+    /// When Brim last saw the app installed, where it knows.
+    public let removedAt: Date?
 
     /// The domains this software touched, strongest meaning first, for the
     /// one-line summary under the name.
@@ -100,6 +102,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         var actionable = true
         var obstacles: Set<Capability> = []
         var accessed: Date?
+        var removed: Date?
 
         for item in items {
             total += item.size
@@ -123,6 +126,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
             if let date = item.lastAccessed, date > (accessed ?? .distantPast) {
                 accessed = date
             }
+            if let date = item.removedAt, date > (removed ?? .distantPast) {
+                removed = date
+            }
         }
 
         totalBytes = total
@@ -132,6 +138,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         evidence = orphaned ?? anyEvidence ?? ""
         isFullyActionable = actionable
         lastAccessed = accessed
+        removedAt = removed
         sharedObstacle = {
             guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
             return only

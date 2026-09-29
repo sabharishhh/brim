@@ -38,6 +38,9 @@ public actor LeftoversScanner {
     /// listed here as "owner unknown" and on Developer as build caches, and
     /// Space added them twice.
     private let claimedPaths: Set<String>
+    /// Applications Brim's snapshots saw installed that have since gone,
+    /// by bundle identifier, with when each was last seen.
+    private let removedApplications: [String: Date]
 
     public init(
         root: FileSystemRoot,
@@ -45,12 +48,15 @@ public actor LeftoversScanner {
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
         claimedPaths: Set<String> = [],
+        removedApplications: [String: Date] = [:],
         protectedAppURL: URL? = nil,
         hasFullDiskAccess: Bool? = nil,
         commandIsInstalled: (@Sendable (String) -> Bool)? = nil
     ) {
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
+        self.removedApplications = Dictionary(
+            removedApplications.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: max)
         self.claimedPaths = Set(claimedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
         self.root = root
         resolver = IdentityResolver(root: root)
@@ -96,8 +102,14 @@ public actor LeftoversScanner {
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
+        // With the names Brim recorded, so a folder named after the app, not
+        // its identifier, is recognised as its too. Short names say too
+        // little to match on.
         let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
-            .map { Identity(bundleID: $0, name: "") }
+            .map { id in
+                let name = knownNames[id.lowercased()] ?? ""
+                return Identity(bundleID: id, name: name.count >= 4 ? name : "")
+            }
 
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -370,7 +382,8 @@ public actor LeftoversScanner {
                     ),
                     evidence: evidence,
                     capability: capability(for: item, in: domain),
-                    lastAccessed: lastAccessed(of: item)
+                    lastAccessed: lastAccessed(of: item),
+                    removedAt: owner.category == .orphaned ? removedApplications[owner.ownerID.lowercased()] : nil
                 )
                 leftovers.append(leftover)
             }

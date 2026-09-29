@@ -33,6 +33,10 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// only that nothing has looked at this lately.
     public let lastAccessed: Date?
 
+    /// When Brim last saw the app this belongs to installed, where its
+    /// snapshots recorded it.
+    public var removedAt: Date?
+
     public var id: String { url.path }
 
     /// Whether Brim can take this away, itself or through its helper.
@@ -52,7 +56,8 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
         potentialOwner: Identity? = nil,
         evidence: String = "",
         capability: Capability = .ok,
-        lastAccessed: Date? = nil
+        lastAccessed: Date? = nil,
+        removedAt: Date? = nil
     ) {
         self.url = url
         self.size = size
@@ -61,5 +66,6 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
         self.evidence = evidence
         self.capability = capability
         self.lastAccessed = lastAccessed
+        self.removedAt = removedAt
     }
 }
