@@ -39,7 +39,7 @@ public struct EvidenceEngine: Sendable {
             BundleIdentifierComponentSource(), LocationInventorySource(),
             SymlinkIntoBundleSource(), GroupContainerSource(), BundleIdentifierStateSource(),
             TeamIDSource(), LaunchServicesSource(), SMAppServiceSource(), LaunchdSource(),
-            ProvenanceSource()
+            ProvenanceSource(), NestedFolderSource()
         ])
     }
 
@@ -58,27 +58,46 @@ public struct EvidenceEngine: Sendable {
             completeness = completeness.merging(found.completeness)
         }
 
-        // An application the same installer put down outside the
-        // Applications folders is part of this one, and so is what it keeps.
-        // Microsoft AutoUpdate came with Teams and left its caches in
-        // `/Library/Caches` named for itself, which no search for Teams
-        // could find.
-        let helpers = Set(rawEvidence.filter {
-            $0.mechanism == "InstallerPayloadSource" && $0.url.pathExtension == "app"
-        }.map(\.url))
-        for helper in helpers {
-            let part = await IdentityResolver(root: root).resolve(bundleURL: helper)
-            let sentence = "Belongs to \(part.name), which was installed with \(identity.name)."
-            for found in try await scanSources(identity: part, in: root, forPart: true) {
-                completeness = completeness.merging(found.completeness)
-                rawEvidence += found.evidence.map { evidence in
-                    // What a part keeps is known through the part, one step
-                    // further from the application than its own files.
-                    Evidence(url: evidence.url, tier: evidence.tier == .A ? .B : evidence.tier,
-                             mechanism: evidence.mechanism,
-                             humanSentence: evidence.tier == .S ? evidence.humanSentence : sentence)
+        // Follow the trail. What was found names more of the application:
+        // a helper application the same installer put down outside the
+        // Applications folders (Microsoft AutoUpdate came with Teams and kept
+        // its caches under its own name), a helper inside one of the
+        // application's folders, or the program one of its launch jobs runs.
+        // Each is searched for in turn, and what it finds may name another,
+        // for up to three rounds. A helper found any way but the installer's
+        // receipt counts only when the same developer signed it, so a shared
+        // updater another product installed is never pulled in.
+        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        var followed = Set([subject].compactMap(\.self))
+        var frontier = Self.parts(in: rawEvidence, excluding: followed)
+        for _ in 0..<3 where !frontier.isEmpty {
+            var next: [Evidence] = []
+            for (helper, receiptProven) in frontier {
+                followed.insert(helper.standardizedFileURL.path)
+                let part = await IdentityResolver(root: root).resolve(bundleURL: helper)
+                guard receiptProven || (part.teamID != nil && part.teamID == identity.teamID) else { continue }
+                let sentence = receiptProven
+                    ? "Belongs to \(part.name), which was installed with \(identity.name)."
+                    : "Belongs to \(part.name), a helper of \(identity.name) from the same developer."
+                // Listed only where nothing already in the removal holds it,
+                // so the plan never names one bundle twice.
+                let held = rawEvidence.contains { helper.standardizedFileURL.path.hasPrefix($0.url.standardizedFileURL.path + "/") }
+                if !receiptProven, !held {
+                    next.append(Evidence(url: helper, tier: .B, mechanism: "HelperSource", humanSentence: sentence))
+                }
+                for found in try await scanSources(identity: part, in: root, forPart: true) {
+                    completeness = completeness.merging(found.completeness)
+                    next += found.evidence.map { evidence in
+                        // What a part keeps is known through the part, one step
+                        // further from the application than its own files.
+                        Evidence(url: evidence.url, tier: evidence.tier == .A ? .B : evidence.tier,
+                                 mechanism: evidence.mechanism,
+                                 humanSentence: evidence.tier == .S ? evidence.humanSentence : sentence)
+                    }
                 }
             }
+            rawEvidence += next
+            frontier = Self.parts(in: next, excluding: followed)
         }
 
         // Deduplicate and resolve tier conflicts.
@@ -122,6 +141,74 @@ public struct EvidenceEngine: Sendable {
             engineVersion: EvidenceEngineRevision,
             completeness: completeness
         )
+    }
+
+    /// Helper applications the evidence names, and whether an installer
+    /// receipt proves each one came with the application.
+    static func parts(in evidence: [Evidence], excluding followed: Set<String>) -> [(URL, Bool)] {
+        var parts: [String: (URL, Bool)] = [:]
+        func add(_ url: URL, _ receipt: Bool) {
+            let path = url.standardizedFileURL.path
+            guard !followed.contains(path), !followed.contains(where: { path.hasPrefix($0 + "/") }),
+                  !path.contains("/Applications/") || receipt
+            else { return }
+            parts[path] = (parts[path]?.1 ?? false) || receipt ? (url, true) : (url, false)
+        }
+        for item in evidence where item.tier != .S {
+            if item.mechanism == "InstallerPayloadSource", item.url.pathExtension == "app" {
+                add(item.url, true)
+            } else if item.url.pathExtension == "app" {
+                add(item.url, false)
+            } else if item.url.pathExtension == "plist",
+                      let program = launchProgram(item.url), let bundle = outermostApp(containing: program) {
+                add(bundle, false)
+            } else if isFolder(item.url) {
+                for bundle in bundles(inside: item.url) { add(bundle, false) }
+            }
+        }
+        return Array(parts.values)
+    }
+
+    /// The outermost application a path runs through.
+    static func outermostApp(containing url: URL) -> URL? {
+        var path = URL(fileURLWithPath: "/")
+        for component in url.standardizedFileURL.pathComponents.dropFirst() {
+            path.appendPathComponent(component)
+            if component.hasSuffix(".app") { return path }
+        }
+        return nil
+    }
+
+    /// The program a launch job's property list runs.
+    static func launchProgram(_ plist: URL) -> URL? {
+        guard let info = NSDictionary(contentsOf: plist),
+              let path = info["Program"] as? String ?? (info["ProgramArguments"] as? [String])?.first,
+              path.hasPrefix("/")
+        else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// Applications inside a folder, three levels down at most and a few
+    /// thousand entries in all, so a large data folder costs little.
+    static func bundles(inside folder: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        var found: [URL] = []
+        var visited = 0
+        for case let url as URL in enumerator {
+            visited += 1
+            if visited > 3_000 { break }
+            if enumerator.level > 3 { enumerator.skipDescendants(); continue }
+            if url.pathExtension == "app" { found.append(url) }
+        }
+        return found
+    }
+
+    static func isFolder(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey])
+        return values?.isDirectory == true && values?.isSymbolicLink != true && values?.isPackage != true
     }
 
     /// For a part, the bundle itself is already a payload item, and its
