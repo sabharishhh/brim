@@ -66,7 +66,7 @@ final class DeveloperCoverageTests: XCTestCase {
         try FileManager.default.createDirectory(at: clang.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data([1]).write(to: clang)
 
-        let caches = DeveloperCacheScanner(home: home, darwinCache: darwin, projects: nil)
+        let caches = DeveloperCacheScanner(home: home, darwinCache: darwin, projects: nil, updates: nil)
         let tools = Set(try XCTUnwrap(awaitResult { await caches.scan() }).map(\.tool))
         XCTAssertTrue(tools.isSuperset(of: ["npx", "uv", "node-gyp", "VS Code C/C++", "Clang"]), "\(tools)")
 

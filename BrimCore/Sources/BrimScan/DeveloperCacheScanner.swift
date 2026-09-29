@@ -138,15 +138,18 @@ public struct DeveloperCacheScanner: Sendable {
     private let home: URL
     private let darwinCache: URL
     private let projects: ProjectBuildScanner?
+    private let updates: UpdateDownloadScanner?
 
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
-        projects: ProjectBuildScanner? = ProjectBuildScanner()
+        projects: ProjectBuildScanner? = ProjectBuildScanner(),
+        updates: UpdateDownloadScanner? = UpdateDownloadScanner()
     ) {
         self.home = home
         self.darwinCache = darwinCache
         self.projects = projects
+        self.updates = updates
     }
 
     /// Every path this catalogue accounts for, so Leftovers leaves them to
@@ -181,6 +184,7 @@ public struct DeveloperCacheScanner: Sendable {
             )
         }
         .sorted { $0.sizeBytes > $1.sizeBytes } + (projects?.scan(home: home) ?? [])
+            + (updates?.scan(home: home) ?? [])
     }
 
     /// What removing the folder gives back. A file with several names is
@@ -189,6 +193,11 @@ public struct DeveloperCacheScanner: Sendable {
     static func size(of url: URL) -> Int64 {
         let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .linkCountKey,
                                          .fileResourceIdentifierKey]
+        // A single file, such as an updater's `update.zip`, has nothing to
+        // enumerate and would read as empty.
+        if let values = try? url.resourceValues(forKeys: keys.union([.isDirectoryKey])), values.isDirectory == false {
+            return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
