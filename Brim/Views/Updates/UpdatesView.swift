@@ -12,21 +12,28 @@ import SwiftUI
 struct UpdatesView: View {
     @ObservedObject var model: UpdatesModel
     @SwiftUI.Environment(\.brimService) private var service
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var inspectedID: String?
     @State private var showsUnchecked = false
 
-    var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                content
-                footer
+    /// A row in either list.
+    private enum Entry: Identifiable {
+        case available(AppUpdate)
+        case recent(RecentUpdate)
+
+        var id: String {
+            switch self {
+            case .available(let update): "available:" + update.id
+            case .recent(let recent): "recent:" + recent.id
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-            inspector
-                .frame(width: 340)
         }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            content
+            footer
+        }
+        .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
         .task { await model.loadIfNeeded(service: service) }
     }
 
@@ -64,7 +71,18 @@ struct UpdatesView: View {
         return count == 1 ? "1 update available" : "\(count) updates available"
     }
 
-    // MARK: - List
+    // MARK: - Lists
+
+    private var sections: [ItemGroup<Entry>] {
+        var sections: [ItemGroup<Entry>] = []
+        if let pending = model.pending, !pending.isEmpty {
+            sections.append(ItemGroup(id: "available", title: "Available", items: pending.map(Entry.available)))
+        }
+        if !model.recent.isEmpty {
+            sections.append(ItemGroup(id: "recent", title: "Updated recently", items: model.recent.map(Entry.recent)))
+        }
+        return sections
+    }
 
     @ViewBuilder
     private var content: some View {
@@ -77,72 +95,89 @@ struct UpdatesView: View {
             } else {
                 EmptyState(symbol: "arrow.down.circle", title: "Not checked", message: "Check Again looks for updates.")
             }
-        } else if let updates = model.check?.updates, !updates.isEmpty {
+        } else if sections.isEmpty {
+            EmptyState(symbol: "checkmark.circle", title: "0 updates available",
+                       message: "Every app Brim checked is up to date.")
+        } else {
+            if model.pending?.isEmpty == true, let check = model.check {
+                upToDate(check)
+            }
             GroupedStacks(
-                sections: [ItemGroup(id: "updates", title: "Available", items: updates)],
-                summary: { _ in "\(model.count ?? 0)" },
-                inspected: inspectedID,
-                inspect: { update in
-                    withAnimation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion)) {
-                        inspectedID = update.id
-                    }
-                },
+                sections: sections,
+                summary: { "\($0.items.count)" },
+                inspected: nil,
+                inspect: { _ in },
                 row: row
             )
             .refreshing(model.isChecking)
-        } else {
-            EmptyState(symbol: "checkmark.circle", title: "0 updates available",
-                       message: "Every app Brim checked is up to date.")
         }
     }
 
-    private func row(_ update: AppUpdate) -> some View {
+    /// Nothing pending, said where the pending ones would be, so the page
+    /// answers its question before the list of what already happened.
+    private func upToDate(_ check: UpdateCheck) -> some View {
         HStack(spacing: 12) {
-            BrimIcon(source: .bundle(update.appURL))
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 2) {
-                Text(update.name)
+                Text("All apps are up to date")
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
-                Text(facts(update))
+                Text("\(check.checked) \(check.checked == 1 ? "app" : "apps") checked")
                     .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(isFailed(update) ? Palette.caution : Palette.inkSecondary)
+                    .foregroundStyle(Palette.inkSecondary)
             }
-            .lineLimit(1)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isStaticText)
-            .accessibilityLabel("\(update.name), \(facts(update))")
-            Spacer(minLength: 8)
-            action(update)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
+            Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(height: Metrics.rowHeight)
-        .rowHighlight(isInspected: inspectedID == update.id)
-        .contentShape(.rect)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel("All apps are up to date, \(check.checked) checked")
+    }
+
+    @ViewBuilder
+    private func row(_ entry: Entry) -> some View {
+        switch entry {
+        case .available(let update):
+            UpdateRow(url: update.appURL, name: update.name, facts: facts(update), failed: failure(update)) {
+                action(update)
+            }
+        case .recent(let recent):
+            UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
+                Button("Open") { NSWorkspace.shared.open(recent.appURL) }
+                    .buttonStyle(.bordered)
+            }
+        }
     }
 
     private func facts(_ update: AppUpdate) -> String {
         switch model.states[update.id] {
         case .downloading(let fraction): return "Downloading \(Int(fraction * 100))%"
         case .installing: return "Installing"
-        case .updated(let version): return "Updated to \(version)"
         case .openedInstaller: return "Opened in Installer"
-        case .stillOpen(let name): return "Quit \(name) to update"
-        case .failed(let why): return why
-        case nil:
+        case .failed: return "Failed"
+        default:
             let versions = "\(update.installedVersion) → \(update.latestVersion)"
             guard let bytes = update.download?.bytes, bytes > 0 else { return versions }
             return versions + " · " + ByteText.short(bytes)
         }
     }
 
-    private func isFailed(_ update: AppUpdate) -> Bool {
-        switch model.states[update.id] {
-        case .failed, .stillOpen: return true
-        default: return false
-        }
+    /// Why it failed, for the pointer to find. The row itself only says so.
+    private func failure(_ update: AppUpdate) -> String? {
+        if case .failed(let why) = model.states[update.id] { return why }
+        return nil
+    }
+
+    private static func facts(_ recent: RecentUpdate) -> String {
+        let versions = recent.fromVersion.map { "\($0) → \(recent.toVersion)" } ?? recent.toVersion
+        let calendar = Calendar.current
+        let when = calendar.isDateInToday(recent.updatedAt) ? "Today"
+            : calendar.isDateInYesterday(recent.updatedAt) ? "Yesterday"
+            : recent.updatedAt.formatted(.dateTime.day().month(.abbreviated))
+        return versions + " · " + when
     }
 
     @ViewBuilder
@@ -150,17 +185,19 @@ struct UpdatesView: View {
         switch model.states[update.id] {
         case .downloading(let fraction):
             ProgressView(value: fraction)
-                .frame(width: 60)
+                .progressViewStyle(.circular)
+                .controlSize(.small)
                 .accessibilityLabel("Downloading")
         case .installing:
             ProgressView().controlSize(.small).accessibilityLabel("Installing")
-        case .updated, .openedInstaller:
+        case .openedInstaller, .updated:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Palette.inkSecondary)
                 .accessibilityLabel("Done")
-        case .stillOpen, .failed:
-            Button("Try Again") { Task { await model.install(update, service: service) } }
+        case .failed, .stillOpen:
+            Button("Retry") { Task { await model.install(update, service: service) } }
                 .buttonStyle(.bordered)
+                .disabled(model.isChecking)
         case nil:
             primaryButton(update)
         }
@@ -226,84 +263,47 @@ struct UpdatesView: View {
         .padding(14)
         .frame(width: 280, alignment: .leading)
     }
-
-    // MARK: - Inspector
-
-    @ViewBuilder
-    private var inspector: some View {
-        if let update = model.check?.updates.first(where: { $0.id == inspectedID }) {
-            UpdateInspector(update: update, state: model.states[update.id]) {
-                primaryButton(update).buttonBorderShape(.capsule)
-            }
-            .id(update.id)
-            .transition(.opacity)
-        } else {
-            PanePlaceholder(symbol: "arrow.down.circle", title: "Select an update")
-        }
-    }
 }
 
-/// One update in full: what changes, where the version came from, and how
-/// it will be put in place.
-private struct UpdateInspector<Action: View>: View {
-    let update: AppUpdate
-    let state: UpdatesModel.InstallState?
+/// One app in either list: icon, name, one line of facts, one control. A
+/// failure is a mark and the word, with the reason on the pointer for the
+/// few who want it.
+private struct UpdateRow<Action: View>: View {
+    let url: URL
+    let name: String
+    let facts: String
+    let failed: String?
     @ViewBuilder let action: () -> Action
 
     var body: some View {
-        List {
-            Group {
-                VStack(alignment: .leading, spacing: 10) {
-                    BrimIcon(source: .bundle(update.appURL), size: 64)
-                    Text(update.name)
-                        .font(.brimPageTitle)
-                        .foregroundStyle(Palette.ink)
-                    Text("\(update.installedVersion) → \(update.latestVersion)")
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
-                    if state == nil { action() }
-                    if case .failed(let why) = state {
-                        Text(why)
-                            .font(.brimFacts)
-                            .foregroundStyle(Palette.caution)
-                            .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 12) {
+            BrimIcon(source: .bundle(url))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                HStack(spacing: 4) {
+                    if failed != nil {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .imageScale(.small)
                     }
+                    Text(facts)
+                        .monospacedDigit()
                 }
-                fact("Source", update.origin.title)
-                if let date = update.releasedAt {
-                    fact("Released", date.formatted(date: .abbreviated, time: .omitted))
-                }
-                if let bytes = update.download?.bytes, bytes > 0 {
-                    fact("Download", ByteText.short(bytes))
-                }
-                fact("How it installs", update.route.explanation)
-                if let notes = update.releaseNotes, !notes.isEmpty {
-                    fact("What's new", notes)
-                } else if let link = update.releaseNotesURL ?? update.pageURL {
-                    Link("Release notes", destination: link)
-                        .font(.brimFacts)
-                }
-            }
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-            .listRowBackground(Color.clear)
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-    }
-
-    private func fact(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            Text(value)
                 .font(.brimFacts)
-                .foregroundStyle(Palette.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+                .foregroundStyle(failed == nil ? Palette.inkSecondary : Palette.caution)
+            }
+            .lineLimit(1)
+            .help(failed ?? "")
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? ""))
+            Spacer(minLength: 8)
+            action()
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
         }
-        .padding(.top, 6)
+        .padding(.horizontal, 14)
+        .frame(height: Metrics.rowHeight)
     }
 }

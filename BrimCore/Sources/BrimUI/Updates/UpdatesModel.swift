@@ -32,6 +32,16 @@ public final class UpdatesModel: ObservableObject {
     @Published public private(set) var check: UpdateCheck?
     @Published public private(set) var isChecking = false
     @Published public private(set) var states: [String: InstallState] = [:]
+    /// Finished in this session, shown as updated before the next check
+    /// sees it on disk.
+    @Published private var finished: [RecentUpdate] = []
+
+    /// Updated in the last two weeks, newest first, by any route.
+    public var recent: [RecentUpdate] {
+        let seen = Set(finished.map(\.id))
+        return (finished + (check?.recent ?? []).filter { !seen.contains($0.id) })
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
 
     /// Kept for the window's loading indicator, which watches every section.
     public var isLoading: Bool { isChecking }
@@ -78,6 +88,11 @@ public final class UpdatesModel: ObservableObject {
             check = result
             // A finished update belongs to the list it was finished in.
             states = states.filter { key, state in state.isBusy && result.updates.contains { $0.id == key } }
+            // One an earlier run did not finish is shown as failed, to retry.
+            for update in result.updates where states[update.id] == nil {
+                if let why = result.interrupted[update.appURL.path] { states[update.id] = .failed(why) }
+            }
+            finished.removeAll { done in result.recent.contains { $0.id == done.id } }
         }
         checkTask = task
         await task.value
@@ -95,10 +110,14 @@ public final class UpdatesModel: ObservableObject {
             }
         }
         switch outcome {
-        case .installed(let version): states[id] = .updated(version)
+        case .installed(let version):
+            states[id] = .updated(version)
+            finished.removeAll { $0.id == id }
+            finished.append(RecentUpdate(name: update.name, appURL: update.appURL, fromVersion: update.installedVersion,
+                                         toVersion: version, updatedAt: Date()))
         case .alreadyCurrent: states[id] = .updated(update.installedVersion)
         case .openedInstaller: states[id] = .openedInstaller
-        case .stillOpen(let name): states[id] = .stillOpen(name)
+        case .stillOpen(let name): states[id] = .failed("\(name) did not quit.")
         case .failed(let why): states[id] = .failed(why)
         }
     }
