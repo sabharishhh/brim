@@ -42,7 +42,7 @@ struct SinceLastLook: View {
                 Button(action: openLeftovers) {
                     line(
                         .symbol(.folder),
-                        newLeftovers == 1 ? "1 new leftover" : "\(newLeftovers) new leftovers"
+                        newLeftovers == 1 ? "1 removed app left something" : "\(newLeftovers) removed apps left something"
                     )
                 }
                 .buttonStyle(.press)
