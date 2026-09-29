@@ -10,7 +10,7 @@ import BrimUI
 enum Destination: String, Hashable, CaseIterable {
     case home = "Home"
     case apps = "Apps"
-    case leftovers = "Removed"
+    case leftovers = "Remnants"
     case background = "Background"
     case space = "Space"
     case developer = "Developer"

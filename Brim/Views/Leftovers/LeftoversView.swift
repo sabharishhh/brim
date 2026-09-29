@@ -3,7 +3,10 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// Apps that have left this Mac and what each one left behind.
+/// Remnants: apps that have left this Mac and what each one left behind.
+///
+/// Called "Removed" until 29 Sep, which named the apps rather than what
+/// the page is about, and read as a list of things already dealt with.
 ///
 /// One row per app, named and shown as the app was, with when Brim saw it
 /// go. The one action finishes the removal: it opens the same review an
@@ -21,6 +24,10 @@ struct LeftoversView: View {
     @State private var review: PlanIntent?
     /// Locations removed while the review was open, for the toast.
     @State private var removedInReview = 0
+    /// Cards showing the places their app left.
+    @State private var opened: Set<String> = []
+    @State private var showsUnknown = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Under a megabyte, a trace nobody can be named for is not worth a row.
     private static let smallestUnknown: Int64 = 1_000_000
@@ -64,7 +71,7 @@ struct LeftoversView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Removed apps")
+            Text("Remnants")
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
             if model.checkedAt != nil {
@@ -96,19 +103,11 @@ struct LeftoversView: View {
 
     private var unknowns: [LeftoverGroup] {
         model.unclaimedGroups.filter { $0.totalBytes >= Self.smallestUnknown }
+            .sorted { $0.totalBytes > $1.totalBytes }
     }
 
-    private var sections: [ItemGroup<LeftoverGroup>] {
-        var sections: [ItemGroup<LeftoverGroup>] = []
-        if !model.orphanedGroups.isEmpty {
-            sections.append(ItemGroup(id: "removed", title: "Left something behind",
-                                      items: model.orphanedGroups.sorted { $0.totalBytes > $1.totalBytes }))
-        }
-        if !unknowns.isEmpty {
-            sections.append(ItemGroup(id: "unknown", title: "Can't tell whose",
-                                      items: unknowns.sorted { $0.totalBytes > $1.totalBytes }, startsCollapsed: true))
-        }
-        return sections
+    private var apps: [LeftoverGroup] {
+        model.orphanedGroups.sorted { $0.totalBytes > $1.totalBytes }
     }
 
     @ViewBuilder
@@ -120,99 +119,121 @@ struct LeftoversView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
-        } else if sections.isEmpty {
+        } else if apps.isEmpty, unknowns.isEmpty {
             EmptyState(symbol: "checkmark.circle", title: "Nothing left behind",
                        message: "No removed app has left anything on this Mac.")
         } else {
-            if model.orphanedGroups.isEmpty { nothingLeft }
-            GroupedStacks(
-                sections: sections,
-                summary: { "\($0.items.count)" },
-                inspected: nil,
-                inspect: { _ in },
-                row: row
-            )
-            .refreshing(model.isScanning)
+            list.refreshing(model.isScanning)
         }
     }
 
-    /// Said where the removed apps would be, before the folded unknowns.
-    private var nothingLeft: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
-                .foregroundStyle(.green)
-            Text("No removed app has left anything")
-                .font(.brimRowTitle)
+    /// Two kinds of thing, drawn as two kinds of thing. An app that left
+    /// something is a card: its icon, when it went, and the places it left
+    /// folded inside. What nobody can be named for is a plain, quieter list
+    /// beneath, folded and never counted. They used to be the same row in
+    /// two sections, so the page read as one list of equals.
+    private var list: some View {
+        List {
+            Group {
+                sectionTitle("Removed apps", count: apps.count, bytes: apps.reduce(0) { $0 + $1.totalBytes })
+                if apps.isEmpty {
+                    nothingLeft
+                }
+                ForEach(apps) { group in
+                    RemnantCard(
+                        group: group, isOpen: opened.contains(group.id),
+                        isScanning: model.isScanning,
+                        toggle: { toggle(group.id) }, finish: { open(group) }
+                    )
+                    .padding(.bottom, 8)
+                }
+                if !unknowns.isEmpty {
+                    unknownTitle
+                        .padding(.top, 20)
+                    if showsUnknown {
+                        Text("Nobody can be named for these, so they are never counted.")
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkTertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 4)
+                        ForEach(unknowns) { group in
+                            UnknownRow(group: group, isScanning: model.isScanning) { open(group) }
+                        }
+                    }
+                }
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 28, for: .scrollContent)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: opened)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: showsUnknown)
+    }
+
+    private func toggle(_ id: String) {
+        opened.formSymmetricDifference([id])
+    }
+
+    private func sectionTitle(_ title: String, count: Int, bytes: Int64) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.brimGroupTitle)
                 .foregroundStyle(Palette.ink)
-            Spacer()
-        }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 12)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// The app's own icon when Brim saved one, otherwise the kind of place
-    /// its largest item is in. Letters on a colour said nothing.
-    @ViewBuilder private func ownerIcon(_ group: LeftoverGroup) -> some View {
-        if case .monogram = group.ownerIcon,
-           let largest = group.items.max(by: { $0.size < $1.size }) {
-            LocationIcon(url: largest.url, size: Metrics.rowIcon)
-        } else {
-            BrimIcon(source: group.ownerIcon)
-        }
-    }
-
-    private func row(_ group: LeftoverGroup) -> some View {
-        let removed = group.category == .orphaned
-        let facts = Self.facts(group)
-        return HStack(spacing: 12) {
-            ownerIcon(group)
-                .opacity(removed ? 0.85 : 0.6)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.displayName)
-                    .font(.brimRowTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(facts)
+            if count > 0 {
+                Text("\(count) · \(ByteText.short(bytes))")
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
             }
-            .lineLimit(1)
-            .help([group.evidence, group.replacedBy?.sentence].compactMap(\.self).joined(separator: "\n\n"))
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isStaticText)
-            .accessibilityLabel("\(group.displayName), \(facts)")
-            Spacer(minLength: 8)
-            if group.items.contains(where: \.canBeRemovedByBrim) {
-                Button(removed ? "Finish Removal" : "Review") { open(group) }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .disabled(model.isScanning)
-            } else {
-                // Nothing Brim can take: what is left is for the person, and
-                // a review with nothing to remove only says so again.
-                RevealButton(urls: group.items.map(\.url), title: "Show in Finder")
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-            }
+            Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(height: Metrics.rowHeight)
+        .padding(.horizontal, 4)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .accessibilityAddTraits(.isHeader)
     }
 
-    private static func facts(_ group: LeftoverGroup) -> String {
-        let places = group.items.count == 1 ? "1 place" : "\(group.items.count) places"
-        var parts = [places + " · " + ByteText.short(group.totalBytes)]
-        if let removed = group.removedAt {
-            parts.insert("Removed " + removed.formatted(.dateTime.day().month(.abbreviated)), at: 0)
+    private var unknownTitle: some View {
+        Button { showsUnknown.toggle() } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.inkTertiary)
+                    .rotationEffect(.degrees(showsUnknown ? 90 : 0))
+                Text("Unknown")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.inkSecondary)
+                Text("\(unknowns.count)")
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkTertiary)
+                Spacer()
+            }
+            .contentShape(.rect)
         }
-        if let replacement = group.replacedBy {
-            parts.append("Replaced by " + replacement.name)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .padding(.bottom, 6)
+        .accessibilityLabel("Unknown, \(unknowns.count)")
+        .accessibilityValue(showsUnknown ? "Expanded" : "Collapsed")
+    }
+
+    /// Said where the removed apps would be, before the folded unknowns.
+    private var nothingLeft: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text("No removed app has left anything")
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+            Spacer()
         }
-        return parts.joined(separator: " · ")
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Removing
@@ -248,5 +269,192 @@ struct LeftoversView: View {
 extension PlanIntent: @retroactive Identifiable {
     public var id: String {
         explicitTargets.map(\.path).joined(separator: "|")
+    }
+}
+
+/// An app that has gone, as a card: what it was, when it went, and the
+/// places it left, folded inside.
+private struct RemnantCard: View {
+    let group: LeftoverGroup
+    let isOpen: Bool
+    let isScanning: Bool
+    let toggle: () -> Void
+    let finish: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                ownerIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.displayName)
+                        .font(.brimRowTitle)
+                        .foregroundStyle(Palette.ink)
+                    Text(facts)
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+                .lineLimit(1)
+                .help([group.evidence, group.replacedBy?.sentence].compactMap(\.self).joined(separator: "\n\n"))
+                Spacer(minLength: 8)
+                Text(ByteText.short(group.totalBytes))
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+                action
+            }
+            .padding(12)
+
+            Button(action: toggle) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Text(group.items.count == 1 ? "1 place" : "\(group.items.count) places")
+                    Spacer()
+                }
+                .font(.caption)
+                .foregroundStyle(Palette.inkSecondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, isOpen ? 6 : 10)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 44)
+            .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.items.sorted { $0.size > $1.size }, id: \.url) { item in
+                        PlaceRow(item: item)
+                    }
+                }
+                .padding(.leading, 56)
+                .padding(.trailing, 12)
+                .padding(.bottom, 10)
+                .transition(.opacity)
+            }
+        }
+        .background(Palette.surface.opacity(0.6), in: .rect(cornerRadius: Metrics.rowRadius + 2))
+        .overlay(RoundedRectangle(cornerRadius: Metrics.rowRadius + 2).strokeBorder(Palette.well, lineWidth: 0.5))
+    }
+
+    /// The app's own icon when Brim saved one, otherwise the kind of place
+    /// its largest item is in. Letters on a colour said nothing.
+    @ViewBuilder private var ownerIcon: some View {
+        if case .monogram = group.ownerIcon,
+           let largest = group.items.max(by: { $0.size < $1.size }) {
+            LocationIcon(url: largest.url, size: 36)
+        } else {
+            BrimIcon(source: group.ownerIcon, size: 36)
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        if group.items.contains(where: \.canBeRemovedByBrim) {
+            Button("Finish Removal", action: finish)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .disabled(isScanning)
+        } else {
+            // Nothing Brim can take: what is left is for the person.
+            RevealButton(urls: group.items.map(\.url), title: "Show in Finder")
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+        }
+    }
+
+    private var facts: String {
+        var parts: [String] = []
+        if let removed = group.removedAt {
+            parts.append("Removed " + removed.formatted(.dateTime.day().month(.abbreviated)))
+        } else {
+            parts.append("Removed")
+        }
+        if let replacement = group.replacedBy {
+            parts.append("Replaced by " + replacement.name)
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// One place an app left, inside its card.
+private struct PlaceRow: View {
+    let item: Leftover
+
+    var body: some View {
+        HStack(spacing: 8) {
+            LocationIcon(url: item.url, size: 16)
+            Text(item.url.lastPathComponent)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(folder)
+                .foregroundStyle(Palette.inkTertiary)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 8)
+            Text(ByteText.short(item.size))
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+        }
+        .font(.caption)
+        .padding(.vertical, 4)
+        .help(item.url.path)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel("\(item.url.lastPathComponent), in \(folder), \(ByteText.short(item.size))")
+    }
+
+    /// The folder it is in, with the home folder as a tilde.
+    private var folder: String {
+        (item.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+/// Something nobody can be named for: a flat, quieter row.
+private struct UnknownRow: View {
+    let group: LeftoverGroup
+    let isScanning: Bool
+    let review: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let largest = group.items.max(by: { $0.size < $1.size }) {
+                LocationIcon(url: largest.url, size: 20)
+                    .opacity(0.7)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(group.displayName)
+                    .foregroundStyle(Palette.inkSecondary)
+                if let first = group.items.first {
+                    Text((first.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkTertiary)
+                        .truncationMode(.head)
+                }
+            }
+            .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(ByteText.short(group.totalBytes))
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkTertiary)
+            if group.items.contains(where: \.canBeRemovedByBrim) {
+                Button("Review", action: review)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(isScanning)
+            } else {
+                RevealButton(urls: group.items.map(\.url), title: "Show")
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+            }
+        }
+        .font(.brimFacts)
+        .padding(.horizontal, 12)
+        .frame(height: Metrics.compactRowHeight + 6)
+        .help(group.evidence)
     }
 }
