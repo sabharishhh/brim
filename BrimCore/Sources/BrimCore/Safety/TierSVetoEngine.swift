@@ -140,7 +140,12 @@ public struct TierSVetoEngine: Sendable {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             let budget = ScanBudget(total: 10)
             for bundle in inventory.bundles {
-                if bundle.resolvingSymlinksInPath().path == subject {
+                // Its own parts are not somebody else. ChatGPT carries
+                // CodexCLI.app inside it, claiming the same app group, and the
+                // group was kept from ChatGPT's removal as "shared with other
+                // installed software" when the other software was ChatGPT.
+                let path = bundle.resolvingSymlinksInPath().path
+                if let subject, path == subject || path.hasPrefix(subject + "/") {
                     continue
                 }
                 if budget.hasRunOut {
