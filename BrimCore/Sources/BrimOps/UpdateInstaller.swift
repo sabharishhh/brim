@@ -59,12 +59,16 @@ public struct UpdateInstaller: Sendable {
     }
 
     public func install(_ update: AppUpdate, progress: @escaping Progress = { _ in }) async -> UpdateOutcome {
-        let folder = workspace.appendingPathComponent(UUID().uuidString)
+        // Named for this process, so recovery can tell a folder another
+        // run left behind from one in use now.
+        let folder = workspace.appendingPathComponent("\(getpid())-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         do {
             guard let download = update.download else { return .failed("There is no download for this update.") }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let file = try await Downloader.fetch(download.url, into: folder, progress: progress)
+            let file = try await Downloader.fetch(
+                download.url, into: folder, resumeFolder: workspace.appendingPathComponent("Resume"),
+                progress: progress)
             guard try Self.matches(file, download.integrity) else { throw Failure.integrity }
 
             if update.route == .installer || Self.kind(of: file) == .package {
@@ -281,8 +285,10 @@ public struct UpdateInstaller: Sendable {
             }
         }
 
-        // Staged beside the old copy, so the last step is a rename on one
-        // volume and the app is never missing for longer than that.
+        // Staged beside the old copy, and exchanged with it in one atomic
+        // rename, so the app is always there: old, or new, never neither.
+        // The intent is written first, so an update cut off by a quit, a
+        // crash or a power cut is settled the next time Brim looks.
         let folder = installed.deletingLastPathComponent()
         let staged = folder.appendingPathComponent(".\(UUID().uuidString)-\(installed.lastPathComponent)")
         do {
@@ -290,25 +296,38 @@ public struct UpdateInstaller: Sendable {
         } catch {
             throw Failure.replace(Self.permissionSentence(error, folder: folder))
         }
-        var cleanUp = true
-        defer { if cleanUp { try? FileManager.default.removeItem(at: staged) } }
+        let intent = Intent(installed: installed.path, staged: staged.path, version: Self.shortVersion(of: staged),
+                            pid: getpid())
+        let intentFile = try intent.write(in: workspace)
+        defer { try? FileManager.default.removeItem(at: intentFile) }
 
-        var info = stat()
-        guard lstat(installed.path, &info) == 0 else { throw Failure.replace("The installed app is not there any more.") }
-        do {
-            _ = try SafeOps.trashItem(targetPath: installed.path, expectedDev: info.st_dev, expectedIno: info.st_ino)
-        } catch {
-            // An installer left it owned by root; the helper sets it aside.
-            guard let remover, await remover(installed.path) == nil else {
-                throw Failure.replace(Self.permissionSentence(error, folder: folder))
+        if renamex_np(staged.path, installed.path, UInt32(RENAME_SWAP)) == 0 {
+            // The old version is now at the staged path. The Trash keeps it
+            // restorable; failing that it is removed, since the new one is in.
+            Self.trashOrRemove(staged)
+        } else {
+            // A folder an installer left owned by root cannot be exchanged.
+            // The old copy is set aside first, as before.
+            let swapError = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM)
+            var cleanUp = true
+            defer { if cleanUp { try? FileManager.default.removeItem(at: staged) } }
+            var info = stat()
+            guard lstat(installed.path, &info) == 0 else { throw Failure.replace("The installed app is not there any more.") }
+            do {
+                _ = try SafeOps.trashItem(targetPath: installed.path, expectedDev: info.st_dev, expectedIno: info.st_ino)
+            } catch {
+                guard let remover, await remover(installed.path) == nil else {
+                    throw Failure.replace(Self.permissionSentence(swapError, folder: folder))
+                }
             }
-        }
-        do {
-            try FileManager.default.moveItem(at: staged, to: installed)
-            cleanUp = false
-        } catch {
-            throw Failure.replace("The old version is in the Trash, and the new one could not be put in its "
-                                  + "place: \(error.localizedDescription)")
+            do {
+                try FileManager.default.moveItem(at: staged, to: installed)
+                cleanUp = false
+            } catch {
+                // Left in place for recovery to finish rather than removed.
+                cleanUp = false
+                throw Failure.replace("The new version could not be put in place: \(error.localizedDescription)")
+            }
         }
         _ = Self.run("/usr/bin/xattr", ["-d", "-r", "com.apple.quarantine", installed.path])
         LSRegisterURL(installed as CFURL, true)
@@ -317,9 +336,95 @@ public struct UpdateInstaller: Sendable {
             configuration.activates = false
             _ = try? await NSWorkspace.shared.openApplication(at: installed, configuration: configuration)
         }
-        let version = NSDictionary(contentsOf: installed.appendingPathComponent("Contents/Info.plist"))?[
+        return .installed(version: Self.shortVersion(of: installed))
+    }
+
+    /// The Trash keeps an old version restorable, through `SafeOps` so a
+    /// test never reaches the real one.
+    static func trashOrRemove(_ url: URL) {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return }
+        if (try? SafeOps.trashItem(targetPath: url.path, expectedDev: info.st_dev, expectedIno: info.st_ino)) == nil {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    public static func shortVersion(of bundle: URL) -> String {
+        NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))?[
             "CFBundleShortVersionString"] as? String ?? ""
-        return .installed(version: version)
+    }
+
+    // MARK: - Recovery
+
+    /// What an update was doing when it began swapping, so a run that was
+    /// cut off can be finished or undone later.
+    struct Intent: Codable {
+        let installed: String
+        let staged: String
+        let version: String
+        let pid: Int32
+
+        func write(in workspace: URL) throws -> URL {
+            try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+            let file = workspace.appendingPathComponent("intent-\(UUID().uuidString).json")
+            try JSONEncoder().encode(self).write(to: file, options: .atomic)
+            return file
+        }
+    }
+
+    /// Settles updates another run of Brim left unfinished, and clears the
+    /// downloads it left. Returns, for each application whose update did
+    /// not finish, why, keyed by its path.
+    ///
+    /// - The app is there and the staged copy too: the exchange either
+    ///   never happened, and the staged copy is the unused download, or it
+    ///   did, and the staged copy is the old version. Either way the staged
+    ///   copy goes, to the Trash when it is the old version.
+    /// - The app is missing and the staged copy is there: the old version
+    ///   went to the Trash and the new one never moved in. The new one,
+    ///   already checked, is moved into place.
+    @discardableResult
+    public static func recoverInterrupted(in workspace: URL) -> [String: String] {
+        let manager = FileManager.default
+        let current = getpid()
+        var interrupted: [String: String] = [:]
+        let entries = (try? manager.contentsOfDirectory(at: workspace, includingPropertiesForKeys: nil)) ?? []
+        for file in entries where file.lastPathComponent.hasPrefix("intent-") {
+            guard let data = try? Data(contentsOf: file),
+                  let intent = try? JSONDecoder().decode(Intent.self, from: data), intent.pid != current
+            else { continue }
+            let installed = URL(fileURLWithPath: intent.installed)
+            let staged = URL(fileURLWithPath: intent.staged)
+            // Only a staged copy Brim made, beside the app it was for.
+            guard staged.deletingLastPathComponent() == installed.deletingLastPathComponent(),
+                  staged.lastPathComponent.hasPrefix("."),
+                  staged.lastPathComponent.hasSuffix("-" + installed.lastPathComponent)
+            else { try? manager.removeItem(at: file); continue }
+            let stagedExists = manager.fileExists(atPath: staged.path)
+            if manager.fileExists(atPath: installed.path) {
+                if stagedExists {
+                    if shortVersion(of: installed) == intent.version {
+                        trashOrRemove(staged)
+                    } else {
+                        try? manager.removeItem(at: staged)
+                        interrupted[installed.path] = "Interrupted"
+                    }
+                } else if shortVersion(of: installed) != intent.version {
+                    interrupted[installed.path] = "Interrupted"
+                }
+            } else if stagedExists, (try? manager.moveItem(at: staged, to: installed)) != nil {
+                LSRegisterURL(installed as CFURL, true)
+            } else {
+                interrupted[installed.path] = "Interrupted. The old version is in the Trash."
+            }
+            try? manager.removeItem(at: file)
+        }
+        // Downloads another run left behind.
+        for folder in entries where folder.lastPathComponent.first?.isNumber == true {
+            let owner = folder.lastPathComponent.split(separator: "-").first.flatMap { Int32($0) }
+            if owner != current { try? manager.removeItem(at: folder) }
+        }
+        return interrupted
     }
 
     @MainActor
@@ -408,25 +513,54 @@ private extension Data {
 }
 
 /// A download with progress, into a folder Brim owns.
+///
+/// A connection that drops is picked up where it stopped: the partial
+/// download's resume data is kept per address, used on the next attempt,
+/// and two attempts are made on their own before the update is reported as
+/// failed. A server that will not resume starts again from nothing.
 private final class Downloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let progress: UpdateInstaller.Progress
     private let folder: URL
+    private let resumeFile: URL
     private var continuation: CheckedContinuation<URL, Error>?
 
-    private init(folder: URL, progress: @escaping UpdateInstaller.Progress) {
+    private init(folder: URL, resumeFile: URL, progress: @escaping UpdateInstaller.Progress) {
         self.folder = folder
+        self.resumeFile = resumeFile
         self.progress = progress
     }
 
-    static func fetch(_ url: URL, into folder: URL, progress: @escaping UpdateInstaller.Progress) async throws -> URL {
+    static func fetch(
+        _ url: URL, into folder: URL, resumeFolder: URL, progress: @escaping UpdateInstaller.Progress
+    ) async throws -> URL {
         guard url.scheme == "https" else { throw UpdateInstaller.Failure.download("It is not an HTTPS address.") }
-        let downloader = Downloader(folder: folder, progress: progress)
-        let session = URLSession(configuration: .ephemeral, delegate: downloader, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-        return try await withCheckedThrowingContinuation { continuation in
-            downloader.continuation = continuation
-            session.downloadTask(with: url).resume()
+        try? FileManager.default.createDirectory(at: resumeFolder, withIntermediateDirectories: true)
+        let key = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+        let resumeFile = resumeFolder.appendingPathComponent(key)
+        var lastError: Error = UpdateInstaller.Failure.download("It did not start.")
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(nanoseconds: 3_000_000_000) }
+            let downloader = Downloader(folder: folder, resumeFile: resumeFile, progress: progress)
+            let session = URLSession(configuration: .ephemeral, delegate: downloader, delegateQueue: nil)
+            defer { session.finishTasksAndInvalidate() }
+            do {
+                let file = try await withCheckedThrowingContinuation { continuation in
+                    downloader.continuation = continuation
+                    if let data = try? Data(contentsOf: resumeFile) {
+                        session.downloadTask(withResumeData: data).resume()
+                    } else {
+                        session.downloadTask(with: url).resume()
+                    }
+                }
+                try? FileManager.default.removeItem(at: resumeFile)
+                return file
+            } catch let error as UpdateInstaller.Failure {
+                lastError = error
+                // A server answer, not a dropped connection: no point asking again.
+                if case .download(let why) = error, why.hasPrefix("The server answered") { throw error }
+            }
         }
+        throw lastError
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData _: Int64,
@@ -437,7 +571,8 @@ private final class Downloader: NSObject, URLSessionDownloadDelegate, @unchecked
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
+        guard status == 200 || status == 206 else {
+            try? FileManager.default.removeItem(at: resumeFile)
             continuation?.resume(throwing: UpdateInstaller.Failure.download("The server answered \(status)."))
             continuation = nil
             return
@@ -455,6 +590,13 @@ private final class Downloader: NSObject, URLSessionDownloadDelegate, @unchecked
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
+        let resume = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+        if let resume {
+            try? resume.write(to: resumeFile, options: .atomic)
+        } else {
+            // Resume data that did not work is not tried twice.
+            try? FileManager.default.removeItem(at: resumeFile)
+        }
         continuation?.resume(throwing: UpdateInstaller.Failure.download(error.localizedDescription))
         continuation = nil
     }
