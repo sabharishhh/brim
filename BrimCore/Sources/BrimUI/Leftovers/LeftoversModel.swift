@@ -344,6 +344,20 @@ public final class LeftoversModel: ObservableObject {
     /// planner treats an intent with explicit targets as tidying rather than
     /// uninstalling, which is exactly right — it must not clear privacy
     /// grants or retract registrations for an app that is already gone.
+    /// The plan intent for one removed app's traces, named for the app so
+    /// the review says whose they are.
+    public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
+        let targets = group.items.map(\.url)
+        guard !targets.isEmpty else { return nil }
+        return PlanIntent(
+            type: .uninstall,
+            subjectIdentity: Identity(bundleID: nil, name: group.displayName),
+            requesterKind: "ui",
+            requesterIdentity: requesterIdentity,
+            specificTargets: targets
+        )
+    }
+
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
         let targets = selectedItems.map(\.url)
         guard !targets.isEmpty else { return nil }
