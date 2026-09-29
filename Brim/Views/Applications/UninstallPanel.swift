@@ -271,6 +271,12 @@ struct UninstallPanel: View {
                 }
             }
 
+            if let report = result.report {
+                RemovalReportView(report: report)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+            }
+
             if let plan = model.plan {
                 RemovalSummary(plan: plan, groups: model.reviewGroups,
                                remaining: result.remainingPaths, freed: result.recoveredBytes)
