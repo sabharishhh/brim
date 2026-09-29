@@ -183,7 +183,7 @@ struct HomeView: View {
         let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
         let data = groups.reduce(0) { $0 + $1.meaningfulBytes }
         return StatCard(
-            title: "Leftovers", symbol: "shippingbox",
+            title: "Removed", symbol: "app.dashed",
             figure: checked ? ByteText.short(rebuilds + data) : "…",
             status: summary.status, phrase: summary.phrase, isRefreshing: leftovers.isScanning && checked
         ) {
