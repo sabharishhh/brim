@@ -178,45 +178,9 @@ struct RemovalPanel: View {
     // MARK: - Result
 
     private func proof(_ result: VerificationResult) -> some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                Image(systemName: result.success ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .font(.system(size: 44, weight: .regular))
-                    .foregroundStyle(result.success ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.caution))
-                    .symbolEffect(.bounce, value: result.success)
-                Text(result.success ? "Nothing left" : "Some of it remains")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(result.success ? "Every location checked again" : (result.reason ?? "Some of it is still on disk"))
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-                    .multilineTextAlignment(result.success ? .center : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !result.success, !result.remainingPaths.isEmpty {
-                    // Selected, not just opened: Finder can move what is
-                    // left, and a folder of names with six to find is no help.
-                    let urls = result.remainingPaths.sorted().map { URL(fileURLWithPath: $0) }
-                    Button(urls.count == 1 ? "Show in Finder" : "Show All in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting(urls)
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                }
-                if let report = result.report {
-                    RemovalReportView(report: report)
-                        .padding(.top, 6)
-                }
-                if let explanation = model.spaceExplanation {
-                    Label(explanation, systemImage: "clock.arrow.circlepath")
-                        .font(.caption)
-                        .foregroundStyle(Palette.caution)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity)
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        RemovalResultView(result: result, plan: model.plan, groups: model.reviewGroups,
+                          spaceExplanation: model.spaceExplanation)
+            .transition(.opacity)
     }
 
     private func outcome(symbol: String, tint: Color, title: String, detail: String) -> some View {
