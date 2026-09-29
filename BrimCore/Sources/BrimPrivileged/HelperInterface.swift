@@ -55,6 +55,10 @@ import Security
     /// `PrivilegedCacheRemoval`. Nil when it worked, otherwise why not.
     func removeSystemCache(name: String, withReply reply: @escaping (String?) -> Void)
 
+    /// Sets aside one preference file in `/Library/Preferences`. See
+    /// `PrivilegedPreferenceRemoval`. Nil when it worked, otherwise why not.
+    func removeSystemPreference(name: String, withReply reply: @escaping (String?) -> Void)
+
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
@@ -81,7 +85,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "6"
+    public static let version = "7"
 
     public static let teamID = "9LY29YLFG2"
 
