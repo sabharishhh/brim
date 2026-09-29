@@ -230,10 +230,10 @@ public actor LeftoversScanner {
                 // suggests. `ParrotAudioPlugin.driver` is Apple's by its
                 // identifier, and `MSTeamsAudioDevice.driver` is signed by the
                 // team that signed Microsoft Teams, which is installed.
-                if let signed = Self.bundleSignature(of: item),
-                   Self.belongsToInstalledSoftware(
-                       identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
-                   ) {
+                let signed = Self.bundleSignature(of: item)
+                if let signed, Self.belongsToInstalledSoftware(
+                    identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
+                ) {
                     continue
                 }
 
@@ -249,7 +249,11 @@ public actor LeftoversScanner {
                 // and the sweep never looked inside either because neither
                 // name has dots in it. A developer's folder is judged by what
                 // it holds; the folder itself is never offered.
-                if vendor == nil, Self.isSystemOwnedByName(name, in: domain) {
+                //
+                // A bundle is judged by the identifier it declares, never by
+                // its file name. `Flash Player.prefPane` has one dot, so
+                // every third-party plug-in in `/Library` was read as macOS's.
+                if vendor == nil, signed?.identifier == nil, Self.isSystemOwnedByName(name, in: domain) {
                     switch vendors.claim(name) {
                     case .application?:
                         break
@@ -305,7 +309,7 @@ public actor LeftoversScanner {
 
                 guard let owner = resolvedOwner(
                     for: item, name: name, qualified: qualified,
-                    containerOwner: containerOwner, lookup: ownerLookup
+                    containerOwner: containerOwner, declared: signed?.identifier, lookup: ownerLookup
                 ) else { continue }
 
                 // Inside a developer's folder in a system location, anything no
@@ -376,17 +380,17 @@ public actor LeftoversScanner {
 
     private nonisolated func resolvedOwner(
         for item: URL, name: String, qualified: String,
-        containerOwner: String?, lookup: OwnerLookup
+        containerOwner: String?, declared: String? = nil, lookup: OwnerLookup
     ) -> ResolvedOwner? {
         let embeddedID = lookup.locationRules.contains { $0.rule == .identifierInsideBundle }
-            ? LocationInventorySource.declaredIdentifier(at: item) : nil
+            ? LocationInventorySource.declaredIdentifier(at: item) : declared
         let recordedOwner = lookup.pastIdentities.first { identity in
             lookup.locationRules.contains {
                 $0.matchTier(name: name, identity: identity,
                              declaredIdentifier: embeddedID) != nil
             }
         }?.bundleID
-        let ownerID = recordedOwner ?? containerOwner
+        let ownerID = recordedOwner ?? containerOwner ?? declared
             ?? extractOwnerIdentifier(from: item, in: lookup.domain)
 
         // Presence beats any stale record. Try the identifier and both
