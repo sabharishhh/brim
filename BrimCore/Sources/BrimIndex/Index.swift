@@ -290,6 +290,26 @@ public actor Index {
         }
     }
 
+    /// Where Brim last saw each of these applications, by bundle
+    /// identifier. Only the last place: an app that moved away from a path
+    /// before it was removed was not replaced by whatever is there now.
+    public nonisolated func lastBundlePaths(of identifiers: [String]) async throws -> [String: String] {
+        guard !identifiers.isEmpty else { return [:] }
+        return try await dbManager.dbPool.read { db in
+            var paths: [String: String] = [:]
+            for id in identifiers {
+                if let path = try String.fetchOne(db, sql: """
+                    SELECT bundle_path FROM observation
+                    WHERE identity_id = ? AND bundle_path IS NOT NULL
+                    ORDER BY id DESC LIMIT 1
+                    """, arguments: [id]) {
+                    paths[id] = path
+                }
+            }
+            return paths
+        }
+    }
+
     /// Every name Brim has recorded for an application, by bundle
     /// identifier, including applications that have since been removed.
     public nonisolated func recordedNames() async throws -> [String: String] {
