@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 #
-# Builds, signs, verifies and notarises Brim for release.
+# Builds, signs, verifies and packages Brim for release, and notarises it
+# when notarisation credentials are set.
+#
+# Brim 1.0 ships signed with the free Apple Development certificate, not
+# notarised. Brim's own XPC checks ask for a certificate Apple issued with
+# team 9LY29YLFG2 in it, which that certificate satisfies, and a stable
+# signature keeps Full Disk Access across updates. What notarisation adds
+# is macOS opening the download without asking; without it, people open
+# Brim once through System Settings, Privacy & Security, Open Anyway. When
+# the paid programme is joined, set APPLE_SIGNING_IDENTITY to the Developer
+# ID certificate and the three notarisation variables, and nothing else
+# changes.
 #
 # This used to assemble a bundle by hand out of the SPM package, and every
 # part of that had rotted. It copied the BrimApp placeholder, whose entire
@@ -49,13 +60,20 @@ if [[ -z "${VERSION:-}" ]]; then
     exit 1
 fi
 
+# The identity comes from the keychain when it is not given. An unsigned
+# build fails Brim's own XPC checks and macOS will not run its daemon, so
+# there is no path through here that produces one.
 if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-    echo "error: APPLE_SIGNING_IDENTITY is not set." >&2
-    echo "       Refusing to build a release that cannot be signed. An unsigned" >&2
-    echo "       build fails Brim's own XPC checks and macOS will not run its" >&2
-    echo "       daemon, so publishing one is worse than publishing nothing." >&2
+    APPLE_SIGNING_IDENTITY=$(security find-identity -v -p codesigning \
+        | awk -F'"' '/Developer ID Application|Apple Development/ {print $2; exit}')
+fi
+if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+    echo "error: no signing certificate found." >&2
+    echo "       Sign in to Xcode with your Apple ID and let it create an Apple" >&2
+    echo "       Development certificate, or set APPLE_SIGNING_IDENTITY." >&2
     exit 1
 fi
+echo "Signing with: $APPLE_SIGNING_IDENTITY"
 
 echo "Building Brim $VERSION for release..."
 rm -rf "$BUILD_DIR"
@@ -71,6 +89,10 @@ xcodebuild archive \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
 
+# A Developer ID certificate exports for distribution. Anything else is
+# taken from the archive as it was signed there, since the development
+# export method re-signs for a provisioning profile Brim does not need.
+if [[ "$APPLE_SIGNING_IDENTITY" == Developer\ ID\ Application* ]]; then
 cat << PLIST > "$BUILD_DIR/ExportOptions.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -85,12 +107,15 @@ cat << PLIST > "$BUILD_DIR/ExportOptions.plist"
 </dict>
 </plist>
 PLIST
-
-echo "Exporting..."
-xcodebuild -exportArchive \
-    -archivePath "$ARCHIVE" \
-    -exportOptionsPlist "$BUILD_DIR/ExportOptions.plist" \
-    -exportPath "$EXPORT_DIR"
+    echo "Exporting..."
+    xcodebuild -exportArchive \
+        -archivePath "$ARCHIVE" \
+        -exportOptionsPlist "$BUILD_DIR/ExportOptions.plist" \
+        -exportPath "$EXPORT_DIR"
+else
+    mkdir -p "$EXPORT_DIR"
+    ditto "$ARCHIVE/Products/Applications" "$EXPORT_DIR"
+fi
 
 APP=$(find "$EXPORT_DIR" -maxdepth 1 -name "*.app" -print -quit)
 if [[ -z "$APP" ]]; then
@@ -164,11 +189,8 @@ if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE
     xcrun stapler staple "$DMG"
     xcrun stapler validate "$DMG"
 else
-    echo "error: notarisation credentials are not set." >&2
-    echo "       APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID are all" >&2
-    echo "       required. macOS refuses to run an un-notarised download, so a" >&2
-    echo "       DMG without this is not a release." >&2
-    exit 1
+    echo "Not notarised: people open it once through System Settings, Privacy & Security, Open Anyway."
 fi
+shasum -a 256 "$DMG" | tee "$DMG.sha256"
 
 echo "Release build complete: $DMG"
