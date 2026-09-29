@@ -14,6 +14,7 @@ extension DeveloperCache {
         if let lastBuilt { return Self.built(lastBuilt) }
         // Two copies of one update are told apart by their file.
         if isUpdateDownload { return url.lastPathComponent }
+        if let versionInUse { return "Not used · runs \(versionInUse)" }
         return switch cost {
         case .rebuilt: "Costs one slow build"
         case .refetched: "Downloaded again when needed"
@@ -45,6 +46,8 @@ extension DeveloperCache {
                 GroupRule(id: "projects", title: "Project builds", matches: \.isProject,
                           order: { $0.sizeBytes > $1.sizeBytes }),
                 GroupRule(id: "updates", title: "Update downloads", matches: \.isUpdateDownload,
+                          order: { $0.sizeBytes > $1.sizeBytes }),
+                GroupRule(id: "versions", title: "Old versions", matches: \.isOldVersion,
                           order: { $0.sizeBytes > $1.sizeBytes }),
                 GroupRule(id: "rebuilt", title: "Rebuilds by itself", matches: { $0.cost == .rebuilt }, order: order),
                 GroupRule(id: "tool", title: "Managed by its tool", matches: { $0.cost == .refetched }, order: order)
