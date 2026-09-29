@@ -66,6 +66,21 @@ final class HelperScopeAgreementTests: XCTestCase {
                        "/Library/Caches/com.vendor.updater")
     }
 
+    /// Microsoft AutoUpdate's `com.microsoft.autoupdate2.plist` in
+    /// `/Library/Preferences` was the one thing a review could not take, so
+    /// the app stayed listed with something left. Files named like a bundle
+    /// identifier only; folders there are how this Mac is set up.
+    func testThePlanAndTheHelperNameTheSamePreferenceFiles() {
+        XCTAssertEqual(HelperScope.preferenceFolders, [PrivilegedPreferenceRemoval.directory])
+        XCTAssertEqual(try PrivilegedPreferenceRemoval.target(name: "com.microsoft.autoupdate2.plist").path,
+                       "/Library/Preferences/com.microsoft.autoupdate2.plist")
+        for refused in ["com.apple.loginwindow.plist", ".GlobalPreferences.plist", "SystemConfiguration",
+                        "Audio", "../Keychains", "com.sabharishhh.brim.plist", "vendor.plist", "org.cups.printers.plist"] {
+            XCTAssertThrowsError(try PrivilegedPreferenceRemoval.target(name: refused), refused)
+            XCTAssertFalse(HelperScope.covers("/Library/Preferences/\(refused)"), refused)
+        }
+    }
+
     /// An application an installer put in Application Support is taken
     /// only on the package's own receipt, and the plan reads the receipt
     /// the way the helper does. Microsoft AutoUpdate, left by Teams, is

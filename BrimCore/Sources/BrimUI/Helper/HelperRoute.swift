@@ -53,6 +53,9 @@ public enum HelperRoute {
         if folder == PrivilegedCacheRemoval.directory {
             return await helper.removeSystemCache(name: name)
         }
+        if folder == PrivilegedPreferenceRemoval.directory {
+            return await helper.removeSystemPreference(name: name)
+        }
         if let packageID = PrivilegedPayloadRemoval.package(for: path) {
             return await helper.removeInstalledPayload(packageID: packageID, name: name)
         }
