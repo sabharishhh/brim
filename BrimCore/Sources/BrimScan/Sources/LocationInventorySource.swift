@@ -44,6 +44,7 @@ public struct LocationInventorySource: EvidenceSource {
         var timedOut: [String] = []
         var unreadable: [String] = []
         var listings: [String: DirectoryEntries] = [:]
+        let subject = LocationInventory.Subject(identity)
 
         func listing(_ directory: URL) -> DirectoryEntries {
             if let cached = listings[directory.path] {
@@ -59,7 +60,7 @@ public struct LocationInventorySource: EvidenceSource {
         // time and a slow run still gets the certain answers.
         for location in inventory.locations where location.rule != .identifierInsideBundle {
             let directory = root.url(for: location.domain)
-            let candidates = Self.candidates(for: location, identity: identity)
+            let candidates = location.candidates(for: subject)
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
                  .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService:
@@ -75,7 +76,7 @@ public struct LocationInventorySource: EvidenceSource {
             for candidate in candidates {
                 let url = directory.appendingPathComponent(candidate)
                 guard fm.fileExists(atPath: url.path),
-                      let tier = location.matchTier(name: candidate, identity: identity) else { continue }
+                      let tier = location.matchTier(name: candidate, subject: subject) else { continue }
                 evidence.append(Evidence(
                     url: url,
                     tier: tier,
@@ -90,7 +91,7 @@ public struct LocationInventorySource: EvidenceSource {
                     unreadable.append(directory.path)
                 case let .listed(names):
                     for name in names {
-                        guard let tier = location.matchTier(name: name, identity: identity) else { continue }
+                        guard let tier = location.matchTier(name: name, subject: subject) else { continue }
                         let url = directory.appendingPathComponent(name)
                         guard !evidence.contains(where: { $0.url == url }) else { continue }
                         evidence.append(Evidence(
@@ -108,7 +109,7 @@ public struct LocationInventorySource: EvidenceSource {
         // Expensive last: reading a bundle's Info.plist is the only way
         // to attribute an audio plug-in, whose file name says nothing.
         for location in inventory.locations where location.rule == .identifierInsideBundle {
-            guard !identity.searchBundleIdentifiers.isEmpty else { break }
+            guard !subject.identifiers.isEmpty else { break }
             let directory = root.url(for: location.domain)
 
             guard !runBudget.hasRunOut else {
@@ -125,7 +126,7 @@ public struct LocationInventorySource: EvidenceSource {
                     let item = directory.appendingPathComponent(name)
                     guard let foundID = Self.declaredIdentifier(at: item),
                           let tier = location.matchTier(
-                              name: name, identity: identity, declaredIdentifier: foundID
+                              name: name, subject: subject, declaredIdentifier: foundID
                           ) else { continue }
                     evidence.append(Evidence(
                         url: item, tier: tier,
