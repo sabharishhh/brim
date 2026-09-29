@@ -12,7 +12,7 @@
 
 Brim is heading for 1.0 on 4 October. Milestones 0 to 3 are built. Milestone 4 is App Intents only. Milestone 5 is built; reset and archive were removed. Milestone 6 is partly built. Milestone 7's first items are done and its audit criterion is still open. Where the build replaced a task, the task below says so in place, and section 15 lists what was left out or drifted.
 
-The work since the last revision, beyond this plan (see also section 15): Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Removed apps uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
+The work since the last revision, beyond this plan (see also section 15): Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Remnants (was Removed apps) uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
 
 ## 1. Invariants
 
@@ -555,8 +555,8 @@ approval, is what makes the app safe to give root to, adapters or not.
 
 Every task here is an extension of the spine. They parallelise almost completely; the ordering below is by value, not by dependency.
 
-### T-5.1 · Removed apps (was Leftovers and orphans) · done
-- **As built** The page is Removed. One row per app that has gone and left something, with its saved icon, when Brim saw it go, and Finish Removal, which opens a review. Brim's snapshots are ownership evidence: an app Brim saw installed and now cannot find owns what it left. Items nobody can be named for go into a collapsed "Can't tell whose" list, only from 1 MB, never counted and never ticked. Folders written in the last week, folders holding a `com.apple` file of their own, paths Developer claims and folders named for an installed command are not listed.
+### T-5.1 · Remnants (was Leftovers, then Removed apps) · done
+- **As built** The page is Remnants. One card per app that has gone and left something, with its saved icon, when Brim saw it go, the places it left folded inside the card, and Finish Removal, which opens a review. Brim's snapshots are ownership evidence: an app Brim saw installed and now cannot find owns what it left. Items nobody can be named for go into a collapsed "Unknown" list of plain rows, only from 1 MB, never counted and never ticked. Home dot folders and crash reports are listed only when a removed app from Brim's history is named for them, never as unknown. Folders written in the last week, folders holding a `com.apple` file of their own, paths Developer claims and folders named for an installed command are not listed.
 - **Acceptance** Orphaned and unclaimed are never merged; unclaimed items never reach a figure; macOS's own folders are not offered.
 
 ### T-5.2 · Reset and archive · removed
@@ -847,7 +847,8 @@ grouping work remain in T-7.5.
 ### T-7.5 · The list a person can actually read (was P3.1 to P3.6)
 - **Objective** 231 rows to roughly 105, every removal citing a file on disk.
 - **Depends on** T-7.4.
-- **Work** Exclude `DiagnosticReports` from the sweep while keeping it in the inventory, so an uninstall still clears an application's crash logs by name. Match Apple's own frameworks and daemons by enumerating `/System/Library` at runtime rather than by a list. Consolidate reverse-DNS names on their first two components. Recognise Brim's own residue and swept-domain directories. Uninstall sheet grouping, reusing the leftovers grouping. Temporal-proximity clustering for residue that genuinely arrived together.
+- **Superseded** `DiagnosticReports` is swept again, but only for reports named for a removed app Brim recorded (`<process>-<date>` or `<process>_<date>`); an unclaimed report is never listed.
+- **Work (original)** Exclude `DiagnosticReports` from the sweep while keeping it in the inventory, so an uninstall still clears an application's crash logs by name. Match Apple's own frameworks and daemons by enumerating `/System/Library` at runtime rather than by a list. Consolidate reverse-DNS names on their first two components. Recognise Brim's own residue and swept-domain directories. Uninstall sheet grouping, reusing the leftovers grouping. Temporal-proximity clustering for residue that genuinely arrived together.
 - **Acceptance** Re-measured on the real machine, not projected. Every reduction names the record that justified it.
 - **Unlocks** a list with a plausible number of rows in it.
 
@@ -1107,6 +1108,9 @@ Drifted from the plan:
 - Brim checks GitHub for its own new version once a day on launch without being asked (T-6.7). That is the one network call not started by the person.
 - Distribution is a free development certificate without notarisation, not Developer ID (T-2.9).
 - Home replaced the ranked review queue (T-6.2).
-- Leftovers became Removed apps, one row per app (T-5.1).
+- Leftovers became Removed apps, one row per app, and then Remnants, with each app as a card and its places inside (T-5.1).
+- Coverage from the five-app removal test on 29 Sep: hidden folders in the home folder (declared by an editor's `product.json`, Tier B, or named after the app, Tier C), crash reports by process name and date, and web storage named after a helper's executable. Found but unticked items that are still there after a removal are reported, so "Nothing left" is only said when it is true of everything found.
+- The Apps list has a Select button: rows show ticks, and the right pane reviews everything ticked at once. Command-click still works.
+- Home's Changes shows the last change that happened, not the difference between the last two snapshots, which was always empty after a relaunch.
 - The product rule of two things now names Updates as the one addition.
 - Reset and archive (T-5.2) were built in the engine and then removed.

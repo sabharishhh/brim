@@ -184,6 +184,17 @@ macOS's and were offered as leftovers the day they were written. The rule
 never works the other way: an old write says nothing about whether the
 owner is gone.
 
+**Where a name is all there is, only a record names an owner.** The home
+folder's dot folders and the crash report folders are swept, but a row
+appears there only when a removed app from Brim's history is named for it.
+An unclaimed `~/.ssh` or a stranger's crash report is never offered. An
+editor that declares its folder in `product.json` (`.vscode`,
+`.antigravity-ide`) is a record, so that folder is Tier B.
+
+**"Nothing left" is about everything found.** A removal that leaves
+unticked items on the disk says so and names them. Antigravity's result
+said "Nothing left" over four unticked folders.
+
 **A claim about another app needs a record, never a resemblance.** "Replaced
 by" is said only when Brim's snapshots or Launch Services say where the old
 app was and an installed app from the same developer is at exactly that
@@ -291,7 +302,10 @@ conversation. Split unrelated changes rather than staging everything.
   travelled with the bundle and nobody has opened it since. Sharper than
   comparing against the system install date, which catches almost nothing
   on a restored Mac. Real example here: IINA arrived 14 September, last
-  opened 7 August.
+  opened 7 August. macOS also rewrites the date added for every bundle in
+  /Applications at once: on 29 Sep all nine moved to 11:04, and VS Code,
+  opened that morning, read "Not opened on this Mac". So the signature
+  needs a gap of a month before it says anything.
 - **`~/Library/Preferences/ByHost` is a second copy of the settings.**
   A scan of `Preferences` walks straight past it. Real examples on this
   Mac: Claude and VS Code both keep a `ShipIt` domain there.
