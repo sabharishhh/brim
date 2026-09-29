@@ -12,11 +12,6 @@ import SwiftUI
 struct UninstallPanel: View {
     let application: InstalledApplication
     let service: any BrimServiceProtocol
-    /// Uninstall removes the application and everything it wrote. Reset
-    /// keeps the application and its licence and removes the state, so
-    /// it starts as if new. One sheet for both, because the review and
-    /// the approval are identical and only the plan differs.
-    var intentType: IntentType = .uninstall
     /// The work is done: the page reads the Mac again.
     let onFinished: () -> Void
     /// The panel is closed, whatever happened.
@@ -43,7 +38,7 @@ struct UninstallPanel: View {
             // between uninstalling an application and tidying a folder.
             await model.prepare(
                 intent: PlanIntent(
-                    type: intentType,
+                    type: .uninstall,
                     subjectIdentity: application.identity,
                     requesterKind: "ui",
                     requesterIdentity: NSUserName()
@@ -83,8 +78,8 @@ struct UninstallPanel: View {
     private var subtitle: String {
         switch model.phase {
         case .preparing: return "Checking"
-        case .executing: return isReset ? "Resetting" : "Removing"
-        case .verified, .appliedButUnverified: return isReset ? "Reset" : "Removed"
+        case .executing: return "Removing"
+        case .verified, .appliedButUnverified: return "Removed"
         case .failed: return "Stopped"
         case .ready:
             let steps = model.removalSteps
@@ -109,15 +104,6 @@ struct UninstallPanel: View {
         onClose()
     }
 
-    /// One sheet serves both jobs, and every sentence in it used to be
-    /// written for the uninstall. Resetting an application showed a progress
-    /// line saying it was being cleared out, finished on "Nothing is left"
-    /// about an application that is still installed on purpose, and offered
-    /// a button reading "Authorize & Uninstall" that did not uninstall
-    /// anything.
-    private var isReset: Bool {
-        intentType == .reset
-    }
 
     @ViewBuilder
     private var content: some View {
@@ -131,7 +117,7 @@ struct UninstallPanel: View {
 
         case let .appliedButUnverified(reason):
             message(
-                title: isReset ? "Reset, not checked" : "Removed, not checked",
+                title: "Removed, not checked",
                 detail: reason,
                 isError: false
             )
@@ -259,7 +245,7 @@ struct UninstallPanel: View {
             // The proof, not a reassurance: the targets were re-checked after
             // removal and this is what the check found.
             Text(result.success
-                ? (isReset ? "App kept, its data cleared" : "Every location checked again")
+                ? "Every location checked again"
                 : (result.reason ?? "Some of it remains"))
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
@@ -285,7 +271,7 @@ struct UninstallPanel: View {
                 }
             }
 
-            if let plan = model.plan, !isReset {
+            if let plan = model.plan {
                 RemovalSummary(plan: plan, groups: model.reviewGroups,
                                remaining: result.remainingPaths, freed: result.recoveredBytes)
                     .padding(.top, 10)
@@ -352,12 +338,7 @@ private extension UninstallPanel {
     }
 
     var buttonTitle: String {
-        switch (isReset, model.phase == .executing) {
-        case (true, true): "Resetting"
-        case (true, false): "Reset"
-        case (false, true): "Removing"
-        case (false, false): "Remove"
-        }
+        model.phase == .executing ? "Removing" : "Remove"
     }
 
     /// Where the bytes go, said separately. "Frees 1.19 GB · 1.19 GB
@@ -391,7 +372,7 @@ private extension UninstallPanel {
         if result.followUpActions?.isEmpty == false {
             return "One more step"
         }
-        return isReset ? "Reset" : "Nothing left"
+        return "Nothing left"
     }
 
     func message(title: String, detail: String, isError: Bool) -> some View {

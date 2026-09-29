@@ -111,7 +111,7 @@ final class BrimServiceTests: XCTestCase {
                          expectedBytes: 0, capability: .ok, reversible: false,
                          costOfError: .medium)
         let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture",
-                        osVersion: "fixture", intent: PlanIntent(type: .reset, subjectIdentity: identity),
+                        osVersion: "fixture", intent: PlanIntent(type: .uninstall, subjectIdentity: identity),
                         steps: [reset], excludedItems: [], expectedTotalBytes: 0)
         try await service.planStore.save(plan: plan)
         try await JournalStore(directoryURL: journals).write(entry: JournalEntry(

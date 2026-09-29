@@ -12,7 +12,6 @@ struct AppInspector: View {
     @ObservedObject var access: FullDiskAccessModel
     let opened: String?
     let remove: () -> Void
-    let reset: () -> Void
 
     private static let installed: DateFormatter = {
         let formatter = DateFormatter()
@@ -100,15 +99,8 @@ struct AppInspector: View {
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
         } else {
-            HStack(spacing: 8) {
-                Button("Remove", action: remove)
-                    .buttonStyle(.borderedProminent)
-                // Reset keeps the app and its licence and clears its state:
-                // "make it work again" is a different job from "get rid of
-                // it", and people reach for the second wanting the first.
-                Button("Reset", action: reset)
-                    .buttonStyle(.bordered)
-            }
+            Button("Remove", action: remove)
+                .buttonStyle(.borderedProminent)
             // Never disabled while the footprint loads: the review works out
             // its own plan, and a disabled button drawn at full strength
             // took a press and did nothing.
