@@ -213,7 +213,7 @@ public actor LeftoversScanner {
             // itself, so the walk is one level deep and only where there
             // is a reason to go deeper.
             var queue: [(url: URL, vendor: String?)] =
-                scanDirectoryLevel1(dir).map { ($0, nil) }
+                scanDirectoryLevel1(dir, hidden: domain == .userHomeDotFolders).map { ($0, nil) }
             var cursor = 0
             while cursor < queue.count {
                 let (item, vendor) = queue[cursor]
@@ -226,6 +226,10 @@ public actor LeftoversScanner {
                     continue
                 }
                 let name = item.lastPathComponent
+                // The rest of the home folder is the person's own.
+                if domain == .userHomeDotFolders, !name.hasPrefix(".") {
+                    continue
+                }
                 // The name to reason about: `Chrome` inside `Google` is
                 // `Google Chrome`, which is what the application is
                 // actually called and the only spelling that matches it.
@@ -361,6 +365,13 @@ public actor LeftoversScanner {
                 // `com.apple.callhistory.databaseInfo.plist`, and was offered
                 // while macOS wrote to it the same morning.
                 if owner.category == .unclaimed, Self.holdsApplesOwnFile(item) {
+                    continue
+                }
+                // Where a name is all there is to go on, only a record of an
+                // app that was here and has gone names an owner. A dot folder
+                // nobody claims is a tool's settings as often as not, and a
+                // crash report nobody claims says nothing about whose it is.
+                if Self.recordOnlyDomains.contains(domain), owner.category != .orphaned {
                     continue
                 }
                 // Nothing names it, and something wrote to it this week.
@@ -775,6 +786,10 @@ public actor LeftoversScanner {
         .userCaches, .userApplicationSupport, .userLogs
     ]
 
+    static let recordOnlyDomains: Set<FileSystemRoot.Domain> = [
+        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports
+    ]
+
     static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
         .userDotConfig, .userDotCache, .userDotLocalShare,
         .userDotLocalState, .userDotLocalBin
@@ -990,6 +1005,11 @@ public actor LeftoversScanner {
         if Self.commandNamedDomains.contains(domain), commandIsInstalled(item.lastPathComponent.lowercased()) {
             return true
         }
+        // `~/.claude` is the `claude` command's, and `~/.cargo-tools` cargo's.
+        if domain == .userHomeDotFolders {
+            let bare = item.lastPathComponent.dropFirst()
+            return bare.split(separator: "-").first.map { commandIsInstalled(String($0)) } ?? false
+        }
         guard Self.commandLineDataDomains.contains(domain) else {
             return false
         }
@@ -1000,9 +1020,11 @@ public actor LeftoversScanner {
             && FileManager.default.isExecutableFile(atPath: item.path)
     }
 
-    private nonisolated func scanDirectoryLevel1(_ url: URL) -> [URL] {
+    private nonisolated func scanDirectoryLevel1(_ url: URL, hidden: Bool = false) -> [URL] {
         let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) else {
+        guard let urls = try? fm.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey], options: hidden ? [] : .skipsHiddenFiles
+        ) else {
             return []
         }
         return urls
@@ -1080,6 +1102,10 @@ public actor LeftoversScanner {
         let name = url.lastPathComponent
         if domain == .userPreferences && name.hasSuffix(".plist") {
             return String(name.dropLast(6))
+        }
+        // `ChatGPTHelper.binarycookies` is ChatGPTHelper's, not Binarycookies'.
+        if (domain == .userHTTPStorages || domain == .userCookies) && name.hasSuffix(".binarycookies") {
+            return String(name.dropLast(14))
         }
         if domain == .userSavedApplicationState && name.hasSuffix(".savedState") {
             return String(name.dropLast(11))

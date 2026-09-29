@@ -64,6 +64,16 @@ public struct LocationInventory: Sendable {
         /// identifier. The only way to attribute an audio plug-in, whose
         /// file name says nothing at all.
         case identifierInsideBundle
+        /// A dot folder in the home folder: one the bundle declares as its
+        /// own, or `.<name>` and `.<name>-<anything>` in lower case, which
+        /// is how Electron editors name theirs (`.antigravity-ide`).
+        case homeDotFolder
+        /// A crash or resource report named for one of the application's
+        /// processes and stamped with a date: `Purge-2026-09-29-090414.ips`
+        /// or `Purge_2026-09-29-090414_host.cpu_resource.diag`. The name
+        /// is never the application's alone, so the exact-name rule these
+        /// folders had matched nothing at all.
+        case diagnosticReport
     }
 
     public struct Location: Sendable, Equatable {
@@ -107,7 +117,7 @@ public struct LocationInventory: Sendable {
             case .groupContainer:
                 return .A
             case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix:
+                 .applicationNameDelimitedPrefix, .homeDotFolder, .diagnosticReport:
                 return .C
             }
         }
@@ -138,8 +148,10 @@ public struct LocationInventory: Sendable {
                 return subject.lowercasedNames
             case .applicationNameDelimitedPrefix:
                 return []
-            case .identifierInsideBundle:
+            case .identifierInsideBundle, .diagnosticReport:
                 return []
+            case .homeDotFolder:
+                return subject.homeFolders + subject.lowercasedNames.map { "." + $0 }
             }
         }
 
@@ -159,6 +171,10 @@ public struct LocationInventory: Sendable {
                 delimitedPrefixTier(name: name, prefixes: subject.names, separator: separator)
             case .groupContainer:
                 groupTier(name: name, subject: subject)
+            case .homeDotFolder:
+                homeFolderTier(name: name, subject: subject)
+            case .diagnosticReport:
+                subject.names.contains { Self.isReport(name, of: $0) } ? tier : nil
             default:
                 identifierTier(name: name, subject: subject, declaredIdentifier: declaredIdentifier)
             }
@@ -200,9 +216,30 @@ public struct LocationInventory: Sendable {
                       subject.longestIdentifier(prefixing: declaredIdentifier) != nil else { return nil }
                 return subject.owns(declaredIdentifier) ? tier : .C
             case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix, .groupContainer:
+                 .applicationNameDelimitedPrefix, .groupContainer, .homeDotFolder, .diagnosticReport:
                 return nil
             }
+        }
+
+        /// The bundle's own declaration is a record and outranks the home
+        /// folder's name-only floor; a folder sharing the name is a guess.
+        private func homeFolderTier(name: String, subject: Subject) -> EvidenceTier? {
+            if subject.homeFolderSet.contains(name) { return .B }
+            guard name.hasPrefix(".") else { return nil }
+            let bare = String(name.dropFirst())
+            return subject.lowercasedNames.contains(where: { lower in
+                bare == lower || (bare.hasPrefix(lower + "-") && bare.count > lower.count + 1)
+            }) ? .C : nil
+        }
+
+        /// `<process>-<date>` or `<process>_<date>`, the date's first digit
+        /// right after the separator.
+        static func isReport(_ file: String, of process: String) -> Bool {
+            for separator in ["-", "_"] where file.hasPrefix(process + separator) {
+                let rest = file.dropFirst(process.count + 1)
+                if rest.prefix(4).allSatisfy(\.isNumber), rest.count > 4 { return true }
+            }
+            return false
         }
 
         /// Inside the identifier's namespace, hidden or not. Another
@@ -247,6 +284,8 @@ public struct LocationInventory: Sendable {
         let lowercasedNameSet: Set<String>
         let groups: [String]
         let groupSet: Set<String>
+        let homeFolders: [String]
+        let homeFolderSet: Set<String>
         private let own: String?
 
         public init(_ identity: Identity) {
@@ -259,6 +298,8 @@ public struct LocationInventory: Sendable {
             lowercasedNameSet = seen
             groups = identity.searchGroupContainers
             groupSet = Set(groups)
+            homeFolders = identity.searchHomeFolders
+            homeFolderSet = Set(homeFolders)
             own = identity.bundleID.flatMap { $0.isEmpty ? nil : $0.lowercased() }
         }
 
@@ -312,10 +353,6 @@ public struct LocationInventory: Sendable {
         // Fonts have no owning application, and a sweep of them is a list
         // of every typeface somebody has ever installed.
         .userFonts, .systemFonts,
-        // Crash reports remain in the uninstall footprint, where an app
-        // name can identify them. A sweep cannot infer an owner reliably
-        // from a diagnostic report's file name.
-        .userDiagnosticReports, .systemDiagnosticReports,
         // Per-boot scratch space. Every running process writes here and
         // macOS empties it, so a sweep of it is a thousand rows of
         // transient files that will be gone by morning. It stays in the
@@ -430,6 +467,14 @@ public struct LocationInventory: Sendable {
         Location(domain: .userHTTPStorages, rule: .bundleIdentifierPrefix,
                  describes: "stored web data",
                  sentence: "Cookies and web storage macOS keeps for this application."),
+        // A process with no bundle of its own gets its web storage under its
+        // executable's name. ChatGPT's helper left `ChatGPTHelper.binarycookies`.
+        Location(domain: .userHTTPStorages, rule: .applicationName,
+                 describes: "stored web data",
+                 sentence: "Web storage named after one of this application's processes."),
+        Location(domain: .userHTTPStorages, rule: .applicationNameDelimitedPrefix("."),
+                 describes: "cookies",
+                 sentence: "Cookies named after one of this application's processes."),
         Location(domain: .userCookies, rule: .bundleIdentifierPrefix,
                  describes: "cookies",
                  sentence: "Cookies keyed to the bundle identifier."),
@@ -448,11 +493,11 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemLogs, rule: .bundleIdentifier,
                  describes: "logs for every user",
                  sentence: "A log folder for every user, keyed to the bundle identifier."),
-        Location(domain: .userDiagnosticReports, rule: .applicationName,
+        Location(domain: .userDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application. These accumulate for "
                          + "years and nothing removes them."),
-        Location(domain: .systemDiagnosticReports, rule: .applicationName,
+        Location(domain: .systemDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application."),
 
@@ -619,6 +664,10 @@ public struct LocationInventory: Sendable {
                  describes: "command line tools",
                  sentence: "A command installed outside the Library folder. Matched on the "
                          + "name alone."),
+        Location(domain: .userHomeDotFolders, rule: .homeDotFolder,
+                 describes: "data in your home folder",
+                 sentence: "A hidden folder in your home folder. Either the application names "
+                         + "it as its own, or it carries the application's name."),
         Location(domain: .darwinUserTemp, rule: .bundleIdentifier,
                  describes: "per-boot temporary files",
                  sentence: "Temporary files in the per-user folder macOS makes fresh each boot."),

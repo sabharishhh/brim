@@ -414,4 +414,35 @@ final class FailClosedScanTests: XCTestCase {
         XCTAssertEqual(tier(.groupContainer, "group.com.vendor.app"), .C)
         XCTAssertNil(tier(.groupContainer, "group.com.vendor"))
     }
+
+    private func location(_ rule: LocationInventory.Rule, _ domain: FileSystemRoot.Domain) -> LocationInventory.Location {
+        LocationInventory.standard.locations.first { $0.rule == rule && $0.domain == domain }!
+    }
+
+    /// Editors built from Visual Studio Code name their home folder in
+    /// `product.json`. `.vscode` shares nothing with "Visual Studio Code",
+    /// so the declaration is the only way to find it, and it is a record.
+    func testAHomeFolderTheBundleDeclaresIsTierBAndANameMatchIsTierC() {
+        let surface = IdentitySurface(bundlePath: "/Applications/Antigravity.app", components: [
+            .init(path: "/Applications/Antigravity.app", bundleIdentifier: "com.google.antigravity",
+                  name: "Antigravity", bundleName: nil, teamIdentifier: nil, groups: [], urlSchemes: [], exportedTypes: [])
+        ], homeFolders: [".vscode"])
+        let identity = Identity(bundleID: "com.google.antigravity", name: "Antigravity", identitySurface: surface)
+        let home = location(.homeDotFolder, .userHomeDotFolders)
+        XCTAssertEqual(home.matchTier(name: ".vscode", identity: identity), .B)
+        XCTAssertEqual(home.matchTier(name: ".antigravity", identity: identity), .C)
+        XCTAssertEqual(home.matchTier(name: ".antigravity-ide", identity: identity), .C)
+        XCTAssertNil(home.matchTier(name: ".antigravityx", identity: identity))
+        XCTAssertNil(home.matchTier(name: "antigravity", identity: identity))
+    }
+
+    /// Crash reports carry the process name and a date, never the name alone.
+    func testACrashReportIsMatchedByProcessNameAndDate() {
+        let reports = location(.diagnosticReport, .systemDiagnosticReports)
+        let purge = Identity(bundleID: "io.getpurge.app", name: "Purge")
+        XCTAssertEqual(reports.matchTier(name: "Purge_2026-09-29-090414_host.cpu_resource.diag", identity: purge), .C)
+        XCTAssertEqual(reports.matchTier(name: "Purge-2026-09-29-090414.ips", identity: purge), .C)
+        XCTAssertNil(reports.matchTier(name: "Purge-Helper-2026-09-29-090414.ips", identity: purge))
+        XCTAssertNil(reports.matchTier(name: "Purgeable_2026-09-29-090414.ips", identity: purge))
+    }
 }
