@@ -37,7 +37,12 @@ public enum OwnerNamespace {
         return parts.prefix(depth).joined(separator: ".")
     }
 
+    /// The developer and the product, when no record gives a real name.
+    /// The product label alone read as "Accmac", "Ccd" and "Chat", which
+    /// says nothing about whose it is; `com.adobe.accmac` is "Adobe accmac".
     public static func displayName(for key: String) -> String {
-        key.split(separator: ".").last.map { String($0).capitalized } ?? key
+        let parts = key.split(separator: ".").map(String.init)
+        guard parts.count >= 3 else { return parts.last.map(\.capitalized) ?? key }
+        return parts[parts.count - 2].capitalized + " " + parts[parts.count - 1]
     }
 }
