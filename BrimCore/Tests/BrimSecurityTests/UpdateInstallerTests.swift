@@ -72,6 +72,61 @@ final class UpdateInstallerTests: XCTestCase {
         XCTAssertFalse(UpdateInstaller.isNewer(installed, than: newer))
     }
 
+    // MARK: - Cut off part way
+
+    /// An update can stop at any point: Brim quits, the Mac sleeps, the
+    /// power goes. The app must be there afterwards, old or new, and the
+    /// next check settles whatever was left.
+    func testAnUpdateCutOffPartWayIsSettledNextTime() throws {
+        let workspace = folder.appendingPathComponent("workspace")
+        let apps = folder.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        let otherRun: Int32 = getpid() + 1
+
+        func intent(_ name: String, version: String) throws -> (URL, URL) {
+            let installed = apps.appendingPathComponent("\(name).app")
+            let staged = apps.appendingPathComponent(".\(UUID().uuidString)-\(name).app")
+            _ = try UpdateInstaller.Intent(installed: installed.path, staged: staged.path, version: version,
+                                           pid: otherRun).write(in: workspace)
+            return (installed, staged)
+        }
+        func put(_ url: URL, version: String) throws {
+            let made = try bundle(UUID().uuidString, "com.example.app", version)
+            try FileManager.default.moveItem(at: made, to: url)
+        }
+
+        // The old version went to the Trash; the new one never moved in.
+        let (missing, waiting) = try intent("Missing", version: "2.0")
+        try put(waiting, version: "2.0")
+        // The exchange happened; the old version was never cleared away.
+        let (swapped, old) = try intent("Swapped", version: "2.0")
+        try put(swapped, version: "2.0")
+        try put(old, version: "1.0")
+        // Staged, never exchanged.
+        let (untouched, unused) = try intent("Untouched", version: "2.0")
+        try put(untouched, version: "1.0")
+        try put(unused, version: "2.0")
+        // Another run's download, and one in use now.
+        let stale = workspace.appendingPathComponent("\(otherRun)-download")
+        let live = workspace.appendingPathComponent("\(getpid())-download")
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: live, withIntermediateDirectories: true)
+
+        let interrupted = UpdateInstaller.recoverInterrupted(in: workspace)
+
+        XCTAssertEqual(UpdateInstaller.shortVersion(of: missing), "2.0", "the checked new version is put in place")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: waiting.path))
+        XCTAssertEqual(UpdateInstaller.shortVersion(of: swapped), "2.0")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path), "the old version is cleared away")
+        XCTAssertEqual(UpdateInstaller.shortVersion(of: untouched), "1.0", "the installed app is left alone")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: unused.path))
+        XCTAssertEqual(Set(interrupted.keys), [untouched.path], "only the one that did not finish is reported")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: live.path), "a download in use now is kept")
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: workspace.path)
+            .contains { $0.hasPrefix("intent-") })
+    }
+
     private func bundle(_ name: String, _ identifier: String, _ version: String) throws -> URL {
         let url = folder.appendingPathComponent("\(name).app")
         let contents = url.appendingPathComponent("Contents")
