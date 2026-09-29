@@ -1,4 +1,5 @@
 import SwiftUI
+import BrimUI
 
 /// Where the window can be: two short groups, plus the Journal on its own,
 /// few enough that the sidebar is read at a glance.
@@ -99,6 +100,7 @@ struct MainSidebar: View {
     @Binding var selection: Destination?
     /// Which places are still scanning, shown as a spinner on their row.
     @ObservedObject var activity: ScanActivity
+    @EnvironmentObject private var release: BrimReleaseCheck
 
     var body: some View {
         // `.tag` rather than `NavigationLink(value:)`. The link form belongs
@@ -118,6 +120,13 @@ struct MainSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            if let found = release.available {
+                NewReleaseNotice(release: found)
+                    .padding(10)
+                    .transition(.opacity)
+            }
+        }
     }
 
     private func rows(_ destinations: [Destination]) -> some View {
@@ -160,5 +169,26 @@ private struct SidebarLabel: View {
                 arrivals += 1
             }
         }
+    }
+}
+
+/// A newer Brim is on GitHub. Brim does not replace itself, so this says
+/// so and opens the release page.
+private struct NewReleaseNotice: View {
+    let release: BrimReleaseCheck.Release
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.tint)
+            Text("Brim \(release.version) is out")
+                .font(.callout)
+            Spacer(minLength: 4)
+            Button("Download") { NSWorkspace.shared.open(release.page) }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
     }
 }
