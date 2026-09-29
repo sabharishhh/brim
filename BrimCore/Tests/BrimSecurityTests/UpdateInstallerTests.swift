@@ -136,4 +136,17 @@ final class UpdateInstallerTests: XCTestCase {
         ], format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
         return url
     }
+
+    /// A refusal from macOS is App Management's, and the row offers that
+    /// setting. Anything else stays a plain failure with its own sentence,
+    /// so a full disk is never sent to Privacy & Security.
+    func testOnlyAPermissionRefusalAsksForAppManagement() {
+        let folder = URL(fileURLWithPath: "/Applications")
+        XCTAssertEqual(UpdateInstaller.refusal(POSIXError(.EPERM), folder: folder), .notAllowed(folder: "Applications"))
+        XCTAssertEqual(UpdateInstaller.refusal(CocoaError(.fileWriteNoPermission), folder: folder),
+                       .notAllowed(folder: "Applications"))
+        guard case .replace = UpdateInstaller.refusal(POSIXError(.ENOSPC), folder: folder) else {
+            return XCTFail("a full disk is not a permission")
+        }
+    }
 }

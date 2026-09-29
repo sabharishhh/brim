@@ -158,12 +158,16 @@ struct UpdatesView: View {
         case .installing: return "Installing"
         case .openedInstaller: return "Opened in Installer"
         case .failed: return "Failed"
+        case .notAllowed: return "Needs App Management"
         default:
             let versions = "\(update.installedVersion) → \(update.latestVersion)"
             guard let bytes = update.download?.bytes, bytes > 0 else { return versions }
             return versions + " · " + ByteText.short(bytes)
         }
     }
+
+    static let appManagementSettings =
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
 
     /// Why it failed, for the pointer to find. The row itself only says so.
     private func failure(_ update: AppUpdate) -> String? {
@@ -194,6 +198,12 @@ struct UpdatesView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Palette.inkSecondary)
                 .accessibilityLabel("Done")
+        case .notAllowed:
+            Button("Open Settings") {
+                open(Self.appManagementSettings)
+                model.clearState(of: update)
+            }
+            .buttonStyle(.bordered)
         case .failed, .stillOpen:
             Button("Retry") { Task { await model.install(update, service: service) } }
                 .buttonStyle(.bordered)

@@ -19,6 +19,8 @@ public final class UpdatesModel: ObservableObject {
         case updated(String)
         case openedInstaller
         case stillOpen(String)
+        /// Refused by macOS; the row offers App Management's setting.
+        case notAllowed
         case failed(String)
 
         public var isBusy: Bool {
@@ -118,8 +120,15 @@ public final class UpdatesModel: ObservableObject {
         case .alreadyCurrent: states[id] = .updated(update.installedVersion)
         case .openedInstaller: states[id] = .openedInstaller
         case .stillOpen(let name): states[id] = .failed("\(name) did not quit.")
+        case .notAllowed: states[id] = .notAllowed
         case .failed(let why): states[id] = .failed(why)
         }
+    }
+
+    /// After the person has been sent to the setting, the row offers the
+    /// update again rather than the refusal.
+    public func clearState(of update: AppUpdate) {
+        states[update.id] = nil
     }
 
     /// One at a time: each may quit an application, and several downloads
