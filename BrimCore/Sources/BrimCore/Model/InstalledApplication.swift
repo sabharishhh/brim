@@ -81,8 +81,18 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
     /// Came across from another Mac and has not been opened here: the
     /// usage record travelled with the bundle, so it predates the bundle's
     /// arrival (`CLAUDE.md`, on the migration signature).
+    ///
+    /// The gap has to be a month. macOS rewrites the date added for every
+    /// bundle in /Applications at once, a re-index or an update, and on
+    /// 29 Sep it moved all nine to 11:04 that morning, so VS Code, opened at
+    /// 4 a.m., read "Not opened on this Mac" and was grouped with apps
+    /// nobody uses. A migrated app carries a use from weeks before it
+    /// arrived: IINA's was 38 days. Saying a used app is unused costs more
+    /// than the reverse, so the rule errs towards "Opened".
     public var isMigratedAndUnopened: Bool {
         guard let lastOpened, let addedAt else { return false }
-        return lastOpened < addedAt
+        return addedAt.timeIntervalSince(lastOpened) > Self.migrationGap
     }
+
+    static let migrationGap: TimeInterval = 30 * 24 * 60 * 60
 }
