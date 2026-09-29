@@ -10,6 +10,7 @@ public struct DeveloperCacheScanner: Sendable {
         let name: String
         let tool: String
         let relativePath: String
+        var inDarwinCache = false
         let cost: DeveloperCache.Cost
         let explanation: String
         /// The tool's own cleanup, for the delegated class.
@@ -68,12 +69,14 @@ public struct DeveloperCacheScanner: Sendable {
               explanation: "Built wheels and downloaded packages. pip fetches or rebuilds "
                          + "them as needed.",
               cleanupID: "pip.cache"),
-        Known(name: "Registry and builds", tool: "Cargo",
+        // `cargo cache` is an add-on most people do not have, so the
+        // command Brim ran for this failed. Cargo documents the registry as
+        // safe to remove: the next build downloads what it needs.
+        Known(name: "Registry", tool: "Cargo",
               relativePath: ".cargo/registry",
-              cost: .refetched,
+              cost: .rebuilt,
               explanation: "Crates Cargo has downloaded and the index it resolves against. "
-                         + "Restored on the next build.",
-              cleanupID: "cargo.cache"),
+                         + "The next build downloads what it needs."),
         Known(name: "Module cache", tool: "Go",
               relativePath: "go/pkg/mod",
               cost: .refetched,
@@ -87,12 +90,38 @@ public struct DeveloperCacheScanner: Sendable {
                          + "these after installing and never needs them again unless you "
                          + "reinstall the same version.",
               cleanupID: "homebrew.cleanup"),
+        // `gradle --stop` stops the build daemons and deletes nothing.
         Known(name: "Build cache", tool: "Gradle",
               relativePath: ".gradle/caches",
-              cost: .refetched,
+              cost: .rebuilt,
               explanation: "Dependencies and build outputs Gradle has cached. Rebuilt and "
-                         + "re-downloaded on the next build.",
-              cleanupID: "gradle.cache"),
+                         + "re-downloaded on the next build. Quit anything building with Gradle first."),
+        Known(name: "Download cache", tool: "npx",
+              relativePath: ".npm/_npx",
+              cost: .rebuilt,
+              explanation: "Packages npx downloaded to run a command once. Downloaded again "
+                         + "the next time that command runs."),
+        Known(name: "Cache", tool: "uv",
+              relativePath: ".cache/uv",
+              cost: .refetched,
+              explanation: "Python packages and interpreters uv has downloaded. Fetched again "
+                         + "when a project needs them.",
+              cleanupID: "uv.cache"),
+        Known(name: "Headers", tool: "node-gyp",
+              relativePath: "Library/Caches/node-gyp",
+              cost: .rebuilt,
+              explanation: "Node headers node-gyp downloads to build native modules. "
+                         + "Downloaded again on the next native build."),
+        Known(name: "IntelliSense cache", tool: "VS Code C/C++",
+              relativePath: "Library/Caches/vscode-cpptools",
+              cost: .rebuilt,
+              explanation: "The index the C/C++ extension builds for code completion. "
+                         + "Rebuilt when you next open a project."),
+        Known(name: "Module cache", tool: "Clang",
+              relativePath: "clang", inDarwinCache: true,
+              cost: .rebuilt,
+              explanation: "Compiled system and framework modules clang reuses between "
+                         + "builds. Rebuilt by the next build."),
         Known(name: "Local repository", tool: "Maven",
               relativePath: ".m2/repository",
               cost: .refetched,
@@ -107,21 +136,36 @@ public struct DeveloperCacheScanner: Sendable {
     ]
 
     private let home: URL
+    private let darwinCache: URL
+    private let projects: ProjectBuildScanner?
 
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    public init(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
+        projects: ProjectBuildScanner? = ProjectBuildScanner()
+    ) {
         self.home = home
+        self.darwinCache = darwinCache
+        self.projects = projects
     }
 
     /// Every path this catalogue accounts for, so Leftovers leaves them to
     /// Developer instead of counting them a second time.
-    public static func claimedPaths(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Set<String> {
-        Set(catalogue.map { home.appendingPathComponent($0.relativePath).standardizedFileURL.path })
+    public static func claimedPaths(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache)
+    ) -> Set<String> {
+        Set(catalogue.map { url(of: $0, home: home, darwinCache: darwinCache).standardizedFileURL.path })
+    }
+
+    private static func url(of known: Known, home: URL, darwinCache: URL) -> URL {
+        (known.inDarwinCache ? darwinCache : home).appendingPathComponent(known.relativePath)
     }
 
     public func scan() async -> [DeveloperCache] {
         let fm = FileManager.default
         return Self.catalogue.compactMap { known -> DeveloperCache? in
-            let url = home.appendingPathComponent(known.relativePath)
+            let url = Self.url(of: known, home: home, darwinCache: darwinCache)
             var isDirectory: ObjCBool = false
             guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory),
                   isDirectory.boolValue else { return nil }
@@ -136,20 +180,29 @@ public struct DeveloperCacheScanner: Sendable {
                 cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed }
             )
         }
-        .sorted { $0.sizeBytes > $1.sizeBytes }
+        .sorted { $0.sizeBytes > $1.sizeBytes } + (projects?.scan(home: home) ?? [])
     }
 
+    /// What removing the folder gives back. A file with several names is
+    /// counted once: Cargo hard-links its build outputs between `deps` and
+    /// `debug`, and counting every name made a 20 GB `target` read 35 GB.
     static func size(of url: URL) -> Int64 {
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .linkCountKey,
+                                         .fileResourceIdentifierKey]
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
         ) else { return 0 }
 
         var total: Int64 = 0
+        var seen = Set<AnyHashable>()
         for case let fileURL as URL in enumerator {
-            let values = try? fileURL.resourceValues(forKeys: keys)
-            total += Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
+            guard let values = try? fileURL.resourceValues(forKeys: keys) else { continue }
+            if (values.linkCount ?? 1) > 1, let id = values.fileResourceIdentifier as? AnyHashable,
+               !seen.insert(id).inserted {
+                continue
+            }
+            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
         }
         return total
     }
