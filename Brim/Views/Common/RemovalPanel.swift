@@ -202,6 +202,10 @@ struct RemovalPanel: View {
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                 }
+                if let report = result.report {
+                    RemovalReportView(report: report)
+                        .padding(.top, 6)
+                }
                 if let explanation = model.spaceExplanation {
                     Label(explanation, systemImage: "clock.arrow.circlepath")
                         .font(.caption)
