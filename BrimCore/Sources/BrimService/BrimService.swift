@@ -1249,7 +1249,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             homebrewOrphans: orphanCasks,
             claimedPaths: DeveloperCacheScanner.claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
             removedApplications: removedApps,
-            protectedAppURL: brimAppURL
+            protectedAppURL: brimAppURL,
+            // A week, and only on the real disk: a fixture tree is written
+            // moments before it is scanned, so every folder in it is new.
+            inUseWithin: root.rootURL.path == "/" ? 7 * 24 * 60 * 60 : nil
         )
         var knownPastBundleIDs = Set(removedApps.keys)
         // What Brim has seen applications called. Without it a leftover

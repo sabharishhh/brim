@@ -41,6 +41,9 @@ public actor LeftoversScanner {
     /// Applications Brim's snapshots saw installed that have since gone,
     /// by bundle identifier, with when each was last seen.
     private let removedApplications: [String: Date]
+    /// How recently something must have written to a folder no record names
+    /// for it to count as in use. Nil reads nothing into it.
+    private let inUseWithin: TimeInterval?
 
     public init(
         root: FileSystemRoot,
@@ -51,8 +54,10 @@ public actor LeftoversScanner {
         removedApplications: [String: Date] = [:],
         protectedAppURL: URL? = nil,
         hasFullDiskAccess: Bool? = nil,
-        commandIsInstalled: (@Sendable (String) -> Bool)? = nil
+        commandIsInstalled: (@Sendable (String) -> Bool)? = nil,
+        inUseWithin: TimeInterval? = nil
     ) {
+        self.inUseWithin = inUseWithin
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
         self.removedApplications = Dictionary(
@@ -320,6 +325,16 @@ public actor LeftoversScanner {
                     continue
                 }
 
+                // A folder called `Caches` or `Logs` inside a place apps
+                // keep things is somebody's container, not somebody. Notion
+                // keeps its updater in `Application Support/Caches`, and
+                // the row read "Caches".
+                if vendor == nil, Self.nestable.contains(domain),
+                   Self.containerNames.contains(name.lowercased()), Self.isDirectory(item) {
+                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, nil) })
+                    continue
+                }
+
                 // A folder shared between one vendor's products answers
                 // nothing about any of them. Its children do.
                 if vendor == nil, let children = vendorFolderChildren(item, in: domain, activeNames: activeNames) {
@@ -341,6 +356,16 @@ public actor LeftoversScanner {
                 // `com.apple.callhistory.databaseInfo.plist`, and was offered
                 // while macOS wrote to it the same morning.
                 if owner.category == .unclaimed, Self.holdsApplesOwnFile(item) {
+                    continue
+                }
+                // Nothing names it, and something wrote to it this week.
+                // Whatever that is, it is alive, so this is not what a
+                // removed app left. `Knowledge`, `Animoji` and
+                // `SiriEntityCache` are macOS's and were written the day
+                // they were offered here. Recent writing only ever keeps
+                // a folder out; it never argues that one is a leftover.
+                if owner.category == .unclaimed, let window = inUseWithin,
+                   Self.newestWrite(in: item).map({ Date().timeIntervalSince($0) < window }) == true {
                     continue
                 }
 
@@ -925,6 +950,27 @@ public actor LeftoversScanner {
         return false
     }
 
+    static let containerNames: Set<String> = ["caches", "cache", "logs", "data", "tmp", "temp"]
+
+    /// The newest change to the item or anything two levels inside it,
+    /// reading at most a few hundred entries.
+    static func newestWrite(in url: URL) -> Date? {
+        let key: Set<URLResourceKey> = [.contentModificationDateKey]
+        var newest = (try? url.resourceValues(forKeys: key))?.contentModificationDate
+        guard isDirectory(url), let walk = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: Array(key), options: [.skipsPackageDescendants]
+        ) else { return newest }
+        var read = 0
+        for case let child as URL in walk {
+            read += 1
+            if read > 400 { break }
+            if walk.level > 2 { walk.skipDescendants(); continue }
+            if let date = (try? child.resourceValues(forKeys: key))?.contentModificationDate,
+               date > (newest ?? .distantPast) { newest = date }
+        }
+        return newest
+    }
+
     /// Whether a folder's own first level holds a file named `com.apple.…`.
     static func holdsApplesOwnFile(_ url: URL) -> Bool {
         guard isDirectory(url),
@@ -1013,6 +1059,13 @@ public actor LeftoversScanner {
         }
         if let namespace = OwnerNamespace.key(for: candidate) {
             return OwnerNamespace.displayName(for: namespace)
+        }
+        // An updater's folder is named for the app it updates:
+        // `notion-updater` is Notion's.
+        for suffix in ["-updater", "_updater"] where candidate.lowercased().hasSuffix(suffix)
+            && candidate.count > suffix.count {
+            let app = candidate.dropLast(suffix.count)
+            return app.prefix(1).uppercased() + app.dropFirst()
         }
         // The last meaningful component: dev.warp becomes Warp,
         // com.example.app becomes App.

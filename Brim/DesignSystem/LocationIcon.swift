@@ -36,7 +36,10 @@ struct LocationIcon: View {
         case .webData: return "globe"
         case .container, .groupContainer: return "square.stack.3d.up"
         case .launchAgent: return "clock.arrow.circlepath"
-        case .other: return "doc"
+        case .other:
+            var isFolder: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder)
+            return isFolder.boolValue ? "folder" : "doc"
         }
     }
 }
