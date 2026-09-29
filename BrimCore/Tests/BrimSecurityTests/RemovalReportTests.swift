@@ -1,6 +1,7 @@
 import XCTest
 @testable import BrimCore
 @testable import BrimProtocol
+@testable import BrimService
 
 /// The report after a removal keeps three facts apart: checked and gone,
 /// declared none by the app, and kept by macOS. One sentence used to cover
@@ -96,5 +97,27 @@ final class RemovalReportTests: XCTestCase {
         let report = RemovalReport.build(plan: plan([]), remaining: [], recorded: [:], staleRegistrations: 1,
                                          privacyResetFailed: true, survivingExtensions: nil)
         XCTAssertEqual(report.keptByMacOS.map(\.what), ["File and URL associations", "Privacy permissions"])
+    }
+
+    /// WhatsApp's bundle was never moved, and the result said Brim had
+    /// removed it and something wrote it back: the retraction of its Launch
+    /// Services record shares the path and its "ok" was read instead.
+    func testTheStepThatMovesAPathExplainsIt() {
+        let app = "/Applications/WhatsApp.app"
+        let subject = Plan(
+            planId: UUID(), createdAt: Date(), engineVersion: "t", osVersion: "t",
+            intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(bundleID: "net.w", name: "W")),
+            steps: [
+                Step(index: 1, kind: .trashPathPrivileged, target: app, targetFingerprint: nil, tier: .A, evidence: "",
+                     expectedBytes: 1, capability: .needsHelper, reversible: true, costOfError: .low,
+                     executionPhase: .appBundle),
+                Step(index: 22, kind: .unregisterLaunchServices, target: app, targetFingerprint: nil, tier: .A,
+                     evidence: "", expectedBytes: 0, capability: .ok, reversible: false, costOfError: .low,
+                     executionPhase: .registration)
+            ], excludedItems: [], expectedTotalBytes: 1)
+        let journal = JournalEntry(planId: subject.planId, startedAt: Date(), status: .partial,
+                                   stepOutcomes: [1: "skipped_due_to_prior_failures", 22: "ok"])
+        XCTAssertEqual(BrimService.recordedOutcomes(plan: subject, journal: journal, remaining: [app])[app],
+                       "skipped_due_to_prior_failures")
     }
 }
