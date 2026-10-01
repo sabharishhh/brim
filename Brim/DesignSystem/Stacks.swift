@@ -165,6 +165,24 @@ extension StackRow where Actions == EmptyView {
     }
 }
 
+// MARK: - List spacing
+
+/// Space that belongs to the list's content, after every section. Keeping
+/// it outside folding groups preserves the gap when the last group closes.
+/// Native macOS lists did not reliably apply the bottom content margin.
+struct ListBottomSpacing: View {
+    var body: some View {
+        Color.clear
+            .frame(height: Metrics.pagePadding)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .selectionDisabled()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Stack card
 
 /// A group as a card: a header that says what is inside, up to seven rows,
