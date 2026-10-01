@@ -1,0 +1,15 @@
+{
+  "name": "brim-feedback",
+  "main": "cloudflare.mjs",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [{ "name": "REPORTS", "class_name": "FeedbackInbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeedbackInbox"] }],
+  "ratelimits": [{
+      "name": "REPORT_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 3, "period": 60 }
+  }],
+  "observability": { "enabled": false }
+}
