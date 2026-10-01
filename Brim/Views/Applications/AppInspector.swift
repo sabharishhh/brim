@@ -60,6 +60,7 @@ struct AppInspector: View {
                     }
                 }
             }
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

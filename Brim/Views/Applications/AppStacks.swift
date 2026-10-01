@@ -64,11 +64,10 @@ struct AppStacks: View {
                 }
                 .listSectionSeparator(.hidden)
             }
+            ListBottomSpacing()
         }
         .onAppear { remembered = StableOrder.positions(groups) }
         .listStyle(.plain)
-        // Room below the last group, so it never sits on the window's edge.
-        .contentMargins(.bottom, 28, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .quickLookOnSpace(model.selected.map { [$0.url] } ?? [], shell: shell)
         .onKeyPress(.downArrow) { move(by: 1) }
@@ -192,6 +191,7 @@ struct AppTable: View {
         // The page's own background, not the table's white and grey bands.
         .scrollContentBackground(.hidden)
         .alternatingRowBackgrounds(.disabled)
+        .padding(.bottom, Metrics.pagePadding)
     }
 
     /// A plain click on a row. Outside choosing it opens that app, even one
