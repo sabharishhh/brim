@@ -48,6 +48,7 @@ struct BackgroundInspector: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
                     .listRowBackground(Color.clear)
             }
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

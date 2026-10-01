@@ -137,10 +137,9 @@ struct JournalView: View {
                     }
                     .listSectionSeparator(.hidden)
                 }
+                ListBottomSpacing()
             }
             .listStyle(.plain)
-            // Room below the last group, so it never sits on the window's edge.
-            .contentMargins(.bottom, 28, for: .scrollContent)
             .scrollContentBackground(.hidden)
         }
     }
