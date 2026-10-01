@@ -17,20 +17,36 @@ Brim is engineered for maximum security and testability. It strictly adheres to 
 Brim requires **Full Disk Access** (System Settings › Privacy & Security ›
 Full Disk Access), and must be reopened after it is granted. Without it Brim
 cannot read the protected locations where an application's footprint lives,
-so its results are incomplete rather than merely slower. Every removal also
-requires Touch ID or password authentication — once per authorized plan,
-covering the whole selection.
+so its results are incomplete rather than merely slower. A plan that
+permanently deletes anything requires Touch ID or password authentication
+once for the whole selection.
+Moving items to the Trash asks for no authentication.
 
-See [docs/requirements.md](docs/requirements.md) for the full list of
-permissions, what degrades without each, and which data Brim deletes
-permanently versus moves to the Trash.
+## Building and testing
 
-## Documentation
+Build the app with Xcode 27:
 
-For a comprehensive breakdown of the design rationale and architecture, please read the [Brim Dossier](docs/brim-dossier.html) and [Brim Dossier 2](docs/brim-dossier-2.html) located in the `docs/` folder. The exact implementation roadmap is defined in `docs/implementation_plan.md`.
+```bash
+xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
+```
+
+Run the package tests:
+
+```bash
+swift test --package-path BrimCore
+```
+
+Real environment tests are opt-in with `BRIM_REAL_ENV=1` and touch the actual
+machine. The ordinary suite uses fixtures.
 
 ## Project Structure
 
 * **`Brim.xcodeproj`**: The main macOS application project containing the UI, XPC Service, and Privileged Helper.
 * **`BrimCore/`**: The local Swift package containing the backend engine, scanners, and tests.
-* **`docs/`**: Project documentation, architectural decisions, and roadmaps.
+* **`Helper/`**: The privileged daemon entry point and launchd configuration.
+* **`scripts/`**: Release packaging, lint checks, and accessibility inspection.
+* **`branding/`**: Landing-page source and brand assets.
+
+Local plans, agent instructions, dependency caches, generated output, and
+personal Xcode settings are excluded from Git. Package lockfiles remain
+tracked for reproducible builds.
