@@ -229,6 +229,12 @@ extension Registration {
     /// registration is removed on evidence of ownership, never on a guess,
     /// which is the same rule the evidence engine follows for files.
     public func belongs(to identity: Identity, bundleURL: URL?) -> Bool {
+        // Launch Services unregisters one path. Its identifier can also
+        // belong to another installed copy, which must keep its own record.
+        if kind == .launchServices, let bundleURL, let programPath {
+            return URL(fileURLWithPath: programPath).resolvingSymlinksInPath().path
+                == bundleURL.resolvingSymlinksInPath().path
+        }
         if let bundleID = identity.bundleID, let owning = owningBundleID, owning == bundleID {
             return true
         }

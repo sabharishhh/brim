@@ -22,11 +22,18 @@ public struct EvaluatedFootprint: Equatable, Sendable {
     public let identity: Identity
     public let items: [EvaluatedItem]
     public let completeness: ScanCompleteness
+    /// Other installations claiming this app's identifier. Paths are kept
+    /// because an identifier alone cannot distinguish installed copies.
+    public let survivingCopies: [Identity]
 
-    public init(identity: Identity, items: [EvaluatedItem], completeness: ScanCompleteness = .complete) {
+    public init(
+        identity: Identity, items: [EvaluatedItem], completeness: ScanCompleteness = .complete,
+        survivingCopies: [Identity] = []
+    ) {
         self.identity = identity
         self.items = items
         self.completeness = completeness
+        self.survivingCopies = survivingCopies
     }
 }
 
