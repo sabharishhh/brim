@@ -1,6 +1,10 @@
 # Feedback delivery
 
-The app works immediately with GitHub's supported issue draft URLs. The
+Brim's Debug and Release builds use the deployed relay at
+`https://brim-feedback.brim-app.workers.dev/v1/feedback`.
+The GitHub credential remains a Cloudflare secret named `GITHUB_TOKEN`.
+
+A build with an empty `BRIM_FEEDBACK_ENDPOINT` uses GitHub's issue draft URLs. The
 user composes in Brim, then creates the issue on GitHub. This needs
 the user's GitHub account. Opening a draft never records a sent report.
 Long reports can be copied and pasted instead of exceeding URL limits;
@@ -9,15 +13,18 @@ screenshots can be attached in GitHub's editor.
 For submission entirely inside Brim, this optional Cloudflare Worker keeps
 the GitHub credential on the server. There is no credential in the app.
 Reports become public issues in `sabharishhh/brim`. Deploying the service
-and configuring a release endpoint are required before direct sending is
-available. This repository does not claim that a service is already live.
+and configuring a release endpoint are required when hosting a separate
+installation of the service.
 
 ## Activate direct sending
 
 1. Use an existing Cloudflare account and install its official Wrangler CLI.
 2. Create a fine-grained GitHub token restricted to this repository, with
-   Issues read/write permission. Store it using `wrangler secret put
-   GITHUB_TOKEN` from this directory. Do not put the token in a file,
+   Issues read/write permission. Store it using the exact command
+   `npx wrangler secret put GITHUB_TOKEN --config wrangler.jsonc`
+   from this directory. Paste the token only when prompted for its value.
+   `GITHUB_TOKEN` is the secret name; never use the token itself as a name.
+   Do not put the token in a file,
    commit, build setting or application bundle. Rotate it before expiry.
 3. Run `wrangler deploy` from this directory. The configuration creates the
    Durable Object and rate limiter. Set a custom domain if desired.
