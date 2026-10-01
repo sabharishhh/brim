@@ -1,7 +1,43 @@
-docs/
-skills/
-.agent/
+# Local planning documents and agent configuration
+/docs/
+/skills/
+/.agent/
+/.agents/
+/.claude/
+/.codex/
+/AGENTS.md
+/CLAUDE.md
+
+# Former website and duplicate branding assets
+/branding/
+
+# Build output, dependency caches, and logs
 .build/
 .swiftpm/
-Brim.xcodeproj/build/
+/build/
+DerivedData/
+*.xcodeproj/build/
 __pycache__/
+node_modules/
+*.tsbuildinfo
+/BrimCore/build_output.txt
+
+# Personal Xcode state and macOS metadata
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# One-time project and signing setup scripts, kept locally
+/scripts/fix_project.rb
+/scripts/add_job_helper_target.rb
+/scripts/setup_dev_signing.sh
+/scripts/use_dev_signing.rb
+/scripts/use_apple_dev_signing.rb
+
+# Unused package scaffolding, kept locally
+/BrimCore/Brim.entitlements
+/BrimCore/Sources/BrimCore/BrimCore.swift
+/BrimCore/Sources/BrimIndex/BrimIndex.swift
+/BrimCore/Sources/BrimProtocol/BrimProtocol.swift
+/BrimCore/Sources/BrimScan/BrimScan.swift
+/BrimCore/Sources/BrimUI/Dummy.swift

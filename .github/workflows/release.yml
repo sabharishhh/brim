@@ -1,34 +1,113 @@
-name: Release Pipeline
+name: Publish release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag with a signed DMG and checksum in a draft release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build_and_release:
-    runs-on: macos-latest
+  prepare:
+    name: Check release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.candidate.outputs.commit }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          swift-version: '6.0'
-          
-      - name: Build, Sign, and Package
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check tag and draft assets
+        id: candidate
         env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          ./scripts/build_release.sh
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo 'The tag must be a version such as v1.0 or v1.0.1.' >&2
+            exit 1
+          fi
+          commit=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo 'The release tag must point to a commit on main.' >&2
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" --json isDraft,assets | python3 -c '
+          import json, sys
+          release = json.load(sys.stdin)
+          version = sys.argv[1]
+          expected = {f"Brim-{version}.dmg", f"Brim-{version}.dmg.sha256"}
+          if not release["isDraft"]:
+              sys.exit("The release must still be a draft.")
+          if {asset["name"] for asset in release["assets"]} != expected:
+              sys.exit("Attach exactly the versioned DMG and its checksum to the draft.")
+          ' "${RELEASE_TAG#v}"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+  checks:
+    name: Check tagged code
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.commit }}
+
+  publish:
+    name: Verify package and publish
+    needs: [prepare, checks]
+    runs-on: xcode-27
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          files: build/Brim-1.0.0.dmg
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+
+      - name: Download and verify signed package
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ./scripts/check_toolchain.sh
+          assets="$RUNNER_TEMP/brim-release"
+          mkdir -p "$assets"
+          version=${RELEASE_TAG#v}
+          gh release download "$RELEASE_TAG" --dir "$assets" \
+            --pattern "Brim-$version.dmg" --pattern "Brim-$version.dmg.sha256"
+          ./scripts/verify_release.sh "$RELEASE_TAG" "$assets" "$SOURCE_COMMIT"
+
+      - name: Publish verified draft
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ $(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft') != true ]]; then
+            echo 'The release changed while checks were running.' >&2
+            exit 1
+          fi
+          if [[ $(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq '.sha') != "$SOURCE_COMMIT" ]]; then
+            echo 'The release tag moved while checks were running.' >&2
+            exit 1
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false
