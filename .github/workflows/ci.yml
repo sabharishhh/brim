@@ -2,73 +2,117 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to check for a release
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
+concurrency:
+  group: checks-${{ github.workflow }}-${{ inputs.ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build_and_test:
     name: Build & Test
-    # The application targets macOS 27. Use its SDK and compiler in CI too.
     runs-on: xcode-27
-
+    timeout-minutes: 30
+    env:
+      BRIM_REAL_ENV: '0'
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
 
-    - name: Toolchain
-      run: xcodebuild -version && swift --version
+      - name: Check Xcode and SDK
+        id: toolchain
+        run: |
+          ./scripts/check_toolchain.sh
+          mkdir -p "$RUNNER_TEMP/brim-ci"
+          printf 'xcode=%s\n' "$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
-    - name: Cache SPM
-      uses: actions/cache@v4
-      with:
-        path: BrimCore/.build
-        key: ${{ runner.os }}-${{ runner.arch }}-xcode27-spm-${{ hashFiles('BrimCore/Package.resolved') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-xcode27-spm-
+      - name: Cache package build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: BrimCore/.build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode }}-spm-${{ hashFiles('BrimCore/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode }}-spm-
 
-    - name: Build BrimCore Package
-      working-directory: ./BrimCore
-      run: |
-        swift build \
-          -Xswiftc -strict-concurrency=complete \
-          -Xswiftc -warnings-as-errors
+      - name: Build package
+        run: |
+          swift build --package-path BrimCore --force-resolved-versions \
+            -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors \
+            2>&1 | tee "$RUNNER_TEMP/brim-ci/package-build.log"
 
-    - name: Test BrimCore Package
-      working-directory: ./BrimCore
-      run: |
-        swift test \
-          -Xswiftc -strict-concurrency=complete \
-          -Xswiftc -warnings-as-errors
+      - name: Run package tests
+        run: |
+          swift test --package-path BrimCore --force-resolved-versions \
+            -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors \
+            2>&1 | tee "$RUNNER_TEMP/brim-ci/package-tests.log"
 
-    - name: Build Xcode Project
-      run: |
-        xcodebuild clean build \
-          -project Brim.xcodeproj \
-          -scheme brim \
-          -destination 'platform=macOS' \
-          CODE_SIGNING_ALLOWED=NO \
-          SWIFT_SUPPRESS_WARNINGS=NO \
-          OTHER_SWIFT_FLAGS="-strict-concurrency=complete -warnings-as-errors"
+      - name: Build app and helper in Debug and Release
+        run: |
+          for configuration in Debug Release; do
+            xcodebuild build -project Brim.xcodeproj -scheme brim \
+              -configuration "$configuration" -destination 'platform=macOS' \
+              -derivedDataPath "$RUNNER_TEMP/brim-derived-data" \
+              -resultBundlePath "$RUNNER_TEMP/brim-ci/$configuration.xcresult" \
+              -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+              CODE_SIGNING_ALLOWED=NO SWIFT_SUPPRESS_WARNINGS=NO \
+              OTHER_SWIFT_FLAGS='-strict-concurrency=complete -warnings-as-errors' \
+              2>&1 | tee "$RUNNER_TEMP/brim-ci/$configuration.log"
+          done
+
+      - name: Save failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/brim-ci
+          retention-days: 7
+          if-no-files-found: ignore
 
   lint:
     name: Lint & Format
     runs-on: xcode-27
-
+    timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-    - name: Install Linters
-      run: brew install swiftformat swiftlint
+      - name: Install check tools
+        run: |
+          brew install swiftformat swiftlint actionlint shellcheck
+          swiftformat --version
+          swiftlint version
+          actionlint --version
+          shellcheck --version
 
-    - name: Test lint comparison
-      run: python3 -m unittest discover -s scripts -p 'test_lint_changes.py'
+      - name: Check workflows and shell scripts
+        run: |
+          actionlint
+          shellcheck scripts/*.sh
 
-    - name: Reject added lint violations
-      env:
-        LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-      run: python3 scripts/lint_changes.py --base "$LINT_BASE"
+      - name: Test check and release scripts
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Reject added lint violations
+        env:
+          LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: python3 scripts/lint_changes.py --base "$LINT_BASE"
