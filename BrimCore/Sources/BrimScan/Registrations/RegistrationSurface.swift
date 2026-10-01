@@ -110,7 +110,8 @@ public actor RegistrationInventory {
 
         return mine.filter { registration in
             !otherClaimants.contains { other in
-                guard other.identity.bundleID != identity.bundleID else { return false }
+                guard !Self.isSameInstallation(other.identity, bundleURL: other.bundleURL,
+                                               as: identity, bundleURL: bundleURL) else { return false }
                 return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
             }
         }
@@ -123,11 +124,23 @@ public actor RegistrationInventory {
         besides identity: Identity,
         among candidates: [(identity: Identity, bundleURL: URL?)]
     ) -> [Identity] {
-        candidates.compactMap { other in
-            guard other.identity.bundleID != identity.bundleID else { return nil }
+        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0) }
+        return candidates.compactMap { other in
+            guard !Self.isSameInstallation(other.identity, bundleURL: other.bundleURL,
+                                           as: identity, bundleURL: subject)
+            else { return nil }
             return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
                 ? other.identity : nil
         }
+    }
+
+    private static func isSameInstallation(
+        _ other: Identity, bundleURL: URL?, as identity: Identity, bundleURL subjectURL: URL?
+    ) -> Bool {
+        let otherPath = bundleURL ?? other.bundlePath.map { URL(fileURLWithPath: $0) }
+        let subjectPath = subjectURL ?? identity.bundlePath.map { URL(fileURLWithPath: $0) }
+        guard let otherPath, let subjectPath else { return other == identity }
+        return otherPath.resolvingSymlinksInPath().path == subjectPath.resolvingSymlinksInPath().path
     }
 
     /// Registrations pointing at something no longer installed, whichever

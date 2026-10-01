@@ -25,7 +25,14 @@ public struct TierSVetoEngine: Sendable {
         let groupClaims = hasGroupTarget
             ? await otherGroupClaims(besides: footprint.identity) : (owners: [String: String](), complete: true)
 
-        let others = await otherApplicationIdentifiers(besides: footprint.identity)
+        let applications = await otherApplications(besides: footprint.identity)
+        let others = Dictionary(applications.compactMap { other -> (String, String)? in
+            other.bundleID.map { ($0.lowercased(), other.name) }
+        }, uniquingKeysWith: { first, _ in first })
+        let survivingCopies = applications.filter {
+            guard let own = footprint.identity.bundleID, let other = $0.bundleID else { return false }
+            return own.lowercased() == other.lowercased()
+        }
 
         for item in footprint.items {
             // Unticked rows can be promoted by the planner. Veto them now too.
@@ -35,6 +42,16 @@ public struct TierSVetoEngine: Sendable {
             }
             do {
                 let targetURL = item.footprintItem.evidence.url
+                if let copy = survivingCopies.first,
+                   !Self.isInsideSelectedBundle(targetURL, identity: footprint.identity) {
+                    let location = copy.bundlePath ?? "another installation"
+                    vettedItems.append(EvaluatedItem(
+                        footprintItem: item.footprintItem,
+                        selection: .excluded(reason: "Shared with \(copy.name) at \(location)."),
+                        costOfError: item.costOfError
+                    ))
+                    continue
+                }
                 if Self.isGroupPath(targetURL) {
                     if let other = groupClaims.owners[targetURL.lastPathComponent] {
                         vettedItems.append(EvaluatedItem(
@@ -82,7 +99,8 @@ public struct TierSVetoEngine: Sendable {
         }
 
         return EvaluatedFootprint(
-            identity: footprint.identity, items: vettedItems, completeness: footprint.completeness
+            identity: footprint.identity, items: vettedItems, completeness: footprint.completeness,
+            survivingCopies: survivingCopies
         )
     }
 
@@ -107,23 +125,34 @@ public struct TierSVetoEngine: Sendable {
         }?.value
     }
 
-    /// Every other installed application's identifier, lowercased, with
-    /// its name.
-    private func otherApplicationIdentifiers(besides identity: Identity) async -> [String: String] {
+    /// Other installations, retaining paths even when identifiers agree.
+    private func otherApplications(besides identity: Identity) async -> [Identity] {
         let root = root
         return await Task.detached {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-            var found: [String: String] = [:]
+            var found: [Identity] = []
             for bundle in InstalledBundleInventory.read(in: root).bundles {
                 // Its own parts are not somebody else.
                 let path = bundle.resolvingSymlinksInPath().path
                 if let subject, path == subject || path.hasPrefix(subject + "/") { continue }
                 let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
                 guard let identifier = info?["CFBundleIdentifier"] as? String else { continue }
-                found[identifier.lowercased()] = bundle.deletingPathExtension().lastPathComponent
+                found.append(Identity(bundleID: identifier, name: bundle.deletingPathExtension().lastPathComponent,
+                                      bundlePath: path))
             }
             return found
         }.value
+    }
+
+    private static func isInsideSelectedBundle(_ url: URL, identity: Identity) -> Bool {
+        guard let subject = identity.bundlePath else { return false }
+        let selected = URL(fileURLWithPath: subject).resolvingSymlinksInPath().path
+        // Compare the entry itself, not the target of a command symlink.
+        let path = url.standardizedFileURL.path
+        let parent = url.deletingLastPathComponent().resolvingSymlinksInPath()
+            .appendingPathComponent(url.lastPathComponent).path
+        return path == selected || path.hasPrefix(selected + "/")
+            || parent == selected || parent.hasPrefix(selected + "/")
     }
 
     private static func isGroupPath(_ url: URL) -> Bool {
