@@ -45,8 +45,8 @@ machine. The ordinary suite uses fixtures.
 * **`BrimCore/`**: The local Swift package containing the backend engine, scanners, and tests.
 * **`Helper/`**: The privileged daemon entry point and launchd configuration.
 * **`scripts/`**: Release packaging, lint checks, and accessibility inspection.
-* **`branding/`**: Landing-page source and brand assets.
 
 Local plans, agent instructions, dependency caches, generated output, and
-personal Xcode settings are excluded from Git. Package lockfiles remain
-tracked for reproducible builds.
+personal Xcode settings are excluded from Git. The native app is the only
+product in this repository. Swift package lockfiles remain tracked for
+reproducible builds.
