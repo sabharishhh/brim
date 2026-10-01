@@ -226,6 +226,7 @@ struct UninstallPanel: View {
                     .buttonStyle(.link)
                     .font(.brimFacts)
             }
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

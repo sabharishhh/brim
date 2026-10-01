@@ -11,7 +11,7 @@ import SwiftUI
 /// One row per app, named and shown as the app was, with when Brim saw it
 /// go. The one action finishes the removal: it opens the same review an
 /// uninstall uses, where what is certain is ticked and what is not is
-/// shown and left. Traces nobody can be named for sit in one folded
+/// shown and left. Traces nobody can be named for sit in one collapsible
 /// section and are never counted.
 struct LeftoversView: View {
     @ObservedObject var model: LeftoversModel
@@ -26,7 +26,7 @@ struct LeftoversView: View {
     @State private var removedInReview = 0
     /// Cards showing the places their app left.
     @State private var opened: Set<String> = []
-    @State private var showsUnknown = false
+    @State private var showsUnknown = true
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Under a megabyte, a trace nobody can be named for is not worth a row.
@@ -130,8 +130,8 @@ struct LeftoversView: View {
     /// Two kinds of thing, drawn as two kinds of thing. An app that left
     /// something is a card: its icon, when it went, and the places it left
     /// folded inside. What nobody can be named for is a plain, quieter list
-    /// beneath, folded and never counted. They used to be the same row in
-    /// two sections, so the page read as one list of equals.
+    /// beneath, open by default and never counted. They used to be the same
+    /// row in two sections, so the page read as one list of equals.
     private var list: some View {
         List {
             Group {
@@ -165,10 +165,10 @@ struct LeftoversView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 28, for: .scrollContent)
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: opened)
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: showsUnknown)
     }
@@ -221,7 +221,7 @@ struct LeftoversView: View {
         .accessibilityValue(showsUnknown ? "Expanded" : "Collapsed")
     }
 
-    /// Said where the removed apps would be, before the folded unknowns.
+    /// Said where the removed apps would be, before the unknowns.
     private var nothingLeft: some View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
