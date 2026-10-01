@@ -17,7 +17,7 @@ struct FeedbackComposerFooter: View {
                     .accessibilityLabel("Report not confirmed. \(problem)")
                     .transition(.opacity)
             }
-            Text("Reports are public on GitHub. Share only what you want others to see.")
+            Text("Reports are public on GitHub.")
                 .font(.caption)
                 .foregroundStyle(Palette.inkSecondary)
             HStack(spacing: 12) {

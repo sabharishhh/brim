@@ -52,7 +52,7 @@ struct FeedbackSettingsView: View {
                 }
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "lock").accessibilityHidden(true)
-                    Text("Your draft stays on this Mac until you choose to share it.")
+                    Text("Drafts are saved on this Mac.")
                 }
                 .font(.callout)
                 .foregroundStyle(Palette.inkSecondary)
