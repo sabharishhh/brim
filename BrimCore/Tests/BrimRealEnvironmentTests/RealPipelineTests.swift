@@ -61,7 +61,7 @@ final class RealPipelineTests: XCTestCase {
         XCTAssertNotNil(
             found,
             "The real scanner did not see a directory sitting in ~/Library/Caches. "
-            + "Without Full Disk Access this is expected — see docs/requirements.md."
+            + "Without Full Disk Access this is expected — see README.md."
         )
         XCTAssertEqual(found?.category, .unclaimed, "Nothing owns a harness directory")
     }

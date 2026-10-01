@@ -17,20 +17,71 @@ Brim is engineered for maximum security and testability. It strictly adheres to 
 Brim requires **Full Disk Access** (System Settings › Privacy & Security ›
 Full Disk Access), and must be reopened after it is granted. Without it Brim
 cannot read the protected locations where an application's footprint lives,
-so its results are incomplete rather than merely slower. Every removal also
-requires Touch ID or password authentication — once per authorized plan,
-covering the whole selection.
+so its results are incomplete rather than merely slower. A plan that
+permanently deletes anything requires Touch ID or password authentication
+once for the whole selection.
+Moving items to the Trash asks for no authentication.
 
-See [docs/requirements.md](docs/requirements.md) for the full list of
-permissions, what degrades without each, and which data Brim deletes
-permanently versus moves to the Trash.
+## Building and testing
 
-## Documentation
+Build the app with Xcode 27:
 
-For a comprehensive breakdown of the design rationale and architecture, please read the [Brim Dossier](docs/brim-dossier.html) and [Brim Dossier 2](docs/brim-dossier-2.html) located in the `docs/` folder. The exact implementation roadmap is defined in `docs/implementation_plan.md`.
+```bash
+xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
+```
+
+Run the package tests:
+
+```bash
+swift test --package-path BrimCore
+```
+
+Real environment tests are opt-in with `BRIM_REAL_ENV=1` and touch the actual
+machine. The ordinary suite uses fixtures.
 
 ## Project Structure
 
 * **`Brim.xcodeproj`**: The main macOS application project containing the UI, XPC Service, and Privileged Helper.
 * **`BrimCore/`**: The local Swift package containing the backend engine, scanners, and tests.
-* **`docs/`**: Project documentation, architectural decisions, and roadmaps.
+* **`Helper/`**: The privileged daemon entry point and launchd configuration.
+* **`scripts/`**: Release packaging, lint checks, and accessibility inspection.
+
+Local plans, agent instructions, dependency caches, generated output, and
+personal Xcode settings are excluded from Git. The native app is the only
+product in this repository. Swift package lockfiles remain tracked for
+reproducible builds.
+
+
+## Releases
+
+Signing stays on the maintainer's Mac. GitHub Actions checks the tagged code
+and signed package before publishing a draft release.
+
+Start from a clean commit on main, with Xcode 27 and an Apple Development or
+Developer ID certificate in your keychain:
+
+```bash
+./scripts/build_release.sh
+```
+
+The script builds only committed files and records the source commit inside
+the signed app. It checks the app and helper signatures and writes a DMG and
+a portable SHA-256 checksum to `build/`. A free Apple Development certificate
+works; without notarisation, people open the download through Privacy &
+Security, Open Anyway. Developer ID builds can be notarised when `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` are set.
+
+For version 1.0, create the tag and attach the package to a draft:
+
+```bash
+git tag v1.0
+git push origin v1.0
+gh release create v1.0 build/Brim-1.0.dmg build/Brim-1.0.dmg.sha256 \
+  --draft --verify-tag --title "Brim 1.0" --generate-notes
+gh workflow run release.yml -f tag=v1.0
+```
+
+Use the project's version for the tag and filenames. The workflow runs the
+same build, test, and lint checks as a PR. It publishes only after verifying
+the checksum, signatures, helper layout, version, and source commit. No
+signing certificate or Apple password is stored in GitHub.
