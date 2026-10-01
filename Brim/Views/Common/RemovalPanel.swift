@@ -151,6 +151,7 @@ struct RemovalPanel: View {
                 .listSectionSeparator(.hidden)
             }
             StayingSection(items: model.staying)
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
