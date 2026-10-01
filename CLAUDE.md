@@ -231,6 +231,11 @@ explaining it, not like a model describing it.
 
 ## Commits
 
+PR titles, descriptions, commit messages and other change descriptions must
+explain Brim's own problem and resulting behavior. Do not name reference
+projects, competitor apps, comparisons or unrelated work. Keep the text
+consolidated, brief and natural, without tool attribution or em/en dashes.
+
 Author is the user alone. No co-author trailers, no tool attribution.
 Use the user's configured Git identity for both author and committer.
 Never create a branch under `codex/`. Use a descriptive branch such as
