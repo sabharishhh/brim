@@ -94,11 +94,19 @@ private struct TokenAnimation<Value: Equatable>: ViewModifier {
 /// The press every custom control shares: down to 0.97 in a tenth of a
 /// second and a spring back. System and glass buttons keep their own.
 struct PressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .contentShape(.rect)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(configuration.isPressed ? .easeOut(duration: 0.1) : Motion.quick, value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(
+                Motion.resolved(
+                    configuration.isPressed ? .easeOut(duration: 0.1) : Motion.quick,
+                    reduceMotion: reduceMotion
+                ),
+                value: configuration.isPressed
+            )
     }
 }
 

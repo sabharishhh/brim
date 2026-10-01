@@ -19,6 +19,7 @@ private let log = BrimLog.make("app")
     /// What outlives a launch: kept items, what was seen, saved icons.
     /// One for the app, so Settings and the window agree.
     @State private var session = AppSession()
+    @State private var feedback = FeedbackConfiguration.makeModel()
     /// View ▸ Compact Rows, for everyone who prefers density.
     @AppStorage("rows.compact") private var compactRows = false
 
@@ -44,7 +45,15 @@ private let log = BrimLog.make("app")
         Settings {
             SettingsView()
                 .environment(session)
+                .environment(feedback)
         }
+        .windowResizability(.contentSize)
+        Window("Feedback", id: FeedbackWindow.windowID) {
+            FeedbackWindow()
+                .environment(feedback)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
         Window("Keyboard Shortcuts", id: ShortcutsView.windowID) {
             ShortcutsView()
         }
@@ -56,6 +65,7 @@ private let log = BrimLog.make("app")
             root
                 .environment(\.brimService, client)
                 .environment(session)
+                .environment(feedback)
                 .environment(\.compactRows, compactRows)
                 .environmentObject(release)
                 .task { await release.checkIfDue() }
@@ -111,6 +121,8 @@ private let log = BrimLog.make("app")
         .commands {
             CommandGroup(after: .help) {
                 ShortcutsMenuItem()
+                FeedbackMenuItem()
+                    .environment(feedback)
             }
             CommandMenu("Go") {
                 Button("Go To or Find") { shell?.showsCommandBar.toggle() }
