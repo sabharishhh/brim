@@ -216,12 +216,14 @@ struct DelegatedCleanupPlanTests {
         func service(
             consent: ConsentSource = ConsentSource { _ in true },
             fail: Bool = false,
-            tokens: TokenStore = .init()
+            tokens: TokenStore = .init(),
+            barrier: RevalidationBarrier? = nil
         ) -> BrimService {
             let client = ToolCleanup.Client(
                 environment: { [self] in environment.withLock { $0 } },
                 query: { [self] executable, _, _, _ in
-                    configuration.withLock { $0[(executable as NSString).lastPathComponent] ?? "" }
+                    await barrier?.pause()
+                    return configuration.withLock { $0[(executable as NSString).lastPathComponent] ?? "" }
                 },
                 invoke: { [self] binding, _ in
                     if fail {
@@ -252,6 +254,62 @@ struct DelegatedCleanupPlanTests {
 
         func destroy() {
             try? FileManager.default.removeItem(at: directory)
+        }
+    }
+}
+
+extension DelegatedCleanupPlanTests {
+    @Test func concurrentApprovalsDispatchTheSamePlanOnlyOnce() async throws {
+        let fixture = try Fixture()
+        defer { fixture.destroy() }
+        let barrier = RevalidationBarrier()
+        let service = fixture.service(barrier: barrier)
+        let plan = try await service.planToolCleanup(id: "npm.cache", displayed: "ignored")
+        var tokens: [ApprovalToken] = []
+        for _ in 0 ..< 2 {
+            let receipt = try await service.requestApproval(
+                planId: plan.planId, requesterIdentity: plan.intent.requesterIdentity
+            )
+            try await tokens.append(service.grantApproval(for: receipt))
+        }
+        await barrier.arm()
+        let successes = await withTaskGroup(of: Bool.self) { group in
+            for token in tokens {
+                group.addTask {
+                    do {
+                        try await service.apply(planId: plan.planId, token: token)
+                        return true
+                    } catch {
+                        return false
+                    }
+                }
+            }
+            var successes = 0
+            for await success in group where success {
+                successes += 1
+            }
+            return successes
+        }
+        #expect(successes == 1)
+        #expect(fixture.invocations.withLock { $0.count } == 1)
+    }
+
+    private actor RevalidationBarrier {
+        var armed = false
+        var waiting: CheckedContinuation<Void, Never>?
+        func arm() {
+            armed = true
+        }
+
+        func pause() async {
+            guard armed else { return }
+            if let first = waiting {
+                waiting = nil
+                armed = false
+                first.resume()
+            } else {
+                await withCheckedContinuation { waiting = $0 }
+            }
         }
     }
 }

@@ -22,10 +22,10 @@ public enum ToolCleanup {
             switch id {
             case "homebrew.cleanup": "Homebrew cleanup also removes old installed versions. "
                 + "Review and run it in Homebrew."
-            case "pnpm.store": "pnpm pruning can affect stores and runtime copies beyond this row. "
-                + "Review and run it in pnpm."
-            case "uv.cache": "Clearing uv caches can break environments that use symlinks. "
-                + "Review and run it in uv."
+            case "pnpm.store": "pnpm pruning also clears command and metadata caches, and can remove "
+                + "private runtime copies outside this store. Review these locations in pnpm."
+            case "uv.cache": "Clearing this cache can break environments linked to it. Pruning can "
+                + "also remove centralized environments. Review and manage it in uv."
             case "xcode.simulators": "Simulator devices hold your setup. Manage them in Xcode."
             default: nil
             }
@@ -45,6 +45,8 @@ public enum ToolCleanup {
                 executable: "/usr/bin/env", arguments: ["pnpm", "store", "prune"]),
         Command(id: "uv.cache", displayed: "uv cache clean",
                 executable: "/usr/bin/env", arguments: ["uv", "cache", "clean"]),
+        Command(id: "swiftpm.cache", displayed: "swift package purge-cache",
+                executable: "/usr/bin/env", arguments: ["swift-package", "purge-cache"]),
         Command(id: "xcode.simulators", displayed: "xcrun simctl delete unavailable",
                 executable: "/usr/bin/xcrun", arguments: ["simctl", "delete", "unavailable"])
     ]
@@ -93,9 +95,9 @@ public enum ToolCleanup {
                 "Could not run `\(displayed)`. The tool is not on this Mac, or not on "
                     + "the path Brim can see."
             case let .failed(displayed, code):
-                "`\(displayed)` exited with status \(code)."
+                "`\(displayed)` exited with status \(code). It may have removed some items."
             case let .signalled(displayed, signal):
-                "`\(displayed)` stopped with signal \(signal)."
+                "`\(displayed)` stopped with signal \(signal). It may have removed some items."
             case let .timedOut(displayed):
                 "`\(displayed)` exceeded the time limit and was stopped. It may have removed some items."
             case let .cancelled(displayed):
@@ -117,6 +119,9 @@ public enum ToolCleanup {
         guard let command = command(id: id) else { throw CleanupError.unknownCleanup(id) }
         if let reason = command.manualReason {
             throw CleanupError.manualOnly(reason)
+        }
+        guard id != "swiftpm.cache" else {
+            throw CleanupError.configurationUnavailable("Swift package cleanup requires a reviewed cache folder.")
         }
         let invoke = runner ?? Self.execute
         let status: Int32

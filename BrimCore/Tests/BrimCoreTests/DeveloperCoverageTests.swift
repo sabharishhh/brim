@@ -52,7 +52,9 @@ final class DeveloperCoverageTests: XCTestCase {
         let found = scanner().scan(home: home)
         XCTAssertEqual(Set(found.map { $0.url.lastPathComponent + "@" + $0.tool }),
                        ["target@loki", "node_modules@web"])
-        XCTAssertTrue(found.allSatisfy { $0.isProject && $0.cost == .rebuilt })
+        XCTAssertTrue(found.allSatisfy(\.isProject))
+        XCTAssertEqual(found.first { $0.tool == "loki" }?.cost, .rebuilt)
+        XCTAssertEqual(found.first { $0.tool == "web" }?.cost, .restored)
         XCTAssertTrue(found.first { $0.tool == "loki" }?.explanation.contains("cargo build") == true)
     }
 
