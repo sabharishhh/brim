@@ -87,16 +87,23 @@ struct RemovalResultView: View {
 
     private var untickedCount: Int { result.report?.leftUnticked.count ?? 0 }
 
+    private var searchGap: ScanCompleteness? {
+        result.report?.scanCompleteness ?? plan?.scanCompleteness
+    }
+
     private var headline: String {
         guard result.success else { return "Some of it remains" }
         if result.followUpActions?.isEmpty == false { return "One more step" }
         // Everything ticked went. What was left unticked is still here, and
         // "Nothing left" over it was read as everything.
-        return untickedCount > 0 ? "Removed" : "Nothing left"
+        return untickedCount > 0 || searchGap?.isComplete == false ? "Removed" : "Nothing left"
     }
 
     private var detail: String {
         guard result.success else { return result.reason ?? "Some of it is still on disk" }
+        if searchGap?.isComplete == false {
+            return "Selected items removed. The search was incomplete."
+        }
         if untickedCount > 0 {
             return untickedCount == 1 ? "1 item you left unticked stays" : "\(untickedCount) items you left unticked stay"
         }
@@ -162,6 +169,10 @@ struct RemovalResultView: View {
     private func checked(_ report: RemovalReport) -> some View {
         FactSection(title: "Checked again") {
             FactRow(label: "Places, all gone", value: report.checkedGone.formatted())
+            if let explanation = searchGap?.explanation {
+                FactDivider()
+                FactRow(label: "Search incomplete", detail: explanation)
+            }
             if !report.registrationsChecked.isEmpty {
                 FactDivider()
                 FactRow(

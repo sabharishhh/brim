@@ -25,7 +25,9 @@ public struct TierSVetoEngine: Sendable {
         let groupClaims = hasGroupTarget
             ? await otherGroupClaims(besides: footprint.identity) : (owners: [String: String](), complete: true)
 
-        let applications = await otherApplications(besides: footprint.identity)
+        let inventory = await otherApplications(besides: footprint.identity)
+        let applications = inventory.identities
+        let completeness = footprint.completeness.merging(inventory.completeness)
         let others = Dictionary(applications.compactMap { other -> (String, String)? in
             other.bundleID.map { ($0.lowercased(), other.name) }
         }, uniquingKeysWith: { first, _ in first })
@@ -98,10 +100,20 @@ public struct TierSVetoEngine: Sendable {
             vettedItems.append(item)
         }
 
+        // A partial claimant search cannot support automatic selection either.
+        if !completeness.isComplete {
+            vettedItems = vettedItems.map(Self.leftUnticked)
+        }
         return EvaluatedFootprint(
-            identity: footprint.identity, items: vettedItems, completeness: footprint.completeness,
+            identity: footprint.identity, items: vettedItems, completeness: completeness,
             survivingCopies: survivingCopies
         )
+    }
+
+    private static func leftUnticked(_ item: EvaluatedItem) -> EvaluatedItem {
+        guard item.selection == .selected else { return item }
+        return EvaluatedItem(footprintItem: item.footprintItem, selection: .unselected,
+                             costOfError: item.costOfError)
     }
 
     /// The installed application an identifier-named item belongs to, when
@@ -126,12 +138,15 @@ public struct TierSVetoEngine: Sendable {
     }
 
     /// Other installations, retaining paths even when identifiers agree.
-    private func otherApplications(besides identity: Identity) async -> [Identity] {
+    private func otherApplications(
+        besides identity: Identity
+    ) async -> (identities: [Identity], completeness: ScanCompleteness) {
         let root = root
         return await Task.detached {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             var found: [Identity] = []
-            for bundle in InstalledBundleInventory.read(in: root).bundles {
+            let inventory = InstalledBundleInventory.read(in: root)
+            for bundle in inventory.bundles {
                 // Its own parts are not somebody else.
                 let path = bundle.resolvingSymlinksInPath().path
                 if let subject, path == subject || path.hasPrefix(subject + "/") { continue }
@@ -140,7 +155,7 @@ public struct TierSVetoEngine: Sendable {
                 found.append(Identity(bundleID: identifier, name: bundle.deletingPathExtension().lastPathComponent,
                                       bundlePath: path))
             }
-            return found
+            return (found, inventory.completeness)
         }.value
     }
 
