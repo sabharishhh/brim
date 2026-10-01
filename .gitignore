@@ -8,6 +8,9 @@
 /AGENTS.md
 /CLAUDE.md
 
+# Former website and duplicate branding assets
+/branding/
+
 # Build output, dependency caches, and logs
 .build/
 .swiftpm/
@@ -16,7 +19,6 @@ DerivedData/
 *.xcodeproj/build/
 __pycache__/
 node_modules/
-/branding/landing/dist/
 *.tsbuildinfo
 /BrimCore/build_output.txt
 
