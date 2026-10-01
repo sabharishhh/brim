@@ -20,14 +20,12 @@ final class FeedbackTests: XCTestCase {
         return draft
     }
 
-    func testEnvironmentIsOptInAndHiddenBugFieldsAreNotShared() {
+    func testSystemVersionsAreAutomaticAndHiddenBugFieldsAreNotShared() {
         var draft = draft()
         draft.reproduction = "A private reproduction note"
         draft.expected = "A private expected result"
         draft.kind = .feature
-        XCTAssertFalse(draft.markdown(environment: environment).contains("1.2"))
         XCTAssertFalse(draft.markdown(environment: environment).contains("private"))
-        draft.includesEnvironment = true
         XCTAssertTrue(draft.markdown(environment: environment).contains(environment.text))
     }
 
@@ -51,6 +49,16 @@ final class FeedbackTests: XCTestCase {
         first.draft = draft()
         let reopened = FeedbackModel(defaults: defaults, environment: environment)
         XCTAssertEqual(reopened.draft, first.draft)
+    }
+
+    func testExistingDraftKeepsItsTextAndGetsAutomaticSystemVersions() throws {
+        let defaults = defaults()
+        var saved = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft())) as? [String: Any])
+        saved["includesEnvironment"] = false
+        try defaults.set(JSONSerialization.data(withJSONObject: saved), forKey: "feedback.draft.v1")
+        let reopened = FeedbackModel(defaults: defaults, environment: environment)
+        XCTAssertEqual(reopened.draft, draft())
+        XCTAssertTrue(reopened.report.body.contains(environment.text))
     }
 
     /// A browser opening is not evidence that somebody submitted an issue.

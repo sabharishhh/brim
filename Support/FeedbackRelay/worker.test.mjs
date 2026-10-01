@@ -77,7 +77,7 @@ test('concurrent retries create one issue and return the same receipt', async ()
   const env = environment(async (url, options) => {
     assert.equal(url, 'https://api.github.com/repos/sabharishhh/brim/issues');
     assert.equal(options.headers.Authorization, 'Bearer server-only-test-token');
-    assert.equal(options.redirect, 'error');
+    assert.equal(options.redirect, 'manual');
     posts++;
     const value = JSON.parse(options.body);
     return Response.json(issue(value), { status: 201 });
@@ -86,6 +86,16 @@ test('concurrent retries create one issue and return the same receipt', async ()
   const results = await Promise.all([worker.fetch(request(value), env), worker.fetch(request(value), env)]);
   assert.equal(posts, 1);
   assert.deepEqual(await results[0].json(), await results[1].json());
+});
+
+// The deployed relay failed before contacting GitHub because workerd rejects
+// a native fetch invoked with the FeedbackInbox instance as its receiver.
+test('preserves the native fetch receiver in the Workers runtime', async () => {
+  const env = environment(async function (_, options) {
+    assert.equal(this, globalThis);
+    return Response.json(issue(JSON.parse(options.body)), { status: 201 });
+  });
+  assert.equal((await worker.fetch(request(report()), env)).status, 201);
 });
 
 test('a changed payload cannot reuse another reports id', async () => {
@@ -146,4 +156,17 @@ test('a receipt for a different repository is never returned as success', async 
   const env = environment(async () => Response.json({ number: 42, html_url: 'https://github.com/other/repo/issues/42' },
     { status: 201 }));
   assert.equal((await worker.fetch(request(report()), env)).status, 503);
+});
+
+// Workerd rejects redirect: error before making a request. Manual handling
+// also prevents the server credential being forwarded to a redirect target.
+test('does not follow a GitHub redirect or accept it as a receipt', async () => {
+  let calls = 0;
+  const env = environment(async (_, options) => {
+    assert.equal(options.redirect, 'manual');
+    calls++;
+    return new Response(null, { status: 302, headers: { Location: 'https://example.com' } });
+  });
+  assert.equal((await worker.fetch(request(report()), env)).status, 503);
+  assert.equal(calls, 1);
 });

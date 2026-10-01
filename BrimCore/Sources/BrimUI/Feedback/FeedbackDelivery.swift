@@ -11,13 +11,13 @@ public enum FeedbackDeliveryError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: "Reporting is not configured correctly. Copy your report and open GitHub instead."
+        case .invalidEndpoint: "Feedback is unavailable. Copy your report and open GitHub."
         case .invalidReceipt:
-            "Your report could not be confirmed. Your draft is kept. You can safely retry the same report."
+            "Could not confirm delivery. Try again."
         case .unavailable:
-            "The reporting service could not be reached. Your draft is kept. Try again when you are online."
-        case .rateLimited: "Too many reports were sent recently. Your draft is kept. Please try again in a minute."
-        case .browserUnavailable: "Brim could not open your browser. Copy your report and open GitHub yourself."
+            "Could not send feedback. Try again."
+        case .rateLimited: "Please wait a minute before sending again."
+        case .browserUnavailable: "Could not open your browser. Copy your report and open GitHub."
         case .draftTooLong:
             "This report is too long for a browser link. Copy it, then paste it into a new GitHub issue."
         case .payloadTooLarge:
