@@ -140,7 +140,6 @@ struct StatCard<Detail: View>: View {
                     .opacity(isRefreshing ? 0.4 : 1)
                     .transition(.opacity)
                 }
-                Spacer(minLength: 0)
                 if status != .checking {
                     detail
                         .saturation(isRefreshing ? 0 : 1)
@@ -149,6 +148,9 @@ struct StatCard<Detail: View>: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+            // Keep the card's full height, including its padding, when
+            // its meter legend needs more room than the minimum allows.
+            .fixedSize(horizontal: false, vertical: true)
             .animation(Motion.standard, value: status == .checking)
             .animation(.smooth(duration: isRefreshing ? 0.25 : 0.6), value: isRefreshing)
             .card()
