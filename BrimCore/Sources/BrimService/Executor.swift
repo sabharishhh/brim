@@ -211,11 +211,13 @@ public actor Executor {
                     // command string, and this is the step most tempted by
                     // one.
                     do {
-                        try ToolCleanup.run(id: step.target)
+                        try await ToolCleanup.run(id: step.target)
                         journal.stepOutcomes[step.index] = "ok"
+                    } catch let error as ToolCleanup.CleanupError {
+                        journal.stepOutcomes[step.index] = "\(error.outcomeCode): \(error.localizedDescription)"
                     } catch {
                         journal.stepOutcomes[step.index] =
-                            "cleanup_did_not_run: \(error.localizedDescription)"
+                            "cleanup_execution_failed: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unregisterLaunchServices {
                     // Only the path the app was installed at. A bundle that
