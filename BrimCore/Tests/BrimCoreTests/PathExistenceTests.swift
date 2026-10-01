@@ -1,6 +1,7 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimScan
+import Darwin
+import XCTest
 
 /// A broken symlink is standing right there, and `fileExists` says it is not.
 ///
@@ -21,7 +22,6 @@ import XCTest
 /// successful removal having removed nothing, and the links would still be
 /// there.
 final class PathExistenceTests: XCTestCase {
-
     private var directory: URL!
 
     override func setUpWithError() throws {
@@ -67,7 +67,7 @@ final class PathExistenceTests: XCTestCase {
     }
 
     func testABrokenLinkIsToldApartFromAWorkingOne() throws {
-        XCTAssertTrue(PathExistence.isDanglingSymlink(atPath: try danglingLink().path))
+        XCTAssertTrue(try PathExistence.isDanglingSymlink(atPath: danglingLink().path))
     }
 
     func testSomethingAbsentIsStillAbsent() {
@@ -90,7 +90,7 @@ final class PathExistenceTests: XCTestCase {
     /// explicit targets is exactly what the Leftovers screen does when
     /// somebody ticks rows and presses Review and Remove.
     func testBrokenLinksNamedForRemovalReachTheFootprint() async throws {
-        let links = try (1...3).map { try danglingLink(named: "cli-\($0)") }
+        let links = try (1 ... 3).map { try danglingLink(named: "cli-\($0)") }
 
         let evidence = links.map {
             Evidence(url: $0, tier: .A, mechanism: "DirectTarget",
@@ -106,13 +106,13 @@ final class PathExistenceTests: XCTestCase {
         XCTAssertEqual(
             footprint.items.count, 3,
             "Every broken link was dropped before it could become a plan step, so the "
-            + "removal sheet opened empty and Authorize would have done nothing"
+                + "removal sheet opened empty and Authorize would have done nothing"
         )
     }
 
-    /// Size, separately, because a link takes no space and the panel has to
-    /// say so rather than report the size of whatever it used to point at.
-    func testABrokenLinkCountsAsNoSpace() async throws {
+    /// A broken link still stores its destination path. Logical size counts
+    /// those bytes, never the absent target, and does not promise freed space.
+    func testABrokenLinkCountsOnlyItsOwnStoredBytes() async throws {
         let link = try danglingLink()
         let footprint = try await FootprintProjector(engine: EvidenceEngine(sources: []))
             .project(
@@ -121,6 +121,12 @@ final class PathExistenceTests: XCTestCase {
                 explicitEvidence: [Evidence(url: link, tier: .A, mechanism: "DirectTarget",
                                             humanSentence: "because")]
             )
-        XCTAssertEqual(footprint.items.first?.sizeBytes, 0)
+        var information = stat()
+        XCTAssertEqual(lstat(link.path, &information), 0)
+        let destination = try FileManager.default.destinationOfSymbolicLink(atPath: link.path)
+        XCTAssertEqual(information.st_size, Int64(destination.utf8.count))
+        XCTAssertEqual(footprint.items.first?.sizeBytes, information.st_size)
+        XCTAssertEqual(footprint.items.first?.sizeMeasurement?.state, .complete)
+        XCTAssertTrue(footprint.completeness.isComplete)
     }
 }

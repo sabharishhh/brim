@@ -46,10 +46,14 @@ public protocol BrimServiceProtocol: Sendable {
     func sampleEnergy() async -> EnergySampleResult
     /// Build caches this Mac has accumulated, with what clearing each costs.
     func developerCaches() async -> [DeveloperCache]
+    /// Snapshots from an on-demand scan. Rows keep their path identity while
+    /// their measurements finish. Dropping the stream cancels its producer.
+    func developerCacheUpdates(excluding folders: [URL]) async -> AsyncStream<[DeveloperCache]>
     /// Plans a tool's own cleanup, named rather than described. The command
     /// is resolved inside the service from a fixed table.
     func planToolCleanup(id: String, displayed: String) async throws -> Plan
     func planToolCleanup(id: String, cachePath: URL) async throws -> Plan
+    func planHomebrewDownloads(cachePath: URL, excluding folders: [URL]) async throws -> Plan
     /// Hands the service a way to remove something in a folder that
     /// belongs to root, once Brim's privileged daemon is set up.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
@@ -100,6 +104,20 @@ public extension BrimServiceProtocol {
         EnergySampleResult(samples: [], coverageGaps: 0)
     }
     func developerCaches() async -> [DeveloperCache] { [] }
+    func developerCacheUpdates(excluding folders: [URL]) async -> AsyncStream<[DeveloperCache]> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task {
+                let caches = await developerCaches()
+                if !Task.isCancelled {
+                    continuation.yield(caches.filter { cache in
+                        !folders.contains { ArtifactSizer.rootsOverlap(cache.url, $0) }
+                    })
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
     func planToolCleanup(id: String, displayed: String) async throws -> Plan {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
@@ -109,6 +127,12 @@ public extension BrimServiceProtocol {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Scoped tool cleanup is not supported here."])
     }
+
+    func planHomebrewDownloads(cachePath _: URL, excluding _: [URL]) async throws -> Plan {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Download cleanup is not supported here."])
+    }
+
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}

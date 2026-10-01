@@ -35,6 +35,9 @@ public struct OldVersionsScanner: Sendable {
         var inUse: [String: (versions: Set<String>, commands: [String: String])] = [:]
         for folder in commandFolders {
             for link in Self.children(of: folder) {
+                if Task.isCancelled {
+                    return []
+                }
                 guard let target = Self.linkTarget(link),
                       FileManager.default.fileExists(atPath: target.path),
                       let (versions, version) = Self.versionsFolder(of: target),
@@ -47,6 +50,9 @@ public struct OldVersionsScanner: Sendable {
 
         var found: [DeveloperCache] = []
         for (path, use) in inUse {
+            if Task.isCancelled {
+                return found
+            }
             let versions = URL(fileURLWithPath: path)
             var protected = use.versions
             let entries = Self.children(of: versions)
@@ -62,13 +68,15 @@ public struct OldVersionsScanner: Sendable {
             let running = use.commands.sorted { $0.key < $1.key }
                 .map { "\($0.key) runs \($0.value)" }.joined(separator: ", ")
             for entry in entries where !protected.contains(entry.lastPathComponent) {
-                let size = DeveloperCacheScanner.size(of: entry)
-                guard size > 0 else { continue }
+                let size = ArtifactSizer.measure(at: entry)
+                guard !size.isEmpty else { continue }
                 found.append(DeveloperCache(
-                    name: "Version \(entry.lastPathComponent)", tool: tool, url: entry, sizeBytes: size,
-                    cost: .rebuilt,
-                    explanation: "Not used: \(running), and nothing links to \(entry.lastPathComponent).",
-                    versionInUse: use.versions.sorted().joined(separator: ", ")
+                    name: "Version \(entry.lastPathComponent)", tool: tool, url: entry, sizeBytes: size.allocatedBytes,
+                    cost: .restored,
+                    explanation: "Not used: \(running), and nothing links to \(entry.lastPathComponent). "
+                        + "Moved to the Trash to preserve local changes.",
+                    versionInUse: use.versions.sorted().joined(separator: ", "),
+                    sizeMeasurement: size, artifactClassification: .dependencyStore
                 ))
             }
         }

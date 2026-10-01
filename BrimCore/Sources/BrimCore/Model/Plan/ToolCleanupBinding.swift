@@ -5,7 +5,7 @@ public struct ToolCleanupRequest: Codable, Equatable, Sendable {
     public enum CleanupID: String, Codable, Sendable {
         case npm = "npm.cache", goModules = "go.modcache", pip = "pip.cache"
         case homebrew = "homebrew.cleanup", pnpm = "pnpm.store", uvCache = "uv.cache"
-        case simulators = "xcode.simulators"
+        case simulators = "xcode.simulators", swiftPM = "swiftpm.cache"
     }
 
     public let id: CleanupID

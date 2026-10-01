@@ -75,22 +75,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func inspect(identity: Identity) async throws -> Footprint {
         let projector = FootprintProjector(engine: engine)
         let resolved = await enriched(identity)
-        var footprint = try await projector.project(identity: resolved.identity, in: root)
-        
-        // T-5.3: Storage account (Deferred spike on snapshot accounting)
-        let accountant = StorageAccountant()
-        let (logical, reclaimable, pinned) = await accountant.account(for: footprint.items)
-        
-        footprint = Footprint(
-            identity: footprint.identity,
-            items: footprint.items,
-            logicalSizeBytes: logical,
-            reclaimableSizeBytes: reclaimable,
-            snapshotPinnedBytes: pinned,
-            completeness: footprint.completeness.merging(resolved.completeness)
-        )
-        
-        return footprint
+        let footprint = try await projector.project(identity: resolved.identity, in: root)
+        let accounting = await StorageAccountant().account(for: footprint.items)
+        return accounting.applying(to: footprint, additionalCompleteness: resolved.completeness)
     }
     
     public func plan(intent: PlanIntent) async throws -> Plan {
@@ -115,31 +102,17 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             : (identity: intent.subjectIdentity, completeness: ScanCompleteness.complete)
         let subject = resolved.identity
         if !explicitTargets.isEmpty {
-            // Bypass evidence engine, project exactly the requested targets.
-            // Several targets become one plan, so the user approves the whole
-            // selection once rather than once per item.
-            // A launchd job file is named as what it is, not as a file.
-            // The planner reads the mechanism to decide the steps, and a
-            // plist trashed without `launchctl bootout` first leaves the
-            // job loaded until the next login: removed on disk, still
-            // running, which is the worst of both.
-            let evidence = explicitTargets.map { url -> Evidence in
-                let isJob = LaunchdJobFile.isOne(url)
-                return Evidence(
-                    url: url,
-                    tier: .A,
-                    mechanism: isJob ? "LaunchdSource" : "DirectTarget",
-                    humanSentence: isJob
-                        ? "A launchd job file named for removal"
-                        : "Specific target requested by intent"
-                )
-            }
+            try Self.validateExclusions(in: intent)
+            let evidence = Self.explicitEvidence(for: explicitTargets)
             footprint = try await projector.project(identity: subject, in: root, explicitEvidence: evidence)
+            footprint = await Self.classifiedDeveloperTargets(footprint, in: root)
         } else {
             footprint = try await projector.project(identity: subject, in: root)
         }
 
-        let completeness = footprint.completeness.merging(resolved.completeness)
+        let package: (installation: HomebrewInstallation?, completeness: ScanCompleteness) = explicitTargets.isEmpty
+            ? await Self.homebrewInstallation(for: subject, in: root) : (nil, .complete)
+        let completeness = footprint.completeness.merging(resolved.completeness).merging(package.completeness)
         footprint = Footprint(
             identity: footprint.identity, items: footprint.items,
             logicalSizeBytes: footprint.logicalSizeBytes,
@@ -155,7 +128,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             identity: subject, in: root, completeness: completeness,
             evidence: footprint.items.map(\.evidence)
         )
-        return plan.attaching(report)
+        return plan.attaching(report).recording(package.installation)
     }
 
     private func enriched(_ identity: Identity) async -> (identity: Identity, completeness: ScanCompleteness) {
@@ -421,7 +394,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if permanent > 0 {
             return "Remove \(subject): \(items), \(permanent) of them permanent."
         }
-        return "Remove \(subject): \(items), all recoverable from the Trash."
+        if plan.steps.contains(where: { $0.kind == .trashPathPrivileged }) {
+            return "Remove \(subject): \(items), including items set aside by the helper without a restore action."
+        }
+        return "Remove \(subject): \(items). Trash items can be restored until the Trash is emptied."
     }
 
     private static let requestTimeToLive: TimeInterval = 300
@@ -526,6 +502,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         try validateToolCleanup(plan, rebuilt: revalidatedPlan)
         let searchIsCurrent = plan.capabilityReport == revalidatedPlan.capabilityReport
             && plan.scanCompleteness == revalidatedPlan.scanCompleteness
+            && plan.homebrewInstallation == revalidatedPlan.homebrewInstallation
+            && plan.survivingCopies == revalidatedPlan.survivingCopies
         guard searchIsCurrent else {
             throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
         }
@@ -568,6 +546,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
         
+        // Revalidation awaits other work, so another application of this plan
+        // may have completed while the actor was suspended.
+        guard !appliedPlanIds.contains(planId) else { throw ApplyError.planAlreadyApplied }
         appliedPlanIds.insert(planId)
         
         let journal = try await executor.execute(plan: plan)
@@ -577,7 +558,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let status: StepOutcome = resultStr == "ok" ? .success : .failed
             return Outcome(stepIndex: index, result: status, errorMessage: resultStr == "ok" ? nil : resultStr)
         }
-        let recovered = max(0, (journal.freeSpaceAfter ?? 0) - (journal.freeSpaceBefore ?? 0))
+        let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
         let ledgerEntry = LedgerEntry(
             planId: plan.planId,
             planHash: hash,
@@ -611,9 +592,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return VerificationResult(planId: planId, expectedBytes: 0, recoveredBytes: 0,
                                       success: completed, reason: completed ? nil : outcome, toolCleanup: cleanup)
         }
-        let before = journal?.freeSpaceBefore ?? 0
-        let after = journal?.freeSpaceAfter ?? 0
-        let recoveredBytes = max(0, after - before)
+        let recoveredBytes = Self.observedSpaceIncrease(
+            before: journal?.freeSpaceBefore, after: journal?.freeSpaceAfter
+        )
+        let freeSpaceMeasured = journal?.freeSpaceBefore != nil && journal?.freeSpaceAfter != nil
         
         // Re-observe targets using lstat to avoid traversing symlinks.
         // Only path-targeted steps: a bundle identifier is not a file, and
@@ -702,7 +684,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 plan: plan, remaining: pathsRemaining, recorded: recorded,
                 staleRegistrations: staleRegistrations.count, privacyResetFailed: privacyResetFailed,
                 survivingExtensions: survivingExtensions
-            )
+            ),
+            packageRecord: plan.homebrewInstallation.map(PackageRecordResult.observe),
+            freeSpaceMeasured: freeSpaceMeasured
         )
     }
 
@@ -1042,7 +1026,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func developerCaches() async -> [DeveloperCache] {
-        await DeveloperCacheScanner().scan()
+        await DeveloperCacheScanner(home: root.url(for: .userHomeDotFolders),
+                                    darwinCache: root.url(for: .darwinUserCache)).scan()
     }
 
     public func sampleEnergy() async -> EnergySampleResult {
@@ -1210,16 +1195,17 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// scan of the disk says it is gone, while Homebrew goes on offering
     /// to upgrade it.
     func orphanedCaskNames() async -> Set<String> {
-        let scanner = UpdateSourceScanner()
-        let casks = scanner.installedCasks()
-        guard !casks.isEmpty else { return [] }
-
-        let applications = await ApplicationInventory(root: root).installedApplications()
-        let claimed = Set(applications.compactMap {
-            UpdateSourceScanner.matchingCask(for: $0, among: casks)
+        let inventory = await Self.homebrewInventory(in: root)
+        guard inventory.completeness.isComplete else { return [] }
+        let installations = Dictionary(grouping: inventory.installations, by: \.token)
+        return Set(installations.compactMap { token, applications in
+            let allAbsent = applications.allSatisfy { installation in
+                var info = stat()
+                guard lstat(installation.applicationPath, &info) != 0 else { return false }
+                return errno == ENOENT || errno == ENOTDIR
+            }
+            return allAbsent ? token : nil
         })
-
-        return casks.subtracting(claimed)
     }
 
     /// What is different since the last time Brim looked.

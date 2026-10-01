@@ -85,6 +85,7 @@ public struct Planner: Sendable {
             return helperOnly && !HelperScope.covers(path) ? nil : path
         }
 
+        var plannedPaths = Set<String>()
         for item in evaluatedItems {
             let targetURL = item.footprintItem.evidence.url
             let targetPath = targetURL.path
@@ -102,6 +103,7 @@ public struct Planner: Sendable {
             
             switch item.selection {
             case .selected:
+                guard plannedPaths.insert(standardized).inserted else { continue }
                 // A receipt is forgotten below, which removes its files
                 // with it. Trashing the BOM as well offered a second row
                 // for one record, and one that belongs to root.
@@ -371,7 +373,8 @@ public struct Planner: Sendable {
             steps: steps,
             excludedItems: excludedItems,
             expectedTotalBytes: expectedTotalBytes,
-            scanCompleteness: evaluatedFootprint.completeness
+            scanCompleteness: evaluatedFootprint.completeness,
+            survivingCopies: evaluatedFootprint.survivingCopies
         )
     }
 }
