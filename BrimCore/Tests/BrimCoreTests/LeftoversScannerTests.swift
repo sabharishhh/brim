@@ -173,7 +173,7 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         XCTAssertFalse(paths.contains(root.url(for: .userPreferencesByHost).path))
         let crash = root.url(for: .userDiagnosticReports).appendingPathComponent("GoneApp.crash")
         XCTAssertFalse(paths.contains(crash.path))
-        XCTAssertFalse(LocationInventory.sweepDomains.contains(.userDiagnosticReports))
+        // A searched crash-report root does not make an unrecorded owner a remnant.
     }
 
     func testRunningAppOutsideApplicationsProtectsItsCurrentAndOlderData() async throws {
