@@ -24,6 +24,8 @@ public struct VerificationResult: Codable, Equatable, Sendable {
     /// what macOS kept. Nil in results written before the report existed.
     public let report: RemovalReport?
     public let toolCleanup: ToolCleanupResult?
+    public let packageRecord: PackageRecordResult?
+    public let freeSpaceMeasured: Bool?
 
     /// The paths that went, which is what a list needs to drop a row.
     public func removedPaths(from planned: some Sequence<String>) -> Set<String> {
@@ -39,7 +41,9 @@ public struct VerificationResult: Codable, Equatable, Sendable {
         remainingPaths: Set<String> = [],
         followUpActions: [RemovalFollowUp]? = nil,
         report: RemovalReport? = nil,
-        toolCleanup: ToolCleanupResult? = nil
+        toolCleanup: ToolCleanupResult? = nil,
+        packageRecord: PackageRecordResult? = nil,
+        freeSpaceMeasured: Bool? = nil
     ) {
         self.planId = planId
         self.expectedBytes = expectedBytes
@@ -50,5 +54,7 @@ public struct VerificationResult: Codable, Equatable, Sendable {
         self.followUpActions = followUpActions
         self.report = report
         self.toolCleanup = toolCleanup
+        self.packageRecord = packageRecord
+        self.freeSpaceMeasured = freeSpaceMeasured
     }
 }

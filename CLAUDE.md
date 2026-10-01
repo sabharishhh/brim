@@ -248,6 +248,12 @@ conversation. Split unrelated changes rather than staging everything.
 
 ## macOS facts learned the hard way
 
+- **Parent folder walks must stop explicitly at the filesystem root.**
+  Foundation file URLs can alternate between root and empty path forms,
+  so comparing only the current and parent URL did not terminate a walk.
+  Require a strictly shorter absolute parent path. Cover both root and
+  ordinary targets without markers; the missed case made a test run grow
+  until the machine ran out of application memory.
 - **TCC is judged on the responsible application, not the effective user.**
   `sudo` does not grant Full Disk Access. A root shell launched from a
   terminal without it is still a process without it.

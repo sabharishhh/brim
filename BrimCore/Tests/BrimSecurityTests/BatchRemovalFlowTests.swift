@@ -120,8 +120,7 @@ final class BatchRemovalFlowTests: XCTestCase {
             .appendingPathComponent("Users/\(NSUserName())/Library/Application Support")
             .appendingPathComponent("recoverable-settings")
         let cache = rootURL
-            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
-            .appendingPathComponent("gone-forever-cache")
+            .appendingPathComponent("Users/\(NSUserName())/Library/Developer/Xcode/DerivedData")
         try makeLeftover(at: settings, bytes: 512)
         try makeLeftover(at: cache, bytes: 512)
 
@@ -298,8 +297,7 @@ final class BatchRemovalFlowTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let target = rootURL
-            .appendingPathComponent("Users/\(NSUserName())/Library/Caches")
-            .appendingPathComponent("throwaway-cache")
+            .appendingPathComponent("Users/\(NSUserName())/Library/Developer/Xcode/DerivedData")
         try makeLeftover(at: target, bytes: 4096)
 
         let service = makeService(root: rootURL, support: tempDir)

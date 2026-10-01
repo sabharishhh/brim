@@ -27,16 +27,14 @@ public struct TierSVetoEngine: Sendable {
 
         let inventory = await otherApplications(besides: footprint.identity)
         let applications = inventory.identities
-        let completeness = footprint.completeness.merging(inventory.completeness)
-        let others = Dictionary(applications.compactMap { other -> (String, String)? in
-            other.bundleID.map { ($0.lowercased(), other.name) }
+        var completeness = footprint.completeness.merging(inventory.completeness)
+        let others = Dictionary(applications.flatMap { other in
+            Self.protectionIdentifiers(of: other).map { ($0, other.name) }
         }, uniquingKeysWith: { first, _ in first })
-        let survivingCopies = applications.filter {
-            guard let own = footprint.identity.bundleID, let other = $0.bundleID else { return false }
-            return own.lowercased() == other.lowercased()
-        }
+        let survivingCopies = Self.survivingCopies(of: footprint.identity, among: applications)
 
         for item in footprint.items {
+            var uncertainContainer = false
             // Unticked rows can be promoted by the planner. Veto them now too.
             if case .excluded = item.selection {
                 vettedItems.append(item)
@@ -44,6 +42,27 @@ public struct TierSVetoEngine: Sendable {
             }
             do {
                 let targetURL = item.footprintItem.evidence.url
+                if Self.isContainer(targetURL) {
+                    let ownership = ContainerOwnershipReader.read(at: targetURL)
+                    completeness = completeness.merging(ownership.completeness)
+                    if let owner = ownership.identifiers.compactMap({ identifier in
+                        applications.first { other in
+                            Self.protectionIdentifiers(of: other).contains {
+                                identifier.lowercased() == $0 || identifier.lowercased().hasPrefix($0 + ".")
+                            }
+                        }
+                    }).first {
+                        vettedItems.append(EvaluatedItem(
+                            footprintItem: item.footprintItem,
+                            selection: .excluded(
+                                reason: "Container metadata is claimed by \(owner.name), which is still installed."
+                            ),
+                            costOfError: item.costOfError
+                        ))
+                        continue
+                    }
+                    uncertainContainer = ownership.uncertainty != nil
+                }
                 if let copy = survivingCopies.first,
                    !Self.isInsideSelectedBundle(targetURL, identity: footprint.identity) {
                     let location = copy.bundlePath ?? "another installation"
@@ -54,23 +73,13 @@ public struct TierSVetoEngine: Sendable {
                     ))
                     continue
                 }
-                if Self.isGroupPath(targetURL) {
-                    if let other = groupClaims.owners[targetURL.lastPathComponent] {
-                        vettedItems.append(EvaluatedItem(
-                            footprintItem: item.footprintItem,
-                            selection: .excluded(reason: "Shared with \(other)."),
-                            costOfError: item.costOfError
-                        ))
-                        continue
-                    }
-                    if !groupClaims.complete {
-                        vettedItems.append(EvaluatedItem(
-                            footprintItem: item.footprintItem,
-                            selection: .excluded(reason: "Shared ownership could not be checked."),
-                            costOfError: item.costOfError
-                        ))
-                        continue
-                    }
+                if let reason = Self.groupVetoReason(for: targetURL, claims: groupClaims) {
+                    vettedItems.append(EvaluatedItem(
+                        footprintItem: item.footprintItem,
+                        selection: .excluded(reason: reason),
+                        costOfError: item.costOfError
+                    ))
+                    continue
                 }
 
                 if let owner = Self.namedFor(targetURL, among: others, besides: footprint.identity) {
@@ -87,8 +96,8 @@ public struct TierSVetoEngine: Sendable {
                 // identifier, and that is not a second owner.
                 if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
                    let sharedWith = await checkSharedClaims(
-                    for: targetURL, identity: footprint.identity, resolver: resolver
-                ) {
+                       for: targetURL, identity: footprint.identity, resolver: resolver
+                   ) {
                     vettedItems.append(EvaluatedItem(
                         footprintItem: item.footprintItem,
                         selection: .excluded(reason: "Shared file claimed by \(sharedWith.name)"),
@@ -97,7 +106,7 @@ public struct TierSVetoEngine: Sendable {
                     continue
                 }
             }
-            vettedItems.append(item)
+            vettedItems.append(uncertainContainer ? Self.leftUnticked(item) : item)
         }
 
         // A partial claimant search cannot support automatic selection either.
@@ -124,7 +133,9 @@ public struct TierSVetoEngine: Sendable {
     /// Canary's, and Canary is still installed.
     static func namedFor(_ url: URL, among others: [String: String], besides identity: Identity) -> String? {
         var name = url.lastPathComponent.lowercased()
-        if name.hasPrefix(".") { name.removeFirst() }
+        if name.hasPrefix(".") {
+            name.removeFirst()
+        }
         for suffix in [".plist", ".binarycookies", ".savedstate"] where name.hasSuffix(suffix) {
             name.removeLast(suffix.count)
         }
@@ -146,17 +157,48 @@ public struct TierSVetoEngine: Sendable {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             var found: [Identity] = []
             let inventory = InstalledBundleInventory.read(in: root)
+            var completeness = inventory.completeness
+            let budget = ScanBudget(total: 10)
             for bundle in inventory.bundles {
                 // Its own parts are not somebody else.
                 let path = bundle.resolvingSymlinksInPath().path
-                if let subject, path == subject || path.hasPrefix(subject + "/") { continue }
-                let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
-                guard let identifier = info?["CFBundleIdentifier"] as? String else { continue }
+                if let subject, path == subject || path.hasPrefix(subject + "/") {
+                    continue
+                }
+                guard !budget.hasRunOut else {
+                    completeness = completeness.merging(ScanCompleteness(timedOut: [bundle.path]))
+                    break
+                }
+                let claims = BundleSurfaceReader.protectionClaims(at: bundle, in: root)
+                if !claims.complete {
+                    completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+                }
+                guard let identifier = claims.surface.components.first?.bundleIdentifier else {
+                    completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+                    continue
+                }
+                let components = claims.surface.components.filter {
+                    !Self.isInsideSelectedBundle(URL(fileURLWithPath: $0.path), identity: identity)
+                }
+                let surface = IdentitySurface(bundlePath: claims.surface.bundlePath, components: components,
+                                              helperRequirements: claims.surface.helperRequirements,
+                                              homeFolders: claims.surface.homeFolders ?? [])
                 found.append(Identity(bundleID: identifier, name: bundle.deletingPathExtension().lastPathComponent,
-                                      bundlePath: path))
+                                      bundlePath: path, identitySurface: surface))
             }
-            return (found, inventory.completeness)
+            return (found, completeness)
         }.value
+    }
+
+    private static func survivingCopies(of identity: Identity, among applications: [Identity]) -> [Identity] {
+        guard let identifier = identity.bundleID?.lowercased() else { return [] }
+        return applications.flatMap { application -> [Identity] in
+            (application.identitySurface?.components ?? []).compactMap { component -> Identity? in
+                let identifiers = [component.bundleIdentifier, component.signingIdentifier].compactMap(\.self)
+                guard identifiers.contains(where: { $0.lowercased() == identifier }) else { return nil }
+                return Identity(bundleID: identity.bundleID, name: component.name, bundlePath: component.path)
+            }
+        }
     }
 
     private static func isInsideSelectedBundle(_ url: URL, identity: Identity) -> Bool {
@@ -170,8 +212,27 @@ public struct TierSVetoEngine: Sendable {
             || parent == selected || parent.hasPrefix(selected + "/")
     }
 
+    private static func groupVetoReason(
+        for url: URL, claims: (owners: [String: String], complete: Bool)
+    ) -> String? {
+        guard isGroupPath(url) else { return nil }
+        if let owner = claims.owners[url.lastPathComponent] {
+            return "Shared with \(owner)."
+        }
+        return claims.complete ? nil : "Shared ownership could not be checked."
+    }
+
     private static func isGroupPath(_ url: URL) -> Bool {
         url.path.contains("/Group Containers/") || url.path.contains("/Application Scripts/")
+    }
+
+    private static func isContainer(_ url: URL) -> Bool {
+        url.deletingLastPathComponent().lastPathComponent == "Containers"
+    }
+
+    private static func protectionIdentifiers(of identity: Identity) -> Set<String> {
+        Set(([identity.bundleID].compactMap(\.self) + (identity.identitySurface?.bundleIdentifiers ?? []))
+            .map { $0.lowercased() })
     }
 
     private func otherGroupClaims(besides identity: Identity) async -> (owners: [String: String], complete: Bool) {

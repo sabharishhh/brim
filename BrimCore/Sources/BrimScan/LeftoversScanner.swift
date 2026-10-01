@@ -61,7 +61,8 @@ public actor LeftoversScanner {
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
         self.removedApplications = Dictionary(
-            removedApplications.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: max)
+            removedApplications.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: max
+        )
         self.claimedPaths = Set(claimedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
         self.root = root
         resolver = IdentityResolver(root: root)
@@ -207,6 +208,11 @@ public actor LeftoversScanner {
         // Matching reads each identity's identifiers once per file, so they
         // are worked out once per domain rather than once per question.
         let activeSubjects = activeIdentities.map(LocationInventory.Subject.init)
+        // Library helpers can protect a shared container even though they
+        // are deliberately excluded from an app's removal identifiers.
+        let containerClaimants = Set(activeIdentities.flatMap {
+            [$0.bundleID].compactMap(\.self) + ($0.identitySurface?.bundleIdentifiers ?? [])
+        }.map { $0.lowercased() })
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -226,6 +232,17 @@ public actor LeftoversScanner {
                     continue
                 }
                 let name = item.lastPathComponent
+                let containerOwnership = domain == .userContainers || domain == .systemContainers
+                    ? ContainerOwnershipReader.read(at: item) : nil
+                // Every recorded claimant protects a container, even when
+                // its records disagree about which app is the owner.
+                if let ownership = containerOwnership, ownership.identifiers.contains(where: { owner in
+                    Self.isAppleOwned(owner) || containerClaimants.contains {
+                        owner.lowercased() == $0 || owner.lowercased().hasPrefix($0 + ".")
+                    }
+                }) {
+                    continue
+                }
                 // The rest of the home folder is the person's own.
                 if domain == .userHomeDotFolders, !name.hasPrefix(".") {
                     continue
@@ -286,7 +303,8 @@ public actor LeftoversScanner {
                 // A bundle is judged by the identifier it declares, never by
                 // its file name. `Flash Player.prefPane` has one dot, so
                 // every third-party plug-in in `/Library` was read as macOS's.
-                if vendor == nil, signed?.identifier == nil, Self.isSystemOwnedByName(name, in: domain) {
+                if vendor == nil, signed?.identifier == nil, containerOwnership?.identifier == nil,
+                   Self.isSystemOwnedByName(name, in: domain) {
                     switch vendors.claim(name) {
                     case .application?:
                         break
@@ -319,7 +337,7 @@ public actor LeftoversScanner {
                     break
                 }
 
-                let containerOwner = Self.containerOwnerIdentifier(at: item, in: domain)
+                let containerOwner = containerOwnership?.identifier
 
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
@@ -351,10 +369,16 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                guard let owner = resolvedOwner(
-                    for: item, name: name, qualified: qualified,
-                    containerOwner: containerOwner, declared: signed?.identifier, lookup: ownerLookup
-                ) else { continue }
+                let owner: ResolvedOwner
+                if let uncertainty = containerOwnership?.uncertainty {
+                    owner = ResolvedOwner(category: .unclaimed, evidence: uncertainty, ownerID: "", cask: nil)
+                } else {
+                    guard let resolved = resolvedOwner(
+                        for: item, name: name, qualified: qualified,
+                        containerOwner: containerOwner, declared: signed?.identifier, lookup: ownerLookup
+                    ) else { continue }
+                    owner = resolved
+                }
 
                 // Inside a developer's folder in a system location, anything no
                 // gone product is named in may be shared, an updater or a
@@ -543,7 +567,8 @@ public actor LeftoversScanner {
         .systemPreferences, .systemContainers, .systemDiagnosticReports,
         .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
         .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
-        .systemPreferencePanes, .systemExtensionsFolder, .startupItems
+        .systemPreferencePanes, .systemExtensionsFolder, .startupItems,
+        .systemApplicationScripts, .systemDictionaries
     ]
 
     static func isSystemOwnedByName(_ name: String, in domain: FileSystemRoot.Domain) -> Bool {
@@ -595,12 +620,7 @@ public actor LeftoversScanner {
     /// is not a bundle. Read only for bundles, so a folder of caches costs
     /// one failed file lookup.
     static func bundleSignature(of url: URL) -> (identifier: String?, team: String?)? {
-        let info = url.appendingPathComponent("Contents/Info.plist")
-        guard let data = try? Data(contentsOf: info),
-              let plist = try? PropertyListSerialization.propertyList(
-                  from: data, format: nil
-              ) as? [String: Any]
-        else { return nil }
+        guard let plist = LocationInventorySource.bundleInfo(at: url).values else { return nil }
         // The team only from a signature that holds up, read the one way
         // this module reads signatures. A broken signature proves nothing
         // about who made the bundle.
@@ -634,19 +654,8 @@ public actor LeftoversScanner {
     static func containerOwnerIdentifier(
         at url: URL, in domain: FileSystemRoot.Domain
     ) -> String? {
-        guard domain == .userContainers else { return nil }
-        let key = "com.apple.containermanager.identifier"
-        let length = getxattr(url.path, key, nil, 0, 0, 0)
-        guard length > 0, length < 4096 else { return nil }
-        var bytes = [UInt8](repeating: 0, count: length)
-        let read = bytes.withUnsafeMutableBytes {
-            getxattr(url.path, key, $0.baseAddress, length, 0, 0)
-        }
-        guard read > 0,
-              let value = String(bytes: bytes.prefix(read), encoding: .utf8),
-              IdentitySurface.isPathComponent(value)
-        else { return nil }
-        return value
+        guard domain == .userContainers || domain == .systemContainers else { return nil }
+        return ContainerOwnershipReader.read(at: url).identifier
     }
 
     private static func systemComponentStem(_ name: String) -> String {
@@ -920,7 +929,7 @@ public actor LeftoversScanner {
         }
 
         switch domain {
-        case .userGroupContainers, .userApplicationScripts:
+        case .userGroupContainers, .userApplicationScripts, .systemApplicationScripts:
             return Self.isActiveGroup(name, groups: activeGroupContainers, teams: activeTeamIDs,
                                       bundleIDs: activeBundleIDs, names: activeNames)
 
@@ -980,10 +989,16 @@ public actor LeftoversScanner {
         var read = 0
         for case let child as URL in walk {
             read += 1
-            if read > 400 { break }
-            if walk.level > 2 { walk.skipDescendants(); continue }
+            if read > 400 {
+                break
+            }
+            if walk.level > 2 {
+                walk.skipDescendants(); continue
+            }
             if let date = (try? child.resourceValues(forKeys: key))?.contentModificationDate,
-               date > (newest ?? .distantPast) { newest = date }
+               date > (newest ?? .distantPast) {
+                newest = date
+            }
         }
         return newest
     }

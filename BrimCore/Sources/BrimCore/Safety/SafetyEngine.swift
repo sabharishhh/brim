@@ -76,7 +76,17 @@ public struct SafetyEngine: Sendable {
             // or outside the known domain map here if SafetyChecker didn't catch it.
             
             // 2. Cost-of-error annotation based on path
-            let cost = evaluateCostOfError(url: url)
+            let cost = item.artifactClassification?.costOfError ?? evaluateCostOfError(url: url)
+            if item.artifactClassification == .toolManaged {
+                return EvaluatedItem(footprintItem: item,
+                                     selection: .excluded(reason: "Managed by its tool. Use its cleanup action."),
+                                     costOfError: .medium)
+            }
+            if item.artifactClassification == .stateful {
+                return EvaluatedItem(footprintItem: item,
+                                     selection: .excluded(reason: "Stateful artifact. Manage it with its owning tool."),
+                                     costOfError: .high)
+            }
             
             // 3. Tier defaults. S is not a confidence level: it says
             // something else on this Mac claims this item, so it leaves
@@ -111,11 +121,8 @@ public struct SafetyEngine: Sendable {
     private func evaluateCostOfError(url: URL) -> CostOfError {
         let path = url.path
         
-        // Caches and temp files are low cost if accidentally deleted
-        if path.contains("/Caches/") || path.contains("/tmp/") {
-            return .low
-        }
-        
+        // A path named Caches or tmp can contain settings and local changes.
+        // Permanent removal requires a positive artifact classification.
         // Documents or iCloud drives are very high cost
         if path.contains("/Documents/") || path.contains("/Mobile Documents/") {
             return .high

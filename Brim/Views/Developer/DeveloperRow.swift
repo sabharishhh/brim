@@ -9,15 +9,42 @@ extension DeveloperCache {
         "\(tool) \(name.lowercased())"
     }
 
+    var qualifiedSize: String {
+        if cacheSizeIsPending {
+            return sizeDescription
+        }
+        return sizeDescription + " estimated"
+    }
+
+    private var cacheSizeIsPending: Bool {
+        sizeMeasurement?.state == .pending || sizeMeasurement?.state == .unknown
+    }
+
     /// What clearing it costs, in a few words.
     var consequence: String {
-        if let lastBuilt { return Self.built(lastBuilt) }
+        if cost == .configured {
+            return "Holds your setup"
+        }
+        if cost == .restored, isProject {
+            return "To the Trash, restore dependencies before building"
+        }
+        if cost == .refetched, manualCleanupReason != nil {
+            return "Review with \(tool)"
+        }
+        if let lastBuilt {
+            return Self.built(lastBuilt)
+        }
         // Two copies of one update are told apart by their file.
-        if isUpdateDownload { return url.lastPathComponent }
-        if let versionInUse { return "Not used · runs \(versionInUse)" }
+        if isUpdateDownload {
+            return url.lastPathComponent
+        }
+        if let versionInUse {
+            return "Not used · runs \(versionInUse)"
+        }
         return switch cost {
         case .rebuilt: "Costs one slow build"
         case .refetched: "Downloaded again when needed"
+        case .restored: "To the Trash, restore dependencies before building"
         case .configured: "Holds your setup"
         }
     }
@@ -26,11 +53,17 @@ extension DeveloperCache {
     /// on it is the whole question for a project's build output.
     static func built(_ date: Date, now: Date = Date()) -> String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "Built today" }
-        if calendar.isDateInYesterday(date) { return "Built yesterday" }
+        if calendar.isDateInToday(date) {
+            return "Built today"
+        }
+        if calendar.isDateInYesterday(date) {
+            return "Built yesterday"
+        }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
                                            to: calendar.startOfDay(for: now)).day ?? 0
-        if days < 60 { return "Built \(days) days ago" }
+        if days < 60 {
+            return "Built \(days) days ago"
+        }
         return "Built \(days / 30) months ago"
     }
 
@@ -50,6 +83,8 @@ extension DeveloperCache {
                 GroupRule(id: "versions", title: "Old versions", matches: \.isOldVersion,
                           order: { $0.sizeBytes > $1.sizeBytes }),
                 GroupRule(id: "rebuilt", title: "Rebuilds by itself", matches: { $0.cost == .rebuilt }, order: order),
+                GroupRule(id: "restored", title: "Restore before building",
+                          matches: { $0.cost == .restored }, order: order),
                 GroupRule(id: "tool", title: "Managed by its tool", matches: { $0.cost == .refetched }, order: order)
             ],
             otherwise: GroupRule(id: "yours", title: "Left to you", matches: { _ in true }, order: order)
@@ -68,7 +103,9 @@ enum ToolIcon {
     private static var cache: [String: IconSource] = [:]
 
     static func source(_ item: DeveloperCache) -> IconSource {
-        if let app = item.app { return .bundle(app) }
+        if let app = item.app {
+            return .bundle(app)
+        }
         return source(item.tool)
     }
 
@@ -97,10 +134,14 @@ struct DeveloperRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if cache.cost.isBrimRemovable {
-                Toggle("Select \(cache.title)", isOn: Binding(get: { isPicked }, set: { wanted in if wanted != isPicked { pick() } }))
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .help(isPicked ? "Remove from Tray" : "Add to Tray")
+                Toggle("Select \(cache.title)", isOn: Binding(get: { isPicked }, set: { wanted in
+                    if wanted != isPicked {
+                        pick()
+                    }
+                }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .help(isPicked ? "Remove from Tray" : "Add to Tray")
             }
             BrimIcon(
                 source: ToolIcon.source(cache),
@@ -120,7 +161,7 @@ struct DeveloperRow: View {
             .lineLimit(1)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(isInspected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityLabel("\(cache.title), \(cache.consequence), \(ByteText.short(cache.sizeBytes))")
+            .accessibilityLabel("\(cache.title), \(cache.consequence), \(cache.sizeDescription)")
             .accessibilityAction { inspect() }
             Spacer(minLength: 8)
             HoverActions {
@@ -128,7 +169,7 @@ struct DeveloperRow: View {
                     NSWorkspace.shared.activateFileViewerSelecting([cache.url])
                 }
             }
-            Text(ByteText.short(cache.sizeBytes))
+            Text(cache.sizeDescription)
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
@@ -148,6 +189,7 @@ struct DeveloperInspector: View {
     let pick: () -> Void
     /// Plans the tool's own command, for the review.
     let cleanUp: () -> Void
+    var canCleanUp = true
 
     @SwiftUI.Environment(ShellState.self) private var shell
 
@@ -159,7 +201,7 @@ struct DeveloperInspector: View {
                     Text(cache.title)
                         .font(.brimPageTitle)
                         .foregroundStyle(Palette.ink)
-                    Text(ByteText.short(cache.sizeBytes))
+                    Text(cache.qualifiedSize)
                         .font(.brimFacts)
                         .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
@@ -171,6 +213,11 @@ struct DeveloperInspector: View {
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let gap = cache.sizeMeasurement?.completeness.explanation {
+                    Label(gap, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(Palette.caution)
+                }
                 actions
                 location
             }
@@ -183,6 +230,7 @@ struct DeveloperInspector: View {
         switch cache.cost {
         case .rebuilt: "arrow.triangle.2.circlepath"
         case .refetched: "icloud.and.arrow.down"
+        case .restored: "arrow.uturn.backward"
         case .configured: "hand.raised"
         }
     }
@@ -190,14 +238,28 @@ struct DeveloperInspector: View {
     @ViewBuilder
     private var actions: some View {
         switch cache.cost {
-        case .rebuilt:
+        case .rebuilt, .restored:
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
         case .refetched:
             // The exact command, shown before anything is approved:
             // delegating is not a silent handoff (T-5.7).
-            if cache.cleanupID != nil, let command = cache.cleanupCommand {
+            if cache.cleanupID == "homebrew.cleanup" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Completed downloads can be moved to the Trash. Files still downloading stay.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkSecondary)
+                    Button("Clean Up Downloads", action: cleanUp)
+                        .disabled(!canCleanUp)
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+                }
+            } else if cache.cleanupID == "uv.cache" {
+                Text("Automatic cleanup is unavailable because uv can remove environments or break linked packages. Manage this cache in uv after reviewing the environments that use it.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSecondary)
+            } else if let command = cache.cleanupCommand {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(command)
                         .font(.system(.caption, design: .monospaced))
@@ -210,12 +272,17 @@ struct DeveloperInspector: View {
                         Text(reason)
                             .font(.caption)
                             .foregroundStyle(Palette.inkSecondary)
-                    } else {
+                    } else if cache.cleanupID != nil {
                         Button("Clean Up with \(cache.tool)", action: cleanUp)
+                            .disabled(!canCleanUp)
                             .buttonStyle(.borderedProminent)
                             .buttonBorderShape(.capsule)
                     }
                 }
+            } else if let reason = cache.manualCleanupReason {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSecondary)
             }
         case .configured:
             EmptyView()

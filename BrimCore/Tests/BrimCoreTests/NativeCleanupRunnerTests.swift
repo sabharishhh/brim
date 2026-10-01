@@ -5,6 +5,62 @@ import Testing
 
 /// Controlled subprocesses only. No developer cache or catalogue cleanup runs.
 struct NativeCleanupRunnerTests {
+    @Test func leaderExitDoesNotLeaveAnOwnedChildWorking() async throws {
+        let unrelated = Process()
+        unrelated.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        unrelated.arguments = ["20"]
+        try unrelated.run()
+        defer { unrelated.terminate(); unrelated.waitUntilExit() }
+        let started = Mutex<pid_t?>(nil)
+        let result = try await NativeCommandRunner.run(executable: "/bin/sh", arguments: [
+            "-c", "/bin/sleep 20 & exit 0"
+        ], environment: ToolCleanup.environment(), timeout: 0.1,
+        onSpawn: { pid in started.withLock { $0 = pid } })
+        #expect(result.termination == .timedOut)
+        #expect(unrelated.isRunning)
+        let pid = try #require(started.withLock { $0 })
+        await expectGroupGone(pid)
+    }
+
+    @Test func successfulLeaderWaitsForItsShortLivedChild() async throws {
+        let clock = ContinuousClock()
+        let began = clock.now
+        let result = try await NativeCommandRunner.run(executable: "/bin/sh", arguments: [
+            "-c", "/bin/sleep 0.2 & exit 0"
+        ], environment: ToolCleanup.environment(), timeout: 2)
+        #expect(result.termination == .exited(0))
+        #expect(clock.now - began >= .milliseconds(150))
+    }
+
+    @Test func cancellationStillStopsChildrenAfterTheirLeaderExits() async throws {
+        let started = Mutex<pid_t?>(nil)
+        let task = Task {
+            try await NativeCommandRunner.run(executable: "/bin/sh", arguments: [
+                "-c", "/bin/sleep 20 & exit 0"
+            ], environment: ToolCleanup.environment(), timeout: 5,
+            onSpawn: { pid in started.withLock { $0 = pid } })
+        }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(2))
+        var leaderExited = false
+        while clock.now < deadline {
+            if let pid = started.withLock({ $0 }) {
+                var information = siginfo_t()
+                _ = waitid(P_PID, id_t(pid), &information, WEXITED | WNOHANG | WNOWAIT)
+                if information.si_pid == pid {
+                    leaderExited = true; break
+                }
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(leaderExited)
+        task.cancel()
+        let result = try await task.value
+        #expect(result.termination == .cancelled)
+        let pid = try #require(started.withLock { $0 })
+        await expectGroupGone(pid)
+    }
+
     @Test func outputBeyondPipeCapacityCompletes() async throws {
         let script = #"BEGIN { for (i = 0; i < 20000; i++) { print "brim runner stdout";"#
             + #" print "brim runner stderr" > "/dev/stderr" } }"#

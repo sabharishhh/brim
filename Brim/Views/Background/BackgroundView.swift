@@ -195,7 +195,7 @@ struct BackgroundView: View {
                 onClose: { proven in
                     reviewRequest = nil
                     if let proven {
-                        offerPutBack(proven)
+                        offerPutBack(proven.planId)
                     }
                 },
                 onUnverified: { Task { await model.load(service: service) } }
@@ -284,7 +284,8 @@ extension BackgroundView {
                 Notice(symbol: "key.horizontal", title: title, detail: "Replaced with this version. Starts next time.")
             default:
                 Notice(
-                    symbol: "key.horizontal", title: title, detail: "Sets job files aside so they can be restored",
+                    symbol: "key.horizontal", title: title,
+                    detail: "Sets job files aside. Brim has no restore action for them.",
                     actionTitle: "Set Up", action: helper.install
                 )
             }
@@ -321,21 +322,29 @@ extension BackgroundView {
     private func offerPutBack(_ planId: UUID) {
         let count = removedInReview
         guard count > 0 else { return }
-        shell.show(ToastMessage(
-            symbol: "checkmark.circle.fill",
-            text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs",
-            actionTitle: "Put Back",
-            action: {
-                Task {
-                    do {
-                        try await service.undo(planId: planId)
-                        await model.load(service: service)
-                    } catch {
-                        shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: "Could not put it back"))
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            await model.load(service: service)
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
+                        }
                     }
                 }
             }
-        ))
+            shell.show(toast)
+        }
     }
 }
 

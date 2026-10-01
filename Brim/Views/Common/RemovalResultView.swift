@@ -46,6 +46,20 @@ struct RemovalResultView: View {
             if result.toolCleanup == nil, let report = result.report {
                 checked(report)
             }
+            if let record = result.packageRecord {
+                FactSection(title: "Package record") {
+                    FactRow(label: record.installation.token, detail: record.detail)
+                }
+            }
+            if let shared = result.report?.sharedIdentityProtection {
+                FactSection(title: "Shared identity") {
+                    FactRow(label: shared.identifier,
+                            detail: "Privacy permissions were not reset for this shared identifier.")
+                    FactDivider()
+                    FactRow(label: "Reviewed protecting installations",
+                            detail: shared.installations.map { $0.bundlePath ?? $0.name }.joined(separator: ", "))
+                }
+            }
             stillHere
             if let actions = result.followUpActions, !actions.isEmpty {
                 FactSection(title: "One more step") {
@@ -67,77 +81,13 @@ struct RemovalResultView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Status
-
-    private var status: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.14), in: .circle)
-                .symbolEffect(.bounce, value: result.success)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headline)
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(detail)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(headline). \(detail)")
-    }
-
-    private var untickedCount: Int { result.report?.leftUnticked.count ?? 0 }
-
-    private var searchGap: ScanCompleteness? {
-        result.report?.scanCompleteness ?? plan?.scanCompleteness
-    }
-
-    private var headline: String {
-        if let cleanup = result.toolCleanup {
-            return cleanup.headline
-        }
-        guard result.success else { return "Some of it remains" }
-        if result.followUpActions?.isEmpty == false { return "One more step" }
-        // Everything ticked went. What was left unticked is still here, and
-        // "Nothing left" over it was read as everything.
-        return untickedCount > 0 || searchGap?.isComplete == false ? "Removed" : "Nothing left"
-    }
-
-    private var detail: String {
-        if let cleanup = result.toolCleanup {
-            return cleanup.detail
-        }
-        guard result.success else { return result.reason ?? "Some of it is still on disk" }
-        if searchGap?.isComplete == false {
-            return "Selected items removed. The search was incomplete."
-        }
-        if untickedCount > 0 {
-            return untickedCount == 1 ? "1 item you left unticked stays" : "\(untickedCount) items you left unticked stay"
-        }
-        return "Every place checked again"
-    }
-
-    private var symbol: String {
-        result.success ? "checkmark" : "exclamationmark"
-    }
-
-    private var tint: Color {
-        result.success ? .accentColor : Palette.caution
-    }
-
     // MARK: - Removed
 
     private var gone: [Step] {
         groups.flatMap(\.steps).filter { !result.remainingPaths.contains($0.target) }
     }
 
-    private func removed(_ plan: Plan) -> some View {
+    private func removed(_: Plan) -> some View {
         let steps = gone
         let setAside = steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
         let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
@@ -149,7 +99,7 @@ struct RemovalResultView: View {
         return VStack(alignment: .leading, spacing: 20) {
             FactSection(
                 title: "Removed",
-                footer: trashed > 0 ? "Space in the Trash comes back when it is emptied." : nil
+                footer: removalFooter(steps)
             ) {
                 FactRow(label: "Items", value: steps.count.formatted())
                 if trashed > 0 {
@@ -161,20 +111,39 @@ struct RemovalResultView: View {
                     FactRow(label: "Set aside", value: ByteText.short(setAside))
                 }
                 FactDivider()
-                FactRow(label: "Freed now", value: result.recoveredBytes > 0 ? ByteText.short(result.recoveredBytes) : "None yet")
+                FactRow(label: "Free space increased", value: measuredSpaceIncrease)
             }
             if kinds.count > 1 {
                 FactSection(title: "By kind") {
                     ForEach(Array(kinds.enumerated()), id: \.offset) { index, kind in
-                        if index > 0 { FactDivider() }
+                        if index > 0 {
+                            FactDivider()
+                        }
                         FactRow(
                             label: kind.0,
-                            value: "\(kind.1.count.formatted()) · \(ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes }))"
+                            value: "\(kind.1.count.formatted()) · "
+                                + ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes })
                         )
                     }
                 }
             }
         }
+    }
+
+    private var measuredSpaceIncrease: String {
+        guard result.freeSpaceMeasured == true else { return "Unavailable" }
+        return result.recoveredBytes > 0 ? ByteText.short(result.recoveredBytes) : "No increase measured"
+    }
+
+    private func removalFooter(_ steps: [Step]) -> String {
+        var facts = ["File sizes are estimates. Other activity on this Mac can change free space."]
+        if steps.contains(where: { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }) {
+            facts.append("Items in the Trash still occupy space until it is emptied.")
+        }
+        if steps.contains(where: { $0.kind == .trashPathPrivileged }) {
+            facts.append("Items set aside by the helper have no restore action in Brim.")
+        }
+        return facts.joined(separator: " ")
     }
 
     // MARK: - Checked
@@ -211,21 +180,37 @@ struct RemovalResultView: View {
     private var stillHere: some View {
         let report = result.report
         let kept = report?.keptByMacOS ?? []
+        let protected = report?.protectedItems ?? []
         let unticked = report?.leftUnticked ?? []
         let other = report?.stillThere ?? 0
-        let remaining = result.remainingPaths.sorted() + unticked
-        if !kept.isEmpty || !unticked.isEmpty || other > 0 {
-            FactSection(title: "Still here") {
+        let protectedPaths = protected.map(\.target).filter { $0.hasPrefix("/") }
+        let remaining = Array(Set(result.remainingPaths.sorted() + unticked + protectedPaths)).sorted()
+        if !kept.isEmpty || !protected.isEmpty || !unticked.isEmpty || other > 0 {
+            let title = protected.contains(where: { $0.presence == .unknown }) ? "Kept or not checked" : "Still here"
+            FactSection(title: title) {
                 ForEach(Array(kept.enumerated()), id: \.offset) { index, item in
-                    if index > 0 { FactDivider() }
+                    if index > 0 {
+                        FactDivider()
+                    }
                     FactRow(label: item.what, detail: item.why)
                 }
+                ForEach(Array(protected.enumerated()), id: \.offset) { index, item in
+                    if !kept.isEmpty || index > 0 {
+                        FactDivider()
+                    }
+                    let gap = item.presence == .unknown ? " Presence could not be checked." : ""
+                    FactRow(label: (item.target as NSString).lastPathComponent, detail: item.reason + gap)
+                }
                 if other > 0 {
-                    if !kept.isEmpty { FactDivider() }
+                    if !kept.isEmpty || !protected.isEmpty {
+                        FactDivider()
+                    }
                     FactRow(label: "Came back or failed", value: other.formatted())
                 }
                 if !unticked.isEmpty {
-                    if !kept.isEmpty || other > 0 { FactDivider() }
+                    if !kept.isEmpty || !protected.isEmpty || other > 0 {
+                        FactDivider()
+                    }
                     FactRow(label: "Left unticked", value: unticked.count.formatted(),
                             detail: unticked.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))
                 }
@@ -241,6 +226,102 @@ struct RemovalResultView: View {
                 .padding(.leading, 4)
             }
         }
+    }
+}
+
+extension RemovalResultView {
+    // MARK: - Status
+
+    private var status: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 44)
+                .background(tint.opacity(0.14), in: .circle)
+                .symbolEffect(.bounce, value: result.success)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headline)
+                    .font(.brimPageTitle)
+                    .foregroundStyle(Palette.ink)
+                Text(detail)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("\(headline). \(detail)")
+    }
+
+    private var untickedCount: Int {
+        result.report?.leftUnticked.count ?? 0
+    }
+
+    private var searchGap: ScanCompleteness? {
+        result.report?.scanCompleteness ?? plan?.scanCompleteness
+    }
+
+    private var headline: String {
+        if let cleanup = result.toolCleanup {
+            return cleanup.headline
+        }
+        guard result.success else { return "Some of it remains" }
+        if result.followUpActions?.isEmpty == false {
+            return "One more step"
+        }
+        if let record = result.packageRecord, record.state != .absent {
+            return "Files removed"
+        }
+        if plan?.intent.explicitTargets.isEmpty == false {
+            return "Selected items removed"
+        }
+        let kept = result.report?.keptByMacOS.isEmpty == false || result.report?.protectedItems.isEmpty == false
+        if kept || result.report?.sharedIdentityProtection != nil {
+            return "Removed"
+        }
+        // Everything ticked went. What was left unticked is still here, and
+        // "Nothing left" over it was read as everything.
+        return untickedCount > 0 || searchGap?.isComplete == false ? "Removed" : "Nothing left"
+    }
+
+    private var detail: String {
+        if let cleanup = result.toolCleanup {
+            return cleanup.detail
+        }
+        guard result.success else { return result.reason ?? "Some of it is still on disk" }
+        if searchGap?.isComplete == false {
+            return "Selected items removed. The search was incomplete."
+        }
+        if untickedCount > 0 {
+            return untickedCount == 1 ? "1 item you left unticked stays"
+                : "\(untickedCount) items you left unticked stay"
+        }
+        if let record = result.packageRecord, record.state != .absent {
+            return record.detail
+        }
+        if result.report?.protectedItems.contains(where: { $0.presence == .unknown }) == true {
+            return "Selected items removed. Some protected items could not be checked."
+        }
+        if result.report?.keptByMacOS.isEmpty == false || result.report?.protectedItems.isEmpty == false {
+            return "Selected items removed. Protected or shared items remain."
+        }
+        if plan?.intent.explicitTargets.isEmpty == false {
+            return "Every selected path checked again"
+        }
+        if result.report?.sharedIdentityProtection != nil {
+            return "Selected items removed. Identifier-wide privacy permissions were not reset."
+        }
+        return "Every place checked again"
+    }
+
+    private var symbol: String {
+        result.success ? "checkmark" : "exclamationmark"
+    }
+
+    private var tint: Color {
+        result.success ? .accentColor : Palette.caution
     }
 }
 
