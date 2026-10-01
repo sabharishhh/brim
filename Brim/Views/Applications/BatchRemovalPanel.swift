@@ -159,6 +159,9 @@ private struct BatchEntryRow: View {
         case .executing: return "Removing"
         case let .verified(result):
             guard result.success else { return "Some of it remains" }
+            if (result.report?.scanCompleteness ?? removal.plan?.scanCompleteness)?.isComplete == false {
+                return "Removed, search incomplete"
+            }
             let unticked = result.report?.leftUnticked.count ?? 0
             return unticked == 0 ? "Nothing left" : "Removed, \(unticked) unticked stay"
         case .appliedButUnverified: return "Removed, not checked"

@@ -37,10 +37,14 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     /// which is all the sentence was checking, and the person read it as
     /// everything.
     public let leftUnticked: [String]
+    /// Gaps in discovery remain gaps after every selected item is gone.
+    /// Nil for complete searches and reports saved before this field existed.
+    public let scanCompleteness: ScanCompleteness?
 
     public init(
         checkedGone: Int, registrationsChecked: [DeclaredCapability], declaredNone: [DeclaredCapability],
-        keptByMacOS: [Kept], stillThere: Int, leftUnticked: [String] = []
+        keptByMacOS: [Kept], stillThere: Int, leftUnticked: [String] = [],
+        scanCompleteness: ScanCompleteness? = nil
     ) {
         self.checkedGone = checkedGone
         self.registrationsChecked = registrationsChecked
@@ -48,10 +52,11 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         self.keptByMacOS = keptByMacOS
         self.stillThere = stillThere
         self.leftUnticked = leftUnticked
+        self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
     }
 
     private enum CodingKeys: String, CodingKey {
-        case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked
+        case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked, scanCompleteness
     }
 
     /// A report recorded before `leftUnticked` existed still reads.
@@ -63,6 +68,7 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         keptByMacOS = try c.decode([Kept].self, forKey: .keptByMacOS)
         stillThere = try c.decode(Int.self, forKey: .stillThere)
         leftUnticked = try c.decodeIfPresent([String].self, forKey: .leftUnticked) ?? []
+        scanCompleteness = try c.decodeIfPresent(ScanCompleteness.self, forKey: .scanCompleteness)
     }
 
     /// Built from the plan, what is still on the disk, and what the journal
@@ -151,7 +157,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             stillThere: stillThere,
             leftUnticked: plan.excludedItems
                 .filter { $0.canBeTickedByHand == true && !planned.contains($0.target) && exists($0.target) }
-                .map(\.target).sorted()
+                .map(\.target).sorted(),
+            scanCompleteness: plan.scanCompleteness
         )
     }
 }
