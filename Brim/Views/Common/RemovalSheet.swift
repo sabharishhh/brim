@@ -178,6 +178,7 @@ struct RemovalSheet: View {
                         }
                     }
                     StayingSection(items: model.staying)
+                    ListBottomSpacing()
                 }
                 .listStyle(.inset)
             }

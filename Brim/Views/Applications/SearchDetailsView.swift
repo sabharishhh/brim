@@ -44,6 +44,7 @@ struct SearchDetailsView: View {
                         LabeledContent("Signature", value: limitation)
                     }
                 }
+                ListBottomSpacing()
             }
             .listStyle(.inset)
         }
