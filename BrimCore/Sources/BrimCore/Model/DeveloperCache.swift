@@ -45,6 +45,7 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
     /// identifier so the view can show it without linking the table that
     /// knows how to run it.
     public let cleanupCommand: String?
+    public let manualCleanupReason: String?
     /// For a project's build output, when it was last built. Nil for a
     /// tool's shared cache.
     public let lastBuilt: Date?
@@ -71,7 +72,7 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         name: String, tool: String, url: URL, sizeBytes: Int64,
         cost: Cost, explanation: String,
         cleanupID: String? = nil, cleanupCommand: String? = nil, lastBuilt: Date? = nil,
-        app: URL? = nil, versionInUse: String? = nil
+        app: URL? = nil, versionInUse: String? = nil, manualCleanupReason: String? = nil
     ) {
         self.name = name
         self.tool = tool
@@ -81,6 +82,7 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         self.explanation = explanation
         self.cleanupID = cleanupID
         self.cleanupCommand = cleanupCommand
+        self.manualCleanupReason = manualCleanupReason
         self.lastBuilt = lastBuilt
         self.app = app
         self.versionInUse = versionInUse

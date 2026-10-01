@@ -181,6 +181,7 @@ public struct ExcludedItem: Codable, Equatable, Sendable {
 
 public enum IntentType: String, Codable, Equatable, Sendable {
     case uninstall
+    case toolCleanup
 }
 
 public struct PlanIntent: Codable, Equatable, Sendable {
@@ -188,6 +189,7 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let subjectIdentity: Identity
     public let requesterKind: String
     public let requesterIdentity: String
+    public let toolCleanup: ToolCleanupRequest?
     public let specificTarget: URL?
     /// Several explicitly chosen targets planned as one unit, so a multi-item
     /// selection produces a single plan the user approves once. Absent in
@@ -222,8 +224,9 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         return []
     }
 
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, tickedByHand: [String]? = nil) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, tickedByHand: [String]? = nil, toolCleanup: ToolCleanupRequest? = nil) {
         self.type = type
+        self.toolCleanup = toolCleanup
         self.subjectIdentity = subjectIdentity
         self.requesterKind = requesterKind
         self.requesterIdentity = requesterIdentity
@@ -258,12 +261,13 @@ public struct Plan: Codable, Equatable, Sendable {
     public let excludedItems: [ExcludedItem]
     /// Absent in older plans and complete scans. Included in the approval hash.
     public let scanCompleteness: ScanCompleteness?
+    public let toolCleanupBinding: ToolCleanupBinding?
     /// Included in the approval hash. Nil for plans made before this report existed.
     public private(set) var capabilityReport: CapabilitySearchReport?
 
     public let expectedTotalBytes: Int64
 
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil, toolCleanupBinding: ToolCleanupBinding? = nil) {
         formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
@@ -274,6 +278,7 @@ public struct Plan: Codable, Equatable, Sendable {
         self.excludedItems = excludedItems
         self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
         self.capabilityReport = capabilityReport
+        self.toolCleanupBinding = toolCleanupBinding
         self.expectedTotalBytes = expectedTotalBytes
     }
 

@@ -206,9 +206,15 @@ struct DeveloperInspector: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Palette.well, in: .rect(cornerRadius: 8))
-                    Button("Clean Up with \(cache.tool)", action: cleanUp)
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
+                    if let reason = cache.manualCleanupReason {
+                        Text(reason)
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkSecondary)
+                    } else {
+                        Button("Clean Up with \(cache.tool)", action: cleanUp)
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.capsule)
+                    }
                 }
             }
         case .configured:
