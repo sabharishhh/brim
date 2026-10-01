@@ -52,12 +52,9 @@ final class UpdateSourceTests: XCTestCase {
 
     // MARK: - Homebrew
 
-    func testACaskIsMatchedAcrossNamingStyles() throws {
-        // Homebrew names a cask after the software, not the bundle:
-        // boringNotch.app comes from boring-notch. Both real, from this
-        // Mac's Caskroom.
+    func testNamesAloneDoNotEstablishInstallationOwnership() throws {
         let app = try makeApp("boringNotch", bundleID: "com.theboredteam.boringnotch")
-        XCTAssertEqual(UpdateSourceScanner.matchingCask(for: app, among: ["boring-notch", "warp"]), "boring-notch")
+        XCTAssertNil(UpdateSourceScanner.matchingCask(for: app, among: ["boring-notch", "warp"]))
     }
 
     func testASimilarNameIsNotACask() throws {

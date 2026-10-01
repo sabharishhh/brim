@@ -194,6 +194,13 @@ public struct FixtureTreeGenerator {
     private func createSecondVolumeApp() throws {
         let fm = FileManager.default
         let volumeURL = rootURL.appendingPathComponent("Volumes/Secondary/Applications/SecondVolumeApp.app")
-        try fm.createDirectory(at: volumeURL, withIntermediateDirectories: true)
+        let contents = volumeURL.appendingPathComponent("Contents")
+        try fm.createDirectory(at: contents, withIntermediateDirectories: true)
+        let metadata = try PropertyListSerialization.data(fromPropertyList: [
+            "CFBundleIdentifier": "com.brim.secondvolume",
+            "CFBundleName": "SecondVolumeApp",
+            "CFBundlePackageType": "APPL"
+        ], format: .xml, options: 0)
+        try metadata.write(to: contents.appendingPathComponent("Info.plist"))
     }
 }

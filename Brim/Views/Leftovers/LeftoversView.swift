@@ -47,7 +47,9 @@ struct LeftoversView: View {
                 },
                 onClose: { proven in
                     review = nil
-                    if let proven { offerPutBack(proven) }
+                    if let proven {
+                        offerPutBack(proven.planId)
+                    }
                 },
                 onUnverified: { Task { await model.load(service: service) } },
                 onPhase: { _ in }
@@ -247,22 +249,30 @@ struct LeftoversView: View {
     private func offerPutBack(_ planId: UUID) {
         let count = removedInReview
         guard count > 0 else { return }
-        shell.show(ToastMessage(
-            symbol: "checkmark.circle.fill",
-            text: count == 1 ? "Moved 1 item to the Trash" : "Moved \(count) items to the Trash",
-            actionTitle: "Put Back",
-            action: {
-                Task {
-                    do {
-                        try await service.undo(planId: planId)
-                        recovery.refreshNow()
-                        model.reconcileWithDisk()
-                    } catch {
-                        shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: "Could not put it back"))
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 item" : "Removed \(count) items"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            recovery.refreshNow()
+                            model.reconcileWithDisk()
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
+                        }
                     }
                 }
             }
-        ))
+            shell.show(toast)
+        }
     }
 }
 

@@ -1,5 +1,6 @@
-import Foundation
 import BrimCore
+import Darwin
+import Foundation
 
 /// What a removal can honestly say afterwards, in three parts.
 ///
@@ -21,6 +22,32 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         }
     }
 
+    public enum PathPresence: String, Codable, Sendable { case present, unknown }
+
+    /// A path excluded from execution, observed again during verification.
+    public struct ProtectedItem: Codable, Equatable, Hashable, Sendable {
+        public let target: String
+        public let reason: String
+        public let presence: PathPresence
+
+        public init(target: String, reason: String, presence: PathPresence = .present) {
+            self.target = target
+            self.reason = reason
+            self.presence = presence
+        }
+    }
+
+    /// Identifier-wide permissions deliberately kept for another reviewed installation.
+    public struct SharedIdentityProtection: Codable, Equatable, Sendable {
+        public let identifier: String
+        public let installations: [Identity]
+
+        public init(identifier: String, installations: [Identity]) {
+            self.identifier = identifier
+            self.installations = installations
+        }
+    }
+
     /// Places the plan named, looked at again after the removal and gone.
     public let checkedGone: Int
     /// Kinds of registration Brim searched macOS for, with nothing of the
@@ -37,6 +64,9 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     /// which is all the sentence was checking, and the person read it as
     /// everything.
     public let leftUnticked: [String]
+    /// Excluded paths that are still present or whose absence could not be confirmed.
+    public let protectedItems: [ProtectedItem]
+    public let sharedIdentityProtection: SharedIdentityProtection?
     /// Gaps in discovery remain gaps after every selected item is gone.
     /// Nil for complete searches and reports saved before this field existed.
     public let scanCompleteness: ScanCompleteness?
@@ -44,7 +74,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     public init(
         checkedGone: Int, registrationsChecked: [DeclaredCapability], declaredNone: [DeclaredCapability],
         keptByMacOS: [Kept], stillThere: Int, leftUnticked: [String] = [],
-        scanCompleteness: ScanCompleteness? = nil
+        scanCompleteness: ScanCompleteness? = nil, protectedItems: [ProtectedItem] = [],
+        sharedIdentityProtection: SharedIdentityProtection? = nil
     ) {
         self.checkedGone = checkedGone
         self.registrationsChecked = registrationsChecked
@@ -52,23 +83,30 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         self.keptByMacOS = keptByMacOS
         self.stillThere = stillThere
         self.leftUnticked = leftUnticked
+        self.protectedItems = protectedItems
+        self.sharedIdentityProtection = sharedIdentityProtection
         self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
     }
 
     private enum CodingKeys: String, CodingKey {
         case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked, scanCompleteness
+        case protectedItems, sharedIdentityProtection
     }
 
     /// A report recorded before `leftUnticked` existed still reads.
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        checkedGone = try c.decode(Int.self, forKey: .checkedGone)
-        registrationsChecked = try c.decode([DeclaredCapability].self, forKey: .registrationsChecked)
-        declaredNone = try c.decode([DeclaredCapability].self, forKey: .declaredNone)
-        keptByMacOS = try c.decode([Kept].self, forKey: .keptByMacOS)
-        stillThere = try c.decode(Int.self, forKey: .stillThere)
-        leftUnticked = try c.decodeIfPresent([String].self, forKey: .leftUnticked) ?? []
-        scanCompleteness = try c.decodeIfPresent(ScanCompleteness.self, forKey: .scanCompleteness)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        checkedGone = try container.decode(Int.self, forKey: .checkedGone)
+        registrationsChecked = try container.decode([DeclaredCapability].self, forKey: .registrationsChecked)
+        declaredNone = try container.decode([DeclaredCapability].self, forKey: .declaredNone)
+        keptByMacOS = try container.decode([Kept].self, forKey: .keptByMacOS)
+        stillThere = try container.decode(Int.self, forKey: .stillThere)
+        leftUnticked = try container.decodeIfPresent([String].self, forKey: .leftUnticked) ?? []
+        protectedItems = try container.decodeIfPresent([ProtectedItem].self, forKey: .protectedItems) ?? []
+        sharedIdentityProtection = try container.decodeIfPresent(
+            SharedIdentityProtection.self, forKey: .sharedIdentityProtection
+        )
+        scanCompleteness = try container.decodeIfPresent(ScanCompleteness.self, forKey: .scanCompleteness)
     }
 
     /// Built from the plan, what is still on the disk, and what the journal
@@ -87,9 +125,10 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         privacyResetFailed: Bool,
         survivingExtensions: Set<String>?,
         capability: (String) -> Capability = { RemovalCapability.forDeleting($0) },
-        exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+        exists: ((String) -> Bool)? = nil
     ) -> RemovalReport {
         let planned = Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
+        let pathExists = exists ?? { FileManager.default.fileExists(atPath: $0) }
         var kept: [Kept] = []
         var stillThere = 0
         for path in remaining.sorted() {
@@ -115,6 +154,31 @@ public struct RemovalReport: Codable, Equatable, Sendable {
                              why: "macOS did not clear them."))
         }
 
+        let registrations = registrationSummary(plan: plan, survivingExtensions: survivingExtensions)
+        kept += registrations.kept
+
+        return RemovalReport(
+            checkedGone: planned.subtracting(remaining).count,
+            registrationsChecked: registrations.checked,
+            declaredNone: registrations.declaredNone,
+            keptByMacOS: kept,
+            stillThere: stillThere,
+            leftUnticked: plan.excludedItems
+                .filter { $0.canBeTickedByHand == true && !planned.contains($0.target) && pathExists($0.target) }
+                .map(\.target).sorted(),
+            scanCompleteness: plan.scanCompleteness,
+            protectedItems: plan.excludedItems
+                .filter { $0.canBeTickedByHand != true && !planned.contains($0.target) }
+                .compactMap { observedProtectedItem($0, exists: exists) }
+                .sorted { $0.target < $1.target },
+            sharedIdentityProtection: sharedIdentityProtection(in: plan)
+        )
+    }
+
+    private static func registrationSummary(
+        plan: Plan, survivingExtensions: Set<String>?
+    ) -> RemovalRegistrationSummary {
+        var kept: [Kept] = []
         var checked: [DeclaredCapability] = []
         var declaredNone: [DeclaredCapability] = []
         for check in plan.capabilityReport?.checks ?? [] {
@@ -149,16 +213,38 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             }
         }
 
-        return RemovalReport(
-            checkedGone: planned.subtracting(remaining).count,
-            registrationsChecked: checked,
-            declaredNone: declaredNone,
-            keptByMacOS: kept,
-            stillThere: stillThere,
-            leftUnticked: plan.excludedItems
-                .filter { $0.canBeTickedByHand == true && !planned.contains($0.target) && exists($0.target) }
-                .map(\.target).sorted(),
-            scanCompleteness: plan.scanCompleteness
-        )
+        return RemovalRegistrationSummary(checked: checked, declaredNone: declaredNone, kept: kept)
     }
+
+    private static func sharedIdentityProtection(in plan: Plan) -> SharedIdentityProtection? {
+        guard plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty,
+              let identifier = plan.intent.subjectIdentity.bundleID,
+              let copies = plan.survivingCopies, !copies.isEmpty,
+              !plan.steps.contains(where: { $0.kind == .resetPrivacyGrants }),
+              plan.steps.contains(where: {
+                  $0.executionPhase == .appBundle && ($0.kind == .trashPath || $0.kind == .trashPathPrivileged)
+              }) else { return nil }
+        return SharedIdentityProtection(identifier: identifier, installations: copies)
+    }
+
+    private static func observedProtectedItem(
+        _ item: ExcludedItem, exists: ((String) -> Bool)?
+    ) -> ProtectedItem? {
+        guard item.target.hasPrefix("/") else { return nil }
+        if let exists {
+            return exists(item.target) ? ProtectedItem(target: item.target, reason: item.reason) : nil
+        }
+        var information = stat()
+        if lstat(item.target, &information) == 0 {
+            return ProtectedItem(target: item.target, reason: item.reason)
+        }
+        guard errno != ENOENT, errno != ENOTDIR else { return nil }
+        return ProtectedItem(target: item.target, reason: item.reason, presence: .unknown)
+    }
+}
+
+private struct RemovalRegistrationSummary {
+    let checked: [DeclaredCapability]
+    let declaredNone: [DeclaredCapability]
+    let kept: [RemovalReport.Kept]
 }

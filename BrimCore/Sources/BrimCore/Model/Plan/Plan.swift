@@ -195,6 +195,7 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     /// selection produces a single plan the user approves once. Absent in
     /// plans written before batching existed, hence optional.
     public let specificTargets: [URL]?
+    public let excludedFolders: [URL]?
     /// Rows Brim found for this application and did not tick, which the
     /// person ticked in the uninstall sheet. Paths, exactly as the plan's
     /// excluded rows name them.
@@ -224,7 +225,7 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         return []
     }
 
-    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, tickedByHand: [String]? = nil, toolCleanup: ToolCleanupRequest? = nil) {
+    public init(type: IntentType, subjectIdentity: Identity, requesterKind: String = "ui", requesterIdentity: String = "user", specificTarget: URL? = nil, specificTargets: [URL]? = nil, tickedByHand: [String]? = nil, toolCleanup: ToolCleanupRequest? = nil, excludedFolders: [URL]? = nil) {
         self.type = type
         self.toolCleanup = toolCleanup
         self.subjectIdentity = subjectIdentity
@@ -232,6 +233,7 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         self.requesterIdentity = requesterIdentity
         self.specificTarget = specificTarget
         self.specificTargets = specificTargets
+        self.excludedFolders = excludedFolders?.isEmpty == false ? excludedFolders : nil
         self.tickedByHand = tickedByHand
     }
 
@@ -264,10 +266,13 @@ public struct Plan: Codable, Equatable, Sendable {
     public let toolCleanupBinding: ToolCleanupBinding?
     /// Included in the approval hash. Nil for plans made before this report existed.
     public private(set) var capabilityReport: CapabilitySearchReport?
+    public private(set) var homebrewInstallation: HomebrewInstallation?
+    /// Reviewed installations that protect identifier-wide state. Nil in older plans.
+    public let survivingCopies: [Identity]?
 
     public let expectedTotalBytes: Int64
 
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil, toolCleanupBinding: ToolCleanupBinding? = nil) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil, toolCleanupBinding: ToolCleanupBinding? = nil, homebrewInstallation: HomebrewInstallation? = nil, survivingCopies: [Identity]? = nil) {
         formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
@@ -279,12 +284,22 @@ public struct Plan: Codable, Equatable, Sendable {
         self.scanCompleteness = scanCompleteness?.isComplete == false ? scanCompleteness : nil
         self.capabilityReport = capabilityReport
         self.toolCleanupBinding = toolCleanupBinding
+        self.homebrewInstallation = homebrewInstallation
+        self.survivingCopies = survivingCopies?.isEmpty == false ? Array(Set(survivingCopies ?? [])).sorted {
+            ($0.bundlePath ?? "", $0.name) < ($1.bundlePath ?? "", $1.name)
+        } : nil
         self.expectedTotalBytes = expectedTotalBytes
     }
 
     public func attaching(_ report: CapabilitySearchReport?) -> Plan {
         var copy = self
         copy.capabilityReport = report
+        return copy
+    }
+
+    public func recording(_ installation: HomebrewInstallation?) -> Plan {
+        var copy = self
+        copy.homebrewInstallation = installation
         return copy
     }
 
@@ -311,19 +326,30 @@ public struct Plan: Codable, Equatable, Sendable {
     /// Bytes this plan frees the moment it runs, because those targets are
     /// deleted outright rather than moved to the Trash.
     public var immediatelyFreedBytes: Int64 {
-        steps.filter { $0.effectiveDisposition == .delete }.reduce(0) { $0 + $1.expectedBytes }
+        ordinaryFileRemovals.filter { $0.effectiveDisposition == .delete }.reduce(0) { $0 + $1.expectedBytes }
     }
 
     /// Bytes that only come back once the user empties the Trash. Reporting
     /// these as reclaimed is what made the headline figure misleading.
     public var trashedBytes: Int64 {
-        steps.filter { $0.effectiveDisposition == .trash }.reduce(0) { $0 + $1.expectedBytes }
+        ordinaryFileRemovals.filter { $0.effectiveDisposition == .trash }.reduce(0) { $0 + $1.expectedBytes }
+    }
+
+    /// The helper moves these files aside without a supported restore action.
+    public var setAsideBytes: Int64 {
+        steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+    }
+
+    private var ordinaryFileRemovals: [Step] {
+        steps.filter { $0.kind == .trashPath || $0.kind == .removeLaunchdPlist }
     }
 
     /// Whether `undo` can put anything back. False once every step in the plan
     /// was a permanent delete.
     public var isReversible: Bool {
-        steps.contains { $0.effectiveDisposition == .trash }
+        steps.contains {
+            $0.effectiveDisposition == .trash && ($0.kind == .trashPath || $0.kind == .removeLaunchdPlist)
+        }
     }
 
     /// Steps in the order they must be applied: privacy grants while the

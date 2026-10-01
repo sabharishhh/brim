@@ -134,6 +134,12 @@ private struct BatchEntryRow: View {
                     // kept alongside them. A privacy reset listed here read as
                     // a file to be deleted permanently.
                     VStack(alignment: .leading, spacing: 2) {
+                        if let installation = removal.plan?.homebrewInstallation {
+                            Text(installation.explanation).font(.brimFacts)
+                            if let command = installation.manualCommand {
+                                Text(command).font(.caption.monospaced()).textSelection(.enabled)
+                            }
+                        }
                         ForEach(removal.removalSteps, id: \.index) { step in
                             UninstallPlanRow(
                                 target: step.target, evidence: step.evidence, bytes: step.expectedBytes,
@@ -155,12 +161,29 @@ private struct BatchEntryRow: View {
             guard let plan = removal.plan else { return "Checking" }
             let steps = removal.removalSteps.count
             let count = steps == 1 ? "1 item" : "\(steps) items"
-            return count + " · " + ByteText.short(plan.expectedTotalBytes)
+            return count + " · " + ByteText.short(plan.expectedTotalBytes) + " estimated"
         case .executing: return "Removing"
         case let .verified(result):
             guard result.success else { return "Some of it remains" }
             if (result.report?.scanCompleteness ?? removal.plan?.scanCompleteness)?.isComplete == false {
                 return "Removed, search incomplete"
+            }
+            if let record = result.packageRecord, record.state != .absent {
+                return record.state == .present
+                    ? "Files removed, package record remains"
+                    : "Files removed, package record unchecked"
+            }
+            if result.followUpActions?.isEmpty == false {
+                return "One more step"
+            }
+            if result.report?.protectedItems.contains(where: { $0.presence == .unknown }) == true {
+                return "Removed, protected items unchecked"
+            }
+            if result.report?.keptByMacOS.isEmpty == false || result.report?.protectedItems.isEmpty == false {
+                return "Removed, protected or shared items remain"
+            }
+            if result.report?.sharedIdentityProtection != nil {
+                return "Removed, privacy permissions not reset"
             }
             let unticked = result.report?.leftUnticked.count ?? 0
             return unticked == 0 ? "Nothing left" : "Removed, \(unticked) unticked stay"
@@ -171,9 +194,9 @@ private struct BatchEntryRow: View {
 
     private var isTrouble: Bool {
         switch removal.phase {
-        case .failed, .appliedButUnverified: return true
-        case let .verified(result): return !result.success
-        default: return false
+        case .failed, .appliedButUnverified: true
+        case let .verified(result): !result.success
+        default: false
         }
     }
 }

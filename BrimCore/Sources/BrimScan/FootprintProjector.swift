@@ -1,17 +1,19 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// Computes an on-demand, non-stored projection of an app's footprint on disk.
 public struct FootprintProjector: Sendable {
     public let engine: EvidenceEngine
-    
+
     public init(engine: EvidenceEngine) {
         self.engine = engine
     }
-    
+
     /// Generates the footprint for an identity.
     /// Re-evaluates sizes and presence dynamically, fulfilling the "query, never a stored object" invariant.
-    public func project(identity: Identity, in root: FileSystemRoot, explicitEvidence: [Evidence]? = nil) async throws -> Footprint {
+    public func project(
+        identity: Identity, in root: FileSystemRoot, explicitEvidence: [Evidence]? = nil
+    ) async throws -> Footprint {
         let evidenceList: [Evidence]
         var completeness = ScanCompleteness.complete
         if let explicit = explicitEvidence {
@@ -25,7 +27,10 @@ public struct FootprintProjector: Sendable {
         }
 
         let items = try await Self.measureItems(evidenceList)
-        return Footprint(identity: identity, items: items, completeness: completeness)
+        let sizing = items.compactMap(\.sizeMeasurement).reduce(ScanCompleteness.complete) {
+            $0.merging($1.completeness)
+        }
+        return Footprint(identity: identity, items: items, completeness: completeness.merging(sizing))
     }
 
     /// Structured work retains the caller's cancellation, unlike Task.detached.
@@ -34,16 +39,20 @@ public struct FootprintProjector: Sendable {
         var items: [FootprintItem] = []
         for evidence in evidenceList {
             try Task.checkCancellation()
-            // The path itself, not what it points at. `fileExists`
-            // follows a symlink, so every broken one Brim had just
-            // found was dropped here and never reached the plan.
-            guard PathExistence.exists(at: evidence.url) else { continue }
-            let measured = measure(at: evidence.url, fm: .default)
+            // A Boolean existence check also hides permission and link-loop
+            // failures. Skip only proven absence; measure every other result
+            // without following the entry itself, including a broken link.
+            var information = stat()
+            if lstat(evidence.url.path, &information) != 0, errno == ENOENT || errno == ENOTDIR {
+                continue
+            }
+            let measured = ArtifactSizer.measure(at: evidence.url)
             try Task.checkCancellation()
             items.append(FootprintItem(
-                evidence: evidence, sizeBytes: measured.bytes,
+                evidence: evidence, sizeBytes: measured.logicalBytes,
                 capability: determineCapability(for: evidence.url.path),
-                unreadableEntries: measured.unreadable
+                unreadableEntries: measured.completeness.unreadable.count + measured.completeness.timedOut.count,
+                sizeMeasurement: measured
             ))
         }
         return items
@@ -61,82 +70,14 @@ public struct FootprintProjector: Sendable {
         RemovalCapability.forDeleting(path)
     }
 
-    /// What one location weighs, and what could not be read.
-    ///
-    /// Three things this gets right that the obvious version did not:
-    ///
-    /// - **A hardlink is one file, not two.** Counting each name separately
-    ///   inflates a footprint by however many links a file has.
-    ///   Deduplicated on device and inode.
-    /// - **A symlink is the link, not its target.** `attributesOfItem` calls
-    ///   `stat`, so sizing a symlink that points at a 10 GB file added 10 GB
-    ///   that removing the link would never free. `lstat` measures the link
-    ///   itself, which is the thing that goes.
-    /// - **Unreadable is not empty.** Anything that cannot be read is
-    ///   counted and reported rather than quietly contributing nothing. A
-    ///   total that is short by an unknown amount and does not say so is
-    ///   the failure this product exists to avoid.
-    ///
-    /// The figure is *logical*: what the files contain. It is not what
-    /// removing them returns, which also depends on blocks shared with
-    /// clones and blocks pinned by snapshots. `StorageAccountant` owns that
-    /// distinction, and this number must never be shown as though it were
-    /// the same one.
     struct Measurement: Sendable {
         var bytes: Int64 = 0
         var unreadable: Int = 0
     }
 
-    nonisolated static func measure(at url: URL, fm: FileManager) -> Measurement {
-        var result = Measurement()
-        // Device and inode together, so two names for one file count once.
-        var counted = Set<[UInt64]>()
-
-        func add(_ path: String) {
-            var info = stat()
-            guard lstat(path, &info) == 0 else {
-                result.unreadable += 1
-                return
-            }
-            // A directory's own size is an artefact of the directory
-            // structure rather than content. A symlink counts as the few
-            // bytes it actually is.
-            guard (info.st_mode & S_IFMT) != S_IFDIR else { return }
-
-            let key = [UInt64(info.st_dev), UInt64(info.st_ino)]
-            guard counted.insert(key).inserted else { return }
-            result.bytes += Int64(info.st_size)
-        }
-
-        var isDirectory: ObjCBool = false
-        guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return result }
-
-        guard isDirectory.boolValue else {
-            add(url.path)
-            return result
-        }
-
-        let enumerator = fm.enumerator(
-            at: url, includingPropertiesForKeys: nil, options: [],
-            errorHandler: { _, _ in
-                // Keep walking. One unreadable subtree is a gap to report,
-                // not a reason to abandon the measurement.
-                result.unreadable += 1
-                return true
-            }
-        )
-        guard let enumerator else {
-            result.unreadable += 1
-            return result
-        }
-
-        while let entry = enumerator.nextObject() as? URL {
-            if Task.isCancelled {
-                result.unreadable += 1
-                break
-            }
-            add(entry.path)
-        }
-        return result
+    nonisolated static func measure(at url: URL, fm _: FileManager) -> Measurement {
+        let size = ArtifactSizer.measure(at: url)
+        return Measurement(bytes: size.logicalBytes,
+                           unreadable: size.completeness.unreadable.count + size.completeness.timedOut.count)
     }
 }

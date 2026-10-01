@@ -54,21 +54,17 @@ enum NativeCommandRunner {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(timeout))
         let termination: Termination
+        var leaderTermination: Termination?
         while true {
             try output.drain()
             try errors.drain()
-            var status: Int32 = 0
-            let observed = waitpid(pid, &status, WNOHANG)
-            if observed == pid {
-                reaped = true
-                termination = decode(status)
-                break
+            if leaderTermination == nil {
+                leaderTermination = try observeLeader(pid, reaped: &reaped)
             }
-            if observed == -1, errno != EINTR {
-                if errno == ECHILD {
-                    reaped = true
-                }
-                throw Failure.systemCall("waitpid", errno)
+            if let leaderTermination, try !hasLiveDescendants(in: pid) {
+                try reapLeader(pid, reaped: &reaped)
+                termination = leaderTermination
+                break
             }
             if Task.isCancelled || clock.now >= deadline {
                 termination = Task.isCancelled ? .cancelled : .timedOut
@@ -154,15 +150,68 @@ enum NativeCommandRunner {
     }
 
     private static func checked(_ code: Int32, _ operation: String) throws {
-        if code != 0 {
-            throw Failure.systemCall(operation, code)
-        }
+        guard code == 0 else { throw Failure.systemCall(operation, code) }
     }
 
-    private static func decode(_ status: Int32) -> Termination {
-        // Darwin's wait macros are not imported into Swift.
-        let signal = status & 0x7F
-        return signal == 0 ? .exited((status >> 8) & 0xFF) : .signalled(signal)
+    private static func observeLeader(_ pid: pid_t, reaped: inout Bool) throws -> Termination? {
+        var information = siginfo_t()
+        let status = waitid(P_PID, id_t(pid), &information, WEXITED | WNOHANG | WNOWAIT)
+        if status == -1 {
+            if errno == EINTR {
+                return nil
+            }
+            if errno == ECHILD {
+                reaped = true
+            }
+            throw Failure.systemCall("waitid", errno)
+        }
+        guard information.si_pid == pid else { return nil }
+        return information.si_code == CLD_EXITED
+            ? .exited(information.si_status) : .signalled(information.si_status)
+    }
+
+    /// The leader stays waitable while this runs, reserving its PID and
+    /// therefore the process group we are allowed to stop.
+    private static func hasLiveDescendants(in group: pid_t) throws -> Bool {
+        var members = [pid_t](repeating: 0, count: 4096)
+        errno = 0
+        let count = members.withUnsafeMutableBytes {
+            proc_listpgrppids(group, $0.baseAddress, Int32($0.count))
+        }
+        guard count >= 0, count < members.count else { throw Failure.terminationUnconfirmed }
+        if count == 0, errno != 0, errno != ESRCH {
+            throw Failure.terminationUnconfirmed
+        }
+        for member in members.prefix(Int(count)) where member != group && member > 0 {
+            var information = proc_bsdinfo()
+            errno = 0
+            let read = proc_pidinfo(member, PROC_PIDTBSDINFO, 0, &information,
+                                    Int32(MemoryLayout<proc_bsdinfo>.size))
+            if read == 0, errno == ESRCH {
+                continue
+            }
+            guard read == MemoryLayout<proc_bsdinfo>.size else { throw Failure.terminationUnconfirmed }
+            if information.pbi_pgid == UInt32(group), information.pbi_status != SZOMB {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func reapLeader(_ pid: pid_t, reaped: inout Bool) throws {
+        var status: Int32 = 0
+        var result: pid_t
+        repeat {
+            result = waitpid(pid, &status, WNOHANG)
+        } while result == -1 && errno == EINTR
+        if result == pid {
+            reaped = true
+            return
+        }
+        if result == -1, errno == ECHILD {
+            reaped = true
+        }
+        throw Failure.terminationUnconfirmed
     }
 
     private static func stop(_ pid: pid_t, reaped: inout Bool) throws {
@@ -174,76 +223,72 @@ enum NativeCommandRunner {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(2))
         while clock.now < deadline {
-            var status: Int32 = 0
-            let observed = waitpid(pid, &status, WNOHANG)
-            if observed == pid {
-                reaped = true; return
+            if try observeLeader(pid, reaped: &reaped) != nil, try !hasLiveDescendants(in: pid) {
+                try reapLeader(pid, reaped: &reaped)
+                return
             }
-            if observed == -1, errno == ECHILD {
-                reaped = true
-                throw Failure.terminationUnconfirmed
-            }
+            kill(-pid, SIGKILL)
             usleep(10000)
         }
         throw Failure.terminationUnconfirmed
     }
+}
 
-    private struct OutputPipe {
-        var reader: Int32
-        var writer: Int32
-        let limit: Int
-        var data = Data()
-        var truncated = false
+private struct OutputPipe {
+    var reader: Int32
+    var writer: Int32
+    let limit: Int
+    var data = Data()
+    var truncated = false
 
-        init(limit: Int) throws {
-            var descriptors: [Int32] = [-1, -1]
-            guard pipe(&descriptors) == 0 else { throw Failure.systemCall("pipe", errno) }
-            reader = descriptors[0]
-            writer = descriptors[1]
-            self.limit = limit
-            guard fcntl(reader, F_SETFL, O_NONBLOCK) != -1 else {
-                let code = errno
-                Darwin.close(reader)
-                Darwin.close(writer)
-                throw Failure.systemCall("pipe flags", code)
-            }
+    init(limit: Int) throws {
+        var descriptors: [Int32] = [-1, -1]
+        guard pipe(&descriptors) == 0 else { throw NativeCommandRunner.Failure.systemCall("pipe", errno) }
+        reader = descriptors[0]
+        writer = descriptors[1]
+        self.limit = limit
+        guard fcntl(reader, F_SETFL, O_NONBLOCK) != -1 else {
+            let code = errno
+            Darwin.close(reader)
+            Darwin.close(writer)
+            throw NativeCommandRunner.Failure.systemCall("pipe flags", code)
         }
+    }
 
-        mutating func closeWriter() {
-            if writer >= 0 {
-                Darwin.close(writer); writer = -1
-            }
+    mutating func closeWriter() {
+        if writer >= 0 {
+            Darwin.close(writer); writer = -1
         }
+    }
 
-        mutating func close() {
-            if reader >= 0 {
-                Darwin.close(reader); reader = -1
-            }
-            closeWriter()
+    mutating func close() {
+        if reader >= 0 {
+            Darwin.close(reader); reader = -1
         }
+        closeWriter()
+    }
 
-        mutating func drain() throws {
-            var buffer = [UInt8](repeating: 0, count: 16 * 1024)
-            // Fairness between streams and a chance to check the deadline,
-            // even when a child writes continuously.
-            for _ in 0 ..< 64 {
-                let count = read(reader, &buffer, buffer.count)
-                if count == 0 {
+    mutating func drain() throws {
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        // Fairness between streams and a chance to check the deadline,
+        // even when a child writes continuously.
+        for _ in 0 ..< 64 {
+            let count = read(reader, &buffer, buffer.count)
+            if count == 0 {
+                return
+            }
+            if count < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                if errno == EAGAIN {
                     return
                 }
-                if count < 0 {
-                    if errno == EINTR {
-                        continue
-                    }
-                    if errno == EAGAIN {
-                        return
-                    }
-                    throw Failure.systemCall("read output", errno)
-                }
-                let retained = min(count, max(0, limit - data.count))
-                data.append(contentsOf: buffer.prefix(retained))
-                truncated = truncated || retained < count
+                throw NativeCommandRunner.Failure.systemCall("read output", errno)
             }
+            let retained = min(count, max(0, limit - data.count))
+            data.append(contentsOf: buffer.prefix(retained))
+            truncated = truncated || retained < count
         }
     }
 }

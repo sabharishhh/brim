@@ -59,6 +59,9 @@ public extension ToolCleanup {
             guard request.cachePath.standardizedFileURL == row.standardizedFileURL else {
                 throw CleanupError.configurationUnavailable("The requested row is not a registered cache location.")
             }
+            if request.id == .swiftPM {
+                return try await prepareSwiftPM(request, row: row, environment: environment, home: home)
+            }
             let names = request.id == .pip ? ["pip", "pip3"] : [request.id == .npm ? "npm" : "go"]
             let executable = try Self.resolve(names, environment: environment, displayed: command.displayed)
             let probe = Self.probe(request.id)
@@ -114,7 +117,7 @@ public extension ToolCleanup {
             let displayed = request.id == .goModules ? "GOMODCACHE=\(Self.quoted(scope.path)) " + words : words
             return ToolCleanupBinding(
                 id: request.id,
-                catalogueRevision: "1",
+                catalogueRevision: request.id == .swiftPM ? "swiftpm-1" : "1",
                 executable: executable,
                 executableFingerprint: fingerprint,
                 executableHash: executableHash,
@@ -140,12 +143,29 @@ public extension ToolCleanup {
 
         private func currentEnvironment() -> [String: String] {
             // No loader overrides, project hooks or unrelated secrets enter the tool.
-            let permitted = Set(["HOME", "USER", "LOGNAME", "TMPDIR", "PATH", "LANG", "LC_CTYPE",
-                                 "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "GOPATH", "GOENV", "GOMODCACHE", "GOCACHE",
-                                 "npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig",
-                                 "NPM_CONFIG_CACHE",
-                                 "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG",
-                                 "PIP_CACHE_DIR", "PIP_CONFIG_FILE"])
+            let permitted = Set([
+                "HOME",
+                "USER",
+                "LOGNAME",
+                "TMPDIR",
+                "PATH",
+                "LANG",
+                "LC_CTYPE",
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "GOPATH",
+                "GOENV",
+                "GOMODCACHE",
+                "GOCACHE",
+                "npm_config_cache",
+                "npm_config_userconfig",
+                "npm_config_globalconfig",
+                "NPM_CONFIG_CACHE",
+                "NPM_CONFIG_USERCONFIG",
+                "NPM_CONFIG_GLOBALCONFIG",
+                "PIP_CACHE_DIR",
+                "PIP_CONFIG_FILE"
+            ])
             var environment = environmentSource().filter { permitted.contains($0.key) }
             environment["GOTOOLCHAIN"] = "local"
             return environment
@@ -160,6 +180,7 @@ public extension ToolCleanup {
             case .pnpm: "Library/pnpm/store"
             case .uvCache: ".cache/uv"
             case .simulators: "Library/Developer/CoreSimulator/Devices"
+            case .swiftPM: "Library/Caches/org.swift.swiftpm"
             }
             return URL(fileURLWithPath: home).appendingPathComponent(path)
         }
@@ -178,6 +199,19 @@ public extension ToolCleanup {
             case .npm: ["--cache", scope, "cache", "clean", "--force"]
             case .goModules: ["clean", "-modcache"]
             case .pip: ["--cache-dir", scope, "cache", "purge"]
+            case .swiftPM: [
+                    "--cache-path",
+                    scope,
+                    "--scratch-path",
+                    scope,
+                    "--config-path",
+                    scope,
+                    "--security-path",
+                    scope,
+                    "--swift-sdks-path",
+                    scope,
+                    "purge-cache"
+                ]
             default: []
             }
         }
@@ -212,14 +246,6 @@ public extension ToolCleanup {
             throw CleanupError.toolMissing(displayed)
         }
 
-        private static func readStat(_ path: String) throws -> stat {
-            var information = stat()
-            guard lstat(path, &information) == 0 else {
-                throw CleanupError.configurationUnavailable("Could not inspect \(path). Review the cache again.")
-            }
-            return information
-        }
-
         private static func environmentHash(_ environment: [String: String]) throws -> String {
             let data = try JSONEncoder().encode(environment.sorted { $0.key < $1.key }.map { [$0.key, $0.value] })
             return hash(data)
@@ -232,49 +258,121 @@ public extension ToolCleanup {
         private static func quoted(_ word: String) -> String {
             "'" + word.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
         }
+    }
+}
 
-        private static func queryTool(
-            _ executable: String,
-            _ arguments: [String],
-            _ environment: [String: String],
-            _ home: String
-        ) async throws -> String {
-            let result = try await NativeCommandRunner.run(
-                executable: executable,
-                arguments: arguments,
-                environment: environment,
-                timeout: 10,
-                workingDirectory: home
+private extension ToolCleanup.Client {
+    func prepareSwiftPM(
+        _ request: ToolCleanupRequest, row: URL, environment: [String: String], home: String
+    ) async throws -> ToolCleanupBinding {
+        let originalCache = try Self.swiftPMCacheInformation(home: home)
+        // Bind the actual SwiftPM binary, rather than Apple's tool-selection shim.
+        let selected = try await query("/usr/bin/xcrun", ["--find", "swift-package"], environment, home)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard selected.hasPrefix("/"), !selected.contains("\n"), !selected.contains("\0") else {
+            throw ToolCleanup.CleanupError.configurationUnavailable("Xcode did not report one Swift package tool.")
+        }
+        let executable = URL(fileURLWithPath: selected).resolvingSymlinksInPath().standardizedFileURL.path
+        let information = try Self.readStat(executable)
+        guard information.st_mode & S_IFMT == S_IFREG, access(executable, X_OK) == 0 else {
+            throw ToolCleanup.CleanupError.toolMissing("swift package purge-cache")
+        }
+        let version = try await query(executable, ["--version"], environment, home)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard version.hasPrefix("Swift Package Manager - Swift 6.4.") else {
+            throw ToolCleanup.CleanupError.configurationUnavailable(
+                "This Swift package tool has not been verified for scoped cache cleanup. Manage the cache in Xcode."
             )
-            guard result.termination == .exited(0), !result.outputTruncated,
-                  let text = String(data: result.stdout, encoding: .utf8)
-            else {
-                throw CleanupError.configurationUnavailable(
-                    "Could not read the tool's cache configuration. Nothing was cleaned."
-                )
-            }
-            return text
         }
+        let currentCache = try Self.swiftPMCacheInformation(home: home)
+        guard currentCache.st_dev == originalCache.st_dev, currentCache.st_ino == originalCache.st_ino else {
+            throw ToolCleanup.CleanupError.bindingChanged
+        }
+        let scope = row.resolvingSymlinksInPath().standardizedFileURL
+        let homePath = URL(fileURLWithPath: home).resolvingSymlinksInPath().standardizedFileURL.path
+        guard scope.path.hasPrefix(homePath + "/") else {
+            throw ToolCleanup.CleanupError.configurationUnavailable("This package cache is outside the home folder.")
+        }
+        try Self.checkSwiftPMPaths(scope)
+        return try Self.binding(request, executable: executable, scope: scope, environment: environment, home: home)
+    }
 
-        private static func invokeTool(_ binding: ToolCleanupBinding, _ environment: [String: String]) async throws {
-            let result: NativeCommandRunner.Result
-            do {
-                result = try await NativeCommandRunner.run(
-                    executable: binding.executable,
-                    arguments: binding.arguments,
-                    environment: environment,
-                    workingDirectory: binding.workingDirectory
+    static func swiftPMCacheInformation(home: String) throws -> stat {
+        var component = URL(fileURLWithPath: home)
+        var information = stat()
+        for name in ["Library", "Caches", "org.swift.swiftpm"] {
+            component.appendPathComponent(name)
+            information = try Self.readStat(component.path)
+            guard information.st_mode & S_IFMT == S_IFDIR else {
+                throw ToolCleanup.CleanupError.configurationUnavailable(
+                    "A package cache path is a link or is no longer a folder. Manage this cache in Xcode."
                 )
-            } catch let failure as NativeCommandRunner.Failure {
-                throw ToolCleanup.mapped(failure, displayed: binding.displayed)
-            }
-            switch result.termination {
-            case .exited(0): return
-            case let .exited(code): throw CleanupError.failed(binding.displayed, code: code)
-            case let .signalled(signal): throw CleanupError.signalled(binding.displayed, signal: signal)
-            case .timedOut: throw CleanupError.timedOut(binding.displayed)
-            case .cancelled: throw CleanupError.cancelled(binding.displayed)
             }
         }
+        return information
+    }
+
+    static func readStat(_ path: String) throws -> stat {
+        var information = stat()
+        guard lstat(path, &information) == 0 else {
+            throw ToolCleanup.CleanupError
+                .configurationUnavailable("Could not inspect \(path). Review the cache again.")
+        }
+        return information
+    }
+
+    static func queryTool(
+        _ executable: String,
+        _ arguments: [String],
+        _ environment: [String: String],
+        _ home: String
+    ) async throws -> String {
+        let result = try await NativeCommandRunner.run(
+            executable: executable,
+            arguments: arguments,
+            environment: environment,
+            timeout: 10,
+            workingDirectory: home
+        )
+        guard result.termination == .exited(0), !result.outputTruncated,
+              let text = String(data: result.stdout, encoding: .utf8)
+        else {
+            throw ToolCleanup.CleanupError.configurationUnavailable(
+                "Could not read the tool's cache configuration. Nothing was cleaned."
+            )
+        }
+        return text
+    }
+
+    static func invokeTool(_ binding: ToolCleanupBinding, _ environment: [String: String]) async throws {
+        let result: NativeCommandRunner.Result
+        do {
+            result = try await NativeCommandRunner.run(
+                executable: binding.executable,
+                arguments: binding.arguments,
+                environment: environment,
+                workingDirectory: binding.workingDirectory
+            )
+        } catch let failure as NativeCommandRunner.Failure {
+            throw ToolCleanup.mapped(failure, displayed: binding.displayed)
+        }
+        switch result.termination {
+        case .exited(0): return
+        case let .exited(code): throw ToolCleanup.CleanupError.failed(binding.displayed, code: code)
+        case let .signalled(signal): throw ToolCleanup.CleanupError.signalled(binding.displayed, signal: signal)
+        case .timedOut: throw ToolCleanup.CleanupError.timedOut(binding.displayed)
+        case .cancelled: throw ToolCleanup.CleanupError.cancelled(binding.displayed)
+        }
+    }
+}
+
+extension ToolCleanup.Client {
+    /// A stopped check cannot authorize the native command. The entry budget
+    /// covers all four shallow surfaces, not each directory independently.
+    static func checkSwiftPMPaths(
+        _ scope: URL, budget: ScanBudget = ScanBudget(total: 10), maximumEntries: Int = 20000
+    ) throws {
+        var check = SwiftPMCacheCheck(budget: budget, maximumEntries: max(0, maximumEntries))
+        try check.validate(scope)
     }
 }
