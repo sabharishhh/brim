@@ -33,31 +33,38 @@ struct RemovalResultView: View {
     }
 
     private var column: some View {
-            VStack(alignment: .leading, spacing: 20) {
-                status
-                if let plan, !gone.isEmpty {
-                    removed(plan)
-                }
-                if let report = result.report {
-                    checked(report)
-                }
-                stillHere
-                if let actions = result.followUpActions, !actions.isEmpty {
-                    FactSection(title: "One more step") {
-                        ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
-                            if index > 0 { FactDivider() }
-                            FactRow(label: action.sentence)
-                        }
-                    }
-                }
-                if let spaceExplanation {
-                    Label(spaceExplanation, systemImage: "clock.arrow.circlepath")
-                        .font(.caption)
-                        .foregroundStyle(Palette.caution)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 20) {
+            status
+            if let cleanup = result.toolCleanup {
+                FactSection(title: "Tool cleanup") {
+                    FactRow(label: cleanup.command, detail: cleanup.scope)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if result.toolCleanup == nil, let plan, !gone.isEmpty {
+                removed(plan)
+            }
+            if result.toolCleanup == nil, let report = result.report {
+                checked(report)
+            }
+            stillHere
+            if let actions = result.followUpActions, !actions.isEmpty {
+                FactSection(title: "One more step") {
+                    ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                        if index > 0 {
+                            FactDivider()
+                        }
+                        FactRow(label: action.sentence)
+                    }
+                }
+            }
+            if let spaceExplanation {
+                Label(spaceExplanation, systemImage: "clock.arrow.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(Palette.caution)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Status
@@ -92,6 +99,9 @@ struct RemovalResultView: View {
     }
 
     private var headline: String {
+        if let cleanup = result.toolCleanup {
+            return cleanup.headline
+        }
         guard result.success else { return "Some of it remains" }
         if result.followUpActions?.isEmpty == false { return "One more step" }
         // Everything ticked went. What was left unticked is still here, and
@@ -100,6 +110,9 @@ struct RemovalResultView: View {
     }
 
     private var detail: String {
+        if let cleanup = result.toolCleanup {
+            return cleanup.detail
+        }
         guard result.success else { return result.reason ?? "Some of it is still on disk" }
         if searchGap?.isComplete == false {
             return "Selected items removed. The search was incomplete."

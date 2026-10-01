@@ -49,6 +49,7 @@ public protocol BrimServiceProtocol: Sendable {
     /// Plans a tool's own cleanup, named rather than described. The command
     /// is resolved inside the service from a fixed table.
     func planToolCleanup(id: String, displayed: String) async throws -> Plan
+    func planToolCleanup(id: String, cachePath: URL) async throws -> Plan
     /// Hands the service a way to remove something in a folder that
     /// belongs to root, once Brim's privileged daemon is set up.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
@@ -102,6 +103,11 @@ public extension BrimServiceProtocol {
     func planToolCleanup(id: String, displayed: String) async throws -> Plan {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func planToolCleanup(id _: String, cachePath _: URL) async throws -> Plan {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Scoped tool cleanup is not supported here."])
     }
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}

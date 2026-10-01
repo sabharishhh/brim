@@ -188,16 +188,16 @@ struct DeveloperView: View {
     /// The tool's own command, planned by the service and reviewed like any
     /// other removal before it runs.
     private func cleanUp(_ cache: DeveloperCache) {
-        guard let id = cache.cleanupID, let displayed = cache.cleanupCommand else { return }
+        guard let id = cache.cleanupID else { return }
         Task {
             do {
-                let plan = try await service.planToolCleanup(id: id, displayed: displayed)
+                let plan = try await service.planToolCleanup(id: id, cachePath: cache.url)
                 withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
                     reviewPlan = plan
                     reviewRequest = plan.intent
                 }
             } catch {
-                shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: "Could not plan the cleanup"))
+                shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: error.localizedDescription))
             }
         }
     }

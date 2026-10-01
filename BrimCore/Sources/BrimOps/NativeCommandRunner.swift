@@ -28,7 +28,7 @@ enum NativeCommandRunner {
     static func run(
         executable: String, arguments: [String], environment: [String: String],
         timeout: TimeInterval = 120, outputLimit: Int = 64 * 1024,
-        onSpawn: (@Sendable (pid_t) -> Void)? = nil
+        onSpawn: (@Sendable (pid_t) -> Void)? = nil, workingDirectory: String? = nil
     ) async throws -> Result {
         try validate(executable, arguments, environment, timeout: timeout, outputLimit: outputLimit)
         if Task.isCancelled {
@@ -38,7 +38,8 @@ enum NativeCommandRunner {
         defer { output.close() }
         var errors = try OutputPipe(limit: outputLimit)
         defer { errors.close() }
-        let pid = try spawn(executable, arguments, environment, output: output, errors: errors)
+        let pid = try spawn(executable, arguments, environment, pipes: (output, errors),
+                            workingDirectory: workingDirectory)
         onSpawn?(pid)
         output.closeWriter()
         errors.closeWriter()
@@ -103,11 +104,18 @@ enum NativeCommandRunner {
 
     private static func spawn(
         _ executable: String, _ arguments: [String], _ environment: [String: String],
-        output: OutputPipe, errors: OutputPipe
+        pipes: (output: OutputPipe, errors: OutputPipe), workingDirectory: String?
     ) throws -> pid_t {
+        let (output, errors) = pipes
         var actions: posix_spawn_file_actions_t?
         try checked(posix_spawn_file_actions_init(&actions), "file actions")
         defer { posix_spawn_file_actions_destroy(&actions) }
+        if let workingDirectory {
+            guard workingDirectory.hasPrefix("/"), !workingDirectory.contains("\0") else {
+                throw Failure.invalidConfiguration
+            }
+            try checked(posix_spawn_file_actions_addchdir_np(&actions, workingDirectory), "working directory")
+        }
         try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0), "stdin")
         try checked(posix_spawn_file_actions_adddup2(&actions, output.writer, STDOUT_FILENO), "stdout")
         try checked(posix_spawn_file_actions_adddup2(&actions, errors.writer, STDERR_FILENO), "stderr")
