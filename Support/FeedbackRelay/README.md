@@ -16,6 +16,9 @@ Reports become public issues in `sabharishhh/brim`. Deploying the service
 and configuring a release endpoint are required when hosting a separate
 installation of the service.
 
+Reports include Brim's version and build number, the macOS version and
+architecture automatically. No logs, file paths or app inventory are collected.
+
 ## Activate direct sending
 
 1. Use an existing Cloudflare account and install its official Wrangler CLI.

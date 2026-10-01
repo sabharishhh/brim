@@ -1,14 +1,13 @@
 import Foundation
 
-/// Only text the person wrote and the basic version information they opted
-/// into. Feedback never reads logs, app inventory, file paths or identifiers.
+/// Text the person wrote and basic app and system versions. Feedback never
+/// reads logs, app inventory, file paths or identifiers.
 public struct FeedbackDraft: Codable, Equatable, Sendable {
     public var kind: FeedbackKind = .bug
     public var title = ""
     public var details = ""
     public var reproduction = ""
     public var expected = ""
-    public var includesEnvironment = false
 
     public init() {}
 
@@ -48,9 +47,7 @@ public struct FeedbackDraft: Codable, Equatable, Sendable {
                 sections += ["### Expected result", expected.trimmed]
             }
         }
-        if includesEnvironment {
-            sections += ["### App and system", environment.text]
-        }
+        sections += ["### App and system", environment.text]
         return sections.joined(separator: "\n\n")
     }
 }
