@@ -21,6 +21,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let journalStore: JournalStore
     private let ledgerStore: LedgerStore
     private let executor: Executor
+    private let toolCleanupClient: ToolCleanup.Client
     private var leftoversTask: Task<[Leftover], Error>?
 
     /// The durable store. Written and never read used to be the whole of
@@ -33,8 +34,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// working one.
     private let index: Index?
     
-    public init(root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL, consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true) {
+    public init(
+        root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL,
+        consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true,
+        toolCleanupClient: ToolCleanup.Client = .init(), tokenStore: TokenStore = .init()
+    ) {
         self.root = root
+        self.toolCleanupClient = toolCleanupClient
         self.brimAppURL = brimAppURL
         self.consent = consent
         self.presence = presence
@@ -52,7 +58,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // Tokens live in memory only. The directory is still here because
         // `PresenceStore` writes to it, and presence, unlike approval, is
         // meant to survive a relaunch.
-        self.tokenStore = TokenStore()
+        self.tokenStore = tokenStore
         self.presenceStore = PresenceStore(directoryURL: tokensDir)
         
         let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
@@ -63,7 +69,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
 
         self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
-        self.executor = Executor(journalStore: self.journalStore)
+        self.executor = Executor(journalStore: self.journalStore, toolCleanupClient: toolCleanupClient)
     }
     
     public func inspect(identity: Identity) async throws -> Footprint {
@@ -97,6 +103,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// result. `apply` re-plans to revalidate the footprint, and that
     /// throwaway plan must not land in the store beside the real one.
     private func makePlan(intent: PlanIntent) async throws -> Plan {
+        if intent.type == .toolCleanup {
+            return try await makeToolCleanupPlan(intent)
+        }
+        guard intent.toolCleanup == nil else { throw ToolCleanup.CleanupError.bindingChanged }
         let projector = FootprintProjector(engine: engine)
         var footprint: Footprint
         let explicitTargets = intent.explicitTargets
@@ -513,6 +523,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
         // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
         let revalidatedPlan = try await makePlan(intent: plan.intent)
+        try validateToolCleanup(plan, rebuilt: revalidatedPlan)
         let searchIsCurrent = plan.capabilityReport == revalidatedPlan.capabilityReport
             && plan.scanCompleteness == revalidatedPlan.scanCompleteness
         guard searchIsCurrent else {
@@ -577,10 +588,29 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         try await ledgerStore.write(entry: ledgerEntry)
     }
     
+    private func validateToolCleanup(_ plan: Plan, rebuilt revalidatedPlan: Plan) throws {
+        guard plan.toolCleanupBinding == revalidatedPlan.toolCleanupBinding else {
+            throw ApplyError.validationFailed("The tool or its cleanup scope changed. Review the plan again.")
+        }
+        if plan.intent.type == .toolCleanup, plan.steps != revalidatedPlan.steps {
+            throw ApplyError.validationFailed("The cleanup command changed. Review the plan again.")
+        }
+    }
+
     public func verify(planId: UUID) async throws -> VerificationResult {
         let plan = try await planStore.load(planId: planId)
         
         let journal = try? await journalStore.load(planId: planId)
+        if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
+            let outcome = journal?.stepOutcomes[0]
+            let completed = outcome == "ok"
+            let state: ToolCleanupResult.State = completed ? .completed : (outcome == nil ? .notRun : .failed)
+            let command = plan.toolCleanupBinding?.displayed ?? plan.steps.first?.evidence ?? "Tool cleanup"
+            let cleanup = ToolCleanupResult(state: state, command: command,
+                                            scope: plan.toolCleanupBinding?.scope, failure: completed ? nil : outcome)
+            return VerificationResult(planId: planId, expectedBytes: 0, recoveredBytes: 0,
+                                      success: completed, reason: completed ? nil : outcome, toolCleanup: cleanup)
+        }
         let before = journal?.freeSpaceBefore ?? 0
         let after = journal?.freeSpaceAfter ?? 0
         let recoveredBytes = max(0, after - before)
@@ -977,42 +1007,38 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return "It could not be moved: \(outcome)"
     }
 
-    /// A one step plan that runs a tool's own cleanup.
-    ///
-    /// Built here rather than by the planner, which works from a discovered
-    /// footprint. There is no footprint to discover: the step names a
-    /// cleanup and the command behind it never leaves BrimOps.
-    public func planToolCleanup(id: String, displayed: String) async throws -> Plan {
-        let plan = Plan(
-            planId: UUID(),
-            createdAt: Date(),
-            engineVersion: "1.0.0",
-            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            intent: PlanIntent(
-                type: .uninstall,
-                subjectIdentity: Identity(bundleID: nil, name: displayed),
-                requesterKind: "ui",
-                requesterIdentity: NSUserName()
-            ),
-            steps: [Step(
-                index: 0,
-                kind: .delegateToolCleanup,
-                target: id,
-                targetFingerprint: nil,
-                tier: .A,
-                evidence: "Runs the tool's own cleanup: \(displayed)",
-                expectedBytes: 0,
-                capability: .ok,
-                reversible: false,
-                costOfError: .low,
-                executionPhase: .auxiliary,
-                disposition: .delete
-            )],
-            excludedItems: [],
-            expectedTotalBytes: 0
-        )
-        try await planStore.save(plan: plan)
-        return plan
+    /// Older callers may supply display text, but it has no authority.
+    public func planToolCleanup(id: String, displayed _: String) async throws -> Plan {
+        try await planToolCleanup(request: toolCleanupClient.request(id: id))
+    }
+
+    public func planToolCleanup(id: String, cachePath: URL) async throws -> Plan {
+        try await planToolCleanup(request: toolCleanupClient.request(id: id, cachePath: cachePath))
+    }
+
+    private func planToolCleanup(request: ToolCleanupRequest) async throws -> Plan {
+        let name = ToolCleanup.command(id: request.id.rawValue)?.displayed ?? "Tool cleanup"
+        let intent = PlanIntent(type: .toolCleanup, subjectIdentity: Identity(bundleID: nil, name: name),
+                                requesterKind: "ui", requesterIdentity: NSUserName(), toolCleanup: request)
+        return try await plan(intent: intent)
+    }
+
+    private func makeToolCleanupPlan(_ intent: PlanIntent) async throws -> Plan {
+        guard let request = intent.toolCleanup, intent.explicitTargets.isEmpty,
+              intent.tickedByHand?.isEmpty != false
+        else {
+            throw ToolCleanup.CleanupError.bindingChanged
+        }
+        let binding = try await toolCleanupClient.prepare(request)
+        let evidence = binding.displayed + "\nCache: " + binding.scope
+            + "\nThe tool permanently removes cached packages. They may need to be downloaded again."
+        let step = Step(index: 0, kind: .delegateToolCleanup, target: request.id.rawValue,
+                        targetFingerprint: nil, tier: .A, evidence: evidence, expectedBytes: 0,
+                        capability: .ok, reversible: false, costOfError: .low,
+                        executionPhase: .auxiliary, disposition: .delete)
+        return Plan(planId: UUID(), createdAt: Date(), engineVersion: EvidenceEngineRevision,
+                    osVersion: ProcessInfo.processInfo.operatingSystemVersionString, intent: intent,
+                    steps: [step], excludedItems: [], expectedTotalBytes: 0, toolCleanupBinding: binding)
     }
 
     public func developerCaches() async -> [DeveloperCache] {

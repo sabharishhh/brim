@@ -183,7 +183,8 @@ public struct DeveloperCacheScanner: Sendable {
                 name: known.name, tool: known.tool, url: url,
                 sizeBytes: size, cost: known.cost, explanation: known.explanation,
                 cleanupID: known.cleanupID,
-                cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed }
+                cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed },
+                manualCleanupReason: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.manualReason }
             )
         }
         .sorted { $0.sizeBytes > $1.sizeBytes } + (projects?.scan(home: home) ?? [])

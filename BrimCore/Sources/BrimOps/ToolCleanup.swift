@@ -18,6 +18,18 @@ public enum ToolCleanup {
         public let displayed: String
         let executable: String
         let arguments: [String]
+        public var manualReason: String? {
+            switch id {
+            case "homebrew.cleanup": "Homebrew cleanup also removes old installed versions. "
+                + "Review and run it in Homebrew."
+            case "pnpm.store": "pnpm pruning can affect stores and runtime copies beyond this row. "
+                + "Review and run it in pnpm."
+            case "uv.cache": "Clearing uv caches can break environments that use symlinks. "
+                + "Review and run it in uv."
+            case "xcode.simulators": "Simulator devices hold your setup. Manage them in Xcode."
+            default: nil
+            }
+        }
     }
 
     private static let catalogue: [Command] = [
@@ -43,6 +55,10 @@ public enum ToolCleanup {
 
     public enum CleanupError: Error, LocalizedError, Equatable {
         case unknownCleanup(String)
+        case manualOnly(String)
+        case configurationUnavailable(String)
+        case scopeChanged(String, actual: String)
+        case bindingChanged
         case toolMissing(String)
         case failed(String, code: Int32)
         case signalled(String, signal: Int32)
@@ -54,6 +70,7 @@ public enum ToolCleanup {
         public var outcomeCode: String {
             switch self {
             case .unknownCleanup: "cleanup_unknown"
+            case .manualOnly, .configurationUnavailable, .scopeChanged, .bindingChanged: "cleanup_refused"
             case .toolMissing: "cleanup_missing"
             case .failed, .signalled: "cleanup_failed"
             case .timedOut: "cleanup_timed_out"
@@ -65,6 +82,11 @@ public enum ToolCleanup {
 
         public var errorDescription: String? {
             switch self {
+            case let .manualOnly(reason), let .configurationUnavailable(reason): reason
+            case let .scopeChanged(command, actual):
+                "`\(command)` uses \(actual), which differs from this row. Review it in the tool."
+            case .bindingChanged:
+                "The tool or its cleanup scope changed. Review the cleanup again."
             case let .unknownCleanup(id):
                 "Brim has no cleanup registered under \(id)."
             case let .toolMissing(displayed):
@@ -93,6 +115,9 @@ public enum ToolCleanup {
         runner: (@Sendable (String, [String]) async throws -> Int32)? = nil
     ) async throws {
         guard let command = command(id: id) else { throw CleanupError.unknownCleanup(id) }
+        if let reason = command.manualReason {
+            throw CleanupError.manualOnly(reason)
+        }
         let invoke = runner ?? Self.execute
         let status: Int32
         do {
@@ -109,7 +134,7 @@ public enum ToolCleanup {
         guard status == 0 else { throw CleanupError.failed(command.displayed, code: status) }
     }
 
-    private static func mapped(_ failure: NativeCommandRunner.Failure, displayed: String) -> CleanupError {
+    static func mapped(_ failure: NativeCommandRunner.Failure, displayed: String) -> CleanupError {
         switch failure {
         case let .systemCall(operation, code):
             if operation == "spawn", code == ENOENT {

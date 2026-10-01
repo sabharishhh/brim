@@ -8,6 +8,7 @@ private let log = BrimLog.make("executor")
 public actor Executor {
     private let journalStore: JournalStore
     private let fm = FileManager.default
+    private let toolCleanupClient: ToolCleanup.Client
 
     /// Removes something this process cannot reach, by asking Brim's
     /// privileged daemon. Nil when no daemon is set up, which is the
@@ -32,7 +33,8 @@ public actor Executor {
         self.privilegedReceiptForgetter = forgetter
     }
     
-    public init(journalStore: JournalStore) {
+    public init(journalStore: JournalStore, toolCleanupClient: ToolCleanup.Client = .init()) {
+        self.toolCleanupClient = toolCleanupClient
         self.journalStore = journalStore
     }
 
@@ -211,11 +213,19 @@ public actor Executor {
                     // command string, and this is the step most tempted by
                     // one.
                     do {
-                        try await ToolCleanup.run(id: step.target)
+                        guard plan.intent.type == .toolCleanup,
+                              let request = plan.intent.toolCleanup, let binding = plan.toolCleanupBinding,
+                              request.id.rawValue == step.target
+                        else {
+                            throw ToolCleanup.CleanupError.bindingChanged
+                        }
+                        try await toolCleanupClient.run(binding, request: request)
                         journal.stepOutcomes[step.index] = "ok"
                     } catch let error as ToolCleanup.CleanupError {
+                        hasFailures = true
                         journal.stepOutcomes[step.index] = "\(error.outcomeCode): \(error.localizedDescription)"
                     } catch {
+                        hasFailures = true
                         journal.stepOutcomes[step.index] =
                             "cleanup_execution_failed: \(error.localizedDescription)"
                     }
