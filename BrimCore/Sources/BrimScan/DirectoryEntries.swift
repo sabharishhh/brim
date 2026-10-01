@@ -17,16 +17,14 @@ enum DirectoryEntries {
         do {
             return try .listed(fileManager.contentsOfDirectory(atPath: directory.path).sorted())
         } catch {
-            let failure = error as NSError
-            let missingFile = failure.domain == NSCocoaErrorDomain
-                && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(failure.code)
-            if missingFile {
-                return .absent
-            }
-            if failure.domain == NSPOSIXErrorDomain, failure.code == Int(ENOENT) {
-                return .absent
-            }
-            return .refused
+            return isMissing(error) ? .absent : .refused
         }
+    }
+
+    static func isMissing(_ error: Error) -> Bool {
+        let failure = error as NSError
+        return (failure.domain == NSCocoaErrorDomain
+            && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(failure.code))
+            || (failure.domain == NSPOSIXErrorDomain && failure.code == Int(ENOENT))
     }
 }
