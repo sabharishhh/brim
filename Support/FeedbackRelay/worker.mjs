@@ -73,7 +73,8 @@ export class FeedbackInbox {
   constructor(ctx, env, fetcher = fetch) {
     this.ctx = ctx;
     this.env = env;
-    this.fetcher = fetcher;
+    // Workerd requires the native fetch function to keep its global receiver.
+    this.fetcher = fetcher.bind(globalThis);
   }
 
   fetch(request) {
@@ -159,7 +160,7 @@ export class FeedbackInbox {
 
   github(url, options = {}) {
     return this.fetcher(url, {
-      ...options, redirect: 'error', signal: AbortSignal.timeout(5_000),
+      ...options, redirect: 'manual', signal: AbortSignal.timeout(5_000),
       headers: {
         Authorization: `Bearer ${this.env.GITHUB_TOKEN}`,
         Accept: 'application/vnd.github+json',

@@ -6,7 +6,6 @@ struct FeedbackComposer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focusesTitle: Bool
     @State private var showsSteps = false
-    @State private var showsPreview = false
 
     var body: some View {
         @Bindable var feedback = feedback
@@ -56,16 +55,6 @@ struct FeedbackComposer: View {
                         .font(.callout)
                     }
                     FeedbackEnvironmentControl()
-                    DisclosureGroup("Preview your report", isExpanded: $showsPreview) {
-                        Text(feedback.report.copyText)
-                            .font(.callout.monospaced())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
-                            .padding(.top, 10)
-                    }
-                    .font(.callout)
                 }
                 .padding(.horizontal, Metrics.pagePadding)
                 .padding(.bottom, Metrics.pagePadding)
@@ -74,7 +63,6 @@ struct FeedbackComposer: View {
             FeedbackComposerFooter()
         }
         .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: showsSteps)
-        .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: showsPreview)
         .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: feedback.draft.kind)
         .onAppear { focusesTitle = true }
     }

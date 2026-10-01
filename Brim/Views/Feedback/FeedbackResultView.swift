@@ -18,8 +18,8 @@ struct FeedbackResultView: View {
                 Text(feedback.receipt == nil ? "Ready on GitHub" : "Thanks for helping Brim")
                     .font(.brimHeadline)
                 Text(feedback.receipt == nil
-                    ? "Create the issue in your browser. Your draft stays here until you clear it."
-                    : "Your report was received. You can follow the conversation on GitHub.")
+                    ? "Create the issue in your browser to finish."
+                    : "Follow your report on GitHub.")
                     .foregroundStyle(Palette.inkSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -38,8 +38,7 @@ struct FeedbackResultView: View {
                     .keyboardShortcut(.defaultAction)
             }
             Spacer()
-            Text(feedback.receipt == nil
-                ? "Opening GitHub does not submit the report." : "Your report is public on GitHub.")
+            Text("Public report on GitHub")
                 .font(.caption)
                 .foregroundStyle(Palette.inkSecondary)
         }

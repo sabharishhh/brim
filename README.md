@@ -49,7 +49,7 @@ Brim asks once, during setup.
 ## Privacy
 
 Brim works on your Mac and has no account, analytics or crash reporting.
-It goes online only to check for updates:
+It goes online to check for updates and when you send feedback:
 
 - **Your apps.** Updates asks the App Store (`itunes.apple.com`,
   `apps.apple.com`) about apps installed from it, Homebrew
@@ -58,6 +58,9 @@ It goes online only to check for updates:
   the app's identifier or name.
 - **Brim itself.** Brim asks GitHub for the latest release to tell you when
   a new version is out.
+- **Feedback.** Reports you send from Settings become public GitHub issues
+  through Brim's feedback service. They include your text, Brim's version and
+  build, the macOS version and processor type.
 
 ## Building from source
 

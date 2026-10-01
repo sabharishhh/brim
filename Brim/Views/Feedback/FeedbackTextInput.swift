@@ -8,7 +8,7 @@ struct FeedbackTextInput: View {
     let limit: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title).font(.headline)
                 Spacer()
@@ -22,14 +22,14 @@ struct FeedbackTextInput: View {
                 if text.isEmpty {
                     Text(prompt)
                         .foregroundStyle(Palette.inkTertiary)
-                        .padding(.horizontal, 9)
-                        .padding(.top, 9)
+                        .padding(.horizontal, 17)
+                        .padding(.top, 12)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
                 TextEditor(text: $text)
                     .scrollContentBackground(.hidden)
-                    .padding(4)
+                    .padding(12)
                     .accessibilityLabel(title)
                     .accessibilityHint(prompt)
             }
