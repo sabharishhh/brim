@@ -16,20 +16,17 @@ ARCHIVE="$BUILD_DIR/Brim.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 SOURCE_DIR="$BUILD_DIR/source"
 
+# The identifier in a certificate's display name can differ from its team.
+SIGNING_FINGERPRINT=$(python3 scripts/signing_identity.py "$TEAM_ID" "${APPLE_SIGNING_IDENTITY:-}")
 APPLE_SIGNING_IDENTITY=$(security find-identity -v -p codesigning | python3 -c '
 import re, sys
-team, requested = sys.argv[1:]
-for line in sys.stdin:
-    match = re.search(r"([A-F0-9]{40}) \"(.+)\"", line)
-    if not match:
-        continue
-    fingerprint, name = match.groups()
-    if (name.startswith(("Apple Development:", "Developer ID Application:"))
-            and name.endswith(f"({team})") and requested in ("", name, fingerprint)):
+fingerprint = sys.argv[1]
+for digest, name in re.findall(r"([A-F0-9]{40}) \"(.+)\"", sys.stdin.read()):
+    if digest == fingerprint:
         print(name)
         sys.exit(0)
-sys.exit(f"No valid Apple signing identity for team {team}. Restore its certificate in Xcode.")
-' "$TEAM_ID" "${APPLE_SIGNING_IDENTITY:-}")
+sys.exit("The selected signing identity is no longer available.")
+' "$SIGNING_FINGERPRINT")
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$SOURCE_DIR"
@@ -49,7 +46,7 @@ xcodebuild archive -project "$SOURCE_DIR/Brim.xcodeproj" -scheme brim \
     -configuration Release -archivePath "$ARCHIVE" -destination 'generic/platform=macOS' \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
     DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+    CODE_SIGN_IDENTITY="$SIGNING_FINGERPRINT"
 
 if [[ "$APPLE_SIGNING_IDENTITY" == Developer\ ID\ Application* ]]; then
     cat > "$BUILD_DIR/ExportOptions.plist" <<PLIST
@@ -72,14 +69,14 @@ apps=("$EXPORT_DIR"/*.app)
 # Xcode does not include arbitrary INFOPLIST_KEY settings in generated plists.
 # Add the commit to the exported app and sign that final bundle again.
 /usr/libexec/PlistBuddy -c "Add :BrimSourceRevision string $SOURCE_REVISION" "${apps[0]}/Contents/Info.plist"
-codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+codesign --force --sign "$SIGNING_FINGERPRINT" \
     --preserve-metadata=identifier,entitlements,flags "${apps[0]}"
 DMG="$BUILD_DIR/Brim-$VERSION.dmg"
 mkdir -p "$BUILD_DIR/dmg"
 ditto "${apps[0]}" "$BUILD_DIR/dmg/$(basename "${apps[0]}")"
 ln -s /Applications "$BUILD_DIR/dmg/Applications"
 hdiutil create -volname Brim -srcfolder "$BUILD_DIR/dmg" -ov -format UDZO "$DMG"
-codesign --force --sign "$APPLE_SIGNING_IDENTITY" "$DMG"
+codesign --force --sign "$SIGNING_FINGERPRINT" "$DMG"
 
 if [[ -n ${APPLE_ID:-} && -n ${APPLE_APP_SPECIFIC_PASSWORD:-} && -n ${APPLE_TEAM_ID:-} ]]; then
     xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
