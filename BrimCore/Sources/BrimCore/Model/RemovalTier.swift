@@ -12,7 +12,8 @@ public enum RemovalTier: String, Codable, Equatable, Sendable {
             // No qualified per-record removal route. A global reset cannot
             // serve as one application's uninstall step.
             .detectableOnly
-        case .firewallEntry, .systemExtension, .appExtension, .legacyLoginItem, .keychainItem, .shellProfileLine:
+        case .firewallEntry, .systemExtension, .appExtension, .legacyLoginItem, .keychainItem, .shellProfileLine,
+             .configurationProfile:
             .detectableOnly
         case .privacyGrant:
             ownerPresent ? .removable : .detectableOnly
@@ -25,7 +26,7 @@ public enum RemovalTier: String, Codable, Equatable, Sendable {
         switch capability {
         case .backgroundItem:
             .detectableOnly
-        case .firewallEntry, .systemExtension, .appExtension, .vpnConfiguration, .fileProvider:
+        case .firewallEntry, .systemExtension, .appExtension, .vpnConfiguration, .fileProvider, .configurationProfile:
             .detectableOnly
         case .privacyGrant:
             ownerPresent ? .removable : .detectableOnly
@@ -42,6 +43,7 @@ public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
     case loginItemsSettings
     case fileProviderOwner
     case firewallSettings
+    case deviceManagementSettings
     case systemExtensionsSettings
     case restartForSystemExtension
     case restoreAppForPrivacyReset
@@ -55,6 +57,9 @@ public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
             "Use the app's uninstaller for any remaining system extensions."
         case .firewallSettings:
             "Review the remaining entry in System Settings > Network > Firewall > Options."
+        case .deviceManagementSettings:
+            "Review the profile in System Settings > General > Device Management. "
+                + "Managed or shared profiles need an administrator."
         case .fileProviderOwner:
             "Finish syncing or export cloud files with the owning app before removing its data."
         case .systemExtensionsSettings:

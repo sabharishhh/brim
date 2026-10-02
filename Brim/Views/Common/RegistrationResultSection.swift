@@ -11,10 +11,12 @@ struct RegistrationResultSection: View {
         let observations = report.registrationObservations ?? []
         let listed = observations.filter { !$0.remaining.isEmpty }
         let unknown = observations.filter(\.couldNotCheck)
+        let reportOnly = observations.filter(\.isReportOnly)
         let preserved = observations.filter { !$0.preserved.isEmpty }
         let recovery = observations.filter { $0.recoveryCopies?.isEmpty == false }
-        if !listed.isEmpty || !unknown.isEmpty || !preserved.isEmpty || !recovery.isEmpty
-            || report.unknownPaths?.isEmpty == false || report.completedActions?.isEmpty == false {
+        if !listed.isEmpty || !unknown.isEmpty || !reportOnly.isEmpty || !preserved.isEmpty || !recovery.isEmpty
+            || report.unknownPaths?.isEmpty == false || report.completedActions?.isEmpty == false
+            || report.failedActions?.isEmpty == false {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Registrations")
                     .font(.headline)
@@ -32,11 +34,18 @@ struct RegistrationResultSection: View {
                 ForEach(unknown) { observation in
                     Label("\(observation.capability.title): could not check", systemImage: "questionmark.circle")
                 }
+                ForEach(reportOnly) { observation in
+                    Label("\(observation.capability.title): individual records cannot be checked",
+                          systemImage: "info.circle")
+                }
                 if let paths = report.unknownPaths, !paths.isEmpty {
                     Label("\(paths.count) locations could not be checked", systemImage: "questionmark.folder")
                 }
                 if report.completedActions?.isEmpty == false {
-                    Label("Permissions reset", systemImage: "checkmark.circle")
+                    Label("Commands completed", systemImage: "checkmark.circle")
+                }
+                if report.failedActions?.isEmpty == false {
+                    Label("Commands not completed", systemImage: "exclamationmark.circle")
                 }
                 DisclosureGroup("Details") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -70,6 +79,9 @@ struct RegistrationResultSection: View {
                         ForEach(report.completedActions ?? [], id: \.self) { action in
                             Label(action, systemImage: "checkmark.shield")
                         }
+                        ForEach(report.failedActions ?? [], id: \.self) { action in
+                            Label(action, systemImage: "exclamationmark.circle")
+                        }
                         ForEach(report.unknownPaths ?? [], id: \.self) { path in
                             Label(path, systemImage: "questionmark.folder").textSelection(.enabled)
                         }
@@ -96,6 +108,7 @@ struct RegistrationResultSection: View {
         .applicationGroups: "square.3.layers.3d",
         .bundlePlugin: "powerplug",
         .installationRecords: "shippingbox",
-        .firewallEntry: "network.badge.shield.half.filled"
+        .firewallEntry: "network.badge.shield.half.filled",
+        .configurationProfile: "person.crop.circle.badge.checkmark"
     ]
 }

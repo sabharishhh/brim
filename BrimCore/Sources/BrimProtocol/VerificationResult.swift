@@ -11,6 +11,8 @@ public struct VerificationResult: Codable, Equatable, Sendable, Identifiable {
     public let recoveredBytes: Int64
     public let success: Bool
     public let reason: String?
+    /// Nil in saved results recorded before fresh observation times were kept.
+    public let observedAt: Date?
 
     /// Every path the plan named that is still on the disk, re-observed with
     /// `lstat` after the removal ran.
@@ -47,13 +49,15 @@ public struct VerificationResult: Codable, Equatable, Sendable, Identifiable {
         report: RemovalReport? = nil,
         toolCleanup: ToolCleanupResult? = nil,
         packageRecord: PackageRecordResult? = nil,
-        freeSpaceMeasured: Bool? = nil
+        freeSpaceMeasured: Bool? = nil,
+        observedAt: Date? = nil
     ) {
         self.planId = planId
         self.expectedBytes = expectedBytes
         self.recoveredBytes = recoveredBytes
         self.success = success
         self.reason = reason
+        self.observedAt = observedAt
         self.remainingPaths = remainingPaths
         self.followUpActions = followUpActions
         self.report = report

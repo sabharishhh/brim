@@ -51,7 +51,8 @@ final class RegistrationExecutionTests: XCTestCase {
                                      coverage: .available(.launchdJob), remaining: [], preserved: []),
             reviewed: [record], observedAt: Date()
         )
-        XCTAssertEqual(result.remaining, [record])
+        XCTAssertEqual(result.remaining.map(\.id), [record.id])
+        XCTAssertEqual(result.remaining.first?.runtimeState, "loaded")
         XCTAssertFalse(result.confirmedClear)
     }
 

@@ -273,43 +273,50 @@ extension DelegatedCleanupPlanTests {
             try await tokens.append(service.grantApproval(for: receipt))
         }
         await barrier.arm()
-        let successes = await withTaskGroup(of: Bool.self) { group in
-            for token in tokens {
-                group.addTask {
-                    do {
-                        try await service.apply(planId: plan.planId, token: token)
-                        return true
-                    } catch {
-                        return false
-                    }
-                }
-            }
-            var successes = 0
-            for await success in group where success {
-                successes += 1
-            }
-            return successes
+        let firstToken = tokens[0]
+        let secondToken = tokens[1]
+        let first = Task {
+            try await service.apply(planId: plan.planId, token: firstToken)
         }
-        #expect(successes == 1)
+        await barrier.waitUntilEntered()
+        do {
+            try await service.apply(planId: plan.planId, token: secondToken)
+            Issue.record("A second application entered while the first was revalidating.")
+        } catch {
+            #expect((error as NSError).code == 409)
+        }
+        await barrier.release()
+        try await first.value
         #expect(fixture.invocations.withLock { $0.count } == 1)
     }
 
     private actor RevalidationBarrier {
         var armed = false
         var waiting: CheckedContinuation<Void, Never>?
+        var entered = false
+        var entryWaiter: CheckedContinuation<Void, Never>?
         func arm() {
             armed = true
         }
 
         func pause() async {
             guard armed else { return }
-            if let first = waiting {
-                waiting = nil
-                armed = false
-                first.resume()
-            } else {
-                await withCheckedContinuation { waiting = $0 }
+            entered = true
+            entryWaiter?.resume()
+            entryWaiter = nil
+            await withCheckedContinuation { waiting = $0 }
+        }
+
+        func waitUntilEntered() async {
+            if !entered {
+                await withCheckedContinuation { entryWaiter = $0 }
             }
+        }
+
+        func release() {
+            armed = false
+            waiting?.resume()
+            waiting = nil
         }
     }
 }

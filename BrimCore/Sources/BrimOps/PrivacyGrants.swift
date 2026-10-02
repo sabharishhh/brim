@@ -35,17 +35,18 @@ public enum PrivacyGrants {
     /// `tccutil`'s exit status when Launch Services cannot resolve the bundle.
     static let bundleNotFoundExitCode: Int32 = 64
 
-    /// Clears every privacy grant macOS holds for one bundle identifier.
-    ///
-    /// `All` is deliberate: an uninstall should leave no grant behind, and
-    /// resetting service by service would require knowing which were granted
-    /// — which is exactly what cannot be read.
+    /// Requests a reset for one bundle identifier. Command completion does
+    /// not independently verify each permission or managed policy.
     public static func resetAll(
         bundleID: String,
         runner: ((String, [String]) throws -> Int32)? = nil
-    ) throws {
-        let invoke = runner ?? Self.run
-        let status = try invoke("/usr/bin/tccutil", ["reset", "All", bundleID])
+    ) async throws {
+        try validate(bundleID)
+        let status: Int32 = if let runner {
+            try runner("/usr/bin/tccutil", ["reset", "All", bundleID])
+        } else {
+            try await RegistrationCommand.status("/usr/bin/tccutil", ["reset", "All", bundleID])
+        }
         guard status == 0 else {
             throw status == bundleNotFoundExitCode
                 ? ResetError.bundleNotFound(bundleID)
@@ -54,9 +55,7 @@ public enum PrivacyGrants {
     }
 
     public static func resetAllBounded(bundleID: String) async throws {
-        guard getuid() != 0, !bundleID.isEmpty, !bundleID.contains("/"), !bundleID.contains("\0") else {
-            throw ResetError.failed(bundleID, code: EPERM)
-        }
+        try validate(bundleID)
         let status = try await RegistrationCommand.status("/usr/bin/tccutil", ["reset", "All", bundleID])
         guard status == 0 else {
             throw status == bundleNotFoundExitCode
@@ -64,16 +63,11 @@ public enum PrivacyGrants {
         }
     }
 
-    /// Runs a fixed tool with fixed arguments. No caller-supplied command
-    /// string ever reaches a shell; the step vocabulary forbids it.
-    static func run(_ executable: String, _ arguments: [String]) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+    private static func validate(_ bundleID: String) throws {
+        guard getuid() != 0, !bundleID.isEmpty, !bundleID.hasPrefix("-"),
+              !bundleID.contains("/"), !bundleID.contains("\0")
+        else {
+            throw ResetError.failed(bundleID, code: EPERM)
+        }
     }
 }

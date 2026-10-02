@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
@@ -11,6 +12,15 @@ public struct LaunchdJobDefinition: Equatable, Sendable {
     public init?(dictionary: [String: Any]) {
         guard let label = dictionary["Label"] as? String, !label.isEmpty,
               !label.contains("/"), !label.contains("\0") else { return nil }
+        if let value = dictionary["Program"], !(value is String) {
+            return nil
+        }
+        if let value = dictionary["ProgramArguments"], !(value is [String]) {
+            return nil
+        }
+        if let value = dictionary["BundleProgram"], !(value is String) {
+            return nil
+        }
         self.label = label
         program = (dictionary["Program"] as? String)
             ?? (dictionary["ProgramArguments"] as? [String])?.first
@@ -19,7 +29,7 @@ public struct LaunchdJobDefinition: Equatable, Sendable {
     }
 
     public static func read(_ path: String) throws -> Self {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let data = try readBoundedDeclaration(path)
         guard let dictionary = try PropertyListSerialization.propertyList(
             from: data, options: [], format: nil
         ) as? [String: Any], let job = Self(dictionary: dictionary) else {
@@ -28,6 +38,40 @@ public struct LaunchdJobDefinition: Equatable, Sendable {
             ])
         }
         return job
+    }
+
+    private static func readBoundedDeclaration(_ path: String) throws -> Data {
+        guard !path.contains("\0") else { throw unreadableDeclaration() }
+        let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        let limit = 64 * 1024
+        var reviewed = stat()
+        guard fstat(descriptor, &reviewed) == 0, (reviewed.st_mode & S_IFMT) == S_IFREG,
+              reviewed.st_size >= 0, reviewed.st_size <= Int64(limit),
+              let data = try handle.read(upToCount: limit + 1), data.count == Int(reviewed.st_size)
+        else { throw unreadableDeclaration() }
+        var current = stat()
+        guard fstat(descriptor, &current) == 0, sameEntry(current, reviewed),
+              lstat(path, &current) == 0, sameEntry(current, reviewed)
+        else { throw unreadableDeclaration() }
+        return data
+    }
+
+    private static func sameEntry(_ first: stat, _ second: stat) -> Bool {
+        first.st_dev == second.st_dev && first.st_ino == second.st_ino && first.st_size == second.st_size
+            && first.st_mtimespec.tv_sec == second.st_mtimespec.tv_sec
+            && first.st_mtimespec.tv_nsec == second.st_mtimespec.tv_nsec
+            && first.st_ctimespec.tv_sec == second.st_ctimespec.tv_sec
+            && first.st_ctimespec.tv_nsec == second.st_ctimespec.tv_nsec
+    }
+
+    private static func unreadableDeclaration() -> NSError {
+        NSError(domain: "BrimLaunchd", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "The job declaration is not a stable regular file "
+                + "within the supported read limit."
+        ])
     }
 
     public func resolvedProgram(plistPath: String) -> String? {

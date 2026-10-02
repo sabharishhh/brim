@@ -125,7 +125,8 @@ struct BackgroundView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if sections.isEmpty {
             if model.searchText.isEmpty {
-                EmptyState(symbol: "checkmark.seal", title: "Nothing listed", message: "No background items.")
+                EmptyState(symbol: "checkmark.seal", title: "Nothing listed",
+                           message: "No application background items.")
             } else {
                 EmptyState(symbol: "magnifyingglass", title: "No matches", message: "Nothing matches your search.")
             }

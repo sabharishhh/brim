@@ -61,7 +61,7 @@ final class UndoTests: XCTestCase {
         let journal = try await journalStore.load(planId: plan.planId)
         print("Journal after apply: \(journal?.stepOutcomes ?? [:])")
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: bundleURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bundleURL.path), "\(journal?.stepOutcomes ?? [:])")
 
         // Verify history
         let history = try await service.history()

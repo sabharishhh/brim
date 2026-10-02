@@ -20,6 +20,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         case privacyGrant
         /// Launch Services registration — "Open With", URL schemes.
         case firewallEntry
+        case configurationProfile
         case launchServices
         /// A PluginKit extension: Finder Sync, Share, Widgets, Quick Look.
         case appExtension
@@ -53,6 +54,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
             case .launchdJob: "Background job"
             case .privacyGrant: "Privacy grant"
             case .firewallEntry: "Firewall entry"
+            case .configurationProfile: "Management profile"
             case .launchServices: "Open With registration"
             case .appExtension: "App extension"
             case .systemExtension: "System extension"
@@ -156,6 +158,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         kind == .keychainItem || kind == .shellProfileLine || kind == .backgroundItem
             || kind == .firewallEntry || kind == .systemExtension || kind == .legacyLoginItem
             || kind == .appExtension
+            || kind == .configurationProfile
     }
 
     /// A report-only entry is never a thing to sweep, however stale it
