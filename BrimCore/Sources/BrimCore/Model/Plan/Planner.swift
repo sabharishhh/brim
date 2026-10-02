@@ -348,6 +348,7 @@ public struct Planner: Sendable {
 
         if intent.type == .uninstall,
            intent.explicitTargets.isEmpty,
+           capabilityReport?.checks.first(where: { $0.capability == .launchServices })?.coverage.absence != .byDesign,
            let bundleStep = steps.first(where: { $0.executionPhase == .appBundle }) {
             let host = bundleStep.target
             let registered = capabilityReport?.checks

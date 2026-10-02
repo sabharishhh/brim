@@ -26,6 +26,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let toolCleanupClient: ToolCleanup.Client
     private let launchdRuntime: LaunchdRuntimeClient
     private var leftoversTask: Task<[Leftover], Error>?
+    private var activePlans = Set<UUID>()
+
+    private func beginOperation(planId: UUID) throws {
+        guard activePlans.insert(planId).inserted else {
+            throw NSError(domain: "BrimService", code: 409, userInfo: [
+                NSLocalizedDescriptionKey: "This removal is already being changed or checked. "
+                    + "Try again when it finishes."
+            ])
+        }
+    }
 
     /// The durable store. Written and never read used to be the whole of
     /// it: the schema existed, the module compiled, and the service did
@@ -56,7 +66,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
         let vetoEngine = TierSVetoEngine(root: root, lookup: { identifier in
             guard root.rootURL.standardizedFileURL.path == "/" else { return [] }
-            return NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identifier)
+            return try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: identifier)
         })
         safetyEngine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
         planner = Planner()
@@ -485,6 +495,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func apply(planId: UUID, token: ApprovalToken) async throws {
+        try beginOperation(planId: planId)
+        defer { activePlans.remove(planId) }
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
 
@@ -578,8 +590,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         // Record ledger entry
         let outcomes = journal.stepOutcomes.map { index, resultStr in
-            let status: StepOutcome = resultStr == "ok" ? .success : .failed
-            return Outcome(stepIndex: index, result: status, errorMessage: resultStr == "ok" ? nil : resultStr)
+            let completed = resultStr == "ok" || resultStr == "already_gone"
+            let status: StepOutcome = completed ? .success : .failed
+            return Outcome(stepIndex: index, result: status, errorMessage: completed ? nil : resultStr)
         }
         let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
         let ledgerEntry = LedgerEntry(
@@ -602,18 +615,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func verify(planId: UUID) async throws -> VerificationResult {
+        try beginOperation(planId: planId)
+        defer { activePlans.remove(planId) }
+        let verificationStartedAt = Date()
         let plan = try await planStore.load(planId: planId)
 
         let journal = try? await journalStore.load(planId: planId)
+        let executionEvidenceUnavailable = !plan.steps.isEmpty && journal == nil
         if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
-            let outcome = journal?.stepOutcomes[0]
-            let completed = outcome == "ok"
-            let state: ToolCleanupResult.State = completed ? .completed : (outcome == nil ? .notRun : .failed)
-            let command = plan.toolCleanupBinding?.displayed ?? plan.steps.first?.evidence ?? "Tool cleanup"
-            let cleanup = ToolCleanupResult(state: state, command: command,
-                                            scope: plan.toolCleanupBinding?.scope, failure: completed ? nil : outcome)
-            return VerificationResult(planId: planId, expectedBytes: 0, recoveredBytes: 0,
-                                      success: completed, reason: completed ? nil : outcome, toolCleanup: cleanup)
+            return try await verifyToolCleanup(plan: plan, journal: journal, observedAt: verificationStartedAt)
         }
         let recoveredBytes = Self.observedSpaceIncrease(
             before: journal?.freeSpaceBefore, after: journal?.freeSpaceAfter
@@ -664,15 +674,19 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
-            && !privacyResetFailed && !otherActionsFailed
+            && !privacyResetFailed && !otherActionsFailed && !executionEvidenceUnavailable
             && !postChecks.contains(where: { !$0.remaining.isEmpty || $0.couldNotCheck })
         let recorded = Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining)
-        let reason = Self.verificationReason(
+        let observedReason = Self.verificationReason(
             pathsRemaining: pathsRemaining,
             recorded: recorded,
             staleRegistrations: staleRegistrations,
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
+        let receiptReason = executionEvidenceUnavailable
+            ? "Execution receipts could not be read. Completed actions are unknown." : nil
+        let reason = [observedReason, receiptReason]
+            .compactMap(\.self).joined(separator: "\n\n")
 
         // Teams' device was still offered in every app's microphone list
         // after its driver had gone, because Core Audio had it loaded.
@@ -689,7 +703,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             expectedBytes: plan.expectedTotalBytes,
             recoveredBytes: recoveredBytes,
             success: success,
-            reason: reason,
+            reason: reason.isEmpty ? nil : reason,
             remainingPaths: pathsRemaining,
             followUpActions: followUps.isEmpty ? nil : followUps,
             report: RemovalReport.build(
@@ -699,12 +713,35 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 unknownPaths: unknownPaths, registrationObservations: postChecks,
                 completedActions: plan.steps.filter {
                     $0.kind == .resetPrivacyGrants && journal?.stepOutcomes[$0.index] == "ok"
-                }.map { "Permissions reset: " + $0.target }
+                }.map { "Permission reset command completed for " + $0.target },
+                verificationStartedAt: verificationStartedAt
             ),
             packageRecord: plan.homebrewInstallation.map(PackageRecordResult.observe),
-            freeSpaceMeasured: freeSpaceMeasured
+            freeSpaceMeasured: freeSpaceMeasured,
+            observedAt: verificationStartedAt
         )
-        try await journalStore.recordVerification(result)
+        if journal != nil {
+            try await journalStore.recordVerification(result)
+        }
+        return result
+    }
+
+    private func verifyToolCleanup(
+        plan: Plan, journal: JournalEntry?, observedAt: Date
+    ) async throws -> VerificationResult {
+        let outcome = journal?.stepOutcomes[0]
+        let completed = outcome == "ok"
+        let state: ToolCleanupResult.State = completed ? .completed : (outcome == nil ? .notRun : .failed)
+        let command = plan.toolCleanupBinding?.displayed ?? plan.steps.first?.evidence ?? "Tool cleanup"
+        let cleanup = ToolCleanupResult(state: state, command: command,
+                                        scope: plan.toolCleanupBinding?.scope, failure: completed ? nil : outcome)
+        let result = VerificationResult(planId: plan.planId, expectedBytes: 0, recoveredBytes: 0, success: completed,
+                                        reason: journal == nil ? "Execution receipts could not be read."
+                                            : (completed ? nil : outcome),
+                                        toolCleanup: cleanup, observedAt: observedAt)
+        if journal != nil {
+            try await journalStore.recordVerification(result)
+        }
         return result
     }
 
@@ -770,13 +807,25 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         var remaining = original.remaining
         var coverage = original.coverage
         for record in reviewed {
-            guard let namespace = record.namespace else {
+            guard record.namespace != nil else {
                 coverage = .unavailable(.launchdJob, "A saved job has no verified launchd namespace.")
                 continue
             }
-            let presence = await launchdRuntime.observe(record.identifier, namespace)
-            if presence.isPresent, !remaining.contains(where: { $0.id == record.id }) {
-                remaining.append(record)
+            let presence = await launchdRuntime.observeReviewed(record)
+            let retained = original.preserved + (original.recoveryCopies ?? [])
+            if presence.isPresent, !remaining.contains(where: { $0.id == record.id }),
+               !retained.contains(where: { $0.id == record.id }) {
+                remaining.append(Registration(
+                    kind: record.kind, identifier: record.identifier, label: record.label,
+                    owningBundleID: record.owningBundleID, programPath: record.programPath,
+                    targetExists: true, recordPath: record.recordPath,
+                    evidence: "The reviewed background job is still loaded in launchd.",
+                    isSystemOwned: record.isSystemOwned, signing: record.signing, capability: record.capability,
+                    atLogin: record.atLogin,
+                    targetPresence: PathObservation.observe(record.programPath, followingLinks: true),
+                    recordIdentity: record.recordIdentity, namespace: record.namespace, runtimeState: "loaded",
+                    rawTargetPath: record.rawTargetPath
+                ))
             } else if presence.isUnknown {
                 coverage = .unavailable(.launchdJob, "A reviewed background job could not be checked.")
             }
@@ -792,6 +841,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         var followUps: [RemovalFollowUp] = []
         if postChecks.contains(where: { $0.capability == .firewallEntry && !$0.remaining.isEmpty }) {
             followUps.append(.firewallSettings)
+        }
+        if postChecks.contains(where: { $0.capability == .configurationProfile && !$0.remaining.isEmpty }) {
+            followUps.append(.deviceManagementSettings)
         }
         let extensions = postChecks.first { $0.capability == .systemExtension }?.remaining ?? []
         followUps.removeAll { $0 == .vendorUninstaller }
@@ -871,6 +923,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func undo(planId: UUID) async throws {
+        try beginOperation(planId: planId)
+        defer { activePlans.remove(planId) }
         let plan = try await planStore.load(planId: planId)
         guard let journal = try await journalStore.load(planId: planId) else {
             throw NSError(
@@ -879,9 +933,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."]
             )
         }
+        guard journal.restoredAt == nil else {
+            throw NSError(domain: "BrimService", code: 409, userInfo: [
+                NSLocalizedDescriptionKey: "This removal has already been put back."
+            ])
+        }
         let trashedURLs = journal.stepTrashedURLs ?? [:]
-
-        let fm = FileManager.default
 
         // Refuse up front rather than restoring some steps and failing on the
         // rest. Two ways a plan cannot be undone: nothing was trashed to begin
@@ -893,6 +950,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let missing = plan.steps
             .filter { $0.effectiveDisposition == .trash && $0.kind != .unloadLaunchdJob }
             .compactMap { step -> String? in
+                guard journal.restoreOutcomes?[step.index] != "ok" else { return nil }
                 guard let trashed = trashedURLs[step.index] else { return nil }
                 return PathExistence.exists(at: trashed) ? nil : step.target
             }
@@ -900,11 +958,35 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw UndoError.noLongerInTrash(targets: missing)
         }
 
+        try await restoreFilesAndJobs(plan: plan, journal: journal)
+        try await restoreApplicationRegistrations(plan: plan, journal: journal)
+
+        // Restoring files does not erase execution receipts or prior checks.
+        try await journalStore.markRestored(planId: planId, at: Date())
+    }
+
+    private func restoreFilesAndJobs(plan: Plan, journal: JournalEntry) async throws {
+        let planId = plan.planId
+        let trashedURLs = journal.stepTrashedURLs ?? [:]
+        let fm = FileManager.default
         // 1. Restore items from Trash (atomically fails if path is re-occupied)
         let sortedSteps = plan.undoOrderedSteps
         for step in sortedSteps {
+            if journal.restoreOutcomes?[step.index] == "ok" {
+                continue
+            }
             if step.kind == .unloadLaunchdJob {
-                try? await launchdRuntime.restore(step.target)
+                // An already-unloaded job must stay unloaded on recovery.
+                let outcome = journal.stepOutcomes[step.index] ?? ""
+                guard outcome == "ok" || outcome.hasPrefix("stopped_unverified:") else { continue }
+                do {
+                    try await launchdRuntime.restore(step.target)
+                    try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
+                } catch {
+                    try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index,
+                                                                outcome: error.localizedDescription)
+                    throw error
+                }
                 continue
             }
             if let trashedURL = trashedURLs[step.index] {
@@ -917,6 +999,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
                 do {
                     try SafeOps.restoreItem(from: trashedURL.path, to: step.target)
+                    try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
                 } catch SafeOpsError.pathOccupied {
                     throw NSError(
                         domain: "BrimOps",
@@ -926,18 +1009,38 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 }
             }
         }
+    }
 
+    private func restoreApplicationRegistrations(plan: Plan, journal: JournalEntry) async throws {
+        let planId = plan.planId
+        let trashedURLs = journal.stepTrashedURLs ?? [:]
         // Put the registration back with the bundle. The uninstall retracted
         // it deliberately, so restoring the files alone would leave a working
         // application macOS does not know about — no "Open With", no document
         // types, until something happens to rescan it.
-        for step in plan.steps where step.executionPhase == .appBundle {
+        for step in plan.steps where step.kind == .unregisterLaunchServices {
+            // An offline filesystem cannot restore the host Mac's registry.
+            guard root.rootURL.standardizedFileURL.path == "/" else { continue }
+            guard journal.stepOutcomes[step.index] == "ok",
+                  let bundleStep = plan.steps.first(where: {
+                      $0.target == step.target && $0.executionPhase == .appBundle
+                          && $0.effectiveDisposition == .trash && trashedURLs[$0.index] != nil
+                  }), let fingerprint = bundleStep.targetFingerprint else { continue }
+            if journal.restoreOutcomes?[step.index] == "ok" {
+                continue
+            }
             guard PathExistence.exists(atPath: step.target) else { continue }
-            try? await LaunchServicesRegistration.registerBounded(bundlePath: step.target)
+            do {
+                try SafeOps.verifyTargetFingerprint(targetPath: step.target,
+                                                    expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
+                try await LaunchServicesRegistration.registerBounded(bundlePath: step.target)
+                try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
+            } catch {
+                try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index,
+                                                            outcome: error.localizedDescription)
+                throw error
+            }
         }
-
-        // 3. Update journal to mark undone? Or just delete journal?
-        try await journalStore.delete(planId: planId)
     }
 
     /// Gives the executor a way to reach Brim's privileged daemon.
@@ -966,7 +1069,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// never called, which is the same failure as a step kind nothing
     /// emits: the code existed, the product did not have the feature.
     static let everySurface: [any RegistrationSurface] = [
-        LaunchdRegistrationSurface(),
+        LaunchdRegistrationSurface(includeSystemJobs: false),
         FirewallSurface(), BackgroundItemSurface(),
         AppExtensionSurface(),
         SystemExtensionSurface(),
@@ -1405,7 +1508,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let scanner = LeftoversScanner(
             root: root,
-            launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
+            launchServicesLookup: { try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: $0) },
             staleRegistrationOwners: staleRegistrationOwners,
             homebrewOrphans: orphanCasks,
             claimedPaths: DeveloperCacheScanner
@@ -1475,8 +1578,19 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             guard let plan = try? await planStore.load(planId: entry.planId),
                   plan.isReversible,
                   let journal = try? await journalStore.load(planId: entry.planId),
-                  let trashedURLs = journal.stepTrashedURLs, !trashedURLs.isEmpty
+                  journal.restoredAt == nil
             else { continue }
+
+            let trashedURLs = (journal.stepTrashedURLs ?? [:]).filter {
+                journal.restoreOutcomes?[$0.key] != "ok"
+            }
+            let pendingRegistration = plan.steps.contains { step in
+                guard journal.restoreOutcomes?[step.index] != "ok" else { return false }
+                let outcome = journal.stepOutcomes[step.index] ?? ""
+                return (step.kind == .unloadLaunchdJob && (outcome == "ok" || outcome.hasPrefix("stopped_unverified:")))
+                    || (step.kind == .unregisterLaunchServices && outcome == "ok")
+            }
+            guard !trashedURLs.isEmpty || pendingRegistration else { continue }
 
             // Only count steps whose trashed copy survives; a partially
             // emptied Trash makes the plan unrestorable, not half-restorable.
@@ -1530,14 +1644,19 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
             guard !vanished.isEmpty else { continue }
 
-            let registered = Set(
-                LaunchServicesRegistration
-                    .registeredApplicationURLs(forBundleID: bundleID)
-                    .map(\.standardizedFileURL.path)
-            )
+            guard let candidates = try? LaunchServicesRegistration.checkedApplicationURLs(forBundleID: bundleID) else {
+                continue
+            }
+            let registered = Set(candidates.map(\.standardizedFileURL.path))
             for url in vanished where registered.contains(url.standardizedFileURL.path) {
-                try? await LaunchServicesRegistration.unregisterBounded(bundlePath: url.path)
-                retracted.append(url)
+                guard PathObservation.observe(url.path).isAbsent else { continue }
+                do {
+                    try await LaunchServicesRegistration.unregisterBounded(bundlePath: url.path)
+                    retracted.append(url)
+                } catch {
+                    // A refused maintenance command is not a completed action.
+                    continue
+                }
             }
         }
         return retracted

@@ -98,12 +98,15 @@ public enum PackageReceipts {
         fileManager: FileManager = .default,
         isRoot: Bool = getuid() == 0,
         runner: ((String, [String]) throws -> Int32)? = nil
-    ) throws {
+    ) async throws {
         try check(packageID, fileManager: fileManager)
         guard isRoot else { throw ForgetError.needsRoot }
 
-        let invoke = runner ?? run
-        let status = try invoke("/usr/sbin/pkgutil", ["--forget", packageID])
+        let status: Int32 = if let runner {
+            try runner("/usr/sbin/pkgutil", ["--forget", packageID])
+        } else {
+            try await RegistrationCommand.status("/usr/sbin/pkgutil", ["--forget", packageID])
+        }
         guard status == 0 else { throw ForgetError.failed(packageID, code: status) }
     }
 
@@ -112,16 +115,5 @@ public enum PackageReceipts {
         guard getuid() == 0 else { throw ForgetError.needsRoot }
         let status = try await RegistrationCommand.status("/usr/sbin/pkgutil", ["--forget", packageID])
         guard status == 0 else { throw ForgetError.failed(packageID, code: status) }
-    }
-
-    static func run(_ executable: String, _ arguments: [String]) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
     }
 }

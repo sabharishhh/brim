@@ -1,6 +1,52 @@
 import BrimCore
 import Foundation
 
+/// Limits this page to registrations with an application association.
+/// The complete report remains available to inspection and uninstall planning.
+enum BackgroundScope {
+    static func registrations(
+        _ records: [Registration], applications: [InstalledApplication]
+    ) -> [Registration] {
+        let identifiers = Set(applications
+            .filter { !$0.isSystemProtected }
+            .flatMap(\.identity.searchBundleIdentifiers)
+            .map { $0.lowercased() })
+        let appOwners = Set(records.filter {
+            $0.kind == .backgroundItem && !$0.isSystemOwned && hasApplicationPath($0)
+        }.compactMap { record in
+            record.owningBundleID.map { ownerKey($0, namespace: record.namespace) }
+        })
+        return records.filter { record in
+            guard !record.isSystemOwned, record.kind != .shellProfileLine else { return false }
+            if hasApplicationPath(record) {
+                return true
+            }
+            if [record.owningBundleID, record.identifier].compactMap(\.self).contains(where: {
+                identifiers.contains($0.lowercased())
+            }) {
+                return true
+            }
+            guard record.kind == .backgroundItem, let owner = record.owningBundleID else { return false }
+            return appOwners.contains(ownerKey(owner, namespace: record.namespace))
+        }
+    }
+
+    private static func hasApplicationPath(_ record: Registration) -> Bool {
+        [record.programPath, record.recordPath].compactMap(\.self).contains { path in
+            guard path.hasPrefix("/") else { return false }
+            let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+            let protectedRoots = ["/System", "/Library/Apple/System", "/usr", "/bin", "/sbin"]
+            guard !protectedRoots.contains(where: { normalized == $0 || normalized.hasPrefix($0 + "/") })
+            else { return false }
+            return normalized.split(separator: "/").contains { $0.lowercased().hasSuffix(".app") }
+        }
+    }
+
+    private static func ownerKey(_ owner: String, namespace: String?) -> String {
+        "\(namespace ?? ""):\(owner.lowercased())"
+    }
+}
+
 /// One application's registrations as a row on the Background page, with
 /// which of the model's three lists it came from.
 ///
