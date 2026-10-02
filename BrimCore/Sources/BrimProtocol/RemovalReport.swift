@@ -2,6 +2,7 @@ import BrimCore
 import Darwin
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// What a removal can honestly say afterwards, in three parts.
 ///
 /// "Every location checked again" was one sentence covering three different
@@ -50,6 +51,10 @@ public struct RemovalReport: Codable, Equatable, Sendable {
 
     /// Places the plan named, looked at again after the removal and gone.
     public let checkedGone: Int
+    public let unknownPaths: [String]?
+    /// Nil in legacy history. Preflight coverage never becomes fresh verification.
+    public let registrationObservations: [RegistrationVerification]?
+    public let completedActions: [String]?
     /// Kinds of registration Brim searched macOS for, with nothing of the
     /// app's left.
     public let registrationsChecked: [DeclaredCapability]
@@ -75,9 +80,15 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         checkedGone: Int, registrationsChecked: [DeclaredCapability], declaredNone: [DeclaredCapability],
         keptByMacOS: [Kept], stillThere: Int, leftUnticked: [String] = [],
         scanCompleteness: ScanCompleteness? = nil, protectedItems: [ProtectedItem] = [],
-        sharedIdentityProtection: SharedIdentityProtection? = nil
+        sharedIdentityProtection: SharedIdentityProtection? = nil,
+        unknownPaths: [String]? = nil,
+        registrationObservations: [RegistrationVerification]? = nil,
+        completedActions: [String]? = nil
     ) {
         self.checkedGone = checkedGone
+        self.unknownPaths = unknownPaths
+        self.registrationObservations = registrationObservations
+        self.completedActions = completedActions
         self.registrationsChecked = registrationsChecked
         self.declaredNone = declaredNone
         self.keptByMacOS = keptByMacOS
@@ -90,13 +101,19 @@ public struct RemovalReport: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked, scanCompleteness
-        case protectedItems, sharedIdentityProtection
+        case protectedItems, sharedIdentityProtection, unknownPaths, registrationObservations, completedActions
     }
 
     /// A report recorded before `leftUnticked` existed still reads.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         checkedGone = try container.decode(Int.self, forKey: .checkedGone)
+        unknownPaths = try container.decodeIfPresent([String].self, forKey: .unknownPaths)
+        registrationObservations = try container.decodeIfPresent(
+            [RegistrationVerification].self,
+            forKey: .registrationObservations
+        )
+        completedActions = try container.decodeIfPresent([String].self, forKey: .completedActions)
         registrationsChecked = try container.decode([DeclaredCapability].self, forKey: .registrationsChecked)
         declaredNone = try container.decode([DeclaredCapability].self, forKey: .declaredNone)
         keptByMacOS = try container.decode([Kept].self, forKey: .keptByMacOS)
@@ -123,15 +140,19 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         recorded: [String: String],
         staleRegistrations: Int,
         privacyResetFailed: Bool,
-        survivingExtensions: Set<String>?,
+        survivingExtensions _: Set<String>?,
         capability: (String) -> Capability = { RemovalCapability.forDeleting($0) },
-        exists: ((String) -> Bool)? = nil
+        exists: ((String) -> Bool)? = nil,
+        unknownPaths: Set<String> = [],
+        registrationObservations: [RegistrationVerification]? = nil,
+        completedActions: [String] = []
     ) -> RemovalReport {
         let planned = Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
-        let pathExists = exists ?? { FileManager.default.fileExists(atPath: $0) }
+        let untickedObservations = Self.untickedObservations(in: plan, planned: planned, exists: exists)
+        let unknown = unknownPaths.union(untickedObservations.filter(\.1.isUnknown).map(\.0))
         var kept: [Kept] = []
         var stillThere = 0
-        for path in remaining.sorted() {
+        for path in remaining.subtracting(unknownPaths).sorted() {
             let outcome = recorded[path]
             let protected = capability(path)
             let refused = outcome == "refusedByOS" || (outcome == nil && protected != .ok)
@@ -151,69 +172,50 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         }
         if privacyResetFailed {
             kept.append(Kept(what: "Privacy permissions",
-                             why: "macOS did not clear them."))
+                             why: "The permission reset did not complete."))
         }
 
-        let registrations = registrationSummary(plan: plan, survivingExtensions: survivingExtensions)
+        let registrations = registrationSummary(plan: plan, observations: registrationObservations)
         kept += registrations.kept
 
         return RemovalReport(
-            checkedGone: planned.subtracting(remaining).count,
+            checkedGone: planned.subtracting(remaining.union(unknown)).count,
             registrationsChecked: registrations.checked,
             declaredNone: registrations.declaredNone,
             keptByMacOS: kept,
             stillThere: stillThere,
-            leftUnticked: plan.excludedItems
-                .filter { $0.canBeTickedByHand == true && !planned.contains($0.target) && pathExists($0.target) }
-                .map(\.target).sorted(),
+            leftUnticked: untickedObservations.filter(\.1.isPresent).map(\.0).sorted(),
             scanCompleteness: plan.scanCompleteness,
             protectedItems: plan.excludedItems
                 .filter { $0.canBeTickedByHand != true && !planned.contains($0.target) }
                 .compactMap { observedProtectedItem($0, exists: exists) }
                 .sorted { $0.target < $1.target },
-            sharedIdentityProtection: sharedIdentityProtection(in: plan)
+            sharedIdentityProtection: sharedIdentityProtection(in: plan),
+            unknownPaths: unknown.sorted(),
+            registrationObservations: registrationObservations,
+            completedActions: completedActions
         )
     }
 
-    private static func registrationSummary(
-        plan: Plan, survivingExtensions: Set<String>?
-    ) -> RemovalRegistrationSummary {
-        var kept: [Kept] = []
-        var checked: [DeclaredCapability] = []
-        var declaredNone: [DeclaredCapability] = []
-        for check in plan.capabilityReport?.checks ?? [] {
-            if !check.coverage.available {
-                // Not looked at is not nothing found. A boundary Brim keeps on
-                // purpose is not macOS's refusal either, so it is left out.
-                guard check.coverage.absence != .byDesign else { continue }
-                kept.append(Kept(what: check.capability.title,
-                                 why: check.coverage.limitation ?? "Brim could not read this part of macOS."))
-                continue
-            }
-            let found = !check.registrations.isEmpty
-            if check.declaration == .notDeclared, !found {
-                declaredNone.append(check.capability)
-                continue
-            }
-            // Only macOS can take these, and for system extensions it is known
-            // afterwards whether it did.
-            let survived: Bool
-            switch check.capability {
-            case .systemExtension:
-                let ids = Set(check.registrations.map(\.identifier))
-                survived = found && (survivingExtensions.map { !$0.isDisjoint(with: ids) } ?? true)
-            default:
-                survived = found && check.removalTier == .detectableOnly
-            }
-            if survived {
-                kept.append(Kept(what: check.capability.title,
-                                 why: check.followUp?.sentence ?? "Only macOS can remove these."))
-            } else {
-                checked.append(check.capability)
-            }
+    private static func untickedObservations(in plan: Plan, planned: Set<String>,
+                                             exists: ((String) -> Bool)?) -> [(String, PathObservation)] {
+        plan.excludedItems.filter {
+            $0.canBeTickedByHand == true && !planned.contains($0.target)
+        }.map { item in
+            (item.target, exists.map { $0(item.target) ? PathObservation.present : .absent }
+                ?? PathObservation.observe(item.target))
         }
+    }
 
-        return RemovalRegistrationSummary(checked: checked, declaredNone: declaredNone, kept: kept)
+    private static func registrationSummary(
+        plan: Plan, observations: [RegistrationVerification]?
+    ) -> RemovalRegistrationSummary {
+        let declaredNone = (plan.capabilityReport?.checks ?? [])
+            .filter { $0.declaration == .notDeclared && $0.registrations.isEmpty }
+            .map(\.capability)
+        // Declarations are useful review evidence, but do not certify absence.
+        let checked = (observations ?? []).filter(\.confirmedClear).map(\.capability)
+        return RemovalRegistrationSummary(checked: checked, declaredNone: declaredNone, kept: [])
     }
 
     private static func sharedIdentityProtection(in plan: Plan) -> SharedIdentityProtection? {
@@ -234,12 +236,11 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         if let exists {
             return exists(item.target) ? ProtectedItem(target: item.target, reason: item.reason) : nil
         }
-        var information = stat()
-        if lstat(item.target, &information) == 0 {
-            return ProtectedItem(target: item.target, reason: item.reason)
+        switch PathObservation.observe(item.target) {
+        case .present: return ProtectedItem(target: item.target, reason: item.reason)
+        case .absent: return nil
+        case .unknown: return ProtectedItem(target: item.target, reason: item.reason, presence: .unknown)
         }
-        guard errno != ENOENT, errno != ENOTDIR else { return nil }
-        return ProtectedItem(target: item.target, reason: item.reason, presence: .unknown)
     }
 }
 

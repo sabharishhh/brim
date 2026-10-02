@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 public enum Capability: String, Codable, Equatable, Sendable {
     case ok
     case needsHelper
@@ -165,11 +167,7 @@ public struct ExcludedItem: Codable, Equatable, Sendable {
     /// sheet could offer a row, and read as false.
     public let canBeTickedByHand: Bool?
 
-    public init(
-        target: String, reason: String,
-        evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil,
-        tier: EvidenceTier? = nil
-    ) {
+    public init(target: String, reason: String, evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil, tier: EvidenceTier? = nil) {
         self.target = target
         self.reason = reason
         self.evidence = evidence
@@ -269,10 +267,20 @@ public struct Plan: Codable, Equatable, Sendable {
     public private(set) var homebrewInstallation: HomebrewInstallation?
     /// Reviewed installations that protect identifier-wide state. Nil in older plans.
     public let survivingCopies: [Identity]?
+    public let protectedComponentIdentifiers: [String]?
+    /// Complete receipt payloads reviewed before forgetting any installer record.
+    public let receiptPayloads: [String: [String]]?
 
     public let expectedTotalBytes: Int64
 
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil, toolCleanupBinding: ToolCleanupBinding? = nil, homebrewInstallation: HomebrewInstallation? = nil, survivingCopies: [Identity]? = nil) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String,
+                intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64,
+                scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil,
+                toolCleanupBinding: ToolCleanupBinding? = nil, homebrewInstallation: HomebrewInstallation? = nil,
+                survivingCopies: [Identity]? = nil, protectedComponentIdentifiers: [String]? = nil,
+                receiptPayloads: [String: [String]]? = nil) {
+        self.receiptPayloads = receiptPayloads?.isEmpty == false ? receiptPayloads : nil
+        self.protectedComponentIdentifiers = protectedComponentIdentifiers
         formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt

@@ -29,6 +29,14 @@ lead with the correction and move on. Do not re-explain the mistake.
 and report at the end. Do not stop after each one to ask whether to
 continue.
 
+**Keep the documentation current as work progresses.** Update the relevant
+project overview, implementation notes and task-specific records after a
+meaningful milestone, when a bug changes the understanding of the system,
+and before opening or updating a pull request. Record the defect, its fix,
+what was actually verified and any remaining limitation. Keep planned work
+separate from shipped behavior. Update existing explanations instead of
+leaving contradictory claims or adding a second account of the same fact.
+
 **Ask before destroying anything**, including deleting files that look like
 dead code. Everything else, just do.
 
@@ -37,6 +45,12 @@ dead code. Everything else, just do.
 Test the defect, not the surface. A test earns its place by failing against
 the old behaviour, and the best ones in this repo name the incident in their
 comment so the next person knows what they are protecting.
+
+Registration lifecycle experiments that can create sandbox containers,
+trigger background activity notifications or leave macOS-owned records must
+run in a disposable account or VM, never in the person's regular account.
+Keep such recipes outside the regular test targets. Removing a job file and
+stopping its process does not prove that its macOS registration disappeared.
 
 Real environment tests live behind `BRIM_REAL_ENV=1`. They touch the actual
 machine, so the harness must leave nothing behind. It has failed at this

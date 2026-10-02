@@ -51,7 +51,7 @@ final class SelfRemovalIntegrationTests: XCTestCase {
             root: root,
             brimAppURL: brimAppDir,
             planStoreDirectory: planStoreDir,
-            journalStoreDirectory: journalStoreDir
+            journalStoreDirectory: journalStoreDir, launchdRuntime: .unregisteredFixture
         )
 
         let listener = NSXPCListener.anonymous()

@@ -1,11 +1,10 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Parsing and ownership rules for launchd registrations, against a synthetic
 /// tree so the result does not depend on whose Mac runs it.
 final class LaunchdRegistrationSurfaceTests: XCTestCase {
-
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -27,8 +26,12 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         var dict: [String: Any] = [:]
-        if let label { dict["Label"] = label }
-        if let program { dict["ProgramArguments"] = [program, "--daemon"] }
+        if let label {
+            dict["Label"] = label
+        }
+        if let program {
+            dict["ProgramArguments"] = [program, "--daemon"]
+        }
 
         let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
         try data.write(to: dir.appendingPathComponent(fileName))
@@ -83,20 +86,22 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         try writeJob(domain: "Library/LaunchDaemons",
                      fileName: "com.example.localdaemon.plist", label: "com.example.localdaemon", program: nil)
 
-        let labels = Set(await scan().map(\.identifier))
+        let labels = await Set(scan().map(\.identifier))
         XCTAssertTrue(labels.contains("com.example.user"), "user LaunchAgents missed")
         XCTAssertTrue(labels.contains("com.example.localagent"), "local LaunchAgents missed")
         XCTAssertTrue(labels.contains("com.example.localdaemon"), "local LaunchDaemons missed")
     }
 
-    func testAJobWithNoLabelFallsBackToItsFileNameRatherThanBeingDropped() async throws {
-        // launchd itself falls back to the file name, so a plist without a
-        // Label is still a live job and must not vanish from the inventory.
+    func testAJobWithoutRequiredLabelLeavesAReadGap() async throws {
+        // launchd.plist requires Label. The previous reader invented a label
+        // from the filename, permitting a command against an unproven service.
         try writeJob(domain: "Users/tester/Library/LaunchAgents",
                      fileName: "com.example.unlabelled.plist", label: nil, program: nil)
-
-        let found = await scan()
-        XCTAssertTrue(found.contains { $0.identifier == "com.example.unlabelled" })
+        let snapshot = await LaunchdRegistrationSurface().snapshot(
+            in: FileSystemRoot(rootURL: root, userName: "tester")
+        )
+        XCTAssertFalse(snapshot.registrations.contains { $0.identifier == "com.example.unlabelled" })
+        XCTAssertFalse(snapshot.coverage.available)
     }
 
     func testMalformedPlistsAreSkippedWithoutFailingTheScan() async throws {

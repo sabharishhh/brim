@@ -1,8 +1,9 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimProtocol
 @testable import BrimService
+import XCTest
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// The report after a removal keeps three facts apart: checked and gone,
 /// declared none by the app, and kept by macOS. One sentence used to cover
 /// all three, which is how a removal claims more than it checked.
@@ -63,7 +64,7 @@ final class RemovalReportTests: XCTestCase {
         let report = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
                                          privacyResetFailed: false, survivingExtensions: nil)
         XCTAssertEqual(report.declaredNone, [.systemExtension])
-        XCTAssertEqual(report.registrationsChecked, [.launchdJob, .privilegedHelper])
+        XCTAssertTrue(report.registrationsChecked.isEmpty, "A preflight scan is not a post-removal check.")
         XCTAssertTrue(report.keptByMacOS.isEmpty)
     }
 
@@ -76,22 +77,40 @@ final class RemovalReportTests: XCTestCase {
         ])
         let report = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
                                          privacyResetFailed: false, survivingExtensions: nil)
-        XCTAssertEqual(report.keptByMacOS.map(\.what), [DeclaredCapability.privacyGrant.title])
+        XCTAssertTrue(report.keptByMacOS.isEmpty, "An unreadable surface is unknown, not a known retained grant.")
         XCTAssertTrue(report.registrationsChecked.isEmpty)
         XCTAssertTrue(report.declaredNone.isEmpty)
     }
 
-    func testASystemExtensionIsKeptOnlyIfItSurvived() {
-        let subject = plan([], checks: [check(.systemExtension, .declared, found: ["com.x.ext"], tier: .detectableOnly)])
+    func testOnlyFreshCompleteObservationsCertifyRegistrationAbsence() {
+        let subject = plan(
+            [],
+            checks: [check(.systemExtension, .declared, found: ["com.x.ext"], tier: .detectableOnly)]
+        )
+        let fresh = RegistrationVerification(capability: .systemExtension, observedAt: Date(),
+                                             coverage: .available(.systemExtension), remaining: [])
         let gone = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
-                                       privacyResetFailed: false, survivingExtensions: [])
+                                       privacyResetFailed: false, survivingExtensions: [],
+                                       registrationObservations: [fresh])
         XCTAssertEqual(gone.registrationsChecked, [.systemExtension])
-        let stayed = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
-                                         privacyResetFailed: false, survivingExtensions: ["com.x.ext"])
-        XCTAssertEqual(stayed.keptByMacOS.map(\.what), [DeclaredCapability.systemExtension.title])
-        let unknown = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
-                                          privacyResetFailed: false, survivingExtensions: nil)
-        XCTAssertEqual(unknown.keptByMacOS.count, 1, "not known to be gone is not gone")
+        let unknown = RegistrationVerification(capability: .systemExtension, observedAt: Date(),
+                                               coverage: .unavailable(.systemExtension, "Could not read."),
+                                               remaining: [])
+        let report = RemovalReport.build(plan: subject, remaining: [], recorded: [:], staleRegistrations: 0,
+                                         privacyResetFailed: false, survivingExtensions: [],
+                                         registrationObservations: [unknown])
+        XCTAssertTrue(report.registrationsChecked.isEmpty)
+        XCTAssertTrue(report.registrationObservations?.first?.couldNotCheck == true)
+        XCTAssertTrue(report.keptByMacOS.isEmpty)
+    }
+
+    func testUnknownPathDoesNotCountAsGoneOrObservedPresent() {
+        let report = RemovalReport.build(plan: plan([step(0, "/unknown")]), remaining: ["/unknown"], recorded: [:],
+                                         staleRegistrations: 0, privacyResetFailed: false, survivingExtensions: nil,
+                                         unknownPaths: ["/unknown"], registrationObservations: [])
+        XCTAssertEqual(report.checkedGone, 0)
+        XCTAssertEqual(report.stillThere, 0)
+        XCTAssertEqual(report.unknownPaths, ["/unknown"])
     }
 
     func testRegistrationsMacOSKeptAreReported() {
@@ -115,7 +134,8 @@ final class RemovalReportTests: XCTestCase {
                 Step(index: 22, kind: .unregisterLaunchServices, target: app, targetFingerprint: nil, tier: .A,
                      evidence: "", expectedBytes: 0, capability: .ok, reversible: false, costOfError: .low,
                      executionPhase: .registration)
-            ], excludedItems: [], expectedTotalBytes: 1)
+            ], excludedItems: [], expectedTotalBytes: 1
+        )
         let journal = JournalEntry(planId: subject.planId, startedAt: Date(), status: .partial,
                                    stepOutcomes: [1: "skipped_due_to_prior_failures", 22: "ok"])
         XCTAssertEqual(BrimService.recordedOutcomes(plan: subject, journal: journal, remaining: [app])[app],
@@ -139,7 +159,7 @@ final class RemovalReportTests: XCTestCase {
         XCTAssertEqual(report.leftUnticked, ["/u/.x-ide"])
 
         // A report saved before the field existed still decodes.
-        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as! [String: Any]
+        var json = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any])
         json.removeValue(forKey: "leftUnticked")
         let old = try JSONDecoder().decode(RemovalReport.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertEqual(old.leftUnticked, [])

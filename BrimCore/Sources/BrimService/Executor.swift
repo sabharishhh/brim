@@ -1,14 +1,16 @@
-import Foundation
-import os
 import BrimCore
 import BrimOps
+import Foundation
+import os
 
+// swiftformat:disable wrapMultilineStatementBraces
 private let log = BrimLog.make("executor")
 
 public actor Executor {
     private let journalStore: JournalStore
     private let fm = FileManager.default
     private let toolCleanupClient: ToolCleanup.Client
+    private let launchdRuntime: LaunchdRuntimeClient
 
     /// Removes something this process cannot reach, by asking Brim's
     /// privileged daemon. Nil when no daemon is set up, which is the
@@ -26,54 +28,45 @@ public actor Executor {
     private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
 
     public func setPrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) {
-        self.privilegedRemover = remover
+        privilegedRemover = remover
     }
 
-    public func setPrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) {
-        self.privilegedReceiptForgetter = forgetter
-    }
-    
-    public init(journalStore: JournalStore, toolCleanupClient: ToolCleanup.Client = .init()) {
+
+
+    public init(
+        journalStore: JournalStore,
+        toolCleanupClient: ToolCleanup.Client = .init(),
+        launchdRuntime: LaunchdRuntimeClient = .init()
+    ) {
+        self.launchdRuntime = launchdRuntime
         self.toolCleanupClient = toolCleanupClient
         self.journalStore = journalStore
     }
-
 
     public func execute(plan: Plan) async throws -> JournalEntry {
         let volumes = Self.targetVolumes(for: plan.steps)
         let freeBefore = volumes.flatMap { Self.sampleFreeSpace(on: $0) }
 
         // Create initial journal
-        var journal = JournalEntry(planId: plan.planId, startedAt: Date(), status: .pending, freeSpaceBefore: freeBefore)
+        var journal = JournalEntry(
+            planId: plan.planId,
+            startedAt: Date(),
+            status: .pending,
+            freeSpaceBefore: freeBefore
+        )
         try await journalStore.write(entry: journal)
-        
+
         let sortedSteps = plan.executionOrderedSteps
-        
+
         var hasFailures = false
         // What keeps the app bundle in place. Every failure does, except
         // macOS refusing an ordinary support file: that says nothing about
         // whether the app can go. WhatsApp's removal left the whole app
         // because macOS would not move its extension's temporary folder.
         var blocksBundle = false
+        var stoppedJobs = Set<String>()
         var clearedPreferenceFiles: [String] = []
-        var nestedApplications: [String] = []
         defer {
-            // Records for applications that were inside something removed.
-            // Best effort: a record outliving its bundle is untidy, not
-            // harmful, and the removal itself has already happened.
-            for path in nestedApplications where !FileManager.default.fileExists(atPath: path) {
-                try? LaunchServicesRegistration.unregister(bundlePath: path)
-            }
-            let removedFolders = sortedSteps
-                .filter { [.trashPath, .trashPathPrivileged].contains($0.kind) && journal.stepOutcomes[$0.index] == "ok" }
-                .map(\.target)
-            if !removedFolders.isEmpty {
-                Task.detached(priority: .utility) {
-                    for path in LaunchServicesRegistration.staleRecords(inside: removedFolders) {
-                        try? LaunchServicesRegistration.unregister(bundlePath: path)
-                    }
-                }
-            }
             // Not awaited: the daemon's empty copy arrives seconds after
             // the removal has finished, and nobody should wait for it.
             if !clearedPreferenceFiles.isEmpty {
@@ -81,7 +74,7 @@ public actor Executor {
                 Task.detached { await PreferenceDomains.removeEmptyWriteBack(at: files) }
             }
         }
-        
+
         for step in sortedSteps {
             if blocksBundle {
                 if step.executionPhase == .appBundle {
@@ -89,7 +82,7 @@ public actor Executor {
                     continue
                 }
             }
-            
+
             // Steps whose target is an identifier rather than a path are not
             // subject to the "already gone" check; a bundle id is not a file,
             // and skipping it here would silently drop the reset.
@@ -105,10 +98,6 @@ public actor Executor {
                !PathExistence.exists(atPath: step.target) {
                 journal.stepOutcomes[step.index] = "already_gone"
                 continue
-            }
-            
-            if [.trashPath, .trashPathPrivileged, .removeLaunchdPlist].contains(step.kind) {
-                nestedApplications += LaunchServicesRegistration.nestedApplications(in: step.target)
             }
 
             do {
@@ -131,8 +120,17 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "ok"
                     }
                 } else if step.kind == .trashPath || step.kind == .removeLaunchdPlist {
+                    if step.kind == .removeLaunchdPlist, !stoppedJobs.contains(step.target) {
+                        throw NSError(domain: "BrimLaunchd", code: 3, userInfo: [
+                            NSLocalizedDescriptionKey: "The job was not confirmed stopped. Its declaration was kept."
+                        ])
+                    }
                     guard let fp = step.targetFingerprint else {
-                        throw NSError(domain: "BrimSecurity", code: 401, userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"])
+                        throw NSError(
+                            domain: "BrimSecurity",
+                            code: 401,
+                            userInfo: [NSLocalizedDescriptionKey: "Missing target fingerprint for secure deletion"]
+                        )
                     }
 
                     // Preferences are owned by cfprefsd, not by the file.
@@ -153,9 +151,15 @@ public actor Executor {
 
                     switch step.effectiveDisposition {
                     case .trash:
-                        let resultingURL = try SafeOps.trashItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
+                        let resultingURL = try SafeOps.trashItem(
+                            targetPath: step.target,
+                            expectedDev: fp.dev,
+                            expectedIno: fp.ino
+                        )
                         if let url = resultingURL {
-                            if journal.stepTrashedURLs == nil { journal.stepTrashedURLs = [:] }
+                            if journal.stepTrashedURLs == nil {
+                                journal.stepTrashedURLs = [:]
+                            }
                             journal.stepTrashedURLs?[step.index] = url
                         }
                     case .delete:
@@ -166,8 +170,8 @@ public actor Executor {
                     if preferenceDomainForgotten == false {
                         journal.stepOutcomes[step.index] =
                             "ok_but_preferences_may_return: the file is gone, and macOS's "
-                            + "preference daemon would not let go of the settings, so they "
-                            + "can come back until you log out."
+                                + "preference daemon would not let go of the settings, so they "
+                                + "can come back until you log out."
                     } else {
                         journal.stepOutcomes[step.index] = "ok"
                     }
@@ -181,7 +185,7 @@ public actor Executor {
                     // could not be cleared would be the wrong trade. The
                     // outcome is journalled so the result can say so.
                     do {
-                        try PrivacyGrants.resetAll(bundleID: step.target)
+                        try await PrivacyGrants.resetAllBounded(bundleID: step.target)
                         journal.stepOutcomes[step.index] = "ok"
                     } catch {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
@@ -224,14 +228,20 @@ public actor Executor {
                     // whole uninstall over a registration would be the wrong
                     // trade, and the journal says what happened either way.
                     do {
-                        try LaunchServicesRegistration.unregister(bundlePath: step.target)
+                        guard PathObservation.observe(step.target).isAbsent else {
+                            throw NSError(domain: "BrimRegistration", code: 1, userInfo: [
+                                NSLocalizedDescriptionKey: "The application path is still occupied. Its registration was kept."
+                            ])
+                        }
+                        try await LaunchServicesRegistration.unregisterBounded(bundlePath: step.target)
                         journal.stepOutcomes[step.index] = "ok"
                     } catch {
                         journal.stepOutcomes[step.index] =
                             "launch_services_registration_remains: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unloadLaunchdJob {
-                    try SafeOps.unloadLaunchdJob(path: step.target)
+                    try await launchdRuntime.stop(step.target)
+                    stoppedJobs.insert(step.target)
                     journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .clearImmutableFlag {
                     // Locked files used to vanish from the plan: the safety
@@ -242,7 +252,7 @@ public actor Executor {
                         throw NSError(
                             domain: "BrimSecurity", code: 401,
                             userInfo: [NSLocalizedDescriptionKey:
-                                       "Missing target fingerprint for unlocking"]
+                                "Missing target fingerprint for unlocking"]
                         )
                     }
                     do {
@@ -272,6 +282,13 @@ public actor Executor {
                             "could_not_reveal: \(error.localizedDescription)"
                     }
                 } else if step.kind == .forgetReceipt {
+                    guard plan.survivingCopies?.isEmpty != false,
+                          let payload = plan.receiptPayloads?[step.target], !payload.isEmpty,
+                          payload.allSatisfy({ PathObservation.observe($0).isAbsent })
+                    else {
+                        journal.stepOutcomes[step.index] = "receipt_kept_for_remaining_payload"
+                        continue
+                    }
                     // Deletes no files. It removes the installer's record,
                     // so `pkgutil --pkgs` stops listing software that is
                     // gone and an installer cannot offer to repair it back
@@ -284,7 +301,7 @@ public actor Executor {
                         }
                     } else {
                         do {
-                            try PackageReceipts.forget(packageID: step.target)
+                            try await PackageReceipts.forgetBounded(packageID: step.target)
                             journal.stepOutcomes[step.index] = "ok"
                         } catch {
                             // Recorded, never fatal. The files are gone; the
@@ -302,24 +319,31 @@ public actor Executor {
             } catch let SafeOpsError.failedToRename(err) where err == EPERM {
                 journal.stepOutcomes[step.index] = "refusedByOS"
                 hasFailures = true
-                if !Self.isSupportFile(step) { blocksBundle = true }
+                if !Self.isSupportFile(step) {
+                    blocksBundle = true
+                }
             } catch let SafeOpsError.failedToUnlink(err) where err == EPERM {
                 journal.stepOutcomes[step.index] = "refusedByOS"
                 hasFailures = true
-                if !Self.isSupportFile(step) { blocksBundle = true }
+                if !Self.isSupportFile(step) {
+                    blocksBundle = true
+                }
             } catch {
                 let nsErr = error as NSError
-                if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr.code == EPERM || (nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM) {
+                if (nsErr.domain == NSCocoaErrorDomain && nsErr.code == 513) || nsErr
+                    .code == EPERM || (nsErr.domain == NSPOSIXErrorDomain && nsErr.code == EPERM) {
                     journal.stepOutcomes[step.index] = "refusedByOS"
-                    if !Self.isSupportFile(step) { blocksBundle = true }
+                    if !Self.isSupportFile(step) {
+                        blocksBundle = true
+                    }
                 } else {
                     journal.stepOutcomes[step.index] = error.localizedDescription
                     blocksBundle = true
                 }
                 hasFailures = true
             }
-            
-            // Record after each step to handle crashes mid-way. 
+
+            // Record after each step to handle crashes mid-way.
             // AUDIT H-6 FIX: Swallow write errors to avoid aborting execution.
             do {
                 try await journalStore.write(entry: journal)
@@ -335,12 +359,12 @@ public actor Executor {
                 log.error("could not write the journal at step \(step.index): \(error.localizedDescription)")
             }
         }
-        
+
         let freeAfter = volumes.flatMap { Self.sampleFreeSpace(on: $0) }
         journal.freeSpaceAfter = freeAfter
         journal.status = hasFailures ? .partial : .completed
         try await journalStore.write(entry: journal)
-        
+
         return journal
     }
 
@@ -348,5 +372,11 @@ public actor Executor {
     /// refusal there leaves that item behind and nothing else at risk.
     static func isSupportFile(_ step: Step) -> Bool {
         step.kind == .trashPath && step.executionPhase == .auxiliary
+    }
+}
+
+public extension Executor {
+    func setPrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) {
+        privilegedReceiptForgetter = forgetter
     }
 }

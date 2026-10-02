@@ -1,5 +1,6 @@
-import Foundation
 import BrimCore
+import BrimProtocol
+import Foundation
 
 public enum PlanStatus: String, Codable, Sendable {
     case pending
@@ -17,8 +18,17 @@ public struct JournalEntry: Codable, Sendable {
     public var stepTrashedURLs: [Int: URL]? // Step index -> URL in Trash
     public var freeSpaceBefore: Int64?
     public var freeSpaceAfter: Int64?
-    
-    public init(planId: UUID, startedAt: Date, status: PlanStatus, stepOutcomes: [Int : String] = [:], stepTrashedURLs: [Int: URL]? = nil, freeSpaceBefore: Int64? = nil, freeSpaceAfter: Int64? = nil) {
+    public var verifications: [VerificationResult]?
+
+    public init(
+        planId: UUID,
+        startedAt: Date,
+        status: PlanStatus,
+        stepOutcomes: [Int: String] = [:],
+        stepTrashedURLs: [Int: URL]? = nil,
+        freeSpaceBefore: Int64? = nil,
+        freeSpaceAfter: Int64? = nil
+    ) {
         self.planId = planId
         self.startedAt = startedAt
         self.status = status
@@ -26,21 +36,22 @@ public struct JournalEntry: Codable, Sendable {
         self.stepTrashedURLs = stepTrashedURLs
         self.freeSpaceBefore = freeSpaceBefore
         self.freeSpaceAfter = freeSpaceAfter
+        verifications = nil
     }
 }
 
 public actor JournalStore {
     private let directoryURL: URL
     private let fm = FileManager.default
-    
+
     public init(directoryURL: URL) {
         self.directoryURL = directoryURL
     }
-    
+
     public func ensureDirectory() throws {
         try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
-    
+
     public func allPlanIds() throws -> [UUID] {
         try ensureDirectory()
         let urls = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
@@ -49,24 +60,31 @@ public actor JournalStore {
             return UUID(uuidString: url.deletingPathExtension().lastPathComponent)
         }
     }
-    
+
     private func fileURL(for planId: UUID) -> URL {
-        return directoryURL.appendingPathComponent("\(planId.uuidString).journal")
+        directoryURL.appendingPathComponent("\(planId.uuidString).journal")
     }
-    
+
     public func write(entry: JournalEntry) throws {
         try ensureDirectory()
         let data = try JSONEncoder().encode(entry)
         try data.write(to: fileURL(for: entry.planId), options: .atomic)
     }
-    
+
     public func load(planId: UUID) throws -> JournalEntry? {
         let url = fileURL(for: planId)
         guard fm.fileExists(atPath: url.path) else { return nil }
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(JournalEntry.self, from: data)
     }
-    
+
+    /// Append an observation without overwriting execution receipts or keeping approvals.
+    public func recordVerification(_ result: VerificationResult) throws {
+        guard var latest = try load(planId: result.planId) else { return }
+        latest.verifications = (latest.verifications ?? []) + [result]
+        try write(entry: latest)
+    }
+
     public func getOpenJournals() throws -> [JournalEntry] {
         try ensureDirectory()
         let urls = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)

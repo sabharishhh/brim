@@ -9,20 +9,25 @@ public struct CapabilitySearchScanner: Sendable {
     private let surfaces: [any RegistrationSurface]
 
     public init(surfaces: [any RegistrationSurface] = [
-        AppExtensionSurface(), SystemExtensionSurface(),
+        FirewallSurface(), BackgroundItemSurface(), AppExtensionSurface(), SystemExtensionSurface(),
         LaunchdRegistrationSurface(), PrivilegedHelperToolSurface(), BundlePluginSurface()
     ]) {
         self.surfaces = surfaces
     }
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
-    public func scan(identity: Identity, in root: FileSystemRoot,
-                     completeness: ScanCompleteness,
-                     evidence: [Evidence] = []) async -> CapabilitySearchReport? {
+    public func scan(
+        identity: Identity,
+        in root: FileSystemRoot,
+        completeness: ScanCompleteness,
+        evidence: [Evidence] = [],
+        expectedRegistrations: [Registration] = [],
+        recoveryLocations: [URL] = []
+    ) async -> CapabilitySearchReport? {
         guard identity.capabilitySurface != nil || identity.bundleID != nil else { return nil }
         let surface = identity.capabilitySurface
         let bundle = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-        let ownerPresent = bundle.map { FileManager.default.fileExists(atPath: $0) } ?? false
+        let ownerPresent = PathObservation.observe(bundle).isPresent
         let snapshots = await withTaskGroup(of: RegistrationSnapshot.self) { group in
             for source in surfaces {
                 group.addTask { await source.snapshot(in: root) }
@@ -34,12 +39,16 @@ public struct CapabilitySearchScanner: Sendable {
             return results
         }
 
+        let embeddedJobs = EmbeddedLaunchdDeclarations.read(identity: identity)
         var checks: [CapabilitySearchReport.Check] = []
         for capability in DeclaredCapability.allCases {
-            let coverage: RegistrationCoverage
-            let found: [Registration]
+            var coverage: RegistrationCoverage
+            var found: [Registration]
             var locations: [String] = []
             switch capability {
+            case .fileProvider:
+                coverage = .withheld(.bundlePlugin, "Cloud data must be managed with its owning application.")
+                found = []
             case .privacyGrant:
                 coverage = .withheld(.privacyGrant, "Privacy grants cannot be listed for another application.")
                 found = []
@@ -51,23 +60,32 @@ public struct CapabilitySearchScanner: Sendable {
                     coverage = .withheld(.launchServices, "Launch Services is unavailable in a fixture.")
                     found = []
                 } else {
-                    let ids = identity.searchBundleIdentifiers
+                    let ids = Array(Set(identity.searchBundleIdentifiers
+                            + expectedRegistrations.filter { $0.kind == .launchServices }
+                            .map(\.identifier).filter { !$0.hasPrefix("/") }))
                     do {
-                        let urls = try ids.flatMap {
-                            try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: $0)
+                        let urls = try ids.flatMap { identifier in
+                            try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: identifier)
+                                .map { (identifier: identifier, url: $0) }
                         }
                         coverage = .available(.launchServices)
-                        found = urls.filter { url in
+                        found = urls.filter { entry in
+                            let url = entry.url
                             guard let bundle else { return false }
                             let path = url.resolvingSymlinksInPath().path
-                            return path == bundle || path.hasPrefix(bundle + "/")
-                        }.map { url in
-                            Registration(kind: .launchServices,
-                                         identifier: url.path,
-                                         label: url.lastPathComponent,
-                                         owningBundleID: identity.bundleID,
-                                         programPath: url.path, targetExists: true,
-                                         evidence: "Registered with Launch Services.")
+                            return path == bundle || path.hasPrefix(bundle + "/") || recoveryLocations.contains {
+                                let recovery = $0.resolvingSymlinksInPath().path
+                                return path == recovery || path.hasPrefix(recovery + "/")
+                            }
+                        }.map { entry in
+                            let url = entry.url
+                            return Registration(kind: .launchServices,
+                                                identifier: entry.identifier,
+                                                label: url.lastPathComponent,
+                                                owningBundleID: entry.identifier,
+                                                programPath: url.path, targetExists: true,
+                                                evidence: "Registered with Launch Services.",
+                                                targetPresence: PathObservation.observe(url.path))
                         }
                     } catch {
                         coverage = .unavailable(.launchServices, "Launch Services could not be read.")
@@ -83,39 +101,48 @@ public struct CapabilitySearchScanner: Sendable {
                 locations = evidence.filter { groups.contains($0.url.lastPathComponent) }
                     .map(\.url.path)
             case .installationRecords:
-                let receipts = root.url(for: .receipts)
-                switch DirectoryEntries.read(receipts) {
-                case .refused:
+                locations = evidence.filter { $0.mechanism == "InstallerReceiptSource" }.map(\.url.path)
+                let ids = Set(identity.searchBundleIdentifiers
+                    + [identity.packageIdentifier].compactMap(\.self)
+                    + expectedRegistrations.filter { $0.kind == .installerReceipt }.map(\.identifier)
+                    + locations.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent })
+                let directories = [root.url(for: .systemReceipts), root.url(for: .receipts)]
+                let listings = directories.map { DirectoryEntries.read($0) }
+                if listings.contains(where: \.isRefused) {
                     coverage = .unavailable(.installerReceipt, "Installer receipts could not be read.")
                     found = []
-                case .absent, .listed:
-                    if root.rootURL.standardizedFileURL.path == "/" {
-                        if let output = ToolOutput.read("/usr/sbin/pkgutil", ["--pkgs"]) {
-                            coverage = .available(.installerReceipt)
-                            let ids = Set(identity.searchBundleIdentifiers
-                                + [identity.packageIdentifier].compactMap(\.self))
-                            found = output.split(separator: "\n").map(String.init)
-                                .filter(ids.contains).map { identifier in
-                                    Registration(kind: .installerReceipt,
-                                                 identifier: identifier, label: identifier,
-                                                 owningBundleID: identity.bundleID, targetExists: true,
-                                                 evidence: "Installer receipt exists.")
-                                }
-                        } else {
-                            coverage = .unavailable(.installerReceipt, "Installer records could not be read.")
-                            found = []
+                } else if root.rootURL.standardizedFileURL.path == "/" {
+                    if let output = ToolOutput.read("/usr/sbin/pkgutil", ["--pkgs"]) {
+                        coverage = .available(.installerReceipt)
+                        found = output.split(separator: "\n").map(String.init).filter(ids.contains).map { identifier in
+                            Registration(kind: .installerReceipt, identifier: identifier, label: identifier,
+                                         owningBundleID: identity.bundleID, targetExists: true,
+                                         evidence: "Installer receipt exists.")
                         }
                     } else {
-                        coverage = .available(.installerReceipt)
+                        coverage = .unavailable(.installerReceipt, "Installer records could not be read.")
                         found = []
                     }
+                } else {
+                    coverage = .available(.installerReceipt)
+                    found = ids.sorted().filter { identifier in
+                        directories.contains { directory in
+                            PathObservation.observe(directory.appendingPathComponent(identifier + ".plist").path)
+                                .isPresent
+                                || PathObservation.observe(directory.appendingPathComponent(identifier + ".bom").path)
+                                .isPresent
+                        }
+                    }.map { identifier in
+                        Registration(kind: .installerReceipt, identifier: identifier, label: identifier,
+                                     owningBundleID: identity.bundleID, targetExists: true,
+                                     evidence: "Installer receipt exists.")
+                    }
                 }
-                locations = evidence.filter { $0.mechanism == "InstallerReceiptSource" }
-                    .map(\.url.path)
             default:
                 let kind = capability.registrationKind
                 if let snapshot = snapshots[kind] {
                     coverage = snapshot.coverage
+                    let prior = expectedRegistrations.filter { $0.kind == kind }
                     let ids = Set(identity.searchBundleIdentifiers)
                     let helpers = Set(identity.identitySurface?.helperRequirements.keys.map(\.self) ?? [])
                     let declaredJobs = Set((surface?.declarations ?? [])
@@ -123,13 +150,16 @@ public struct CapabilitySearchScanner: Sendable {
                         .map(\.value))
                     found = snapshot.registrations.filter { record in
                         guard !record.isSystemOwned else { return false }
+                        if prior.contains(where: { $0.id == record.id }) {
+                            return true
+                        }
                         if capability == .privilegedHelper {
                             return helpers.contains(record.identifier)
                         }
                         if capability == .launchdJob && declaredJobs.contains(record.identifier) {
                             return true
                         }
-                        if ids.contains(record.identifier) {
+                        if ids.contains(record.identifier) || record.owningBundleID.map(ids.contains) == true {
                             return true
                         }
                         guard let path = record.programPath, let bundle else { return false }
@@ -141,9 +171,23 @@ public struct CapabilitySearchScanner: Sendable {
                     found = []
                 }
             }
+            if capability == .launchdJob {
+                let known = Set(found.map(\.id))
+                found += embeddedJobs.registrations.filter { !known.contains($0.id) }
+                if !embeddedJobs.coverage.available {
+                    coverage = .unavailable(.launchdJob, "An embedded background job could not be checked.")
+                }
+            }
             let declaration = surface?.state(for: capability) ?? .unknown
-            let tier = RemovalTier.forCapability(capability, ownerPresent: ownerPresent)
+            let tier: RemovalTier = capability == .launchdJob && !embeddedJobs.registrations.isEmpty
+                ? .detectableOnly : RemovalTier.forCapability(capability, ownerPresent: ownerPresent)
             let followUp: RemovalFollowUp? = switch capability {
+            case .appExtension where !found.isEmpty:
+                .systemExtensionsSettings
+            case .firewallEntry where !found.isEmpty:
+                .firewallSettings
+            case .fileProvider where declaration == .declared:
+                .fileProviderOwner
             case .systemExtension where !found.isEmpty:
                 .vendorUninstaller
             case .vpnConfiguration where declaration == .declared:
@@ -156,7 +200,9 @@ public struct CapabilitySearchScanner: Sendable {
             checks.append(.init(capability: capability, declaration: declaration,
                                 coverage: coverage, registrations: found.sorted { $0.id < $1.id },
                                 locations: Array(Set(locations)).sorted(), removalTier: tier,
-                                followUp: followUp))
+                                followUp: followUp,
+                                observedAt: snapshots[capability.registrationKind]?.observedAt ?? Date(),
+                                readerVersion: snapshots[capability.registrationKind]?.readerVersion ?? 2))
         }
         let signatureGaps = surface?.signatureGaps ?? []
         let signature: [RegistrationCoverage] = signatureGaps.isEmpty ? [] : [

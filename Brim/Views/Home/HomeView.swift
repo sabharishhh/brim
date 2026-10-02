@@ -200,10 +200,11 @@ struct HomeView: View {
         // A first load shows placeholders; a reload keeps the last figures,
         // greyed, until the new ones arrive.
         let hasData = !background.isLoading || !background.live.isEmpty || !background.stale.isEmpty
-        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData)
+        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData,
+                                            hasFaults: !background.faults.isEmpty)
         return StatCard(
             title: "Background", symbol: "gearshape.2",
-            figure: "\(background.live.count) running",
+            figure: "\(background.live.count) listed",
             status: summary.status, phrase: summary.phrase, isRefreshing: background.isLoading && hasData
         ) { shell.go(to: .background) }
     }
