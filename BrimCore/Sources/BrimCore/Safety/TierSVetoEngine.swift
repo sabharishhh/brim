@@ -2,16 +2,19 @@
 import Foundation
 
 public struct TierSVetoEngine: Sendable {
+    private let lookup: @Sendable (String) -> [URL]
     private let root: FileSystemRoot
     private let readGroups: @Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool)
 
-    public init(root: FileSystemRoot) {
+    public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) -> [URL] = { _ in [] }) {
+        self.lookup = lookup
         self.root = root
         readGroups = { BundleSurfaceReader.groupClaims(at: $0, in: $1) }
     }
 
     init(root: FileSystemRoot,
          readGroups: @escaping @Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool)) {
+        lookup = { _ in [] }
         self.root = root
         self.readGroups = readGroups
     }
@@ -115,7 +118,10 @@ public struct TierSVetoEngine: Sendable {
         }
         return EvaluatedFootprint(
             identity: footprint.identity, items: vettedItems, completeness: completeness,
-            survivingCopies: survivingCopies
+            survivingCopies: survivingCopies,
+            protectedComponentIdentifiers: footprint.identity.searchBundleIdentifiers.filter { identifier in
+                applications.contains { $0.searchBundleIdentifiers.contains(identifier) }
+            }
         )
     }
 
@@ -153,10 +159,15 @@ public struct TierSVetoEngine: Sendable {
         besides identity: Identity
     ) async -> (identities: [Identity], completeness: ScanCompleteness) {
         let root = root
+        let lookup = lookup
         return await Task.detached {
             let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             var found: [Identity] = []
-            let inventory = InstalledBundleInventory.read(in: root)
+            let inventory = InstalledBundleInventory.read(
+                in: root, including: identity.searchBundleIdentifiers,
+                knownLocations: identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? [],
+                lookup: lookup
+            )
             var completeness = inventory.completeness
             let budget = ScanBudget(total: 10)
             for bundle in inventory.bundles {

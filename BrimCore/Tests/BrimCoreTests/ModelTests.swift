@@ -40,10 +40,10 @@ final class ModelTests: XCTestCase {
         // Assert determinism
         XCTAssertEqual(data1, data2)
         
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom({ decoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let container = try decoder.singleValueContainer()
             let dateStr = try container.decode(String.self)
             guard let date = formatter.date(from: dateStr) else {

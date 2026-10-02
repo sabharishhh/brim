@@ -1,12 +1,16 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// Installed bundles in application directories, including vendor subfolders.
 /// Stops at bundles; their embedded code is read by BundleSurfaceReader.
 public struct InstalledBundleInventory: Sendable {
     public let bundles: [URL]
     public let completeness: ScanCompleteness
 
-    public static func read(in root: FileSystemRoot) -> Self {
+    public static func read(
+        in root: FileSystemRoot, including identifiers: [String] = [], knownLocations: [URL] = [],
+        lookup: ((String) -> [URL])? = nil
+    ) -> Self {
         var reader = Reader(root: root)
         var directories = [root.url(for: .applications), root.url(for: .userApplications),
                            root.rootURL.appendingPathComponent("System/Applications")]
@@ -27,7 +31,15 @@ public struct InstalledBundleInventory: Sendable {
         for folder in packageInstallFolders(in: root) {
             reader.bundles += reader.entries(folder).filter { $0.pathExtension.lowercased() == "app" }
         }
-        return Self(bundles: reader.bundles.sorted { $0.path < $1.path },
+        var candidates = knownLocations
+        if let query = lookup {
+            for identifier in Set(identifiers).sorted() {
+                candidates += query(identifier)
+            }
+        }
+        reader.consider(candidates, matching: identifiers)
+        let unique = reader.uniqueBundles()
+        return Self(bundles: unique.sorted { $0.path < $1.path },
                     completeness: ScanCompleteness(unreadable: Array(reader.unreadable),
                                                    timedOut: Array(reader.timedOut)))
     }
@@ -40,13 +52,15 @@ public struct InstalledBundleInventory: Sendable {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: receipts.path)) ?? []
         var folders: [URL] = []
         for file in names.sorted()
-        where file.hasSuffix(".plist") && !file.hasPrefix(".") && !file.lowercased().hasPrefix("com.apple.") {
+            where file.hasSuffix(".plist") && !file.hasPrefix(".") && !file.lowercased().hasPrefix("com.apple.") {
             guard let plist = NSDictionary(contentsOf: receipts.appendingPathComponent(file)),
                   let prefix = plist["InstallPrefixPath"] as? String,
                   let folder = HelperScope.installFolder(prefix: prefix)
             else { continue }
             let url = root.rootURL.appendingPathComponent(String(folder.dropFirst()))
-            if !folders.contains(url) { folders.append(url) }
+            if !folders.contains(url) {
+                folders.append(url)
+            }
         }
         return folders
     }
@@ -58,6 +72,44 @@ public struct InstalledBundleInventory: Sendable {
         var visited = Set<String>()
         var unreadable = Set<String>()
         var timedOut = Set<String>()
+
+        mutating func consider(_ candidates: [URL], matching identifiers: [String]) {
+            for candidate in candidates {
+                let path = candidate.resolvingSymlinksInPath().path
+                let boundary = root.rootURL.resolvingSymlinksInPath().path
+                guard boundary == "/" || path == boundary || path.hasPrefix(boundary + "/") else {
+                    unreadable.insert(candidate.path)
+                    continue
+                }
+                let presence = PathObservation.observe(candidate.path)
+                if presence.isUnknown {
+                    unreadable.insert(candidate.path); continue
+                }
+                guard presence.isPresent else { continue }
+                let metadata = candidate.appendingPathComponent("Contents/Info.plist")
+                guard let contents = NSDictionary(contentsOf: metadata),
+                      let identifier = contents["CFBundleIdentifier"] as? String
+                else {
+                    unreadable.insert(candidate.path)
+                    continue
+                }
+                if identifiers.isEmpty || identifiers.contains(identifier) {
+                    bundles.append(candidate)
+                }
+            }
+        }
+
+        mutating func uniqueBundles() -> [URL] {
+            var seen = Set<String>()
+            return bundles.filter { url in
+                var information = stat()
+                guard stat(url.path, &information) == 0 else {
+                    unreadable.insert(url.path)
+                    return false
+                }
+                return seen.insert("\(information.st_dev):\(information.st_ino)").inserted
+            }
+        }
 
         mutating func entries(_ directory: URL) -> [URL] {
             guard !budget.hasRunOut else { timedOut.insert(directory.path); return [] }

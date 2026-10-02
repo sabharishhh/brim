@@ -65,8 +65,8 @@ struct SearchDetailsView: View {
     private func removalText(_ tier: RemovalTier) -> String {
         switch tier {
         case .removable: "Brim can remove this"
-        case .destructiveOnly: "macOS clears this after removal"
-        case .detectableOnly: "Requires another action"
+        case .destructiveOnly: "No targeted removal"
+        case .detectableOnly: "Detected only"
         }
     }
 }

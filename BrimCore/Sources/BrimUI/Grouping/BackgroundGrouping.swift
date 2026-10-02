@@ -11,7 +11,7 @@ public struct BackgroundEntry: Identifiable, Equatable, Sendable {
     public enum State: String, Sendable {
         /// Points at a program that is not there, and stays until removed.
         case gone
-        /// Points at nothing, but macOS drops it by itself.
+        /// Retained records with no automatic removal route.
         case clearing
         /// Points at software that is installed.
         case present
@@ -41,10 +41,8 @@ public struct BackgroundEntry: Identifiable, Equatable, Sendable {
     }
 }
 
-/// The Background page's groups, answering "should this be running?"
-/// (plan §8): what points at nothing first, then what opens at login, then
-/// what runs unseen, then extensions and permissions. What macOS is about
-/// to tidy by itself comes last and closed, because there is nothing to do.
+/// Separates missing actionable targets from declarations and retained records.
+/// A declaration or a file on disk does not establish that a process is running.
 public enum BackgroundGrouper {
     public static func groups(
         stale: [RegistrationGroup], clearing: [RegistrationGroup], live: [RegistrationGroup]
@@ -60,12 +58,13 @@ public enum BackgroundGrouper {
             rules: [
                 GroupRule(id: "gone", title: "Points at nothing", matches: { $0.state == .gone }, order: byName),
                 GroupRule(
-                    id: "clearing", title: "macOS is tidying", collapsed: true,
-                    matches: { $0.state == .clearing }, order: byName
+                    id: "clearing", title: "Still listed", collapsed: true,
+                    matches: { $0.state == .clearing || $0.group.items.allSatisfy { $0.isStale && $0.isReportOnly } },
+                    order: byName
                 ),
-                GroupRule(id: "login", title: "Opens at login", matches: \.opensAtLogin, order: byName),
+                GroupRule(id: "login", title: "Listed at login", matches: \.opensAtLogin, order: byName),
                 GroupRule(
-                    id: "background", title: "Runs in the background", matches: \.runsInBackground, order: byName
+                    id: "background", title: "Background registrations", matches: \.runsInBackground, order: byName
                 )
             ],
             otherwise: GroupRule(

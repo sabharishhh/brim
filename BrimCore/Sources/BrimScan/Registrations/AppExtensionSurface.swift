@@ -15,28 +15,37 @@ import Foundation
 public struct AppExtensionSurface: RegistrationSurface {
     public let kind: Registration.Kind = .appExtension
 
+    private let usesSystemTool: Bool
     private let read: @Sendable () -> String?
 
-    public init(
-        read: @escaping @Sendable () -> String? = {
-            ToolOutput.read("/usr/bin/pluginkit", ["-m", "-v"])
+    public init(read: (@Sendable () -> String?)? = nil) {
+        usesSystemTool = read == nil
+        self.read = read ?? { ToolOutput.read("/usr/bin/pluginkit", ["-m", "-A", "-D", "-v"]) }
+    }
+
+    public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+        await snapshot(in: root).coverage
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        if usesSystemTool, root.rootURL.standardizedFileURL.path != "/" {
+            return RegistrationSnapshot(registrations: [], coverage: .withheld(
+                kind, "The system registration tool is outside this filesystem."
+            ))
         }
-    ) {
-        self.read = read
-    }
-
-    public func coverage(in _: FileSystemRoot) async -> RegistrationCoverage {
-        read() == nil
-            ? .unavailable(kind, "pluginkit did not answer, so app extensions were not read.")
-            : .available(kind)
-    }
-
-    public func snapshot(in _: FileSystemRoot) async -> RegistrationSnapshot {
         guard let output = read() else {
             return RegistrationSnapshot(registrations: [],
                                         coverage: .unavailable(kind, "App extensions could not be read."))
         }
-        return RegistrationSnapshot(registrations: Self.registrations(from: output), coverage: .available(kind))
+        let registrations = Self.registrations(from: output)
+        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let count = lines.first { $0.hasSuffix("plug-ins)") && $0.hasPrefix("(") }
+            .flatMap { Int($0.dropFirst().split(separator: " ").first ?? "") }
+        let complete = count != nil && count == registrations.count
+        return RegistrationSnapshot(registrations: registrations, coverage: RegistrationCoverage(
+            kind: kind, available: complete,
+            limitation: complete ? nil : "The extension listing could not be fully checked."
+        ), readerVersion: 2)
     }
 
     public func registrations(in _: FileSystemRoot) async -> [Registration] {
@@ -45,12 +54,11 @@ public struct AppExtensionSurface: RegistrationSurface {
     }
 
     private static func registrations(from output: String) -> [Registration] {
-        let fm = FileManager.default
-
-        return output.split(separator: "\n").compactMap { line -> Registration? in
+        output.split(separator: "\n").compactMap { line -> Registration? in
             guard let entry = Self.parse(String(line)) else { return nil }
 
-            let exists = fm.fileExists(atPath: entry.path)
+            let presence = PathObservation.observe(entry.path, followingLinks: true)
+            let exists = presence.isPresent
             // Apple's own extensions live under /System and are managed by
             // macOS. Several are conditionally installed, so an absent one
             // is not a leftover and cannot be removed.
@@ -65,16 +73,19 @@ public struct AppExtensionSurface: RegistrationSurface {
                 programPath: entry.path,
                 targetExists: exists,
                 recordPath: nil,
-                evidence: exists
+                evidence: !presence.isAbsent
                     ? "Registered with PluginKit."
                     : "Registered with PluginKit, but the extension is gone.",
                 isSystemOwned: isApple,
-                capability: .ok
+                capability: .ok,
+                targetPresence: presence, recordIdentity: entry.uuid,
+                namespace: "user/\(getuid())", runtimeState: entry.isEnabled ? "enabled" : "listed"
             )
         }
     }
 
     struct Entry: Equatable {
+        let uuid: String
         let identifier: String
         let version: String?
         let path: String
@@ -127,6 +138,7 @@ public struct AppExtensionSurface: RegistrationSurface {
         guard !identifier.isEmpty else { return nil }
 
         return Entry(
+            uuid: fields[1],
             identifier: identifier,
             version: version,
             path: path,

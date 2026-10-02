@@ -1,12 +1,14 @@
-import Foundation
-import os
+import AppKit
 import BrimCore
-import LocalAuthentication
-import BrimScan
-import BrimProtocol
-import BrimOps
 import BrimIndex
+import BrimOps
+import BrimProtocol
+import BrimScan
+import Foundation
+import LocalAuthentication
+import os
 
+// swiftformat:disable wrapMultilineStatementBraces
 private let log = BrimLog.make("service")
 
 /// The in-process implementation of the BrimService.
@@ -22,6 +24,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let ledgerStore: LedgerStore
     private let executor: Executor
     private let toolCleanupClient: ToolCleanup.Client
+    private let launchdRuntime: LaunchdRuntimeClient
     private var leftoversTask: Task<[Leftover], Error>?
 
     /// The durable store. Written and never read used to be the whole of
@@ -33,45 +36,54 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// listing what is on the disk. History is a better product, not a
     /// working one.
     private let index: Index?
-    
+
     public init(
         root: FileSystemRoot, brimAppURL: URL, planStoreDirectory: URL, journalStoreDirectory: URL,
         consent: ConsentSource? = nil, presence: PresenceCheck? = nil, automatedConsentAllowed: Bool = true,
-        toolCleanupClient: ToolCleanup.Client = .init(), tokenStore: TokenStore = .init()
+        toolCleanupClient: ToolCleanup.Client = .init(), tokenStore: TokenStore = .init(),
+        launchdRuntime: LaunchdRuntimeClient = .init()
     ) {
         self.root = root
         self.toolCleanupClient = toolCleanupClient
+        self.launchdRuntime = launchdRuntime
         self.brimAppURL = brimAppURL
         self.consent = consent
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
-        
-        self.engine = .standard
-        
+
+        engine = .standard
+
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
-        let vetoEngine = TierSVetoEngine(root: root)
-        self.safetyEngine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
-        self.planner = Planner()
-        self.planStore = PlanStore(directoryURL: planStoreDirectory)
+        let vetoEngine = TierSVetoEngine(root: root, lookup: { identifier in
+            guard root.rootURL.standardizedFileURL.path == "/" else { return [] }
+            return NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identifier)
+        })
+        safetyEngine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
+        planner = Planner()
+        planStore = PlanStore(directoryURL: planStoreDirectory)
         let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
         try? FileManager.default.createDirectory(at: tokensDir, withIntermediateDirectories: true)
         // Tokens live in memory only. The directory is still here because
         // `PresenceStore` writes to it, and presence, unlike approval, is
         // meant to survive a relaunch.
         self.tokenStore = tokenStore
-        self.presenceStore = PresenceStore(directoryURL: tokensDir)
-        
+        presenceStore = PresenceStore(directoryURL: tokensDir)
+
         let ledgersDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Ledgers")
-        self.ledgerStore = LedgerStore(directoryURL: ledgersDir)
-        
+        ledgerStore = LedgerStore(directoryURL: ledgersDir)
+
         let indexURL = journalStoreDirectory
             .deletingLastPathComponent().appendingPathComponent("brim.sqlite")
-        self.index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
+        index = (try? DatabaseManager(databaseURL: indexURL)).map(Index.init(dbManager:))
 
-        self.journalStore = JournalStore(directoryURL: journalStoreDirectory)
-        self.executor = Executor(journalStore: self.journalStore, toolCleanupClient: toolCleanupClient)
+        journalStore = JournalStore(directoryURL: journalStoreDirectory)
+        executor = Executor(
+            journalStore: journalStore,
+            toolCleanupClient: toolCleanupClient,
+            launchdRuntime: launchdRuntime
+        )
     }
-    
+
     public func inspect(identity: Identity) async throws -> Footprint {
         let projector = FootprintProjector(engine: engine)
         let resolved = await enriched(identity)
@@ -79,7 +91,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let accounting = await StorageAccountant().account(for: footprint.items)
         return accounting.applying(to: footprint, additionalCompleteness: resolved.completeness)
     }
-    
+
     public func plan(intent: PlanIntent) async throws -> Plan {
         let plan = try await makePlan(intent: intent)
         try await planStore.save(plan: plan)
@@ -122,12 +134,21 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision)
-        guard explicitTargets.isEmpty else { return plan }
-        let report = await CapabilitySearchScanner().scan(
+        let report = explicitTargets.isEmpty ? await CapabilitySearchScanner().scan(
             identity: subject, in: root, completeness: completeness,
             evidence: footprint.items.map(\.evidence)
-        )
+        ) : nil
+        var payloads: [String: [String]] = [:]
+        for item in evaluated.items where item.footprintItem.evidence.mechanism == "InstallerReceiptSource" {
+            guard case .selected = item.selection else { continue }
+            let receipt = item.footprintItem.evidence.url
+            let identifier = receipt.deletingPathExtension().lastPathComponent
+            if let paths = InstallerReceiptSource.reviewedPayload(for: identifier, receiptURL: receipt, in: root) {
+                payloads[identifier] = paths
+            }
+        }
+        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
+                                      capabilityReport: report, receiptPayloads: payloads)
         return plan.attaching(report).recording(package.installation)
     }
 
@@ -151,25 +172,25 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let gaps = identity.bundlePath.map { ScanCompleteness(unreadable: [$0]) } ?? .complete
         return (clean, gaps)
     }
-    
+
     public func explain(planId: UUID) async throws -> String {
         let plan = try await planStore.load(planId: planId)
         return "Plan \(plan.planId) targets \(plan.steps.count) items taking \(plan.expectedTotalBytes) bytes."
     }
-    
+
     #if DEBUG
-    /// True when this process is a test run rather than the real app.
-    ///
-    /// Detected by the XCTest framework being loaded, not by an environment
-    /// variable: `XCTestConfigurationFilePath` is set by Xcode's runner but
-    /// not by SwiftPM's, so `swift test` would otherwise demand a fingerprint
-    /// for every plan it applies on a Mac with working Touch ID.
-    ///
-    /// There was a second way in, an environment variable belonging to the
-    /// MCP server's test harness. That server is gone and nothing sets the
-    /// variable any more, so what was left was an approval shortcut a debug
-    /// build would honour for anything able to set a variable.
-    static let isAutomatedRun: Bool = NSClassFromString("XCTestCase") != nil
+        /// True when this process is a test run rather than the real app.
+        ///
+        /// Detected by the XCTest framework being loaded, not by an environment
+        /// variable: `XCTestConfigurationFilePath` is set by Xcode's runner but
+        /// not by SwiftPM's, so `swift test` would otherwise demand a fingerprint
+        /// for every plan it applies on a Mac with working Touch ID.
+        ///
+        /// There was a second way in, an environment variable belonging to the
+        /// MCP server's test harness. That server is gone and nothing sets the
+        /// variable any more, so what was left was an approval shortcut a debug
+        /// build would honour for anything able to set a variable.
+        static let isAutomatedRun: Bool = NSClassFromString("XCTestCase") != nil
     #endif
 
     /// When the owner enrolled, and when presence was last proved. Persisted,
@@ -211,10 +232,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// present an hour later, which is when it would matter.
     public func enroll() async throws {
         #if DEBUG
-        if Self.isAutomatedRun {
-            await presenceStore.recordEnrolment()
-            return
-        }
+            if Self.isAutomatedRun {
+                await presenceStore.recordEnrolment()
+                return
+            }
         #endif
 
         let context = LAContext()
@@ -306,7 +327,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // of all one an environment variable can switch on.
         var automated = false
         #if DEBUG
-        automated = Self.isAutomatedRun && automatedConsentAllowed
+            automated = Self.isAutomatedRun && automatedConsentAllowed
         #endif
 
         if !automated {
@@ -323,10 +344,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             // deletion. It is a user asked so often that they stop reading,
             // at which point every prompt in the product has become
             // decoration.
-            let requirement = approvalPolicy.requirement(
-                for: plan, lastAuthenticated: await presenceStore.lastPresence
+            let requirement = await approvalPolicy.requirement(
+                for: plan, lastAuthenticated: presenceStore.lastPresence
             )
-            if case .humanPresence(let reason) = requirement {
+            if case let .humanPresence(reason) = requirement {
                 if let presence {
                     try await presence.prove(reason)
                     await presenceStore.recordPresence()
@@ -346,7 +367,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Installs the thing that can ask a person. Brim's app calls this at
     /// launch; nothing else does, and nothing else can.
     public func useConsentSource(_ source: ConsentSource?) {
-        self.consent = source
+        consent = source
     }
 
     private func proveHumanPresence(reason: String) async throws {
@@ -357,13 +378,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             // a refusal, because the whole point of the prompt is that it
             // cannot be skipped.
             #if DEBUG
-            print("LAContext unavailable, allowing fallback for tests")
-            return
+                print("LAContext unavailable, allowing fallback for tests")
+                return
             #else
-            throw authError ?? NSError(
-                domain: "BrimService", code: 403,
-                userInfo: [NSLocalizedDescriptionKey: "Authentication unavailable."]
-            )
+                throw authError ?? NSError(
+                    domain: "BrimService", code: 403,
+                    userInfo: [NSLocalizedDescriptionKey: "Authentication unavailable."]
+                )
             #endif
         }
 
@@ -407,7 +428,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private var appliedPlanIds: Set<UUID> = []
-    
+
     public enum ApplyError: LocalizedError {
         case planAlreadyApplied
         case validationFailed(String)
@@ -417,11 +438,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         public var errorDescription: String? {
             switch self {
             case .planAlreadyApplied:
-                return "This plan has already been carried out."
-            case .validationFailed(let why):
-                return "What is on disk no longer matches the plan, so Brim stopped: \(why)"
-            case .subjectIsRunning(let why):
-                return why
+                "This plan has already been carried out."
+            case let .validationFailed(why):
+                "What is on disk no longer matches the plan, so Brim stopped: \(why)"
+            case let .subjectIsRunning(why):
+                why
             }
         }
     }
@@ -453,7 +474,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             switch self {
             case .planWasPermanent:
                 return "This removal was permanent, so there is nothing to restore."
-            case .noLongerInTrash(let targets):
+            case let .noLongerInTrash(targets):
                 let names = targets.map { ($0 as NSString).lastPathComponent }
                 let list = names.count <= 3
                     ? names.joined(separator: ", ")
@@ -462,7 +483,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
     }
-    
+
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
@@ -490,40 +511,42 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             expectedPlanHash: hash,
             expectedRequesterIdentity: plan.intent.requesterIdentity
         )
-        
+
         guard !appliedPlanIds.contains(planId) else {
             throw ApplyError.planAlreadyApplied
         }
-        
+
         // --- T-2.4 Independent Re-validation ---
         // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
         // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
         let revalidatedPlan = try await makePlan(intent: plan.intent)
         try validateToolCleanup(plan, rebuilt: revalidatedPlan)
-        let searchIsCurrent = plan.capabilityReport == revalidatedPlan.capabilityReport
+        let searchIsCurrent = plan.capabilityReport?.reviewScope == revalidatedPlan.capabilityReport?.reviewScope
             && plan.scanCompleteness == revalidatedPlan.scanCompleteness
             && plan.homebrewInstallation == revalidatedPlan.homebrewInstallation
             && plan.survivingCopies == revalidatedPlan.survivingCopies
+            && plan.protectedComponentIdentifiers == revalidatedPlan.protectedComponentIdentifiers
+            && plan.receiptPayloads == revalidatedPlan.receiptPayloads
         guard searchIsCurrent else {
             throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
         }
-        
+
         // Ensure steps match exactly (count, targets, and fingerprints)
         guard plan.steps.count == revalidatedPlan.steps.count else {
             throw ApplyError.validationFailed(
                 "Step count mismatch: expected \(plan.steps.count), "
-                + "found \(revalidatedPlan.steps.count)"
+                    + "found \(revalidatedPlan.steps.count)"
             )
         }
-        
-        for i in 0..<plan.steps.count {
+
+        for i in 0 ..< plan.steps.count {
             let originalStep = plan.steps[i]
             let newStep = revalidatedPlan.steps[i]
-            
+
             guard originalStep.target == newStep.target else {
                 throw ApplyError.validationFailed(
                     "Target mismatch at step \(i): expected \(originalStep.target), "
-                    + "found \(newStep.target)"
+                        + "found \(newStep.target)"
                 )
             }
 
@@ -540,21 +563,21 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
                 throw ApplyError.validationFailed(
                     "Fingerprint mismatch at step \(i) for target \(originalStep.target): "
-                    + "original \(String(describing: originalStep.targetFingerprint)), "
-                    + "new \(String(describing: newStep.targetFingerprint))"
+                        + "original \(String(describing: originalStep.targetFingerprint)), "
+                        + "new \(String(describing: newStep.targetFingerprint))"
                 )
             }
         }
-        
+
         // Revalidation awaits other work, so another application of this plan
         // may have completed while the actor was suspended.
         guard !appliedPlanIds.contains(planId) else { throw ApplyError.planAlreadyApplied }
         appliedPlanIds.insert(planId)
-        
+
         let journal = try await executor.execute(plan: plan)
-        
+
         // Record ledger entry
-        let outcomes = journal.stepOutcomes.map { (index, resultStr) in
+        let outcomes = journal.stepOutcomes.map { index, resultStr in
             let status: StepOutcome = resultStr == "ok" ? .success : .failed
             return Outcome(stepIndex: index, result: status, errorMessage: resultStr == "ok" ? nil : resultStr)
         }
@@ -568,7 +591,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
         try await ledgerStore.write(entry: ledgerEntry)
     }
-    
+
     private func validateToolCleanup(_ plan: Plan, rebuilt revalidatedPlan: Plan) throws {
         guard plan.toolCleanupBinding == revalidatedPlan.toolCleanupBinding else {
             throw ApplyError.validationFailed("The tool or its cleanup scope changed. Review the plan again.")
@@ -580,7 +603,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func verify(planId: UUID) async throws -> VerificationResult {
         let plan = try await planStore.load(planId: planId)
-        
+
         let journal = try? await journalStore.load(planId: planId)
         if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
             let outcome = journal?.stepOutcomes[0]
@@ -596,54 +619,40 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             before: journal?.freeSpaceBefore, after: journal?.freeSpaceAfter
         )
         let freeSpaceMeasured = journal?.freeSpaceBefore != nil && journal?.freeSpaceAfter != nil
-        
+
         // Re-observe targets using lstat to avoid traversing symlinks.
         // Only path-targeted steps: a bundle identifier is not a file, and
         // lstat-ing one resolves it against the working directory.
         var pathsRemaining = Set<String>()
+        var unknownPaths = Set<String>()
         for step in plan.steps where step.kind.targetIsPath {
-            var statBuf = stat()
-            if lstat(step.target, &statBuf) == 0 || (errno != ENOENT && errno != ENOTDIR) {
-                // The preference daemon's empty copy of a cleared domain
-                // holds nothing, and the executor removes it when it lands.
-                if PreferenceDomains.domain(forPlistAt: step.target) != nil,
-                   PreferenceDomains.isEmptyStub(atPath: step.target) { continue }
-                // A skipped path or a failed read is not proof of absence.
-                pathsRemaining.insert(step.target)
+            let presence = PathObservation.observe(step.target)
+            if presence.isAbsent {
+                continue
             }
+            if presence.isUnknown {
+                unknownPaths.insert(step.target)
+            }
+            if presence.isPresent,
+               PreferenceDomains.domain(forPlistAt: step.target) != nil,
+               PreferenceDomains.isEmptyStub(atPath: step.target) {
+                continue
+            }
+            pathsRemaining.insert(step.target)
         }
         let targetsRemaining = pathsRemaining.count
 
-        // Files are not the whole claim. A removed application whose Launch
-        // Services record survives still appears in "Open With" and still
-        // answers when something resolves its bundle identifier — which is
-        // exactly the kind of leftover this product exists to prevent, so
-        // verification has to look for it rather than trust the step.
-        var staleRegistrations: [URL] = []
-        let unregistered = plan.steps.filter { $0.kind == .unregisterLaunchServices }
-        if plan.intent.type == .uninstall,
-           !unregistered.isEmpty,
-           let bundleID = plan.intent.subjectIdentity.bundleID {
-            // Scoped to the paths this plan actually removed. Another copy
-            // of the same app elsewhere on disk is somebody else's bundle,
-            // not a leftover of this uninstall — and reporting it would make
-            // the check fire on every machine that has one.
-            let removedPaths = Set(unregistered.map {
-                URL(fileURLWithPath: $0.target).standardizedFileURL.path
-            })
-            // Deliberately *not* including where the bundle went. A record
-            // pointing at the Trash is not a leftover — the app is there,
-            // and it is what macOS records for anything dragged to the bin.
-            // The leftover is a record pointing at a path holding nothing,
-            // which is what emptying the Trash creates and what the Trash
-            // lifecycle has to answer for.
-            staleRegistrations = try LaunchServicesRegistration
-                .checkedApplicationURLs(forBundleID: bundleID)
-                .filter { removedPaths.contains($0.standardizedFileURL.path) }
-        }
-
-        let (found, privacyResetFailed, survivingExtensions) = await removalFollowUps(plan: plan, journal: journal)
+        let postChecks = await registrationPostChecks(plan: plan, journal: journal)
+        let staleRegistrations = postChecks.filter { $0.capability == .launchServices }
+            .flatMap(\.remaining).compactMap { $0.programPath.map { URL(fileURLWithPath: $0) } }
+        let (found, privacyResetFailed, survivingExtensions) = await removalFollowUps(
+            plan: plan,
+            journal: journal,
+            postChecks: postChecks
+        )
         var followUps = found
+        followUps += Self.registrationRoutes(plan: plan, observations: postChecks)
+        followUps.removeAll { $0 == .vendorUninstaller }
         // A failed step whose path is still there is explained with that
         // path. Saying "some planned actions could not be completed" as
         // well added a vaguer copy of the same news.
@@ -656,6 +665,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
             && !privacyResetFailed && !otherActionsFailed
+            && !postChecks.contains(where: { !$0.remaining.isEmpty || $0.couldNotCheck })
         let recorded = Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining)
         let reason = Self.verificationReason(
             pathsRemaining: pathsRemaining,
@@ -663,16 +673,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             staleRegistrations: staleRegistrations,
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
-        
+
         // Teams' device was still offered in every app's microphone list
         // after its driver had gone, because Core Audio had it loaded.
         let removedDriver = plan.steps.contains { step in
             step.kind.targetIsPath && !pathsRemaining.contains(step.target)
                 && (step.target as NSString).deletingLastPathComponent.hasSuffix("/Audio/Plug-Ins/HAL")
         }
-        if removedDriver { followUps.append(.restartForAudioDevice) }
+        if removedDriver {
+            followUps.append(.restartForAudioDevice)
+        }
 
-        return VerificationResult(
+        let result = VerificationResult(
             planId: planId,
             expectedBytes: plan.expectedTotalBytes,
             recoveredBytes: recoveredBytes,
@@ -683,15 +695,125 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             report: RemovalReport.build(
                 plan: plan, remaining: pathsRemaining, recorded: recorded,
                 staleRegistrations: staleRegistrations.count, privacyResetFailed: privacyResetFailed,
-                survivingExtensions: survivingExtensions
+                survivingExtensions: survivingExtensions,
+                unknownPaths: unknownPaths, registrationObservations: postChecks,
+                completedActions: plan.steps.filter {
+                    $0.kind == .resetPrivacyGrants && journal?.stepOutcomes[$0.index] == "ok"
+                }.map { "Permissions reset: " + $0.target }
             ),
             packageRecord: plan.homebrewInstallation.map(PackageRecordResult.observe),
             freeSpaceMeasured: freeSpaceMeasured
         )
+        try await journalStore.recordVerification(result)
+        return result
+    }
+
+    private func registrationPostChecks(plan: Plan, journal: JournalEntry?) async -> [RegistrationVerification] {
+        guard plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty else { return [] }
+        let observedAt = Date()
+        let recoveries = Array(journal?.stepTrashedURLs?.values ?? [Int: URL]().values)
+        guard let fresh = await CapabilitySearchScanner().scan(
+            identity: plan.intent.subjectIdentity, in: root,
+            completeness: plan.scanCompleteness ?? .complete,
+            expectedRegistrations: plan.capabilityReport?.checks.flatMap(\.registrations) ?? [],
+            recoveryLocations: recoveries
+        ) else { return [] }
+        let copies = (plan.survivingCopies ?? []).filter { copy in
+            guard let path = copy.bundlePath, PathObservation.observe(path).isPresent,
+                  let metadata = NSDictionary(contentsOf: URL(fileURLWithPath: path)
+                      .appendingPathComponent("Contents/Info.plist")),
+                  let identifier = metadata["CFBundleIdentifier"] as? String else { return false }
+            return identifier == copy.bundleID
+        }
+        var results = fresh.checks.filter { $0.capability != .applicationGroups }.map {
+            Self.registrationObservation($0, copies: copies, recoveries: recoveries, observedAt: observedAt)
+        }
+        if let index = results.firstIndex(where: { $0.capability == .launchdJob }) {
+            let reviewed = plan.capabilityReport?.checks.first { $0.capability == .launchdJob }?.registrations ?? []
+            results[index] = await recheckReviewedJobs(results[index], reviewed: reviewed, observedAt: observedAt)
+        }
+        return results
+    }
+
+    private static func registrationObservation(_ check: CapabilitySearchReport.Check, copies: [Identity],
+                                                recoveries: [URL], observedAt: Date) -> RegistrationVerification {
+        var remaining: [Registration] = []
+        var preserved: [Registration] = []
+        var recoveryCopies: [Registration] = []
+        for record in check.registrations {
+            let shared = copies.contains { copy in
+                record.belongs(to: copy, bundleURL: copy.bundlePath.map { URL(fileURLWithPath: $0) })
+            }
+            let inRecovery = record.programPath.map { path in
+                recoveries.contains {
+                    let recovery = $0.resolvingSymlinksInPath().path
+                    let candidate = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                    return candidate == recovery || candidate.hasPrefix(recovery + "/")
+                }
+            } ?? false
+            if inRecovery {
+                recoveryCopies.append(record)
+            } else if shared {
+                preserved.append(record)
+            } else {
+                remaining.append(record)
+            }
+        }
+        return RegistrationVerification(capability: check.capability, observedAt: check.observedAt ?? observedAt,
+                                        readerVersion: check.readerVersion ?? 2, coverage: check.coverage,
+                                        remaining: remaining, preserved: preserved,
+                                        recoveryCopies: recoveryCopies)
+    }
+
+    func recheckReviewedJobs(_ original: RegistrationVerification, reviewed: [Registration],
+                             observedAt: Date) async -> RegistrationVerification {
+        var remaining = original.remaining
+        var coverage = original.coverage
+        for record in reviewed {
+            guard let namespace = record.namespace else {
+                coverage = .unavailable(.launchdJob, "A saved job has no verified launchd namespace.")
+                continue
+            }
+            let presence = await launchdRuntime.observe(record.identifier, namespace)
+            if presence.isPresent, !remaining.contains(where: { $0.id == record.id }) {
+                remaining.append(record)
+            } else if presence.isUnknown {
+                coverage = .unavailable(.launchdJob, "A reviewed background job could not be checked.")
+            }
+        }
+        return RegistrationVerification(capability: .launchdJob, observedAt: observedAt,
+                                        coverage: coverage, remaining: remaining,
+                                        preserved: original.preserved,
+                                        recoveryCopies: original.recoveryCopies)
+    }
+
+    private static func registrationRoutes(plan: Plan,
+                                           observations postChecks: [RegistrationVerification]) -> [RemovalFollowUp] {
+        var followUps: [RemovalFollowUp] = []
+        if postChecks.contains(where: { $0.capability == .firewallEntry && !$0.remaining.isEmpty }) {
+            followUps.append(.firewallSettings)
+        }
+        let extensions = postChecks.first { $0.capability == .systemExtension }?.remaining ?? []
+        followUps.removeAll { $0 == .vendorUninstaller }
+        if extensions
+            .contains(where: { $0.runtimeState?.lowercased().contains("waiting to uninstall on reboot") == true }) {
+            followUps.append(.restartForSystemExtension)
+        } else if !extensions.isEmpty {
+            followUps.append(.systemExtensionsSettings)
+        }
+        if plan.capabilityReport?.checks.contains(where: {
+            $0.capability == .fileProvider && $0.declaration == .declared
+        }) == true {
+            followUps.append(.fileProviderOwner)
+        }
+        if postChecks.contains(where: { $0.capability == .appExtension && !$0.remaining.isEmpty }) {
+            followUps.append(.systemExtensionsSettings)
+        }
+        return Array(Set(followUps)).sorted { $0.rawValue < $1.rawValue }
     }
 
     private func removalFollowUps(
-        plan: Plan, journal: JournalEntry?
+        plan: Plan, journal: JournalEntry?, postChecks: [RegistrationVerification]
     ) async -> ([RemovalFollowUp], Bool, Set<String>?) {
         let privacyResetFailed = journal != nil && plan.steps.contains { step in
             step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
@@ -701,16 +823,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let bundleStillPresent = bundlePaths.contains { FileManager.default.fileExists(atPath: $0) }
         let needsPrivacyFollowUp = privacyResetFailed
             && plan.intent.type == .uninstall && !bundleStillPresent
-        let plannedExtensions = plan.capabilityReport?.checks.first {
-            $0.capability == .systemExtension
-        }?.registrations ?? []
-        var survivingExtensionIDs: Set<String>?
-        if !plannedExtensions.isEmpty {
-            let snapshot = await SystemExtensionSurface().snapshot(in: root)
-            if snapshot.coverage.available {
-                survivingExtensionIDs = Set(snapshot.registrations.map(\.identifier))
-            }
-        }
+        let extensionCheck = postChecks.first { $0.capability == .systemExtension }
+        let survivingExtensionIDs = extensionCheck?.coverage.available == true
+            ? Set(extensionCheck?.remaining.map(\.identifier) ?? []) : nil
         var actions = plan.capabilityReport?.followUps(
             survivingSystemExtensionIDs: survivingExtensionIDs,
             privacyResetFailedAfterRemoval: needsPrivacyFollowUp
@@ -726,17 +841,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         privacyResetFailed: Bool,
         otherActionsFailed: Bool
     ) -> String? {
-        let pathReason: String?
-        switch (pathsRemaining.count, staleRegistrations.isEmpty) {
+        let pathReason: String? = switch (pathsRemaining.count, staleRegistrations.isEmpty) {
         case (0, true):
-            pathReason = nil
+            nil
         case (0, false):
-            pathReason = "Every file is gone, but macOS still has this app registered at "
+            "Every file is gone, but macOS still has this app registered at "
                 + staleRegistrations.map(\.path).joined(separator: ", ") + "."
         case (_, true):
-            pathReason = whyTheseRemain(pathsRemaining, recorded: recorded)
+            whyTheseRemain(pathsRemaining, recorded: recorded)
         default:
-            pathReason = whyTheseRemain(pathsRemaining, recorded: recorded)
+            whyTheseRemain(pathsRemaining, recorded: recorded)
                 + " macOS also still has this app registered."
         }
         let privacyReason = privacyResetFailed ? "Privacy permissions were not reset." : nil
@@ -744,7 +858,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let combined = [pathReason, privacyReason, actionReason].compactMap(\.self).joined(separator: "\n\n")
         return combined.isEmpty ? nil : combined
     }
-    
+
     public func history() async throws -> [Plan] {
         let entries = try await ledgerStore.allEntries()
         var plans: [Plan] = []
@@ -755,11 +869,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
         return plans
     }
-    
+
     public func undo(planId: UUID) async throws {
         let plan = try await planStore.load(planId: planId)
         guard let journal = try await journalStore.load(planId: planId) else {
-            throw NSError(domain: "BrimService", code: 1, userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."])
+            throw NSError(
+                domain: "BrimService",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."]
+            )
         }
         let trashedURLs = journal.stepTrashedURLs ?? [:]
 
@@ -786,7 +904,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let sortedSteps = plan.undoOrderedSteps
         for step in sortedSteps {
             if step.kind == .unloadLaunchdJob {
-                try? SafeOps.loadLaunchdJob(path: step.target)
+                try? await launchdRuntime.restore(step.target)
                 continue
             }
             if let trashedURL = trashedURLs[step.index] {
@@ -796,28 +914,32 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 if !fm.fileExists(atPath: parentURL.path) {
                     try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
                 }
-                
+
                 do {
                     try SafeOps.restoreItem(from: trashedURL.path, to: step.target)
                 } catch SafeOpsError.pathOccupied {
-                    throw NSError(domain: "BrimOps", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."])
+                    throw NSError(
+                        domain: "BrimOps",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."]
+                    )
                 }
             }
         }
-        
+
         // Put the registration back with the bundle. The uninstall retracted
         // it deliberately, so restoring the files alone would leave a working
         // application macOS does not know about — no "Open With", no document
         // types, until something happens to rescan it.
         for step in plan.steps where step.executionPhase == .appBundle {
             guard PathExistence.exists(atPath: step.target) else { continue }
-            try? LaunchServicesRegistration.register(bundlePath: step.target)
+            try? await LaunchServicesRegistration.registerBounded(bundlePath: step.target)
         }
 
         // 3. Update journal to mark undone? Or just delete journal?
         try await journalStore.delete(planId: planId)
     }
-    
+
     /// Gives the executor a way to reach Brim's privileged daemon.
     ///
     /// Set by the application once, after the daemon reports itself
@@ -845,13 +967,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// emits: the code existed, the product did not have the feature.
     static let everySurface: [any RegistrationSurface] = [
         LaunchdRegistrationSurface(),
-        BackgroundItemSurface(),
+        FirewallSurface(), BackgroundItemSurface(),
         AppExtensionSurface(),
         SystemExtensionSurface(),
         PrivilegedHelperToolSurface(),
         BundlePluginSurface(),
         ShellProfileSurface(),
-        KeychainSurface(),
+        KeychainSurface()
     ]
 
     public func registrations() async -> RegistrationReport {
@@ -861,9 +983,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // `pluginkit` holds and then asking whether `pluginkit` answered
         // ran the subprocess twice, and the same doubling applied to the
         // Background Task Management store and every directory walk.
-        async let registrations = inventory.all(in: root)
-        async let coverage = inventory.coverage(in: root)
-        return RegistrationReport(registrations: await registrations, coverage: await coverage)
+        return await inventory.snapshot(in: root)
     }
 
     /// Names what is still there and what stopped it going.
@@ -908,7 +1028,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let said = recorded[path].flatMap(Self.recordedReason)
                 ?? "capability:\(capabilityForPath(path).rawValue)"
             let key = "\(folder)\u{0}\(said)"
-            if names[key] == nil { order.append(key) }
+            if names[key] == nil {
+                order.append(key)
+            }
             names[key, default: []].append((path as NSString).lastPathComponent)
         }
 
@@ -927,7 +1049,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 reason = RemovalCapability.folderExplanation(capability, folder: folder)
                     ?? RemovalCapability.explanation(capability)
                     ?? "Brim could not remove \(these.count == 1 ? "it" : "them"), and nothing was "
-                        + "recorded to say why."
+                    + "recorded to say why."
             } else {
                 reason = said
             }
@@ -950,7 +1072,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // bundle had been removed and written back, when it was never moved.
         for step in plan.steps where step.kind.targetIsPath && remaining.contains(step.target) {
             guard let outcome = journal?.stepOutcomes[step.index] else { continue }
-            if step.kind == .unregisterLaunchServices, recorded[step.target] != nil { continue }
+            if step.kind == .unregisterLaunchServices, recorded[step.target] != nil {
+                continue
+            }
             let moves = step.kind != .unregisterLaunchServices
             if moves || recorded[step.target] == nil {
                 recorded[step.target] = outcome
@@ -1123,7 +1247,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func checkForUpdates() async -> UpdateCheck {
         // Whatever an earlier run left unfinished is settled first, so the
         // list below describes the apps as they now are.
-        let interrupted = UpdateInstaller.recoverInterrupted(in: Self.updatesDirectory.appendingPathComponent("Downloads"))
+        let interrupted = UpdateInstaller
+            .recoverInterrupted(in: Self.updatesDirectory.appendingPathComponent("Downloads"))
         let applications = await ApplicationInventory(root: root).installedApplications()
         var check = await UpdateFinder(catalogueDirectory: Self.updatesDirectory.appendingPathComponent("Catalogue"))
             .check(applications)
@@ -1141,7 +1266,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// an update.
     func recentUpdates(_ applications: [InstalledApplication], now: Date = Date()) async -> [RecentUpdate] {
         guard let index else { return [] }
-        let window = now.addingTimeInterval(-14 * 86_400)
+        let window = now.addingTimeInterval(-14 * 86400)
         var recent: [RecentUpdate] = []
         for application in applications where !application.isSystemProtected && application.enclosingApp == nil {
             guard let bundleID = application.identity.bundleID else { continue }
@@ -1169,8 +1294,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     ) async -> UpdateOutcome {
         switch update.route {
         case .homebrew:
-            guard case .homebrew(let cask) = update.origin else { return .failed("Homebrew does not know this app.") }
-            if let problem = await UpdateChecker().upgradeCask(cask) { return .failed(problem) }
+            guard case let .homebrew(cask) = update.origin else { return .failed("Homebrew does not know this app.") }
+            if let problem = await UpdateChecker().upgradeCask(cask) {
+                return .failed(problem)
+            }
             let info = NSDictionary(contentsOf: update.appURL.appendingPathComponent("Contents/Info.plist"))
             return .installed(version: info?["CFBundleShortVersionString"] as? String ?? update.latestVersion)
         case .appStore, .website:
@@ -1216,14 +1343,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// later list untrustworthy.
     public func whatChanged() async -> InstallHistory {
         guard let index else { return InstallHistory(changes: [], snapshots: 0) }
-        return InstallHistory(
-            changes: ((try? await index.changesSinceLastScan()) ?? []).filter {
+        return await InstallHistory(
+            changes: ((try? index.changesSinceLastScan()) ?? []).filter {
                 !($0.kind == .appeared && appearedButAlreadyHere.contains($0.bundleID))
             },
-            snapshots: (try? await index.snapshotCount()) ?? 0
+            snapshots: (try? index.snapshotCount()) ?? 0
         )
     }
-
 
     public func leftovers() async throws -> [Leftover] {
         try Task.checkCancellation()
@@ -1249,7 +1375,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // this and it is still here". The sweep already enumerates these.
         var staleRegistrationOwners: [String: String] = [:]
         let inventory = RegistrationInventory(surfaces: Self.everySurface)
-        for registration in await inventory.stale(in: root) {
+        for registration in await inventory.all(in: root) where registration.isStale && !registration.isSystemOwned {
             guard let owner = registration.owningBundleID else { continue }
             staleRegistrationOwners[owner] = registration.evidence
         }
@@ -1269,8 +1395,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // plainest record there is that it was here and has gone. Teams and
         // Microsoft AutoUpdate were removed, Home said so, and what they left
         // was still listed as owner unknown.
-        let removedApps = (try? await index?.removedApplications()) ?? [:]
-        let recorded = (try? await index?.recordedNames()) ?? [:]
+        let removedApps = await (try? index?.removedApplications()) ?? [:]
+        let recorded = await (try? index?.recordedNames()) ?? [:]
         for (id, seen) in removedApps where staleRegistrationOwners[id] == nil {
             let name = recorded[id.lowercased()] ?? id
             staleRegistrationOwners[id] = "Brim saw \(name) installed until "
@@ -1282,7 +1408,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             launchServicesLookup: { LaunchServicesRegistration.registeredApplicationURLs(forBundleID: $0) },
             staleRegistrationOwners: staleRegistrationOwners,
             homebrewOrphans: orphanCasks,
-            claimedPaths: DeveloperCacheScanner.claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
+            claimedPaths: DeveloperCacheScanner
+                .claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
             removedApplications: removedApps,
             protectedAppURL: brimAppURL,
             // A week, and only on the real disk: a fixture tree is written
@@ -1293,7 +1420,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // What Brim has seen applications called. Without it a leftover
         // was named from its identifier alone, so Teams' would read "Teams2"
         // although Brim had recorded "Microsoft Teams" for weeks.
-        var knownNames = (try? await index?.recordedNames()) ?? [:]
+        var knownNames = await (try? index?.recordedNames()) ?? [:]
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
             if let plan = try? await planStore.load(planId: entry.planId) {
@@ -1320,7 +1447,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return Replacement.Installed(bundleID: id, name: url.deletingPathExtension().lastPathComponent,
                                          path: url.path)
         }
-        let seen = (try? await index?.lastBundlePaths(of: Array(owners))) ?? [:]
+        let seen = await (try? index?.lastBundlePaths(of: Array(owners))) ?? [:]
         var replacements: [String: Replacement] = [:]
         for owner in owners {
             let registered = LaunchServicesRegistration.registeredApplicationURLs(forBundleID: owner).map(\.path)
@@ -1337,7 +1464,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return copy
         }
     }
-    
+
     /// Past removals that could still be undone, judged by what is actually
     /// in the Trash right now rather than by what the journal once recorded.
     /// Emptying the Trash therefore changes this immediately.
@@ -1390,7 +1517,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let fm = FileManager.default
         var retracted: [URL] = []
 
-        for entry in (try? await ledgerStore.allEntries()) ?? [] {
+        for entry in await (try? ledgerStore.allEntries()) ?? [] {
             guard let plan = try? await planStore.load(planId: entry.planId),
                   plan.steps.contains(where: { $0.kind == .unregisterLaunchServices }),
                   let bundleID = plan.intent.subjectIdentity.bundleID,
@@ -1409,7 +1536,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                     .map(\.standardizedFileURL.path)
             )
             for url in vanished where registered.contains(url.standardizedFileURL.path) {
-                try? LaunchServicesRegistration.unregister(bundlePath: url.path)
+                try? await LaunchServicesRegistration.unregisterBounded(bundlePath: url.path)
                 retracted.append(url)
             }
         }
