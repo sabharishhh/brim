@@ -36,6 +36,15 @@ struct RemovalResultView: View {
     private var column: some View {
         VStack(alignment: .leading, spacing: 20) {
             status
+            if let observedAt = result.observedAt {
+                HStack(spacing: 4) {
+                    Text("Checked")
+                    Text(observedAt, style: .date)
+                    Text(observedAt, style: .time)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             if let cleanup = result.toolCleanup {
                 FactSection(title: "Tool cleanup") {
                     FactRow(label: cleanup.command, detail: cleanup.scope)
@@ -88,7 +97,11 @@ struct RemovalResultView: View {
     // MARK: - Removed
 
     private var gone: [Step] {
-        groups.flatMap(\.steps).filter { !result.remainingPaths.contains($0.target) }
+        groups.flatMap(\.steps).filter { isConfirmedGone($0.target) }
+    }
+
+    private func isConfirmedGone(_ path: String) -> Bool {
+        !result.remainingPaths.contains(path) && result.report?.unknownPaths?.contains(path) != true
     }
 
     private func removed(_: Plan) -> some View {
@@ -97,7 +110,7 @@ struct RemovalResultView: View {
         let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
             .reduce(0) { $0 + $1.expectedBytes }
         let kinds = groups.compactMap { group -> (String, [Step])? in
-            let went = group.steps.filter { !result.remainingPaths.contains($0.target) }
+            let went = group.steps.filter { isConfirmedGone($0.target) }
             return went.isEmpty ? nil : (group.title, went)
         }
         return VStack(alignment: .leading, spacing: 20) {

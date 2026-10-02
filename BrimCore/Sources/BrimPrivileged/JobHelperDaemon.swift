@@ -374,12 +374,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
 
         // Read through the same descriptor, so what is judged is what is
         // moved.
-        let file = openat(parent, name, O_RDONLY | O_NOFOLLOW)
-        guard file >= 0 else { throw PrivilegedJobRemoval.Refusal.unreadable }
-        let handle = FileHandle(fileDescriptor: file, closeOnDealloc: true)
-        guard let contents = try? handle.readToEnd() ?? Data() else {
-            throw PrivilegedJobRemoval.Refusal.unreadable
-        }
+        let contents = try PrivilegedJobRemoval.readReviewedPlist(parent: parent, name: name, reviewed: info)
 
         // The rule that makes this safe to expose: a job that still runs
         // something present on this Mac is not a leftover and is never
@@ -398,19 +393,16 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
             throw PrivilegedJobRemoval.Refusal.stillWorking
         }
 
-        try await stopDeclaredJob(contents, directory: directory, path: target.path)
-        var current = stat()
-        guard fstatat(parent, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
-              current.st_dev == info.st_dev, current.st_ino == info.st_ino,
-              current.st_mtimespec.tv_sec == info.st_mtimespec.tv_sec,
-              current.st_mtimespec.tv_nsec == info.st_mtimespec.tv_nsec
-        else {
-            throw PrivilegedJobRemoval.Refusal.unreadable
-        }
+        try await stopDeclaredJob(contents, directory: directory, path: target.path, beforeStop: {
+            try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
+        })
+        try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
         try moveIntoQuarantine(parent: parent, name: name, from: directory)
     }
 
-    private func stopDeclaredJob(_ contents: Data, directory: String, path: String) async throws {
+    private func stopDeclaredJob(
+        _ contents: Data, directory: String, path: String, beforeStop: () throws -> Void
+    ) async throws {
         if let dictionary = try? PropertyListSerialization.propertyList(
             from: contents, options: [], format: nil
         ) as? [String: Any], let label = dictionary["Label"] as? String {
@@ -420,14 +412,17 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
                 throw PrivilegedJobRemoval.Refusal.unreadable
             }
             let namespace = directory == "/Library/LaunchDaemons" ? "system" : "gui/\(requesterUID)"
-            try await stopReviewedJob(label: label, namespace: namespace, path: path)
+            try await stopReviewedJob(label: label, namespace: namespace, path: path,
+                                      contents: contents, beforeStop: beforeStop)
         } else {
             // Without a label no exact runtime check is possible. Preserve it.
             throw PrivilegedJobRemoval.Refusal.unreadable
         }
     }
 
-    private func stopReviewedJob(label: String, namespace: String, path: String) async throws {
+    private func stopReviewedJob(
+        label: String, namespace: String, path: String, contents: Data, beforeStop: () throws -> Void
+    ) async throws {
         let environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"]
         func query(_ target: String) async throws -> NativeCommandRunner.Result {
             try await NativeCommandRunner.run(executable: "/bin/launchctl", arguments: ["print", target],
@@ -443,12 +438,14 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
            diagnostic.contains("Could not find service") {
             return
         }
-        let recordedPath = (String(data: loaded.stdout, encoding: .utf8) ?? "").split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { $0.hasPrefix("path = ") }.map { String($0.dropFirst(7)) }
-        guard loaded.termination == .exited(0), !loaded.outputTruncated, recordedPath == path else {
+        guard loaded.termination == .exited(0), !loaded.outputTruncated,
+              PrivilegedJobRemoval.loadedJobMatchesReviewedDefinition(
+                  String(data: loaded.stdout, encoding: .utf8) ?? "",
+                  reviewedPath: path, reviewedPlist: contents
+              ) else {
             throw PrivilegedJobRemoval.Refusal.unreadable
         }
+        try beforeStop()
         let stopped = try await NativeCommandRunner.run(executable: "/bin/launchctl", arguments: ["bootout", service],
                                                         environment: environment, timeout: 5)
         guard stopped.termination == .exited(0) else { throw PrivilegedJobRemoval.Refusal.stillWorking }

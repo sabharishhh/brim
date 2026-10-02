@@ -10,15 +10,25 @@ import Foundation
 public struct LaunchdRegistrationSurface: RegistrationSurface {
     public let kind: Registration.Kind = .launchdJob
 
-    public init() {}
+    private let includeSystemJobs: Bool
+
+    public init(includeSystemJobs: Bool = true) {
+        self.includeSystemJobs = includeSystemJobs
+    }
 
     /// User, local and system domains. A job in any of them survives an
     /// uninstall that only removed the app bundle.
     private func domains(in root: FileSystemRoot) -> [(url: URL, label: String)] {
-        [
+        let applicationDomains: [(url: URL, label: String)] = [
             (root.url(for: .userLaunchAgents), "user"),
             (root.url(for: .systemLibrary).appendingPathComponent("LaunchAgents"), "local"),
-            (root.url(for: .systemLaunchDaemons), "local"),
+            (root.url(for: .systemLaunchDaemons), "local")
+        ]
+        // Protected OS folders also contain configuration plists that are
+        // not job declarations. They are outside an application's removal
+        // scope and must not invalidate an application-job inventory.
+        guard includeSystemJobs else { return applicationDomains }
+        return applicationDomains + [
             (root.rootURL.appendingPathComponent("System/Library/LaunchAgents"), "system"),
             (root.rootURL.appendingPathComponent("System/Library/LaunchDaemons"), "system")
         ]

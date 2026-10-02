@@ -55,6 +55,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     /// Nil in legacy history. Preflight coverage never becomes fresh verification.
     public let registrationObservations: [RegistrationVerification]?
     public let completedActions: [String]?
+    /// A failed command does not prove the affected records remain present.
+    public let failedActions: [String]?
     /// Kinds of registration Brim searched macOS for, with nothing of the
     /// app's left.
     public let registrationsChecked: [DeclaredCapability]
@@ -83,12 +85,14 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         sharedIdentityProtection: SharedIdentityProtection? = nil,
         unknownPaths: [String]? = nil,
         registrationObservations: [RegistrationVerification]? = nil,
-        completedActions: [String]? = nil
+        completedActions: [String]? = nil,
+        failedActions: [String]? = nil
     ) {
         self.checkedGone = checkedGone
         self.unknownPaths = unknownPaths
         self.registrationObservations = registrationObservations
         self.completedActions = completedActions
+        self.failedActions = failedActions
         self.registrationsChecked = registrationsChecked
         self.declaredNone = declaredNone
         self.keptByMacOS = keptByMacOS
@@ -101,7 +105,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case checkedGone, registrationsChecked, declaredNone, keptByMacOS, stillThere, leftUnticked, scanCompleteness
-        case protectedItems, sharedIdentityProtection, unknownPaths, registrationObservations, completedActions
+        case protectedItems, sharedIdentityProtection, unknownPaths, registrationObservations
+        case completedActions, failedActions
     }
 
     /// A report recorded before `leftUnticked` existed still reads.
@@ -114,6 +119,7 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             forKey: .registrationObservations
         )
         completedActions = try container.decodeIfPresent([String].self, forKey: .completedActions)
+        failedActions = try container.decodeIfPresent([String].self, forKey: .failedActions)
         registrationsChecked = try container.decode([DeclaredCapability].self, forKey: .registrationsChecked)
         declaredNone = try container.decode([DeclaredCapability].self, forKey: .declaredNone)
         keptByMacOS = try container.decode([Kept].self, forKey: .keptByMacOS)
@@ -145,7 +151,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         exists: ((String) -> Bool)? = nil,
         unknownPaths: Set<String> = [],
         registrationObservations: [RegistrationVerification]? = nil,
-        completedActions: [String] = []
+        completedActions: [String] = [],
+        verificationStartedAt: Date? = nil
     ) -> RemovalReport {
         let planned = Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
         let untickedObservations = Self.untickedObservations(in: plan, planned: planned, exists: exists)
@@ -170,12 +177,9 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             kept.append(Kept(what: "File and URL associations",
                              why: "macOS still has the app registered."))
         }
-        if privacyResetFailed {
-            kept.append(Kept(what: "Privacy permissions",
-                             why: "The permission reset did not complete."))
-        }
 
-        let registrations = registrationSummary(plan: plan, observations: registrationObservations)
+        let registrations = registrationSummary(plan: plan, observations: registrationObservations,
+                                                verificationStartedAt: verificationStartedAt)
         kept += registrations.kept
 
         return RemovalReport(
@@ -193,7 +197,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             sharedIdentityProtection: sharedIdentityProtection(in: plan),
             unknownPaths: unknown.sorted(),
             registrationObservations: registrationObservations,
-            completedActions: completedActions
+            completedActions: completedActions,
+            failedActions: privacyResetFailed ? ["Permission reset command did not complete."] : []
         )
     }
 
@@ -208,13 +213,19 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     }
 
     private static func registrationSummary(
-        plan: Plan, observations: [RegistrationVerification]?
+        plan: Plan, observations: [RegistrationVerification]?, verificationStartedAt: Date?
     ) -> RemovalRegistrationSummary {
         let declaredNone = (plan.capabilityReport?.checks ?? [])
             .filter { $0.declaration == .notDeclared && $0.registrations.isEmpty }
             .map(\.capability)
         // Declarations are useful review evidence, but do not certify absence.
-        let checked = (observations ?? []).filter(\.confirmedClear).map(\.capability)
+        let grouped = Dictionary(grouping: observations ?? [], by: \.capability)
+        let checked = DeclaredCapability.allCases.filter { capability in
+            guard let reads = grouped[capability], !reads.isEmpty else { return false }
+            return reads.allSatisfy { observation in
+                verificationStartedAt.map { observation.confirmsClear(since: $0) } ?? observation.confirmedClear
+            }
+        }
         return RemovalRegistrationSummary(checked: checked, declaredNone: declaredNone, kept: [])
     }
 

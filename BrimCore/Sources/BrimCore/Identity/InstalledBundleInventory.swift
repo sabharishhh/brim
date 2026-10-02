@@ -9,7 +9,7 @@ public struct InstalledBundleInventory: Sendable {
 
     public static func read(
         in root: FileSystemRoot, including identifiers: [String] = [], knownLocations: [URL] = [],
-        lookup: ((String) -> [URL])? = nil
+        lookup: ((String) throws -> [URL])? = nil
     ) -> Self {
         var reader = Reader(root: root)
         var directories = [root.url(for: .applications), root.url(for: .userApplications),
@@ -34,7 +34,11 @@ public struct InstalledBundleInventory: Sendable {
         var candidates = knownLocations
         if let query = lookup {
             for identifier in Set(identifiers).sorted() {
-                candidates += query(identifier)
+                do {
+                    candidates += try query(identifier)
+                } catch {
+                    reader.unreadable.insert("Launch Services: \(identifier)")
+                }
             }
         }
         reader.consider(candidates, matching: identifiers)
@@ -74,6 +78,7 @@ public struct InstalledBundleInventory: Sendable {
         var timedOut = Set<String>()
 
         mutating func consider(_ candidates: [URL], matching identifiers: [String]) {
+            let wanted = Set(identifiers.map { $0.lowercased() })
             for candidate in candidates {
                 let path = candidate.resolvingSymlinksInPath().path
                 let boundary = root.rootURL.resolvingSymlinksInPath().path
@@ -93,7 +98,7 @@ public struct InstalledBundleInventory: Sendable {
                     unreadable.insert(candidate.path)
                     continue
                 }
-                if identifiers.isEmpty || identifiers.contains(identifier) {
+                if wanted.isEmpty || wanted.contains(identifier.lowercased()) {
                     bundles.append(candidate)
                 }
             }

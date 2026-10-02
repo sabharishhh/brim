@@ -7,7 +7,7 @@ This implementation separates bundle declarations, current registration observat
 - Privacy resets run before code is moved, under the current user. The host and eligible embedded application, extension and XPC identifiers are reviewed separately. Positive surviving claims and bundled library identifiers are excluded. A successful reset is an action receipt, never a claim that Brim read the private permissions database.
 - Launch Services unregisters only reviewed application paths, including embedded applications known before removal. Newly discovered records are shown in the result and require another review. Recovery copies are distinguished from records at the removed path.
 - Current-user launch agents use their actual Label and GUI domain. Brim reads the domain and exact service, checks the loaded declaration path, stops it and confirms its absence before moving the declaration. A failed or indeterminate stop keeps the declaration in place; independent file steps can still finish. Undo restores the declaration and bootstraps it in the same domain.
-- The authenticated helper independently validates system-job scope and binds the requesting user to the XPC connection. It never accepts a caller-supplied UID. Its interface version is 8.
+- The authenticated helper independently validates system-job scope and binds the requesting user to the XPC connection. It never accepts a caller-supplied UID. Its interface version is 9.
 - Installer records can be forgotten only when their full reviewed payload is bound to the plan and every payload file is freshly absent. The helper independently reads and checks the receipt payload. Live, unreadable, disconnected, malformed or unmeasured payloads keep the receipt.
 
 ## Ownership and observation
@@ -26,8 +26,19 @@ Registration snapshots retain namespace, stable record identity, raw target, run
 | Firewall | Read and attribute exact paths; open Firewall options | Automatic removal remains unqualified by controlled lifecycle evidence. |
 | System extensions | Observe listed state and route to the owner or Settings | Brim has no general authority to deactivate another developer's extension. Restart advice requires a documented pending-removal state. |
 | VPN and File Provider | Report authority limits and route to the owning app | Owner APIs do not become foreign-app removal APIs under root. Provider containers and cloud support data remain excluded, including manual selection. |
+| Management profiles | Report exact bundle references from recognized privacy payloads and open Device Management | Profiles may control several apps or belong to an administrator. A current-user listing cannot prove that device policy is absent. |
 
 Vendor uninstallers are revealed in Finder, never executed. No follow-up appends commands to an old approved plan.
+
+## Review corrections
+
+Failed application lookups retain uncertainty, including in leftover classification. Independently installed copies protect exact helper and group claims even when another part of the search is incomplete.
+
+Registration commands have deadlines and output limits. Launch-job declarations are bounded regular-file reads, with declaration and executable provenance checked before mutation. A stop command whose later check fails retains a separate receipt and keeps its declaration. Recovery can retry without starting jobs that were already absent, overwriting execution history or accepting a replacement at the restored path. The helper version changes when these checks change.
+
+Checks with missing or damaged execution journals return an explicit unknown result. Fresh complete observations, completed commands and failed commands remain separate. Recovery completion is recorded independently of the original removal and its checks.
+
+Background displays only records with an application association. Protected system job folders are outside this application scan; malformed or unreadable application declarations still report a gap. The full registration report remains available for inspection and uninstall planning.
 
 ## Results and history
 

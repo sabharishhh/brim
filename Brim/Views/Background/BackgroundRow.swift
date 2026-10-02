@@ -10,7 +10,7 @@ extension Registration {
         case .launchdJob: recordPath?.contains("/LaunchDaemons/") == true ? .launchDaemon : .launchAgent
         case .privilegedHelper: .launchDaemon
         case .legacyLoginItem: .loginItem
-        case .firewallEntry, .privacyGrant, .keychainItem: .privacyPermission
+        case .firewallEntry, .privacyGrant, .keychainItem, .configurationProfile: .privacyPermission
         case .launchServices: .launchServicesRecord
         case .appExtension, .bundlePlugin: .appExtension
         case .systemExtension: .systemExtension

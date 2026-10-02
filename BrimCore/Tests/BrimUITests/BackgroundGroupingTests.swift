@@ -5,6 +5,39 @@ import XCTest
 /// Background is grouped by whether something should be running, and an
 /// application with one dead job and one live one is two rows, not one.
 final class BackgroundGroupingTests: XCTestCase {
+    func testInstalledComponentIdentifiersAreExactAssociations() {
+        let surface = IdentitySurface(bundlePath: "/Applications/Sample.app", components: [
+            .init(path: "/Applications/Sample.app", bundleIdentifier: "com.example.sample", name: "Sample",
+                  bundleName: nil, teamIdentifier: nil, groups: [], urlSchemes: [], exportedTypes: []),
+            .init(path: "/Applications/Sample.app/Contents/Helpers/Agent.app", bundleIdentifier: "com.example.agent",
+                  name: "Agent", bundleName: nil, teamIdentifier: nil, groups: [], urlSchemes: [], exportedTypes: [])
+        ])
+        let application = InstalledApplication(
+            identity: Identity(bundleID: "com.example.sample", name: "Sample", identitySurface: surface),
+            url: URL(fileURLWithPath: "/Applications/Sample.app"), bundleSizeBytes: 0, isSystemProtected: false
+        )
+        let exact = registration(.privacyGrant, "com.example.agent")
+        let resemblance = registration(.privacyGrant, "com.example.sample.other")
+        XCTAssertEqual(BackgroundScope.registrations([exact, resemblance], applications: [application]), [exact])
+    }
+
+    func testBackgroundParentAssociationCannotCrossAccounts() {
+        let parent = Registration(
+            kind: .backgroundItem, identifier: "com.example.sample", label: "Sample",
+            owningBundleID: "com.example.sample", programPath: "/Applications/Sample.app",
+            targetExists: false, evidence: "fixture", namespace: "account-a"
+        )
+        func helper(namespace: String) -> Registration {
+            Registration(kind: .backgroundItem, identifier: "com.example.agent", label: "Agent",
+                         owningBundleID: "com.example.sample", targetExists: false,
+                         evidence: "fixture", namespace: namespace)
+        }
+        let associated = helper(namespace: "account-a")
+        let otherAccount = helper(namespace: "account-b")
+        XCTAssertEqual(BackgroundScope.registrations([parent, associated, otherAccount], applications: []),
+                       [parent, associated])
+    }
+
     private func registration(
         _ kind: Registration.Kind, _ identifier: String, program: String? = nil, exists: Bool = true,
         atLogin: Bool? = nil

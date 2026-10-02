@@ -19,6 +19,10 @@ public struct JournalEntry: Codable, Sendable {
     public var freeSpaceBefore: Int64?
     public var freeSpaceAfter: Int64?
     public var verifications: [VerificationResult]?
+    /// Absent in legacy journals and until every requested restore finishes.
+    public var restoredAt: Date?
+    /// Restoration receipts never replace the original execution outcomes.
+    public var restoreOutcomes: [Int: String]?
 
     public init(
         planId: UUID,
@@ -27,7 +31,9 @@ public struct JournalEntry: Codable, Sendable {
         stepOutcomes: [Int: String] = [:],
         stepTrashedURLs: [Int: URL]? = nil,
         freeSpaceBefore: Int64? = nil,
-        freeSpaceAfter: Int64? = nil
+        freeSpaceAfter: Int64? = nil,
+        restoredAt: Date? = nil,
+        restoreOutcomes: [Int: String]? = nil
     ) {
         self.planId = planId
         self.startedAt = startedAt
@@ -37,24 +43,26 @@ public struct JournalEntry: Codable, Sendable {
         self.freeSpaceBefore = freeSpaceBefore
         self.freeSpaceAfter = freeSpaceAfter
         verifications = nil
+        self.restoredAt = restoredAt
+        self.restoreOutcomes = restoreOutcomes
     }
 }
 
 public actor JournalStore {
     private let directoryURL: URL
-    private let fm = FileManager.default
+    private let fileManager = FileManager.default
 
     public init(directoryURL: URL) {
         self.directoryURL = directoryURL
     }
 
     public func ensureDirectory() throws {
-        try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
     public func allPlanIds() throws -> [UUID] {
         try ensureDirectory()
-        let urls = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+        let urls = try fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
         return urls.compactMap { url in
             guard url.pathExtension == "journal" else { return nil }
             return UUID(uuidString: url.deletingPathExtension().lastPathComponent)
@@ -73,7 +81,7 @@ public actor JournalStore {
 
     public func load(planId: UUID) throws -> JournalEntry? {
         let url = fileURL(for: planId)
-        guard fm.fileExists(atPath: url.path) else { return nil }
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(JournalEntry.self, from: data)
     }
@@ -85,9 +93,35 @@ public actor JournalStore {
         try write(entry: latest)
     }
 
+    /// Update the latest journal without replacing execution or verification receipts.
+    public func recordRestoreOutcome(planId: UUID, stepIndex: Int, outcome: String) throws {
+        var latest = try restorationEntry(planId: planId)
+        var outcomes = latest.restoreOutcomes ?? [:]
+        outcomes[stepIndex] = outcome
+        latest.restoreOutcomes = outcomes
+        try write(entry: latest)
+    }
+
+    /// Completion is separate from individual receipts so a failed restore can resume.
+    public func markRestored(planId: UUID, at date: Date) throws {
+        var latest = try restorationEntry(planId: planId)
+        guard latest.restoredAt == nil else { return }
+        latest.restoredAt = date
+        try write(entry: latest)
+    }
+
+    private func restorationEntry(planId: UUID) throws -> JournalEntry {
+        guard let latest = try load(planId: planId) else {
+            throw NSError(domain: "BrimJournal", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The restoration could not be recorded because its journal is missing."
+            ])
+        }
+        return latest
+    }
+
     public func getOpenJournals() throws -> [JournalEntry] {
         try ensureDirectory()
-        let urls = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+        let urls = try fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
         var entries = [JournalEntry]()
         for url in urls where url.pathExtension == "journal" {
             let data = try Data(contentsOf: url)
@@ -102,8 +136,8 @@ public actor JournalStore {
 
     public func delete(planId: UUID) throws {
         let url = fileURL(for: planId)
-        if fm.fileExists(atPath: url.path) {
-            try fm.removeItem(at: url)
+        if fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
         }
     }
 }

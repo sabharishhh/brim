@@ -27,12 +27,6 @@ public actor Executor {
     /// failing with a permission error nobody can act on.
     private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
 
-    public func setPrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) {
-        privilegedRemover = remover
-    }
-
-
-
     public init(
         journalStore: JournalStore,
         toolCleanupClient: ToolCleanup.Client = .init(),
@@ -101,6 +95,9 @@ public actor Executor {
             }
 
             do {
+                if step.kind == .unloadLaunchdJob || step.kind == .removeLaunchdPlist {
+                    try LaunchdExecution.verifyModification(step)
+                }
                 if step.kind == .trashPathPrivileged {
                     // Something in a folder that belongs to root. The
                     // daemon applies its own rules and moves the file to a
@@ -240,9 +237,14 @@ public actor Executor {
                             "launch_services_registration_remains: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unloadLaunchdJob {
-                    try await launchdRuntime.stop(step.target)
-                    stoppedJobs.insert(step.target)
-                    journal.stepOutcomes[step.index] = "ok"
+                    let receipt = try await LaunchdExecution.stop(step.target, runtime: launchdRuntime)
+                    journal.stepOutcomes[step.index] = receipt.outcome
+                    if receipt.verified {
+                        stoppedJobs.insert(step.target)
+                    } else {
+                        hasFailures = true
+                        blocksBundle = true
+                    }
                 } else if step.kind == .clearImmutableFlag {
                     // Locked files used to vanish from the plan: the safety
                     // checker refused them and said nothing, so a person saw
@@ -367,15 +369,19 @@ public actor Executor {
 
         return journal
     }
-
-    /// An ordinary file or folder outside the app, moved to the Trash. A
-    /// refusal there leaves that item behind and nothing else at risk.
-    static func isSupportFile(_ step: Step) -> Bool {
-        step.kind == .trashPath && step.executionPhase == .auxiliary
-    }
 }
 
 public extension Executor {
+    func setPrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) {
+        privilegedRemover = remover
+    }
+
+    /// An ordinary file or folder outside the app, moved to the Trash. A
+    /// refusal there leaves that item behind and nothing else at risk.
+    internal static func isSupportFile(_ step: Step) -> Bool {
+        step.kind == .trashPath && step.executionPhase == .auxiliary
+    }
+
     func setPrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) {
         privilegedReceiptForgetter = forgetter
     }
