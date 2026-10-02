@@ -46,6 +46,19 @@ Brim asks once, during setup.
 - **Touch ID or your password** once per removal that deletes anything
   permanently. Moving things to the Trash needs nothing.
 
+### Checking a removal
+
+The result shows files confirmed gone, registrations still listed and
+locations Brim could not check. A completed command and an empty
+registration list are reported separately. Shared items and recovery copies
+stay identified in the result.
+
+Use **Check removal** from a removal's context menu in Journal to read its
+current state again. This records another observation without removing
+anything. Some records can be removed only by their owning app or a specific Settings
+control. Background activity switches do not erase registrations. Brim keeps
+remaining records visible rather than claiming they have gone.
+
 ## Privacy
 
 Brim works on your Mac and has no account, analytics or crash reporting.

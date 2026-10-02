@@ -1,7 +1,11 @@
-import Foundation
 import BrimCore
+import Foundation
 
-public struct VerificationResult: Codable, Equatable, Sendable {
+public struct VerificationResult: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID {
+        planId
+    }
+
     public let planId: UUID
     public let expectedBytes: Int64
     public let recoveredBytes: Int64

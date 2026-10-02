@@ -1114,3 +1114,64 @@ Drifted from the plan:
 - Home's Changes shows the last change that happened, not the difference between the last two snapshots, which was always empty after a relaunch.
 - The product rule of two things now names Updates as the one addition.
 - Reset and archive (T-5.2) were built in the engine and then removed.
+
+
+## 16. Registration verification implementation, 2 October 2026
+
+The current implementation separates declarations, registration observations
+and action receipts. Earlier notes that imply a missing BTM target will be
+collected automatically, or that pre-removal declarations prove registration
+absence, are superseded by this section.
+
+Implemented:
+
+- Typed present, absent and unknown target observations; atomic surface
+  reads with namespace, stable identity, reader version and coverage gaps.
+- Exact surviving-copy discovery and shared embedded-identifier protection.
+- Exact-domain launchd stop and readback before declaration removal;
+  retention on failure, bounded subprocesses and runtime restoration on undo.
+- Full receipt payload binding and fresh absence checks, repeated independently
+  by the helper before forgetting an installer record. Helper version 8 binds
+  the authenticated requesting UID rather than accepting one from the caller.
+- Fresh, append-only registration verification in removal results and Journal.
+  Newly found records never expand an approved plan.
+- Provider-data exclusions, precise manual routes and conditional restart advice.
+- Background and Home use listed counts and expose partial reads. Details uses
+  relevant icons and a leading layout with less indentation.
+
+Bugs found and corrected during implementation:
+
+- A successful PluginKit exit can contain an invalid listing. Parsing now
+  validates listing structure and count while retaining useful partial evidence.
+- Synthetic job fixtures previously depended on ignored launchctl failures.
+  They now inject an explicitly separate runtime; production fails closed.
+- The Background inspector revealed the shared BTM archive while displaying
+  individual target paths without distinguishing them. Targets and source are
+  now labeled separately. Finder reveals only individual targets; the shared
+  archive cannot be a fallback. SafetyChecker also protects the archive and
+  its parents from explicit removal. Regression tests cover both boundaries.
+- Home still claimed registrations were running and a partial scan was clear.
+  The real app review exposed this and its status model now preserves read gaps.
+- A PluginKit registration experiment created a sandbox container. That unsafe
+  experiment was removed and the owned container was deleted through Finder
+  with approval. No automatic PluginKit remover is shipped.
+- The launchd lifecycle test produced background activity notifications even
+  after its job was removed. It was moved out of regular test targets into a
+  disposable-account recipe. Future registration experiments use an isolated
+  account or VM, because filesystem cleanup cannot guarantee BTM collection.
+- Strict compiler checks exposed existing Shortcuts, formatter, lock-result and
+  callback capture diagnostics. Small compatibility fixes keep the required
+  package and app checks passing.
+
+PluginKit mutation, legacy login-item automation, firewall mutation and
+foreign-owner extension/provider operations remain gated. There is no global
+reset, private database write or automatic vendor uninstaller.
+
+[The implementation and validation record](uninstall-registration-verification.md)
+contains route-specific limits and actual verification evidence. The earlier
+research remains the rationale; this section records what has shipped on the
+implementation branch rather than declaring every compatibility gate passed.
+
+### Background removal follow-up, 2 October 2026
+
+Settings inspection and pinned-source research distinguish Open at Login removal from Background App Activity switches. Background switches do not finish registration cleanup. Removed the misleading background Settings route and automatic-collection promise. Embedded job declarations were missing from runtime verification; exact labels and domains are now saved before the bundle moves and rechecked afterward. These changes do not qualify automatic embedded-job stopping or individual BTM erasure. See `uninstall-registration-verification.md` for sources, test evidence and the isolated-account qualification matrix.

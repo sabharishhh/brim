@@ -1,3 +1,4 @@
+import BrimCore
 import CoreServices
 import Foundation
 
@@ -59,7 +60,7 @@ public enum LaunchServicesRegistration {
     /// after Muse went, Launch Services still listed Sparkle's `Updater.app`
     /// inside `Muse.app` and two more copies Sparkle keeps in its cache
     /// folder, all pointing at nothing.
-    public static func nestedApplications(in path: String, limit: Int = 20_000) -> [String] {
+    public static func nestedApplications(in path: String, limit: Int = 20000) -> [String] {
         var isDirectory: ObjCBool = false
         // Relative paths, joined to the path as given: a URL enumerator
         // answers `/private/var` for `/var`, and a record is retracted by
@@ -70,7 +71,9 @@ public enum LaunchServicesRegistration {
         var seen = 0
         while let relative = walk.nextObject() as? String {
             seen += 1
-            if seen > limit { break }
+            if seen > limit {
+                break
+            }
             if (relative as NSString).pathExtension.lowercased() == "app" {
                 found.append((path as NSString).appendingPathComponent(relative))
             }
@@ -96,7 +99,7 @@ public enum LaunchServicesRegistration {
                 path = String(path[..<marker.lowerBound])
             }
             guard prefixes.contains(where: { path.hasPrefix($0) }),
-                  !FileManager.default.fileExists(atPath: path) else { continue }
+                  PathObservation.observe(path).isAbsent else { continue }
             found.insert(path)
         }
         return found.sorted()
@@ -155,6 +158,16 @@ public enum LaunchServicesRegistration {
                           userInfo: [NSLocalizedDescriptionKey: "Launch Services did not answer."])
         }
         return (result.takeRetainedValue() as? [URL]) ?? []
+    }
+
+    public static func unregisterBounded(bundlePath: String) async throws {
+        let status = try await RegistrationCommand.status(lsregisterPath, ["-u", bundlePath])
+        guard status == 0 else { throw UnregisterError.failed(path: bundlePath, code: status) }
+    }
+
+    public static func registerBounded(bundlePath: String) async throws {
+        let status = try await RegistrationCommand.status(lsregisterPath, ["-f", bundlePath])
+        guard status == 0 else { throw UnregisterError.failed(path: bundlePath, code: status) }
     }
 
     /// Runs a fixed tool with fixed arguments. No caller-supplied command

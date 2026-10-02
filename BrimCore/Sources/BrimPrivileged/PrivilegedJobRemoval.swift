@@ -20,7 +20,6 @@ import Foundation
 /// 3. **Nothing of Apple's, ever.** Refused by name, by the daemon, rather
 ///    than trusting the caller to have filtered them out.
 public enum PrivilegedJobRemoval {
-
     /// The only places this daemon will touch. `/Library/LaunchAgents` and
     /// `/Library/LaunchDaemons` are where a third party installs a job for
     /// the whole machine, and they belong to root, which is the entire
@@ -32,8 +31,8 @@ public enum PrivilegedJobRemoval {
 
         public var directory: String {
             switch self {
-            case .localAgents: return "/Library/LaunchAgents"
-            case .localDaemons: return "/Library/LaunchDaemons"
+            case .localAgents: "/Library/LaunchAgents"
+            case .localDaemons: "/Library/LaunchDaemons"
             }
         }
     }
@@ -52,27 +51,27 @@ public enum PrivilegedJobRemoval {
 
         public var explanation: String {
             switch self {
-            case .unknownDomain(let domain):
-                return "\(domain) is not a place this can touch."
-            case .notAPlainName(let name):
-                return "\(name) is not a plain file name."
-            case .notAJobFile(let name):
-                return "\(name) is not a launchd job file."
-            case .belongsToApple(let name):
-                return "\(name) belongs to macOS."
+            case let .unknownDomain(domain):
+                "\(domain) is not a place this can touch."
+            case let .notAPlainName(name):
+                "\(name) is not a plain file name."
+            case let .notAJobFile(name):
+                "\(name) is not a launchd job file."
+            case let .belongsToApple(name):
+                "\(name) belongs to macOS."
             case .notThere:
-                return "It is not there any more."
+                "It is not there any more."
             case .notARegularFile:
-                return "That is not a plain file."
-            case .tooBigForAJobFile(let bytes):
-                return "\(bytes) bytes is far too large for a job file."
+                "That is not a plain file."
+            case let .tooBigForAJobFile(bytes):
+                "\(bytes) bytes is far too large for a job file."
             case .unreadable:
-                return "It could not be read."
+                "It could not be read."
             case .stillWorking:
-                return "That job still runs something that is on this Mac, so it is not a "
-                     + "leftover and this will not remove it."
-            case .couldNotQuarantine(let why):
-                return "It could not be set aside: \(why)"
+                "That job still runs something that is on this Mac, so it is not a "
+                    + "leftover and this will not remove it."
+            case let .couldNotQuarantine(why):
+                "It could not be set aside: \(why)"
             }
         }
     }
@@ -118,6 +117,11 @@ public enum PrivilegedJobRemoval {
             return false
         }
 
+        // App-relative or searched executables cannot be treated as absent
+        // by a root process probing its own working directory.
+        if job["BundleProgram"] != nil {
+            return false
+        }
         let program = (job["Program"] as? String)
             ?? (job["ProgramArguments"] as? [String])?.first
 
@@ -127,6 +131,7 @@ public enum PrivilegedJobRemoval {
             // nothing to run from any of them.
             return true
         }
+        guard program.hasPrefix("/") else { return false }
         return !programExists(program)
     }
 }

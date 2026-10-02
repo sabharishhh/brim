@@ -25,80 +25,58 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
     }
 
     public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
-        let readable = domains(in: root).contains { FileManager.default.isReadableFile(atPath: $0.url.path) }
-        return readable
-            ? .available(kind)
-            : .unavailable(kind, "No launchd directory could be read.", absence: .needsPermission)
-    }
-
-    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
-        let failed = domains(in: root).contains { directory in
-            if case .refused = DirectoryEntries.read(directory.url) {
-                return true
-            }
-            return false
-        }
-        return await RegistrationSnapshot(registrations: registrations(in: root),
-                                          coverage: failed
-                                              ? .unavailable(kind, "A background job folder could not be read.")
-                                              : .available(kind))
+        await snapshot(in: root).coverage
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        await snapshot(in: root).registrations
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
         var results: [Registration] = []
-        let fm = FileManager.default
-
-        for domain in domains(in: root) {
-            let names = (try? fm.contentsOfDirectory(atPath: domain.url.path)) ?? []
+        var scopes: [RegistrationCoverage.Scope] = []
+        for directory in domains(in: root) {
+            var complete = true
+            let names: [String]
+            switch DirectoryEntries.read(directory.url) {
+            case .absent: names = []
+            case let .listed(entries): names = entries
+            case .refused:
+                names = []
+                complete = false
+            }
             for name in names where name.hasSuffix(".plist") {
-                let plistURL = domain.url.appendingPathComponent(name)
-                guard let job = Self.parse(plistURL: plistURL) else { continue }
-
-                // A job is stale when the program it launches is gone. That
-                // is the entry that keeps appearing in System Settings for an
-                // app the user removed months ago.
-                //
-                // A job that names no program at all is stale too, and was
-                // being reported as healthy. Google Keystone's uninstaller
-                // empties its four plists rather than deleting them, leaving
-                // 181 bytes of nothing in both LaunchAgents directories.
-                // launchd has no program to run and no label to register, so
-                // calling those "running in the background" was wrong twice
-                // over.
-                let programExists: Bool
-                let evidence: String
-                if let program = job.program {
-                    programExists = fm.fileExists(atPath: program)
-                    evidence = programExists
-                        ? "Registered with launchd in the \(domain.label) domain."
-                        : "Registered with launchd in the \(domain.label) domain, but the program "
-                        + "it launches is missing."
-                } else {
-                    programExists = false
-                    evidence = "An empty job file in the \(domain.label) domain. It names no "
-                        + "program, so launchd has nothing to run. Whatever installed it "
-                        + "emptied the file instead of removing it."
+                let plist = directory.url.appendingPathComponent(name)
+                guard let definition = try? LaunchdJobDefinition.read(plist.path) else {
+                    complete = false
+                    continue
                 }
-
+                let program = definition.resolvedProgram(plistPath: plist.path)
+                let presence = PathObservation.observe(program, followingLinks: true)
+                let namespace = directory.url.path.contains("/LaunchDaemons")
+                    ? "system" : "gui/\(getuid())"
                 results.append(Registration(
-                    kind: .launchdJob,
-                    identifier: job.label,
-                    label: job.label,
-                    owningBundleID: Self.bundleID(fromLabel: job.label),
-                    programPath: job.program,
-                    targetExists: programExists,
-                    recordPath: plistURL.path,
-                    evidence: evidence,
-                    isSystemOwned: domain.label == "system",
-                    // Asked of the directory, because that is what a
-                    // deletion edits. /Library/LaunchAgents belongs to
-                    // root, so a job there needs an administrator however
-                    // ordinary its own permissions look.
-                    capability: RemovalCapability.forDeleting(plistURL.path)
+                    kind: .launchdJob, identifier: definition.label, label: definition.label,
+                    owningBundleID: Self.bundleID(fromLabel: definition.label),
+                    programPath: program, targetExists: presence.isPresent,
+                    recordPath: plist.path,
+                    evidence: presence.isAbsent
+                        ? "The launchd declaration remains, but its program is missing."
+                        : "A launchd job declaration in \(directory.url.path).",
+                    isSystemOwned: directory.label == "system",
+                    capability: RemovalCapability.forDeleting(plist.path),
+                    targetPresence: presence, namespace: namespace, runtimeState: "declared"
                 ))
             }
+            scopes.append(.init(namespace: directory.url.path, available: complete,
+                                limitation: complete ? nil : "A job folder or declaration could not be read."))
         }
-        return results
+        let complete = scopes.allSatisfy(\.available)
+        return RegistrationSnapshot(registrations: results, coverage: RegistrationCoverage(
+            kind: kind, available: complete,
+            limitation: complete ? nil : "Part of the background job list could not be checked.",
+            scopes: scopes
+        ), readerVersion: 2)
     }
 
     // MARK: - Parsing
@@ -118,16 +96,9 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
         return parse(dictionary: dict, fallbackLabel: plistURL.deletingPathExtension().lastPathComponent)
     }
 
-    static func parse(dictionary: [String: Any], fallbackLabel: String) -> Job? {
-        // A plist with no label is still a job to launchd, which falls back
-        // to the file name, so this does too rather than dropping it.
-        let label = (dictionary["Label"] as? String) ?? fallbackLabel
-        guard !label.isEmpty else { return nil }
-
-        let program = (dictionary["Program"] as? String)
-            ?? (dictionary["ProgramArguments"] as? [String])?.first
-
-        return Job(label: label, program: program)
+    static func parse(dictionary: [String: Any], fallbackLabel _: String) -> Job? {
+        guard let definition = LaunchdJobDefinition(dictionary: dictionary) else { return nil }
+        return Job(label: definition.label, program: definition.program)
     }
 
     /// launchd labels are conventionally the bundle identifier, sometimes with

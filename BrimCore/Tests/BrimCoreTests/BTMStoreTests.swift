@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Reading Background Task Management without asking anybody for anything.
 ///
@@ -11,9 +11,10 @@ import BrimCore
 /// than about avoiding the prompt, which is avoided by not running the
 /// tool at all.
 final class BTMStoreTests: XCTestCase {
-
     private static let thisUser = UUID(uuidString: "C995F5A3-ED44-45EF-B512-E97AEBAFDE8A")!
-    private var thisUser: UUID { Self.thisUser }
+    private var thisUser: UUID {
+        Self.thisUser
+    }
 
     // MARK: - Which files to read
 
@@ -142,7 +143,7 @@ final class BTMStoreTests: XCTestCase {
         XCTAssertEqual(BTMDisposition.typeDescription(0x4), "login item")
         XCTAssertEqual(BTMDisposition.typeDescription(0x2000), "background task")
         XCTAssertEqual(BTMDisposition.describe(0x0), "off")
-        XCTAssertEqual(BTMDisposition.describe(0xb), "on, allowed, notified")
+        XCTAssertEqual(BTMDisposition.describe(0xB), "on, allowed, notified")
         XCTAssertTrue(BTMDisposition.isEnabled(0x9))
         XCTAssertFalse(BTMDisposition.isEnabled(0x2))
     }
@@ -151,6 +152,24 @@ final class BTMStoreTests: XCTestCase {
         // A wrong label here is read as a fact about the user's Mac.
         XCTAssertEqual(BTMDisposition.typeDescription(0x400000), "type 0x400000")
         XCTAssertEqual(BTMDisposition.typeDescription(0x400002), "app (0x400002)")
+    }
+
+    func testReadableAccountDoesNotHideUnsupportedMachineArchive() throws {
+        let directory = try makeStore(items: [])
+        try Data("unsupported archive".utf8).write(to: directory.appendingPathComponent(
+            "BackgroundItems-v18-FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000.btm"
+        ))
+        let snapshot = BTMStore(directory: directory, currentUser: { Self.thisUser }).snapshot()
+        XCTAssertFalse(snapshot.coverage.available)
+        XCTAssertEqual(snapshot.coverage.scopes?.filter(\.available).count, 1)
+        XCTAssertEqual(snapshot.coverage.scopes?.filter { !$0.available }.count, 1)
+    }
+
+    func testAbsentMachineNamespaceIsNotCertifiedByEmptyAccountStore() throws {
+        let directory = try makeStore(items: [])
+        let snapshot = BTMStore(directory: directory, currentUser: { Self.thisUser }).snapshot()
+        XCTAssertFalse(snapshot.coverage.available)
+        XCTAssertTrue(snapshot.records.isEmpty)
     }
 
     // MARK: - Fixtures
@@ -179,9 +198,17 @@ final class BTMStoreTests: XCTestCase {
 @objc(BrimFixtureStore)
 private final class FixtureStore: NSObject, NSCoding {
     let items: [FixtureItem]
-    init(items: [FixtureItem]) { self.items = items }
-    init?(coder: NSCoder) { items = [] }
-    func encode(with coder: NSCoder) { coder.encode(items, forKey: "records") }
+    init(items: [FixtureItem]) {
+        self.items = items
+    }
+
+    init?(coder _: NSCoder) {
+        items = []
+    }
+
+    func encode(with coder: NSCoder) {
+        coder.encode(items, forKey: "records")
+    }
 }
 
 @objc(BrimFixtureItem)
@@ -209,7 +236,9 @@ private final class FixtureItem: NSObject, NSCoding {
         self.disposition = disposition
     }
 
-    init?(coder: NSCoder) { return nil }
+    init?(coder _: NSCoder) {
+        nil
+    }
 
     func encode(with coder: NSCoder) {
         coder.encode(name, forKey: "name")

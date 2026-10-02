@@ -1,6 +1,6 @@
 import Foundation
-import ServiceManagement
 import os
+import ServiceManagement
 
 /// Talking to the privileged daemon, and installing it if it is not there.
 ///
@@ -10,7 +10,6 @@ import os
 /// and stops when it is done.
 @MainActor
 public final class PrivilegedHelperClient: ObservableObject {
-
     public enum State: Equatable, Sendable {
         /// Brim has not asked macOS yet, and on purpose.
         ///
@@ -41,7 +40,9 @@ public final class PrivilegedHelperClient: ObservableObject {
         case stale(installed: String)
         case unavailable(String)
 
-        public var canRemove: Bool { self == .ready }
+        public var canRemove: Bool {
+            self == .ready
+        }
     }
 
     @Published public private(set) var state: State = .notAsked
@@ -100,7 +101,7 @@ public final class PrivilegedHelperClient: ObservableObject {
             // A status this build of Brim predates. Say what it means for the
             // person rather than that Brim did not recognise the value.
             state = .unavailable("This version of macOS reports the helper differently. "
-                                 + "Updating Brim should settle it.")
+                + "Updating Brim should settle it.")
         }
     }
 
@@ -262,7 +263,7 @@ public final class PrivilegedHelperClient: ObservableObject {
     }
 
     private func ask(
-        _ call: @escaping (BrimJobHelperProtocol, @escaping (String?) -> Void) -> Void
+        _ call: @escaping (BrimJobHelperProtocol, @escaping @Sendable (String?) -> Void) -> Void
     ) async -> String? {
         guard state == .ready else {
             return "Brim's helper is not set up, so it cannot touch anything outside your own Library."
@@ -305,7 +306,7 @@ public final class PrivilegedHelperClient: ObservableObject {
     public func forgetReceipt(packageID: String) async -> String? {
         guard state == .ready else {
             return "Brim's helper is not set up, so the installer's record of this package "
-                 + "stays where it is."
+                + "stays where it is."
         }
         return await withCheckedContinuation { continuation in
             let connection = openConnection()
@@ -323,7 +324,9 @@ public final class PrivilegedHelperClient: ObservableObject {
     }
 
     private func openConnection() -> NSXPCConnection {
-        if let connection { return connection }
+        if let connection {
+            return connection
+        }
         let fresh = NSXPCConnection(machServiceName: BrimJobHelper.machServiceName, options: .privileged)
         fresh.remoteObjectInterface = NSXPCInterface(with: BrimJobHelperProtocol.self)
         // The daemon checks the app, and the app checks the daemon. Either
