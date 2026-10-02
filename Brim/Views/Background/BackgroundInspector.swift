@@ -2,6 +2,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// One application's registrations in depth: who signed them, what state
 /// they are in, and each record with the evidence for it.
 ///
@@ -26,7 +28,7 @@ struct BackgroundInspector: View {
                         .font(.brimFacts)
                         .foregroundStyle(Palette.caution)
                 case .clearing:
-                    Label("macOS drops this by itself", systemImage: "clock")
+                    Label("Still listed by macOS", systemImage: "clock")
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 case .present:
@@ -79,7 +81,7 @@ struct BackgroundInspector: View {
 
     @ViewBuilder
     private var actions: some View {
-        let urls = entry.group.items.compactMap { reveals[$0.id] }
+        let urls = Array(Set(entry.group.items.compactMap { reveals[$0.id] })).sorted { $0.path < $1.path }
         if entry.state == .gone || !urls.isEmpty {
             HStack(spacing: 8) {
                 if entry.state == .gone {
@@ -88,8 +90,10 @@ struct BackgroundInspector: View {
                         .disabled(!canPick)
                 }
                 if !urls.isEmpty {
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(urls) }
-                        .buttonStyle(.bordered)
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(urls)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             .buttonBorderShape(.capsule)
@@ -124,11 +128,21 @@ private struct RecordRow: View {
                     Spacer(minLength: 0)
                 }
                 if let location = registration.spokenLocation {
-                    Text(Self.abbreviated(location))
+                    Text(registration.kind == .backgroundItem
+                        ? "Target: " + Self.abbreviated(location) : Self.abbreviated(location))
                         .font(.caption)
                         .foregroundStyle(Palette.inkTertiary)
                         .lineLimit(2)
                         .truncationMode(.middle)
+                }
+                if registration.kind == .backgroundItem, let source = registration.recordPath {
+                    Label("Shared macOS store: " + URL(fileURLWithPath: source).lastPathComponent,
+                          systemImage: "externaldrive")
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(source)
                 }
                 Text(registration.evidence)
                     .font(.caption)
@@ -148,7 +162,9 @@ private struct RecordRow: View {
             }
             if let url = reveals[registration.id] {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") { shell.reveal([url]) }
+                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal target in Finder") {
+                        shell.reveal([url])
+                    }
                 }
             }
         }
@@ -169,6 +185,20 @@ private struct RecordRow: View {
     /// Why Brim cannot remove this, said before it is tried. Once the
     /// helper can reach it, it stops saying so.
     private var blocked: String? {
+        if registration.kind == .backgroundItem {
+            return registration.isStale
+                ? "The target is missing, but macOS still keeps this record. Turning it off does not remove it."
+                : nil
+        }
+        if registration.kind == .legacyLoginItem {
+            return registration.isStale ? RemovalFollowUp.loginItemsSettings.sentence : nil
+        }
+        if registration.kind == .appExtension || registration.kind == .systemExtension {
+            return "Review this extension in System Settings > General > Login Items & Extensions."
+        }
+        if registration.kind == .firewallEntry {
+            return "Review this entry in System Settings > Network > Firewall > Options."
+        }
         guard registration.isActionableStale else { return nil }
         if helperIsReady, BackgroundModel.needsTheHelper(registration) {
             return nil

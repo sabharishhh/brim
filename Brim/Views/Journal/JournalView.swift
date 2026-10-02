@@ -1,4 +1,5 @@
 import BrimCore
+import BrimProtocol
 import BrimUI
 import SwiftUI
 
@@ -16,6 +17,11 @@ struct JournalView: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Built when the records or the apps change, not while drawing.
+    @State private var checkedResult: VerificationResult?
+    @State private var checkedPlan: Plan?
+    @State private var checkingPlanID: UUID?
+    @State private var checkError = ""
+    @State private var showsCheckError = false
     @State private var groups: [ItemGroup<JournalEntry>] = []
 
     var body: some View {
@@ -31,6 +37,12 @@ struct JournalView: View {
             }
             content
         }
+        .sheet(item: $checkedResult) { result in
+            RemovalVerificationSheet(result: result, plan: checkedPlan)
+        }
+        .alert("Could not check removal", isPresented: $showsCheckError) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(checkError) }
         .task { await model.load(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         // Whether something can be put back changes when the Trash does.
@@ -117,7 +129,6 @@ struct JournalView: View {
                                 .padding(.top, 14)
                                 .padding(.bottom, 4)
                                 .accessibilityAddTraits(.isHeader)
-
                         }
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
@@ -129,6 +140,14 @@ struct JournalView: View {
                                 isPuttingBack: isPuttingBack(entry),
                                 putBack: { putBack(entry) }
                             )
+                            .contextMenu {
+                                if case let .removed(record) = entry.event {
+                                    Button("Check removal", systemImage: "arrow.clockwise") {
+                                        recheck(record.plan)
+                                    }
+                                    .disabled(checkingPlanID != nil)
+                                }
+                            }
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
                             .listRowSeparator(.hidden)
@@ -141,6 +160,22 @@ struct JournalView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func recheck(_ plan: Plan) {
+        guard checkingPlanID == nil else { return }
+        checkingPlanID = plan.planId
+        Task {
+            defer { checkingPlanID = nil }
+            do {
+                let result = try await service.verify(planId: plan.planId)
+                checkedPlan = plan
+                checkedResult = result
+            } catch {
+                checkError = error.localizedDescription
+                showsCheckError = true
+            }
         }
     }
 

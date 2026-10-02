@@ -12,7 +12,6 @@ import Foundation
 /// makes it both safe and irreversible: nothing is destroyed except the
 /// record, and the record cannot be reconstructed.
 public enum PackageReceipts {
-
     public enum ForgetError: Error, LocalizedError, Equatable {
         case notAPackageIdentifier(String)
         case appleOwned(String)
@@ -22,19 +21,19 @@ public enum PackageReceipts {
 
         public var errorDescription: String? {
             switch self {
-            case .notAPackageIdentifier(let id):
-                return "\"\(id)\" is not shaped like a package identifier, so Brim will not "
-                     + "pass it to pkgutil."
-            case .appleOwned(let id):
-                return "\(id) belongs to macOS. Forgetting an Apple receipt can confuse a "
-                     + "later system update, so Brim leaves it."
-            case .noSuchReceipt(let id):
-                return "There is no receipt for \(id) on this Mac."
+            case let .notAPackageIdentifier(id):
+                "\"\(id)\" is not shaped like a package identifier, so Brim will not "
+                    + "pass it to pkgutil."
+            case let .appleOwned(id):
+                "\(id) belongs to macOS. Forgetting an Apple receipt can confuse a "
+                    + "later system update, so Brim leaves it."
+            case let .noSuchReceipt(id):
+                "There is no receipt for \(id) on this Mac."
             case .needsRoot:
-                return "Receipts live in a folder that belongs to the system, so Brim's "
-                     + "helper has to do this one."
-            case .failed(let id, let code):
-                return "The receipt for \(id) could not be forgotten (pkgutil exit \(code))."
+                "Receipts live in a folder that belongs to the system, so Brim's "
+                    + "helper has to do this one."
+            case let .failed(id, code):
+                "The receipt for \(id) could not be forgotten (pkgutil exit \(code))."
             }
         }
     }
@@ -105,6 +104,13 @@ public enum PackageReceipts {
 
         let invoke = runner ?? run
         let status = try invoke("/usr/sbin/pkgutil", ["--forget", packageID])
+        guard status == 0 else { throw ForgetError.failed(packageID, code: status) }
+    }
+
+    public static func forgetBounded(packageID: String) async throws {
+        try check(packageID)
+        guard getuid() == 0 else { throw ForgetError.needsRoot }
+        let status = try await RegistrationCommand.status("/usr/sbin/pkgutil", ["--forget", packageID])
         guard status == 0 else { throw ForgetError.failed(packageID, code: status) }
     }
 

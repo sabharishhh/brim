@@ -100,7 +100,9 @@ struct UninstallPlanRow: View {
     /// thing it is, and "Cache" under "Cache (1)" said it twice while
     /// leaving out the one thing that told two rows apart.
     private var title: String {
-        if count > 1 { return "\(count) items" }
+        if count > 1 {
+            return "\(count) items"
+        }
         switch kind {
         case .clearImmutableFlag: return "Locked file"
         case .forgetReceipt: return target
@@ -120,6 +122,7 @@ struct UninstallPlanRow: View {
         case .clearImmutableFlag: return "Unlock"
         case .forgetReceipt: return "Remove record"
         case .revealVendorUninstaller: return "Show in Finder"
+        case .unregisterLaunchServices: return "Remove registration"
         // Root's items go to the helper's holding folder, not the Trash.
         case .trashPathPrivileged: return "Set aside"
         default:
