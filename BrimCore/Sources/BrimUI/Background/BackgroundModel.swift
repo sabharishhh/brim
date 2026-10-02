@@ -44,6 +44,8 @@ public final class BackgroundModel: ObservableObject {
     @Published public private(set) var live: [RegistrationGroup] = []
 
     private var service: (any BrimServiceProtocol)?
+    private var applications: [InstalledApplication] = []
+    private var visibleReport: RegistrationReport = .empty
 
     /// Brim's privileged daemon, for the jobs that live in a folder
     /// belonging to root. Observed directly rather than through a
@@ -66,7 +68,7 @@ public final class BackgroundModel: ObservableObject {
         }
         guard surviving.count != report.registrations.count else { return }
         report = RegistrationReport(registrations: surviving, coverage: report.coverage)
-        selection.formIntersection(Set(report.stale.map(\.id)))
+        updateVisibleReport()
         regroup()
     }
 
@@ -80,11 +82,19 @@ public final class BackgroundModel: ObservableObject {
     /// the search field paid it again on every character. Holding the
     /// answer is what a model is for.
     private func regroup() {
-        live = RegistrationGroup.group(matching(report.live.filter { !$0.isSystemOwned }))
-        let gone = RegistrationGroup.group(matching(report.stale))
+        live = RegistrationGroup.group(matching(visibleReport.live))
+        let gone = RegistrationGroup.group(matching(visibleReport.stale))
         stale = gone.filter { !$0.staleClearsItself }
         clearingItself = gone.filter(\.staleClearsItself)
         revision &+= 1
+    }
+
+    private func updateVisibleReport() {
+        visibleReport = RegistrationReport(
+            registrations: BackgroundScope.registrations(report.registrations, applications: applications),
+            coverage: report.coverage
+        )
+        selection.formIntersection(Set(visibleReport.stale.map(\.id)))
     }
 
     /// What the list animates on. See `LeftoversModel.revision`: a
@@ -111,7 +121,7 @@ public final class BackgroundModel: ObservableObject {
 
     /// Everything currently selected.
     public var selectedItems: [Registration] {
-        report.stale.filter { selection.contains($0.id) }
+        visibleReport.stale.filter { selection.contains($0.id) }
     }
 
     /// Whether this entry is something Brim can actually take away.
@@ -159,7 +169,7 @@ public final class BackgroundModel: ObservableObject {
 
     /// Jobs that need the daemon and are waiting on it being set up.
     public var waitingOnHelper: [Registration] {
-        matching(report.stale).filter(Self.needsTheHelper)
+        matching(visibleReport.stale).filter(Self.needsTheHelper)
     }
 
     /// Brings the helper's state up to date where this section has work
@@ -187,7 +197,7 @@ public final class BackgroundModel: ObservableObject {
     /// it is running. Surfaced rather than discovered on failure, the same
     /// way the leftovers list handles a container it cannot reach.
     public var blocked: [Registration] {
-        matching(report.stale).filter {
+        matching(visibleReport.stale).filter {
             $0.kind == .launchdJob && !$0.isSystemOwned && $0.capability != .ok
         }
     }
@@ -279,11 +289,12 @@ public final class BackgroundModel: ObservableObject {
     private func performLoad(service: any BrimServiceProtocol) async {
         self.service = service
         isLoading = true
-        report = await service.registrations()
+        async let registrationReport = service.registrations()
+        async let installed = try? service.installedApplications()
+        report = await registrationReport
+        applications = await installed ?? []
+        updateVisibleReport()
         regroup()
-        // Anything that has gone is no longer selectable.
-        let present = Set(report.stale.map(\.id))
-        selection.formIntersection(present)
         isLoading = false
 
         // After the scan, not before it. Connecting first meant

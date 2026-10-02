@@ -28,10 +28,23 @@ public struct RegistrationVerification: Codable, Equatable, Sendable, Identifiab
     }
 
     public var confirmedClear: Bool {
-        coverage.available && remaining.isEmpty && preserved.isEmpty && recoveryCopies?.isEmpty != false
+        hasCompleteCoverage && remaining.isEmpty && preserved.isEmpty && recoveryCopies?.isEmpty != false
+    }
+
+    public func confirmsClear(since verificationStartedAt: Date) -> Bool {
+        confirmedClear && observedAt >= verificationStartedAt
     }
 
     public var couldNotCheck: Bool {
-        !coverage.available && coverage.absence != .byDesign
+        !hasCompleteCoverage && coverage.absence != .byDesign
+    }
+
+    public var isReportOnly: Bool {
+        !coverage.available && coverage.absence == .byDesign
+    }
+
+    private var hasCompleteCoverage: Bool {
+        coverage.available && coverage.kind == capability.registrationKind && readerVersion > 0
+            && coverage.scopes?.contains(where: { !$0.available }) != true
     }
 }

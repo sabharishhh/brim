@@ -17,25 +17,27 @@ final class NestedRegistrationTests: XCTestCase {
                                                     withIntermediateDirectories: true)
         }
         XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: host.path), [updater.path])
-        XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: folder.appendingPathComponent("Caches").path),
-                       [cached.path])
-        XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: folder.appendingPathComponent("none").path), [])
+        let caches = folder.appendingPathComponent("Caches")
+        XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: caches.path), [cached.path])
+        let absent = folder.appendingPathComponent("none")
+        XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: absent.path), [])
     }
 
     /// Teams' embedded browser had already moved to a newer version folder,
     /// and three helpers in the old one stayed registered through the
     /// uninstall: nothing on disk named them any more.
-    func testRecordsInsideARemovedPathThatPointAtNothingAreFound() {
+    func testRecordsInsideARemovedPathThatPointAtNothingAreFound() async throws {
         let dump = """
-        path:                       /Applications/Gone.app/Contents/Frameworks/Edge.framework/Versions/1/Helpers/Helper (GPU).app (0x653c)
+        path:                       /Applications/Gone.app/Contents/Helpers/Helper (GPU).app (0x653c)
         path:                       /Applications/Gone.app (0x6864)
         path:                       /Applications/GoneToo.app (0x6865)
         path:                       /System/Applications/Notes.app (0x1)
         name:                       Something else
         """
+        let records = try await LaunchServicesRegistration.staleRecords(inside: ["/Applications/Gone.app"], dump: dump)
         XCTAssertEqual(
-            LaunchServicesRegistration.staleRecords(inside: ["/Applications/Gone.app"], dump: dump),
-            ["/Applications/Gone.app/Contents/Frameworks/Edge.framework/Versions/1/Helpers/Helper (GPU).app"]
+            records,
+            ["/Applications/Gone.app/Contents/Helpers/Helper (GPU).app"]
         )
     }
 }

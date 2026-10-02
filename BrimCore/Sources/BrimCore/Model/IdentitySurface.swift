@@ -114,7 +114,7 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
 public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case systemExtension, vpnConfiguration, privilegedHelper, launchdJob, appExtension
     case privacyGrant, launchServices, applicationGroups, bundlePlugin, installationRecords, backgroundItem,
-         fileProvider, firewallEntry
+         fileProvider, firewallEntry, configurationProfile
 
     public var title: String {
         switch self {
@@ -131,6 +131,7 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .backgroundItem: "Login items and background services"
         case .fileProvider: "Cloud files"
         case .firewallEntry: "Firewall entries"
+        case .configurationProfile: "Management profiles"
         }
     }
 
@@ -148,6 +149,7 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .backgroundItem: .backgroundItem
         case .fileProvider: .bundlePlugin
         case .firewallEntry: .firewallEntry
+        case .configurationProfile: .configurationProfile
         }
     }
 

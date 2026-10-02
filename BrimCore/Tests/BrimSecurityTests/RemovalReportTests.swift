@@ -116,7 +116,8 @@ final class RemovalReportTests: XCTestCase {
     func testRegistrationsMacOSKeptAreReported() {
         let report = RemovalReport.build(plan: plan([]), remaining: [], recorded: [:], staleRegistrations: 1,
                                          privacyResetFailed: true, survivingExtensions: nil)
-        XCTAssertEqual(report.keptByMacOS.map(\.what), ["File and URL associations", "Privacy permissions"])
+        XCTAssertEqual(report.keptByMacOS.map(\.what), ["File and URL associations"])
+        XCTAssertEqual(report.failedActions, ["Permission reset command did not complete."])
     }
 
     /// WhatsApp's bundle was never moved, and the result said Brim had

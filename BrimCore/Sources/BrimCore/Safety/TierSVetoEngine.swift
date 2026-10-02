@@ -2,11 +2,11 @@
 import Foundation
 
 public struct TierSVetoEngine: Sendable {
-    private let lookup: @Sendable (String) -> [URL]
+    private let lookup: @Sendable (String) throws -> [URL]
     private let root: FileSystemRoot
     private let readGroups: @Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool)
 
-    public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) -> [URL] = { _ in [] }) {
+    public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] }) {
         self.lookup = lookup
         self.root = root
         readGroups = { BundleSurfaceReader.groupClaims(at: $0, in: $1) }
@@ -25,11 +25,12 @@ public struct TierSVetoEngine: Sendable {
         let hasGroupTarget = footprint.items.contains {
             Self.isGroupPath($0.footprintItem.evidence.url)
         }
-        let groupClaims = hasGroupTarget
-            ? await otherGroupClaims(besides: footprint.identity) : (owners: [String: String](), complete: true)
-
         let inventory = await otherApplications(besides: footprint.identity)
         let applications = inventory.identities
+        let groupClaims = await hasGroupTarget ? Self.mergingGroupClaims(
+            otherGroupClaims(besides: footprint.identity), applications: applications,
+            complete: inventory.completeness.isComplete
+        ) : (owners: [String: String](), complete: true)
         var completeness = footprint.completeness.merging(inventory.completeness)
         let others = Dictionary(applications.flatMap { other in
             Self.protectionIdentifiers(of: other).map { ($0, other.name) }
@@ -120,7 +121,7 @@ public struct TierSVetoEngine: Sendable {
             identity: footprint.identity, items: vettedItems, completeness: completeness,
             survivingCopies: survivingCopies,
             protectedComponentIdentifiers: footprint.identity.searchBundleIdentifiers.filter { identifier in
-                applications.contains { $0.searchBundleIdentifiers.contains(identifier) }
+                applications.contains { Self.protectionIdentifiers(of: $0).contains(identifier.lowercased()) }
             }
         )
     }
@@ -233,19 +234,6 @@ public struct TierSVetoEngine: Sendable {
         return claims.complete ? nil : "Shared ownership could not be checked."
     }
 
-    private static func isGroupPath(_ url: URL) -> Bool {
-        url.path.contains("/Group Containers/") || url.path.contains("/Application Scripts/")
-    }
-
-    private static func isContainer(_ url: URL) -> Bool {
-        url.deletingLastPathComponent().lastPathComponent == "Containers"
-    }
-
-    private static func protectionIdentifiers(of identity: Identity) -> Set<String> {
-        Set(([identity.bundleID].compactMap(\.self) + (identity.identitySurface?.bundleIdentifiers ?? []))
-            .map { $0.lowercased() })
-    }
-
     private func otherGroupClaims(besides identity: Identity) async -> (owners: [String: String], complete: Bool) {
         let root = root
         let readGroups = readGroups
@@ -294,5 +282,34 @@ public struct TierSVetoEngine: Sendable {
             return nil
         }
         return resolved
+    }
+}
+
+extension TierSVetoEngine {
+    /// Reuse the component claims already read from known installed copies,
+    /// including registered copies outside the standard application folders.
+    static func mergingGroupClaims(
+        _ claims: (owners: [String: String], complete: Bool), applications: [Identity], complete: Bool
+    ) -> (owners: [String: String], complete: Bool) {
+        var owners = claims.owners
+        for application in applications {
+            for group in application.searchGroupContainers {
+                owners[group] = application.name
+            }
+        }
+        return (owners, claims.complete && complete)
+    }
+
+    private static func isGroupPath(_ url: URL) -> Bool {
+        url.path.contains("/Group Containers/") || url.path.contains("/Application Scripts/")
+    }
+
+    private static func isContainer(_ url: URL) -> Bool {
+        url.deletingLastPathComponent().lastPathComponent == "Containers"
+    }
+
+    private static func protectionIdentifiers(of identity: Identity) -> Set<String> {
+        Set(([identity.bundleID].compactMap(\.self) + (identity.identitySurface?.bundleIdentifiers ?? []))
+            .map { $0.lowercased() })
     }
 }

@@ -9,8 +9,9 @@ public struct CapabilitySearchScanner: Sendable {
     private let surfaces: [any RegistrationSurface]
 
     public init(surfaces: [any RegistrationSurface] = [
-        FirewallSurface(), BackgroundItemSurface(), AppExtensionSurface(), SystemExtensionSurface(),
-        LaunchdRegistrationSurface(), PrivilegedHelperToolSurface(), BundlePluginSurface()
+        ConfigurationProfileSurface(), FirewallSurface(), BackgroundItemSurface(),
+        AppExtensionSurface(), SystemExtensionSurface(),
+        LaunchdRegistrationSurface(includeSystemJobs: false), PrivilegedHelperToolSurface(), BundlePluginSurface()
     ]) {
         self.surfaces = surfaces
     }
@@ -186,6 +187,8 @@ public struct CapabilitySearchScanner: Sendable {
                 .systemExtensionsSettings
             case .firewallEntry where !found.isEmpty:
                 .firewallSettings
+            case .configurationProfile where !found.isEmpty:
+                .deviceManagementSettings
             case .fileProvider where declaration == .declared:
                 .fileProviderOwner
             case .systemExtension where !found.isEmpty:
