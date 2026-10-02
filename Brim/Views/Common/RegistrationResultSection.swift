@@ -41,7 +41,7 @@ struct RegistrationResultSection: View {
                 DisclosureGroup("Details") {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(observations.filter { !$0.confirmedClear }) { observation in
-                            HStack(alignment: .top, spacing: 10) {
+                            HStack(alignment: .center, spacing: 10) {
                                 Image(systemName: Self.symbols[observation.capability] ?? "app")
                                     .foregroundStyle(.secondary)
                                     .frame(width: 18)
