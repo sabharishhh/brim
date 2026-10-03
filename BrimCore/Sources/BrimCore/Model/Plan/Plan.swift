@@ -124,6 +124,8 @@ public struct Step: Codable, Equatable, Sendable {
     public let tier: EvidenceTier
     public let evidence: String
     public let expectedBytes: Int64
+    /// Nil in older plans, whose sizes were measured by the scanner.
+    public let sizeIsKnown: Bool?
     public let capability: Capability
     public let reversible: Bool
     public let costOfError: CostOfError
@@ -137,7 +139,7 @@ public struct Step: Codable, Equatable, Sendable {
         disposition ?? .trash
     }
 
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil, sizeIsKnown: Bool? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -145,6 +147,7 @@ public struct Step: Codable, Equatable, Sendable {
         self.tier = tier
         self.evidence = evidence
         self.expectedBytes = expectedBytes
+        self.sizeIsKnown = sizeIsKnown
         self.capability = capability
         self.reversible = reversible
         self.costOfError = costOfError
@@ -345,11 +348,14 @@ public struct Plan: Codable, Equatable, Sendable {
 
     /// The helper moves these files aside without a supported restore action.
     public var setAsideBytes: Int64 {
-        steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        steps.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+            .reduce(0) { $0 + $1.expectedBytes }
     }
 
     private var ordinaryFileRemovals: [Step] {
-        steps.filter { $0.kind == .trashPath || $0.kind == .removeLaunchdPlist }
+        steps.filter { $0.kind == .trashPath || $0.kind == .removeLaunchdPlist
+            || ($0.kind == .trashPathPrivileged && $0.effectiveDisposition == .delete)
+        }
     }
 
     /// Whether `undo` can put anything back. False once every step in the plan

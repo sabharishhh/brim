@@ -106,7 +106,8 @@ struct RemovalResultView: View {
 
     private func removed(_: Plan) -> some View {
         let steps = gone
-        let setAside = steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        let setAside = steps.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+            .reduce(0) { $0 + $1.expectedBytes }
         let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
             .reduce(0) { $0 + $1.expectedBytes }
         let kinds = groups.compactMap { group -> (String, [Step])? in
@@ -139,7 +140,8 @@ struct RemovalResultView: View {
                         FactRow(
                             label: kind.0,
                             value: "\(kind.1.count.formatted()) · "
-                                + ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes })
+                                + (kind.1.contains { $0.sizeIsKnown == false }
+                                    ? "Not measured" : ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes }))
                         )
                     }
                 }
@@ -157,7 +159,7 @@ struct RemovalResultView: View {
         if steps.contains(where: { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }) {
             facts.append("Items in the Trash still occupy space until it is emptied.")
         }
-        if steps.contains(where: { $0.kind == .trashPathPrivileged }) {
+        if steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
             facts.append("Items set aside by the helper have no restore action in Brim.")
         }
         return facts.joined(separator: " ")

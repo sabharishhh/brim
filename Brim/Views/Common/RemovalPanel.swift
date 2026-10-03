@@ -95,6 +95,9 @@ struct RemovalPanel: View {
         let count = model.plan == nil ? intent.explicitTargets.count : model.removalSteps.count
         let places = count == 1 ? "1 location" : "\(count) locations"
         guard let plan = model.plan else { return count == 0 ? "" : places }
+        if plan.steps.contains(where: { $0.sizeIsKnown == false }) {
+            return "\(places) · Size not fully measured"
+        }
         let bytes = plan.immediatelyFreedBytes + plan.trashedBytes + plan.setAsideBytes
         return "\(places) · \(ByteText.short(bytes)) estimated"
     }
@@ -191,14 +194,14 @@ struct RemovalPanel: View {
     /// back from the Trash, set aside by the helper, or gone for good.
     private var consequences: [(title: String, steps: [Step])] {
         let all = model.removalSteps.filter(\.kind.targetIsPath)
-        let helper = all.filter { $0.kind == .trashPathPrivileged }
-        let permanent = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition == .delete }
+        let helper = all.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+        let permanent = all.filter { $0.effectiveDisposition == .delete }
         let trash = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition != .delete }
         let named = model.removalSteps.filter { !$0.kind.targetIsPath }
         let tool = named.filter { $0.kind == .delegateToolCleanup }
         let records = named.filter { $0.kind != .delegateToolCleanup }
         return [
-            ("To the Trash", trash), ("Set aside by the helper", helper), ("Deleted permanently", permanent),
+            ("To the Trash", trash), ("Set aside", helper), ("Deleted permanently", permanent),
             ("Run by the tool", tool), ("Records", records)
         ]
         .filter { !$0.1.isEmpty }
@@ -244,6 +247,11 @@ extension RemovalPanel {
                 Text(freed(plan))
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
+                if model.helperSteps > 0 {
+                    Text("macOS will request an administrator password for protected cleanup.")
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                }
             }
             if isFinished {
                 Button(action: close) {
@@ -285,7 +293,7 @@ extension RemovalPanel {
         if isToolRun {
             return "The tool decides what goes"
         }
-        if plan.scanCompleteness?.isComplete == false {
+        if plan.scanCompleteness?.isComplete == false || plan.steps.contains(where: { $0.sizeIsKnown == false }) {
             return "Size not fully measured"
         }
         var consequences: [String] = []
@@ -321,7 +329,8 @@ extension RemovalPanel {
     private func helperNotice(_ problem: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(
-                model.helperSteps == 1 ? "1 needs Brim's helper" : "\(model.helperSteps) need Brim's helper",
+                model.helperSteps == 1 ? "1 needs administrator access"
+                    : "\(model.helperSteps) need administrator access",
                 systemImage: "lock.shield"
             )
             .font(.brimRowTitle)
@@ -331,11 +340,6 @@ extension RemovalPanel {
                 .foregroundStyle(Palette.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button("Turn On") {
-                    HelperRoute.turnOn()
-                    Task { await checkHelper() }
-                }
-                .buttonStyle(.bordered)
                 Button("Check Again") { Task { await checkHelper() } }
                     .buttonStyle(.bordered)
             }

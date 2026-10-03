@@ -238,4 +238,72 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(model.visible(model.orphaned).count, 1)
         XCTAssertEqual(model.selection, before, "Filtering the view must not silently deselect")
     }
+
+    func testMixedGroupCanBeDeselectedWithoutSelectingBlockedItems() async throws {
+        // A blocked location used to keep the whole card unchecked even
+        // when every removable location was selected, so toggling could not clear it.
+        let owner = Identity(bundleID: "com.example.removed", name: "Removed App")
+        let items = [
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/cache"), size: 100,
+                     category: .orphaned, potentialOwner: owner),
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/protected"), size: 100,
+                     category: .orphaned, potentialOwner: owner, capability: .refusedByOS)
+        ]
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub(items))
+        let group = try XCTUnwrap(model.orphanedGroups.first)
+        XCTAssertEqual(group.items.count, 2)
+        XCTAssertTrue(model.isSelected(group))
+        model.toggle(group)
+        XCTAssertTrue(model.selection.isEmpty)
+        model.toggle(group)
+        XCTAssertEqual(model.selection, [items[0].id])
+        let intent = try XCTUnwrap(model.removalIntent(for: group, requesterIdentity: "tester"))
+        XCTAssertEqual(intent.explicitTargets, [items[0].url])
+    }
+
+    func testBatchIncludesHelperItemsAndRequiresExplicitUnknownSelection() async throws {
+        let helper = Leftover(
+            url: URL(fileURLWithPath: "/Library/LaunchAgents/com.example.removed.plist"),
+            size: 100, category: .orphaned, capability: .needsHelper
+        )
+        let unknown = leftover("unknown", .unclaimed)
+        let blocked = leftover("blocked", .orphaned, capability: .refusedByOS)
+        let ordinary = leftover("ordinary", .orphaned)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([helper, unknown, blocked, ordinary]))
+        model.toggle(unknown)
+        model.selectAllRemovableOrphans()
+        let batch = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(Set(batch.explicitTargets), [helper.url, ordinary.url])
+        model.toggle(unknown)
+        let selected = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(Set(selected.explicitTargets), [helper.url, ordinary.url, unknown.url])
+    }
+
+    func testBatchKeepsFailedItemsSelectedForRetry() async throws {
+        let removed = leftover("removed", .orphaned)
+        let failed = leftover("failed", .orphaned)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([removed, failed]))
+        model.forget(paths: [removed.url.path])
+        XCTAssertEqual(model.all, [failed])
+        XCTAssertEqual(model.selection, [failed.id])
+        let retry = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(retry.explicitTargets, [failed.url])
+    }
+
+    func testBatchDoesNotOverrideKeptGroupsOrIncludeBlockedSelection() async throws {
+        let kept = leftover("kept", .orphaned)
+        let blocked = leftover("blocked", .unclaimed, capability: .needsFullDiskAccess)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([kept, blocked]))
+        let group = try XCTUnwrap(model.orphanedGroups.first)
+        model.keptGroups = [group.id]
+        model.selectAllRemovableOrphans()
+        XCTAssertTrue(model.removableOrphans.isEmpty)
+        XCTAssertTrue(model.selection.isEmpty)
+        model.toggle(blocked)
+        XCTAssertNil(model.removalIntent(requesterIdentity: "tester"))
+    }
 }
