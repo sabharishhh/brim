@@ -55,10 +55,13 @@ extension Executor {
     }
 
     /// Absence of an exact registered path is success. A failed lookup throws.
-    static func componentIsAlreadyUnregistered(step: Step, plan: Plan) throws -> Bool {
-        guard let identifier = plan.intent.subjectIdentity.identitySurface?.components
+    static func componentIsAlreadyUnregistered(
+        step: Step, plan: Plan,
+        lookup: (String) throws -> [URL] = LaunchServicesRegistration.checkedApplicationURLs
+    ) throws -> Bool {
+        guard let identifier = step.registrationBundleID ?? plan.intent.subjectIdentity.identitySurface?.components
             .first(where: { $0.path == step.target })?.bundleIdentifier else { return false }
-        return try !LaunchServicesRegistration.checkedApplicationURLs(forBundleID: identifier)
+        return try !lookup(identifier)
             .contains(where: { $0.standardizedFileURL.path == step.target })
     }
 }

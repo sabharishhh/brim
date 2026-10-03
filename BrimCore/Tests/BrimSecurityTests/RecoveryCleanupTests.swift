@@ -1,6 +1,7 @@
 import BrimCore
 import BrimProtocol
 @testable import BrimService
+import Testing
 import XCTest
 
 final class RecoveryCleanupTests: XCTestCase {
@@ -166,5 +167,37 @@ final class RecoveryCleanupTests: XCTestCase {
         XCTAssertNil(RecoveryCopy.identifier(for: RecoveryCopy.directory + "/stamp/source/../outside"))
         XCTAssertNil(RecoveryCopy.identifier(for: RecoveryCopy.directory + "/stamp/source"))
         XCTAssertNotNil(RecoveryCopy.identifier(for: copy("item.plist").path))
+    }
+}
+
+struct RecoveryRegistrationTests {
+    /// Protected cleanup removed both selected files but reported a failed
+    /// unregister because the reviewed bundle identifier was lost from the plan.
+    @Test func recoveryRegistrationRetainsItsIdentifierAndChecksOnlyItsPath() throws {
+        let path = RecoveryCopy.directory + "/stamp/Applications/Example.app"
+        let copy = RecoveryCopy(path: path, name: "Example.app", bundleID: "org.example.app",
+                                sizeBytes: 0, sizeIsKnown: false,
+                                fingerprint: TargetFingerprint(dev: 1, ino: 42, mtime: Date()))
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "test", osVersion: "test",
+                        intent: PlanIntent(type: .uninstall,
+                                           subjectIdentity: Identity(name: "Leftovers")),
+                        steps: [], excludedItems: [], expectedTotalBytes: 0).addingRecoveryRemoval([copy])
+        let step = try #require(plan.steps.first { $0.kind == .unregisterLaunchServices })
+        #expect(step.registrationBundleID == copy.bundleID)
+        let decoded = try JSONDecoder().decode(Step.self, from: JSONEncoder().encode(step))
+        #expect(decoded.registrationBundleID == copy.bundleID)
+        let alreadyGone = try Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { identifier in
+            #expect(identifier == copy.bundleID)
+            return [URL(fileURLWithPath: "/Applications/Example.app")]
+        }
+        #expect(alreadyGone)
+        #expect(try !Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { _ in
+            [URL(fileURLWithPath: path)]
+        })
+        #expect(throws: (any Error).self) {
+            try Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { _ in
+                throw NSError(domain: "Fixture", code: 1)
+            }
+        }
     }
 }
