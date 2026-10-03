@@ -11,6 +11,7 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
 
     public let url: URL
     public let size: Int64
+    public let sizeIsKnown: Bool?
     public let category: Category
     public let potentialOwner: Identity?
 
@@ -50,7 +51,8 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// exists for exactly that kind of leftover. The helper's own reading
     /// of what it will take decides, so nothing is ticked that it refuses.
     public var canBeRemovedByBrim: Bool {
-        capability == .ok || (capability == .needsHelper && HelperScope.covers(url.path))
+        capability == .ok || (capability == .needsHelper
+            && (RecoveryCopy.identifier(for: url.path) != nil || HelperScope.covers(url.path)))
     }
 
     public init(
@@ -61,10 +63,12 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
         evidence: String = "",
         capability: Capability = .ok,
         lastAccessed: Date? = nil,
-        removedAt: Date? = nil
+        removedAt: Date? = nil,
+        sizeIsKnown: Bool = true
     ) {
         self.url = url
         self.size = size
+        self.sizeIsKnown = sizeIsKnown
         self.category = category
         self.potentialOwner = potentialOwner
         self.evidence = evidence

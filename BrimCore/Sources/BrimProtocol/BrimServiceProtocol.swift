@@ -14,6 +14,9 @@ public protocol BrimServiceProtocol: Sendable {
     func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt
     func apply(planId: UUID, token: ApprovalToken) async throws
     func verify(planId: UUID) async throws -> VerificationResult
+    /// Re-observe a bounded set of unfinished removals once when the app opens.
+    /// This never repeats an execution or obtains approval.
+    func recheckPendingRemovals() async
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
     /// Applications installed on this machine, for the Applications view.
@@ -61,6 +64,12 @@ public protocol BrimServiceProtocol: Sendable {
     /// live in a folder that belongs to root, so without the daemon the
     /// step records that the record remains rather than half succeeding.
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
+    /// Starts protected work after approval and stops it on every exit path.
+    func usePrivilegedBatch(begin: (@Sendable () async -> String?)?,
+                            end: (@Sendable () async -> Void)?) async
+    func useRecoveryVerifier(_ reader: (@Sendable () async throws -> [RecoveryCopy])?) async
+    func useRecoveryCopies(reader: (@Sendable () async throws -> [RecoveryCopy])?,
+                           remover: (@Sendable (String, TargetFingerprint) async -> String?)?) async
     /// What has been installed, removed or updated since Brim last
     /// looked, worked out by subtracting one snapshot from the one
     /// before it. Nothing watches, and nothing runs at login.
@@ -72,6 +81,8 @@ public protocol BrimServiceProtocol: Sendable {
 }
 
 public extension BrimServiceProtocol {
+    func recheckPendingRemovals() async {}
+
     /// Ask, wait for the answer, then act on it.
     ///
     /// The one route from a plan to a removal, so there is one place where
@@ -136,6 +147,11 @@ public extension BrimServiceProtocol {
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
+    func usePrivilegedBatch(begin _: (@Sendable () async -> String?)?,
+                            end _: (@Sendable () async -> Void)?) async {}
+    func useRecoveryVerifier(_: (@Sendable () async throws -> [RecoveryCopy])?) async {}
+    func useRecoveryCopies(reader _: (@Sendable () async throws -> [RecoveryCopy])?,
+                           remover _: (@Sendable (String, TargetFingerprint) async -> String?)?) async {}
     /// A service with no history has seen nothing change.
     func whatChanged() async -> InstallHistory {
         InstallHistory(changes: [], snapshots: 0)

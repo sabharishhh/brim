@@ -1,6 +1,7 @@
 import BrimProcess
 import Foundation
 import os
+import Synchronization
 
 // swiftformat:disable wrapMultilineStatementBraces
 /// Brim's privileged daemon, and deliberately almost nothing.
@@ -20,60 +21,162 @@ private let log = Logger(subsystem: "com.sabharishhh.brim.jobhelper", category: 
 /// as root is one thing, in one place, covered by the package's tests.
 public enum BrimJobHelperDaemon {
     public static func run() -> Never {
-        let helper = Helper()
-        let listener = NSXPCListener(machServiceName: BrimJobHelper.machServiceName)
-        listener.delegate = helper
-        listener.resume()
-        log.info("BrimJobHelper \(BrimJobHelper.version) listening")
-        RunLoop.main.run()
-        fatalError("the run loop returned, which it does not")
+        guard CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--temporary" else {
+            exit(64)
+        }
+        do {
+            let connection = try TemporaryAdminChannel.connectToApp(path: CommandLine.arguments[2])
+            runTemporary(descriptor: connection.descriptor, requesterUID: connection.requesterUID)
+        } catch {
+            log.error("administrator connection refused: \(error.localizedDescription, privacy: .public)")
+            exit(77)
+        }
+    }
+
+    private static func runTemporary(descriptor: Int32, requesterUID: uid_t) -> Never {
+        let helper = Helper(requesterUID: requesterUID)
+        let finished = DispatchSemaphore(value: 0)
+        // An idle connection and an unfinished request both have a finite lifetime.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 15 * 60) { exit(75) }
+        let disconnect = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        disconnect.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        disconnect.setEventHandler {
+            var state = pollfd(fd: descriptor, events: 0, revents: 0)
+            if poll(&state, 1, 0) > 0, state.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
+                helper.cancelPendingJobs()
+                _ = shutdown(descriptor, SHUT_RDWR)
+            }
+        }
+        disconnect.resume()
+        Task.detached {
+            defer {
+                TemporaryAdminChannel.close(descriptor)
+                finished.signal()
+            }
+            do {
+                while true {
+                    let request = try TemporaryAdminChannel.receiveRequest(from: descriptor)
+                    let response = await reply(to: request, using: helper)
+                    try TemporaryAdminChannel.sendResponse(response, to: descriptor)
+                }
+            } catch {
+                // EOF is the ordinary end of a selection, including app termination.
+                log.info("administrator connection ended: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        finished.wait()
+        disconnect.cancel()
+        exit(0)
+    }
+
+    private static func reply(to request: TemporaryAdminRequest, using helper: Helper) async -> TemporaryAdminResponse {
+        guard !helper.connectionCancelled else {
+            return TemporaryAdminResponse(complaint: "The administrator operation was cancelled.")
+        }
+        switch request {
+        case .version:
+            return TemporaryAdminResponse(data: Data(BrimJobHelper.version.utf8))
+        case .recoveryItems:
+            return await withCheckedContinuation { continuation in
+                helper.recoveryItems { data, complaint in
+                    continuation.resume(returning: TemporaryAdminResponse(data: data, complaint: complaint))
+                }
+            }
+        default:
+            return await withCheckedContinuation { continuation in
+                let reply: @Sendable (String?) -> Void = { complaint in
+                    continuation.resume(returning: TemporaryAdminResponse(complaint: complaint))
+                }
+                dispatchRemoval(request, using: helper, reply: reply)
+            }
+        }
+    }
+
+    private static func dispatchRemoval(
+        _ request: TemporaryAdminRequest, using helper: Helper, reply: @escaping @Sendable (String?) -> Void
+    ) {
+        switch request {
+        case let .removeDefunctJob(domain, name):
+            helper.removeDefunctJob(domain: domain, name: name, withReply: reply)
+        case let .removeBrokenCommand(domain, name):
+            helper.removeBrokenCommand(domain: domain, name: name, withReply: reply)
+        case let .forgetReceipt(packageID):
+            helper.forgetReceipt(packageID: packageID, withReply: reply)
+        case let .removeInstalledBundle(domain, name):
+            helper.removeInstalledBundle(domain: domain, name: name, withReply: reply)
+        case let .removeInstalledPayload(packageID, name):
+            helper.removeInstalledPayload(packageID: packageID, name: name, withReply: reply)
+        case let .removeSystemCache(name):
+            helper.removeSystemCache(name: name, withReply: reply)
+        case let .removeSystemPreference(name):
+            helper.removeSystemPreference(name: name, withReply: reply)
+        case let .removeRecoveryItem(identifier, device, inode):
+            helper.removeRecoveryItem(identifier: identifier, expectedDevice: device,
+                                      expectedInode: inode, withReply: reply)
+        case .uninstallSelf:
+            helper.uninstallSelf(withReply: reply)
+        case .version, .recoveryItems:
+            reply("The operation was not recognized.")
+        }
     }
 }
 
-final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Sendable {
+final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
     private let requesterUID: uid_t?
+    private struct AsyncJobs {
+        var cancelled = false
+        var tasks: [UUID: Task<Void, Never>] = [:]
+    }
+
+    private let asyncJobs = Mutex(AsyncJobs())
+
     init(requesterUID: uid_t? = nil) {
         self.requesterUID = requesterUID
         super.init()
     }
 
-    // MARK: - Who may speak to it
-
-    func listener(_: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        // macOS invalidates the connection when the peer does not satisfy
-        // this, which is the enforcement. The previous attempt set a
-        // requirement naming the wrong application and the wrong team,
-        // then returned true regardless, so it accepted everyone.
-        //
-        // Compiled first, because `setCodeSigningRequirement` raises on a
-        // string it cannot parse rather than returning a failure, and a
-        // root daemon crashing on an incoming connection is a worse
-        // outcome than one refusing it.
-        let requirement = BrimJobHelper.clientRequirement()
-        guard BrimJobHelper.isWellFormed(requirement) else {
-            log.error("refusing every connection: the client requirement will not compile")
-            return false
-        }
-        connection.setCodeSigningRequirement(requirement)
-
-        connection.exportedInterface = NSXPCInterface(with: BrimJobHelperProtocol.self)
-        connection.exportedObject = Helper(requesterUID: connection.effectiveUserIdentifier)
-        connection.resume()
-        // Deliberately not logging the peer's pid. A pid is reused, so it
-        // names the wrong process by the time anybody reads the log, and
-        // the grep test that keeps pids out of authorisation decisions is
-        // worth more than the detail.
-        log.info("accepted a connection from a peer that satisfied the requirement")
-        return true
-    }
-
     // MARK: - What it will do
 
+    var connectionCancelled: Bool {
+        asyncJobs.withLock { $0.cancelled }
+    }
+
+    func cancelPendingJobs() {
+        let tasks = asyncJobs.withLock { jobs in
+            jobs.cancelled = true
+            return Array(jobs.tasks.values)
+        }
+        for task in tasks {
+            task.cancel()
+        }
+    }
+
+    /// Register before a disconnect can cancel, and keep the cancellation
+    /// flag so a request already read from the socket cannot start another job.
+    private func runJob(
+        withReply reply: @escaping @Sendable (String?) -> Void,
+        operation: @escaping @Sendable () async -> Void
+    ) {
+        asyncJobs.withLock { jobs in
+            guard !jobs.cancelled else {
+                reply("The administrator operation was cancelled.")
+                return
+            }
+            let identifier = UUID()
+            jobs.tasks[identifier] = Task {
+                defer { asyncJobs.withLock { $0.tasks.removeValue(forKey: identifier) } }
+                await operation()
+            }
+        }
+    }
+
     func forgetReceipt(packageID: String, withReply reply: @escaping @Sendable (String?) -> Void) {
-        Task {
+        runJob(withReply: reply) { [self] in
             do {
+                try Task.checkCancellation()
                 try PrivilegedReceiptRemoval.check(packageID)
                 try await qualifyReceiptPayload(packageID)
+                try Task.checkCancellation()
                 let status = try await runPkgutil(forgetting: packageID)
                 guard status == 0 else {
                     throw PrivilegedReceiptRemoval.Refusal.pkgutilFailed(status)
@@ -150,6 +253,24 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
         reply(BrimJobHelper.version)
     }
 
+    func recoveryItems(withReply reply: @escaping @Sendable (Data?, String?) -> Void) {
+        do {
+            try reply(JSONEncoder().encode(PrivilegedRecoveryStore().items()), nil)
+        } catch { reply(nil, error.localizedDescription) }
+    }
+
+    func removeRecoveryItem(
+        identifier: String, expectedDevice: Int32, expectedInode: UInt64,
+        withReply reply: @escaping @Sendable (String?) -> Void
+    ) {
+        do {
+            try PrivilegedRecoveryStore().remove(
+                identifier: identifier, expectedDevice: expectedDevice, expectedInode: expectedInode
+            )
+            reply(nil)
+        } catch { reply(error.localizedDescription) }
+    }
+
     /// Removes the quarantine, and nothing else.
     ///
     /// The one place this daemon deletes rather than sets aside, because
@@ -181,8 +302,9 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
     }
 
     func removeDefunctJob(domain: String, name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
-        Task {
+        runJob(withReply: reply) { [self] in
             do {
+                try Task.checkCancellation()
                 let target = try PrivilegedJobRemoval.target(domain: domain, name: name)
                 try await setAside(target)
                 log.info("set aside \(target.path, privacy: .public)")
@@ -396,6 +518,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate, Send
         try await stopDeclaredJob(contents, directory: directory, path: target.path, beforeStop: {
             try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
         })
+        try Task.checkCancellation()
         try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
         try moveIntoQuarantine(parent: parent, name: name, from: directory)
     }

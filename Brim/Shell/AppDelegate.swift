@@ -1,4 +1,5 @@
 import AppKit
+import BrimPrivileged
 import Observation
 
 /// Something asked of Brim from outside its window: the Dock, a Shortcut,
@@ -34,6 +35,10 @@ final class ExternalRequests {
 
 /// The Dock: its menu, and applications dropped on its icon.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_: Notification) {
+        PrivilegedHelperClient.stopAll()
+    }
+
     func applicationDockMenu(_: NSApplication) -> NSMenu? {
         let menu = NSMenu()
         for destination in [Destination.home, .apps, .leftovers] {

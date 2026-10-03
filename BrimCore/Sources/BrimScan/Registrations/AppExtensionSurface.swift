@@ -38,19 +38,22 @@ public struct AppExtensionSurface: RegistrationSurface {
                                         coverage: .unavailable(kind, "App extensions could not be read."))
         }
         let registrations = Self.registrations(from: output)
-        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-        let count = lines.first { $0.hasSuffix("plug-ins)") && $0.hasPrefix("(") }
-            .flatMap { Int($0.dropFirst().split(separator: " ").first ?? "") }
-        let complete = count != nil && count == registrations.count
+        let lines = output.split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let count = lines.last.flatMap(Self.listingCount)
+        // A count footer does not make an error or an unrecognized row a
+        // successful observation. Preserve parsed records, but keep the gap.
+        let complete = count == registrations.count
+            && count != nil
+            && lines.dropLast().allSatisfy { Self.parse($0) != nil }
         return RegistrationSnapshot(registrations: registrations, coverage: RegistrationCoverage(
             kind: kind, available: complete,
             limitation: complete ? nil : "The extension listing could not be fully checked."
-        ), readerVersion: 2)
+        ), readerVersion: 3)
     }
 
-    public func registrations(in _: FileSystemRoot) async -> [Registration] {
-        guard let output = read() else { return [] }
-        return Self.registrations(from: output)
+    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        await snapshot(in: root).registrations
     }
 
     private static func registrations(from output: String) -> [Registration] {
@@ -69,7 +72,9 @@ public struct AppExtensionSurface: RegistrationSurface {
                 kind: .appExtension,
                 identifier: entry.identifier,
                 label: entry.displayName,
-                owningBundleID: Self.owningBundle(of: entry.identifier),
+                // Identifier suffixes do not establish a containing app.
+                // The recorded extension path supplies the association.
+                owningBundleID: nil,
                 programPath: entry.path,
                 targetExists: exists,
                 recordPath: nil,
@@ -137,8 +142,10 @@ public struct AppExtensionSurface: RegistrationSurface {
         }
         guard !identifier.isEmpty else { return nil }
 
+        let uuid = fields[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uuid.isEmpty else { return nil }
         return Entry(
-            uuid: fields[1],
+            uuid: uuid,
             identifier: identifier,
             version: version,
             path: path,
@@ -170,16 +177,11 @@ public struct AppExtensionSurface: RegistrationSurface {
         return nil
     }
 
-    /// The application an extension belongs to.
-    ///
-    /// An extension identifier is conventionally the host's with a suffix,
-    /// `net.whatsapp.WhatsApp.Intents` for `net.whatsapp.WhatsApp`. That
-    /// is a convention rather than a rule, so it is used only to group
-    /// rows; ownership for a removal is decided on the path being inside
-    /// the bundle, which `Registration.belongs(to:bundleURL:)` checks.
-    static func owningBundle(of identifier: String) -> String? {
-        let parts = identifier.split(separator: ".")
-        guard parts.count > 3 else { return nil }
-        return parts.dropLast().joined(separator: ".")
+    private static func listingCount(_ line: String) -> Int? {
+        let text = line.trimmingCharacters(in: .whitespaces)
+        guard text.hasPrefix("("), text.hasSuffix(" plug-ins)") else { return nil }
+        let number = text.dropFirst().dropLast(" plug-ins)".count)
+        guard !number.isEmpty, number.allSatisfy(\.isNumber) else { return nil }
+        return Int(number)
     }
 }

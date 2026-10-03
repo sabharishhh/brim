@@ -24,8 +24,9 @@ Brim runs on macOS 27 or later.
 
 macOS asks this because Brim is signed with a free Apple Development
 certificate and not notarised by Apple, which needs a paid developer
-account. The signature is still checked: Brim and its helper refuse to talk
-to anything not signed by the same team (`9LY29YLFG2`). You can check the
+account. The signature is still checked: Brim and its temporary administrator
+process verify each other as Brim components signed by the same team
+(`9LY29YLFG2`). You can check the
 download against the `.sha256` file published beside it:
 
 ```bash
@@ -34,17 +35,21 @@ shasum -a 256 ~/Downloads/Brim-1.0.dmg
 
 ### What Brim asks for
 
-Brim asks once, during setup.
+Brim asks for Full Disk Access during setup. Protected cleanup needs
+administrator authentication when you approve it.
 
 - **Full Disk Access.** Much of what apps leave behind sits in places macOS
   only lets an app with this permission read. Without it Brim says what it
   could not read rather than reporting nothing.
-- **Its helper.** A small background job, approved in System Settings,
-  Login Items, that removes the few things only an administrator can:
-  launch jobs and files an installer put in `/Library`. It checks each item
-  itself and never takes a path from the app.
+- **An administrator password** for a selected batch of protected cleanup.
+  Brim starts a temporary administrator process, checks each item, and ends
+  the process when the operation finishes. It does not install a background
+  job or run after Brim quits. Reading protected recovery copies also needs
+  explicit authorization.
 - **Touch ID or your password** once per removal that deletes anything
-  permanently. Moving things to the Trash needs nothing.
+  permanently. Administrator authentication covers this check for protected
+  cleanup, so the batch does not need a second prompt. Moving writable items
+  to the Trash needs no authentication.
 
 ### Checking a removal
 
@@ -88,8 +93,8 @@ The app lands in
 `~/Library/Developer/Xcode/DerivedData/Brim-*/Build/Products/Debug/brim.app`.
 Open it by path.
 
-Brim pins its own team identifier when the app and its helper connect, so
-a build signed with another team will not reach its helper. Replace
+Brim pins its own team identifier when the app and its administrator process
+connect, so both components must be signed by your team. Replace
 `9LY29YLFG2` in `MutualAuthentication.swift` and `HelperInterface.swift`
 with your own team to run your build end to end.
 
@@ -117,7 +122,7 @@ Tests that touch the real machine run only with `BRIM_REAL_ENV=1`.
 - `BrimCore/`: the engine, as a Swift package. Detection in `BrimScan`,
   changes to the disk in `BrimOps`, and the checks everything passes
   through in `BrimCore`.
-- `Helper/`: the administrator helper.
+- `Helper/`: the temporary administrator process.
 - `scripts/`: release build and coverage tools.
 
 ## Reporting a problem

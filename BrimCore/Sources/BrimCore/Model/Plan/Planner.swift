@@ -353,7 +353,7 @@ public struct Planner: Sendable {
             let host = bundleStep.target
             let registered = capabilityReport?.checks
                 .first { $0.capability == .launchServices }?.registrations.compactMap(\.programPath) ?? []
-            let components = intent.subjectIdentity.identitySurface?.components.map(\.path) ?? []
+            let components = evaluatedFootprint.identity.identitySurface?.components.map(\.path) ?? []
             let paths = Set([host] + (registered + components).filter {
                 $0.hasPrefix(host + "/") && $0.hasSuffix(".app")
             })

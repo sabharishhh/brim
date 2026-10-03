@@ -27,6 +27,12 @@ public actor Executor {
     /// failing with a permission error nobody can act on.
     private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
 
+    private var recoveryRemover: (@Sendable (String, TargetFingerprint) async -> String?)?
+
+    func setRecoveryRemover(_ remover: (@Sendable (String, TargetFingerprint) async -> String?)?) {
+        recoveryRemover = remover
+    }
+
     public init(
         journalStore: JournalStore,
         toolCleanupClient: ToolCleanup.Client = .init(),
@@ -89,7 +95,8 @@ public actor Executor {
             // `already_gone` while the link stayed on the disk.
             if step.kind.targetIsPath,
                step.kind != .unregisterLaunchServices,
-               !PathExistence.exists(atPath: step.target) {
+               RecoveryCopy.identifier(for: step.target) == nil,
+               PathObservation.observe(step.target).isAbsent {
                 journal.stepOutcomes[step.index] = "already_gone"
                 continue
             }
@@ -98,7 +105,10 @@ public actor Executor {
                 if step.kind == .unloadLaunchdJob || step.kind == .removeLaunchdPlist {
                     try LaunchdExecution.verifyModification(step)
                 }
-                if step.kind == .trashPathPrivileged {
+                if step.kind == .trashPathPrivileged, step.effectiveDisposition == .delete {
+                    try await Self.removeRecoveryCopy(step, using: recoveryRemover)
+                    journal.stepOutcomes[step.index] = "ok"
+                } else if step.kind == .trashPathPrivileged {
                     // Something in a folder that belongs to root. The
                     // daemon applies its own rules and moves the file to a
                     // holding folder rather than deleting it, so this is
@@ -182,7 +192,7 @@ public actor Executor {
                     // could not be cleared would be the wrong trade. The
                     // outcome is journalled so the result can say so.
                     do {
-                        try await PrivacyGrants.resetAllBounded(bundleID: step.target)
+                        try await Self.resetPrivacy(step: step, plan: plan)
                         journal.stepOutcomes[step.index] = "ok"
                     } catch {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
@@ -224,18 +234,9 @@ public actor Executor {
                     // privacy reset. The files are already gone; refusing the
                     // whole uninstall over a registration would be the wrong
                     // trade, and the journal says what happened either way.
-                    do {
-                        guard PathObservation.observe(step.target).isAbsent else {
-                            throw NSError(domain: "BrimRegistration", code: 1, userInfo: [
-                                NSLocalizedDescriptionKey: "The application path is still occupied. Its registration was kept."
-                            ])
-                        }
-                        try await LaunchServicesRegistration.unregisterBounded(bundlePath: step.target)
-                        journal.stepOutcomes[step.index] = "ok"
-                    } catch {
-                        journal.stepOutcomes[step.index] =
-                            "launch_services_registration_remains: \(error.localizedDescription)"
-                    }
+                    journal.stepOutcomes[step.index] = await Self.unregisterComponent(
+                        step: step, plan: plan, outcomes: journal.stepOutcomes
+                    )
                 } else if step.kind == .unloadLaunchdJob {
                     let receipt = try await LaunchdExecution.stop(step.target, runtime: launchdRuntime)
                     journal.stepOutcomes[step.index] = receipt.outcome

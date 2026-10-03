@@ -125,8 +125,12 @@ struct ContentView: View {
         .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
         // Once, for every section. Asks macOS nothing until a removal
         // needs the helper; see `HelperRoute`.
-        .task { await HelperRoute.connect(models.background.helper, to: service) }
         .task { session.visits.begin() }
+        .task(id: needsSetup) {
+            await HelperRoute.connect(models.background.helper, to: service)
+            guard needsSetup == false else { return }
+            await service.recheckPendingRemovals()
+        }
         // Every installed app's icon, saved while the app is here to ask,
         // so its leftovers keep its face after it is removed.
         .onReceive(models.applications.$applications) { session.icons.remember($0) }
