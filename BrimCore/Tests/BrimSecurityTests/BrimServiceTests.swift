@@ -6,6 +6,40 @@ import Foundation
 import XCTest
 
 final class BrimServiceTests: XCTestCase {
+    func testRemainingLoginRecordsOfferRemovalWithoutTreatingBackgroundSwitchesAsErasure() {
+        // A removed helper remained in both Settings lists after Trash was
+        // emptied. Its BTM type did not mark it as a legacy login item.
+        let record = Registration(kind: .backgroundItem, identifier: "org.example.agent", label: "Agent",
+                                  targetExists: false, evidence: "Target missing", atLogin: false)
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture", osVersion: "fixture",
+                        intent: PlanIntent(type: .uninstall, subjectIdentity: Identity(name: "Example")),
+                        steps: [], excludedItems: [], expectedTotalBytes: 0)
+        let remaining = RegistrationVerification(capability: .backgroundItem, observedAt: Date(),
+                                                 coverage: .available(.backgroundItem), remaining: [record])
+        XCTAssertEqual(BrimService.registrationRoutes(plan: plan, observations: [remaining]), [.loginItemsSettings])
+        XCTAssertFalse(remaining.confirmedClear)
+        XCTAssertFalse(record.isActionable)
+
+        let retained = RegistrationVerification(capability: .backgroundItem, observedAt: Date(),
+                                                coverage: .available(.backgroundItem), remaining: [],
+                                                preserved: [record], recoveryCopies: [record])
+        let unread = RegistrationVerification(capability: .backgroundItem, observedAt: Date(),
+                                              coverage: .unavailable(.backgroundItem, "Could not read"), remaining: [])
+        let clear = RegistrationVerification(capability: .backgroundItem, observedAt: Date(),
+                                             coverage: .available(.backgroundItem), remaining: [])
+        XCTAssertTrue(BrimService.registrationRoutes(plan: plan, observations: [retained, unread, clear]).isEmpty)
+        XCTAssertFalse(unread.confirmedClear)
+        XCTAssertTrue(clear.confirmedClear)
+
+        let legacy = Registration(kind: .legacyLoginItem, identifier: "org.example.old", label: "Old",
+                                  targetExists: false, evidence: "Target missing")
+        XCTAssertEqual(legacy.loginItemsFollowUp, .loginItemsSettings)
+        let system = Registration(kind: .backgroundItem, identifier: "com.apple.example", label: "System",
+                                  targetExists: false, evidence: "Target missing", isSystemOwned: true)
+        XCTAssertNil(system.loginItemsFollowUp)
+        XCTAssertTrue(RemovalFollowUp.loginItemsSettings.sentence.hasPrefix("If the item is listed"))
+    }
+
     func testSkippedBundleRemainsVisibleAndDoesNotSuggestReinstalling() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
