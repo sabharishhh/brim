@@ -67,7 +67,8 @@ public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
         case .restartForSystemExtension:
             "macOS has scheduled the extension's removal for the next restart. Restart, then check removal again."
         case .loginItemsSettings:
-            "Remove the item from Open at Login in System Settings > General > Login Items & Extensions."
+            "If the item is listed under Open at Login, select it and click Remove. "
+                + "Background App Activity switches only disable activity. Return to Brim and check again."
         case .vpnSettings:
             "If listed, remove the configuration in System Settings > VPN."
         case .restoreAppForPrivacyReset:

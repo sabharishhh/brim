@@ -126,6 +126,14 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         atLogin == true || kind == .legacyLoginItem
     }
 
+    /// The BTM type alone does not establish whether Settings offers a
+    /// foreground Remove control. Route to that list conditionally, without
+    /// treating a background switch as an erasure operation.
+    public var loginItemsFollowUp: RemovalFollowUp? {
+        guard !isSystemOwned, kind == .backgroundItem || kind == .legacyLoginItem else { return nil }
+        return .loginItemsSettings
+    }
+
     /// The record's own location is part of the identity. Google Keystone
     /// installs the same job twice, once for the user and once for the
     /// machine, and without the path both copies claimed the same id: one

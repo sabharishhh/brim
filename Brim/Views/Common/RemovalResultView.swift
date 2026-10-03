@@ -81,6 +81,10 @@ struct RemovalResultView: View {
                             FactDivider()
                         }
                         FactRow(label: action.sentence)
+                        if action == .loginItemsSettings,
+                           let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                            Link("Open Login Items", destination: url)
+                        }
                     }
                 }
             }
