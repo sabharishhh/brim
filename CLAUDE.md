@@ -96,11 +96,12 @@ read reports that it could not be read. `RegistrationCoverage` and
 not a directory. Two rows for `Application Support/Codex` and
 `Caches/Codex` is a failure of the list, not of the user.
 
-**Ask once, at the start.** Everything Brim needs from the person is
-settled during setup, while they are paying attention to setup. A
-permission dialog standing between someone and a list they asked to see
-is a bug, and the fix is usually to find the free way to read the same
-thing.
+**Reading a list must not request administrator access.** Full Disk Access
+is offered during setup. Scanning uses the app's permissions and reports
+unreadable locations. Protected recovery copies are read only after the
+person explicitly asks. Protected cleanup requests administrator access
+once for the approved batch, then ends the temporary process. Brim does
+not register a background service or keep workers alive after it quits.
 
 **Approval comes from a person, in Brim's window, or not at all.**
 `requestApproval` returns a receipt and cannot approve anything. The only
@@ -117,12 +118,13 @@ for five minutes: two processes cannot share one, and that is the point.
 fails if a second function ever returns an `ApprovalToken`.
 
 **Both ends of a connection prove who they are.** Brim is
-`com.sabharishhh.brim`, team `9LY29YLFG2`, and `MutualAuthentication` is
-the only place that decides what that means. The listener pins the app,
-the client pins the service, and a connection that cannot be pinned is
-not made. There is no boolean to switch it off: a caller either names one
-of Brim's signed components or names the anonymous same-process case out
-loud, and `XPCAuthenticationTests` fails if a third option appears.
+`com.sabharishhh.brim`, team `9LY29YLFG2`. `MutualAuthentication` pins
+Brim's XPC connections. `TemporaryAdminChannel` checks the kernel peer
+identity and the signature at both ends of its local connection, using
+the requirements in `BrimJobHelper`. The temporary executable is copied
+to a root-owned directory and its signature checked before execution.
+A connection that cannot prove its peer is refused. There is no boolean
+to switch authentication off.
 
 **Interrupt for irreversible things only.** Moving something to the Trash
 needs no fingerprint. Permanently deleting something that matters gets one
@@ -375,17 +377,16 @@ conversation. Split unrelated changes rather than staging everything.
   `devplaceholder` identifier and matched neither the real application nor
   anything else, so self-removal was silently blocked. The two old
   identifiers are kept only so an upgrade can clear what they left.
-- **An `SMAppService` daemon survives an application update.** The root
-  process answering can be the one an older Brim registered, running that
-  version's rules about what is safe to remove. Check the version on
-  connect and replace a daemon you do not recognise. Bump
-  `BrimJobHelper.version` whenever the interface changes, or an older
-  daemon hangs on a selector it does not implement.
-- **Only root can clear the quarantine.** `/Library/Application
-  Support/Brim/Set aside` is root owned, so `SMAppService.unregister`
-  first and the folder is there for good. The daemon clears it through
-  `uninstallSelf` while it is still running, and only then is it
-  unregistered.
+- **Retire the earlier registered helper without deleting recovery copies.**
+  Older versions installed an `SMAppService` daemon. New protected work
+  runs in the temporary administrator process. The old plist remains
+  only so migration can identify and unregister that earlier service.
+  A failed migration must be reported rather than called complete.
+- **Only root can remove protected recovery copies.**
+  `/Library/Application Support/Brim/Set aside` is root owned. The
+  temporary administrator process lists and removes individual copies
+  after explicit approval, revalidating their identity first. Unregistering
+  the earlier service must not discard these copies or make them invisible.
 - **A Swift error loses its sentence crossing XPC.** `localizedDescription`
   is computed, so bridging an error to `NSError` and replying with it
   arrives as `Code=0 "(null)"`. `BrimXPCServer.wire` pins the sentence into
