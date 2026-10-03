@@ -936,9 +936,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                                         recoveryCopies: original.recoveryCopies)
     }
 
-    private static func registrationRoutes(plan: Plan,
-                                           observations postChecks: [RegistrationVerification]) -> [RemovalFollowUp] {
+    static func registrationRoutes(plan: Plan,
+                                   observations postChecks: [RegistrationVerification]) -> [RemovalFollowUp] {
         var followUps: [RemovalFollowUp] = []
+        if postChecks.flatMap(\.remaining).contains(where: { $0.loginItemsFollowUp != nil }) {
+            followUps.append(.loginItemsSettings)
+        }
         if postChecks.contains(where: { $0.capability == .firewallEntry && !$0.remaining.isEmpty }) {
             followUps.append(.firewallSettings)
         }

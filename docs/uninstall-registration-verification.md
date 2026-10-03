@@ -7,7 +7,7 @@ This implementation separates bundle declarations, current registration observat
 - Privacy resets run before code is moved, under the current user. The host and eligible embedded application, extension and XPC identifiers are reviewed separately. Positive surviving claims and bundled library identifiers are excluded. A successful reset is an action receipt, never a claim that Brim read the private permissions database.
 - Launch Services unregisters only reviewed application paths, including embedded applications known before removal. Newly discovered records are shown in the result and require another review. Recovery copies are distinguished from records at the removed path.
 - Current-user launch agents use their actual Label and GUI domain. Brim reads the domain and exact service, checks the loaded declaration path, stops it and confirms its absence before moving the declaration. A failed or indeterminate stop keeps the declaration in place; independent file steps can still finish. Undo restores the declaration and bootstraps it in the same domain.
-- The authenticated helper independently validates system-job scope and binds the requesting user to the XPC connection. It never accepts a caller-supplied UID. Its interface version is 9.
+- The temporary authenticated helper independently validates system-job scope and binds the requesting user to the connection. It never accepts a caller-supplied UID. Its interface version is 11. One protected batch holds administrator access through execution and fresh verification, then closes the helper. No persistent background service is registered.
 - Installer records can be forgotten only when their full reviewed payload is bound to the plan and every payload file is freshly absent. The helper independently reads and checks the receipt payload. Live, unreadable, disconnected, malformed or unmeasured payloads keep the receipt.
 
 ## Ownership and observation
@@ -20,7 +20,7 @@ Registration snapshots retain namespace, stable record identity, raw target, run
 
 | Surface | Shipped behavior | Reason |
 | --- | --- | --- |
-| Background Task Management | Observe remaining records; no erasure follow-up | Background controls disable activity but cannot remove the row. No qualified foreign-app per-record removal. Never reset the machine-wide store. |
+| Background Task Management | Observe remaining records; conditionally route to Open at Login and check again | The foreground Remove control and background switches are different operations. No qualified automatic foreign-app per-record removal. Never reset the machine-wide store. |
 | PluginKit | Observe all returned versions and duplicates; show the Settings route | The controlled extension registration experiment did not establish a reliable removal lifecycle. No new automatic mutation ships. |
 | Legacy Open at Login | Manual Settings route | System Events compatibility is not established on the current system. No automation consent prompt or private store edits. |
 | Firewall | Read and attribute exact paths; open Firewall options | Automatic removal remains unqualified by controlled lifecycle evidence. |
@@ -99,3 +99,11 @@ Trash remains the default for files. Registration changes such as privacy reset 
 Final built-app inspection confirmed the result sheet's leading alignment, capability icons, scrolling Details and reachable Done button. A fresh boringNotch history check reported its files absent, the current background-job read gap and the saved privacy-reset receipt, without presenting a Background Settings removal step. The earlier BTM observation and this later read are distinct snapshots; neither predicts when macOS collects another record. The final default suite and app build passed strict concurrency and warnings-as-errors, and the lint comparison added zero violations. Both app signature verification and the pinned helper requirement passed.
 
 Following the user's final visual review, Details icons are vertically centered against each complete text block rather than aligned to the title's top edge.
+
+## Missing-target login item follow-up
+
+Emptying Trash did not clear one removed helper's Open at Login entry or its background record. A read-only snapshot of the public, deprecated session shared-file-list API did not contain that helper, so that API is not a removal route for this observed record. Selecting the helper in Open at Login and clicking Remove cleared both Settings entries. A fresh Brim scan also confirmed its BTM record absent. No restart was performed and unrelated entries remained listed.
+
+Brim now offers conditional Open at Login instructions and a direct Settings link for remaining user login/background records. BTM's type alone cannot establish that Settings offers a foreground Remove control. The result therefore asks the user to remove it only if it appears in Open at Login, distinguishes background switches from removal, and requires another check. Preserved installations, recovery copies, system records and unavailable empty reads do not produce that follow-up. This is a manual route, not automatic universal registration erasure.
+
+The final default package suite, signed strict-concurrency app build and pinned app identity check passed. Lint added no violations. The built app's actual uninstall recheck confirmed all 18 file locations gone and login/background registrations clear. Management-profile coverage remained unavailable and was shown in the result; privacy, VPN and cloud records retain their documented observation limits. The direct link compiled, but no remaining target record was available to exercise its rendered button after the successful manual removal.

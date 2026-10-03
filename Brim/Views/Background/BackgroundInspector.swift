@@ -98,6 +98,11 @@ struct BackgroundInspector: View {
             }
             .buttonBorderShape(.capsule)
         }
+        if entry.group.items.contains(where: { $0.isStale && $0.loginItemsFollowUp != nil }),
+           let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            Link("Open Login Items", destination: url)
+                .buttonStyle(.bordered)
+        }
     }
 }
 
@@ -185,13 +190,13 @@ private struct RecordRow: View {
     /// Why Brim cannot remove this, said before it is tried. Once the
     /// helper can reach it, it stops saying so.
     private var blocked: String? {
+        if registration.isStale, let followUp = registration.loginItemsFollowUp {
+            return followUp.sentence
+        }
         if registration.kind == .backgroundItem {
             return registration.isStale
                 ? "The target is missing, but macOS still keeps this record. Turning it off does not remove it."
                 : nil
-        }
-        if registration.kind == .legacyLoginItem {
-            return registration.isStale ? RemovalFollowUp.loginItemsSettings.sentence : nil
         }
         if registration.kind == .appExtension || registration.kind == .systemExtension {
             return "Review this extension in System Settings > General > Login Items & Extensions."

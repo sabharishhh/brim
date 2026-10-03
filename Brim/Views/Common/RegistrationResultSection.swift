@@ -58,7 +58,8 @@ struct RegistrationResultSection: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(observation.capability.title).font(.headline)
                                     if observation.capability == .backgroundItem, !observation.remaining.isEmpty {
-                                        Text("Background controls disable activity; they do not delete these records.")
+                                        Text("An Open at Login entry can be removed in System Settings. "
+                                            + "Background App Activity switches only disable activity.")
                                     }
                                     if let limitation = observation.coverage.limitation {
                                         Text(limitation)
