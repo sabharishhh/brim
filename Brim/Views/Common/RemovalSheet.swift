@@ -167,8 +167,15 @@ struct RemovalSheet: View {
             }
         case .ready:
             VStack(spacing: 0) {
-                if model.helperSteps > 0, let helperProblem {
-                    helperNotice(helperProblem)
+                if model.helperSteps > 0 {
+                    Text("macOS will request an administrator password for protected cleanup.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                    if let helperProblem {
+                        helperNotice(helperProblem)
+                    }
                     Divider()
                 }
                 List {
@@ -199,36 +206,32 @@ struct RemovalSheet: View {
             Image(systemName: "lock.shield").foregroundColor(.orange)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.helperSteps == 1
-                    ? "One of these is in a system folder, so Brim's helper moves it."
-                    : "\(model.helperSteps) of these are in a system folder, so Brim's helper moves them.")
+                    ? "One item requires administrator access."
+                    : "\(model.helperSteps) items require administrator access.")
                     .font(.callout)
                 Text(problem).font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button("Turn On") {
-                HelperRoute.turnOn()
-                Task { await checkHelper() }
-            }
             Button("Check Again") { Task { await checkHelper() } }
         }
         .padding(12)
     }
 
     private func stepRow(_ step: Step) -> some View {
-        let byHelper = step.kind == .trashPathPrivileged
+        let byHelper = step.kind == .trashPathPrivileged && step.effectiveDisposition == .trash
         let permanent = step.effectiveDisposition == .delete
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(URL(fileURLWithPath: step.target).lastPathComponent).font(.callout)
                 Spacer()
                 Label(
-                    byHelper ? "Set aside by Brim's helper" : permanent ? "Deleted permanently" : "To Trash",
+                    byHelper ? "Set aside" : permanent ? "Deleted permanently" : "To Trash",
                     systemImage: byHelper ? "lock.shield" : permanent ? "trash.slash" : "arrow.uturn.backward"
                 )
                 .font(.caption2)
                 .foregroundColor(permanent ? .orange : .secondary)
-                Text(ByteText.short(step.expectedBytes))
+                Text(step.sizeIsKnown == false ? "Not measured" : ByteText.short(step.expectedBytes))
                     .font(.caption).foregroundColor(.secondary).monospacedDigit()
             }
             Text(step.target)

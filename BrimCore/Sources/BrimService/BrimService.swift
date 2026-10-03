@@ -20,9 +20,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let planner: Planner
     public let planStore: PlanStore
     public let tokenStore: TokenStore
-    private let journalStore: JournalStore
+    let journalStore: JournalStore
+    var hasRecheckedPendingRemovals = false
     private let ledgerStore: LedgerStore
-    private let executor: Executor
+    let executor: Executor
+    var recoveryReader: (@Sendable () async throws -> [RecoveryCopy])?
     private let toolCleanupClient: ToolCleanup.Client
     private let launchdRuntime: LaunchdRuntimeClient
     private var leftoversTask: Task<[Leftover], Error>?
@@ -119,14 +121,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let projector = FootprintProjector(engine: engine)
         var footprint: Footprint
         let explicitTargets = intent.explicitTargets
+        let recoveryCopies = try await reviewedRecoveryCopies(for: explicitTargets)
+        let ordinaryTargets = explicitTargets.filter { RecoveryCopy.identifier(for: $0.path) == nil }
         let resolved = explicitTargets.isEmpty
             ? await enriched(intent.subjectIdentity)
             : (identity: intent.subjectIdentity, completeness: ScanCompleteness.complete)
         let subject = resolved.identity
         if !explicitTargets.isEmpty {
             try Self.validateExclusions(in: intent)
-            let evidence = Self.explicitEvidence(for: explicitTargets)
-            footprint = try await projector.project(identity: subject, in: root, explicitEvidence: evidence)
+            let evidence = Self.explicitEvidence(for: ordinaryTargets)
+            footprint = ordinaryTargets.isEmpty
+                ? Footprint(identity: subject, items: [])
+                : try await projector.project(identity: subject, in: root, explicitEvidence: evidence)
             footprint = await Self.classifiedDeveloperTargets(footprint, in: root)
         } else {
             footprint = try await projector.project(identity: subject, in: root)
@@ -159,7 +165,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
         let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
                                       capabilityReport: report, receiptPayloads: payloads)
-        return plan.attaching(report).recording(package.installation)
+        return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
     }
 
     private func enriched(_ identity: Identity) async -> (identity: Identity, completeness: ScanCompleteness) {
@@ -316,6 +322,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// plan destroys something nothing can restore, a person has to prove
     /// they are at the machine right now.
     public func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
+        try beginOperation(planId: receipt.planId)
+        defer { activePlans.remove(receipt.planId) }
+        guard authenticatedPrivilegedPlans[receipt.planId] == nil else {
+            throw ApprovalError.requestNotPending
+        }
         guard let pending = pendingApprovals[receipt.requestId],
               pending == receipt,
               Date() < receipt.expiresAt else {
@@ -344,27 +355,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             guard let consent else { throw ApprovalError.noHumanToAsk }
             guard await consent.ask(receipt) else { throw ApprovalError.declined }
 
-            // Not every plan is worth interrupting a human for. The review
-            // sheet is the consent; a fingerprint proves only that a person
-            // is at the machine right now, which is worth one interruption
-            // before something is destroyed beyond recovery and worth
-            // nothing before a file is moved to the Trash.
-            //
-            // The failure this guards against is not an unauthorised
-            // deletion. It is a user asked so often that they stop reading,
-            // at which point every prompt in the product has become
-            // decoration.
-            let requirement = await approvalPolicy.requirement(
-                for: plan, lastAuthenticated: presenceStore.lastPresence
-            )
-            if case let .humanPresence(reason) = requirement {
-                if let presence {
-                    try await presence.prove(reason)
-                    await presenceStore.recordPresence()
-                } else {
-                    try await proveHumanPresence(reason: reason)
-                }
-            }
+            try await authenticateApproval(plan)
         }
 
         // The one mint in the product, and it is downstream of every check
@@ -372,6 +363,45 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return await tokenStore.mintToken(
             planId: receipt.planId, planHash: hash, requesterIdentity: receipt.requester
         )
+    }
+
+    private func authenticateApproval(_ plan: Plan) async throws {
+        // Not every plan is worth interrupting a human for. The review
+        // sheet is the consent; a fingerprint proves only that a person
+        // is at the machine right now, which is worth one interruption
+        // before something is destroyed beyond recovery and worth
+        // nothing before a file is moved to the Trash.
+        //
+        // The failure this guards against is not an unauthorised
+        // deletion. It is a user asked so often that they stop reading,
+        // at which point every prompt in the product has become
+        // decoration.
+        let requirement = await approvalPolicy.requirement(
+            for: plan, lastAuthenticated: presenceStore.lastPresence
+        )
+        if plan.steps.contains(where: { $0.capability == .needsHelper }), let beginPrivilegedBatch {
+            // macOS administrator authentication and the signed root peer
+            // prove presence before approval is minted. Retain this exact
+            // connection for the selection rather than asking twice.
+            if let problem = await beginPrivilegedBatch() {
+                throw NSError(domain: "BrimApproval", code: 403,
+                              userInfo: [NSLocalizedDescriptionKey: problem])
+            }
+            let generation = UUID()
+            authenticatedPrivilegedPlans[plan.planId] = generation
+            await presenceStore.recordPresence()
+            Task {
+                try? await Task.sleep(for: .seconds(90))
+                await expirePrivilegedApproval(plan.planId, generation: generation)
+            }
+        } else if case let .humanPresence(reason) = requirement {
+            if let presence {
+                try await presence.prove(reason)
+                await presenceStore.recordPresence()
+            } else {
+                try await proveHumanPresence(reason: reason)
+            }
+        }
     }
 
     /// Installs the thing that can ask a person. Brim's app calls this at
@@ -497,6 +527,36 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func apply(planId: UUID, token: ApprovalToken) async throws {
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }
+        let authenticated = authenticatedPrivilegedPlans.removeValue(forKey: planId) != nil
+        do {
+            try await applyApprovedPlan(planId: planId, token: token, authenticated: authenticated)
+        } catch {
+            if authenticated {
+                await endPrivilegedBatch?()
+            }
+            throw error
+        }
+        if authenticated {
+            retainPrivilegedVerification(planId)
+        }
+    }
+
+    private func retainPrivilegedVerification(_ planId: UUID) {
+        let generation = UUID()
+        authenticatedPrivilegedPlans[planId] = generation
+        Task {
+            try? await Task.sleep(for: .seconds(90))
+            await expirePrivilegedApproval(planId, generation: generation)
+        }
+    }
+
+    private func expirePrivilegedApproval(_ planId: UUID, generation: UUID) async {
+        guard authenticatedPrivilegedPlans[planId] == generation else { return }
+        authenticatedPrivilegedPlans.removeValue(forKey: planId)
+        await endPrivilegedBatch?()
+    }
+
+    private func applyApprovedPlan(planId: UUID, token: ApprovalToken, authenticated: Bool) async throws {
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
 
@@ -528,10 +588,56 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw ApplyError.planAlreadyApplied
         }
 
-        // --- T-2.4 Independent Re-validation ---
-        // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
-        // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
-        let revalidatedPlan = try await makePlan(intent: plan.intent)
+        let needsAdministrator = plan.steps.contains { $0.capability == .needsHelper }
+        if needsAdministrator, !authenticated, let beginPrivilegedBatch,
+           let problem = await beginPrivilegedBatch() {
+            throw ApplyError.validationFailed(problem)
+        }
+        do {
+            // --- T-2.4 Independent Re-validation ---
+            // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
+            // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
+            let revalidatedPlan = try await makePlan(intent: plan.intent)
+            try validateReviewedPlan(plan, rebuilt: revalidatedPlan)
+
+            // Revalidation awaits other work, so another application of this plan
+            // may have completed while the actor was suspended.
+            guard !appliedPlanIds.contains(planId) else { throw ApplyError.planAlreadyApplied }
+            appliedPlanIds.insert(planId)
+
+            let journal = try await executor.execute(plan: plan)
+
+            // Record ledger entry
+            let outcomes = journal.stepOutcomes.map { index, resultStr in
+                let completed = resultStr == "ok" || resultStr == "already_gone"
+                let status: StepOutcome = completed ? .success : .failed
+                return Outcome(stepIndex: index, result: status, errorMessage: completed ? nil : resultStr)
+            }
+            let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
+            let ledgerEntry = LedgerEntry(
+                planId: plan.planId,
+                planHash: hash,
+                executedAt: Date(),
+                outcomes: outcomes,
+                recoveredBytes: recovered
+            )
+            try await ledgerStore.write(entry: ledgerEntry)
+            // Update list presentation before closing the authenticated process.
+            if needsAdministrator {
+                _ = try? await recoveryReader?()
+            }
+        } catch {
+            if needsAdministrator, !authenticated {
+                await endPrivilegedBatch?()
+            }
+            throw error
+        }
+        if needsAdministrator, !authenticated {
+            await endPrivilegedBatch?()
+        }
+    }
+
+    private func validateReviewedPlan(_ plan: Plan, rebuilt revalidatedPlan: Plan) throws {
         try validateToolCleanup(plan, rebuilt: revalidatedPlan)
         let searchIsCurrent = plan.capabilityReport?.reviewScope == revalidatedPlan.capabilityReport?.reviewScope
             && plan.scanCompleteness == revalidatedPlan.scanCompleteness
@@ -580,29 +686,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 )
             }
         }
-
-        // Revalidation awaits other work, so another application of this plan
-        // may have completed while the actor was suspended.
-        guard !appliedPlanIds.contains(planId) else { throw ApplyError.planAlreadyApplied }
-        appliedPlanIds.insert(planId)
-
-        let journal = try await executor.execute(plan: plan)
-
-        // Record ledger entry
-        let outcomes = journal.stepOutcomes.map { index, resultStr in
-            let completed = resultStr == "ok" || resultStr == "already_gone"
-            let status: StepOutcome = completed ? .success : .failed
-            return Outcome(stepIndex: index, result: status, errorMessage: completed ? nil : resultStr)
-        }
-        let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
-        let ledgerEntry = LedgerEntry(
-            planId: plan.planId,
-            planHash: hash,
-            executedAt: Date(),
-            outcomes: outcomes,
-            recoveredBytes: recovered
-        )
-        try await ledgerStore.write(entry: ledgerEntry)
     }
 
     private func validateToolCleanup(_ plan: Plan, rebuilt revalidatedPlan: Plan) throws {
@@ -617,6 +700,22 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public func verify(planId: UUID) async throws -> VerificationResult {
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }
+        let authenticated = authenticatedPrivilegedPlans.removeValue(forKey: planId) != nil
+        do {
+            let result = try await verifyPlan(planId: planId)
+            if authenticated {
+                await endPrivilegedBatch?()
+            }
+            return result
+        } catch {
+            if authenticated {
+                await endPrivilegedBatch?()
+            }
+            throw error
+        }
+    }
+
+    private func verifyPlan(planId: UUID) async throws -> VerificationResult {
         let verificationStartedAt = Date()
         let plan = try await planStore.load(planId: planId)
 
@@ -635,8 +734,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // lstat-ing one resolves it against the working directory.
         var pathsRemaining = Set<String>()
         var unknownPaths = Set<String>()
+        let recoveryObservations = await recoveryPresence(for: plan)
         for step in plan.steps where step.kind.targetIsPath {
-            let presence = PathObservation.observe(step.target)
+            let presence = recoveryObservations[step.target] ?? PathObservation.observe(step.target)
             if presence.isAbsent {
                 continue
             }
@@ -1055,6 +1155,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     /// Kept for updates, which replace a root-owned application the same
     /// way a removal sets one aside.
+    var recoveryVerifier: (@Sendable () async throws -> [RecoveryCopy])?
+    private var authenticatedPrivilegedPlans: [UUID: UUID] = [:]
+
+    private var beginPrivilegedBatch: (@Sendable () async -> String?)?
+    private var endPrivilegedBatch: (@Sendable () async -> Void)?
+
+    public func usePrivilegedBatch(begin: (@Sendable () async -> String?)?,
+                                   end: (@Sendable () async -> Void)?) async {
+        beginPrivilegedBatch = begin
+        endPrivilegedBatch = end
+    }
+
     private var privilegedRemover: (@Sendable (String) async -> String?)?
 
     public func usePrivilegedReceiptForgetter(
@@ -1408,7 +1520,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         case .replace, .installer:
             return await UpdateInstaller(
                 workspace: Self.updatesDirectory.appendingPathComponent("Downloads"),
-                remover: privilegedRemover
+                remover: { [privilegedRemover, beginPrivilegedBatch, endPrivilegedBatch] path in
+                    if let problem = await beginPrivilegedBatch?() {
+                        return problem
+                    }
+                    let problem = await privilegedRemover?(path)
+                        ?? (privilegedRemover == nil ? "Administrator cleanup is unavailable." : nil)
+                    await endPrivilegedBatch?()
+                    return problem
+                }
             ).install(update, progress: progress)
         }
     }
@@ -1535,7 +1655,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         let found = try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
-        return await attachingReplacements(to: found)
+        return await attachingReplacements(to: found) + recoveryLeftovers()
     }
 
     /// Says which installed app replaced a removed one, where that is

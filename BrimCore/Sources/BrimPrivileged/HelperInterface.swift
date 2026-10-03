@@ -59,6 +59,15 @@ import Security
     /// `PrivilegedPreferenceRemoval`. Nil when it worked, otherwise why not.
     func removeSystemPreference(name: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
+    /// Lists only Brim's fixed recovery store. The payload is a JSON array.
+    func recoveryItems(withReply reply: @escaping @Sendable (Data?, String?) -> Void)
+
+    /// Permanently removes one selected recovery copy after checking its identity.
+    func removeRecoveryItem(
+        identifier: String, expectedDevice: Int32, expectedInode: UInt64,
+        withReply reply: @escaping @Sendable (String?) -> Void
+    )
+
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
@@ -85,7 +94,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "9"
+    public static let version = "11"
 
     public static let teamID = "9LY29YLFG2"
 

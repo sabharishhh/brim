@@ -69,6 +69,23 @@ public actor JournalStore {
         }
     }
 
+    /// Keep startup work bounded even after years of removal history.
+    /// Older removals remain available through Journal's Check removal action.
+    func recentEntries(limit: Int = 100) throws -> [JournalEntry] {
+        try ensureDirectory()
+        let urls = try fileManager.contentsOfDirectory(
+            at: directoryURL, includingPropertiesForKeys: [.contentModificationDateKey]
+        )
+        let recent = urls.filter { $0.pathExtension == "journal" }.map { url in
+            (url, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                ?? .distantPast)
+        }.sorted { $0.1 > $1.1 }.prefix(max(0, limit))
+        return recent.compactMap { url, _ in
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return try? JSONDecoder().decode(JournalEntry.self, from: data)
+        }
+    }
+
     private func fileURL(for planId: UUID) -> URL {
         directoryURL.appendingPathComponent("\(planId.uuidString).journal")
     }
