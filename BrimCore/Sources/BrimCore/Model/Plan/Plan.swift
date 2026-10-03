@@ -126,6 +126,8 @@ public struct Step: Codable, Equatable, Sendable {
     public let expectedBytes: Int64
     /// Nil in older plans, whose sizes were measured by the scanner.
     public let sizeIsKnown: Bool?
+    /// The identifier read before an application copy is removed. Older plans omit it.
+    public let registrationBundleID: String?
     public let capability: Capability
     public let reversible: Bool
     public let costOfError: CostOfError
@@ -139,7 +141,7 @@ public struct Step: Codable, Equatable, Sendable {
         disposition ?? .trash
     }
 
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil, sizeIsKnown: Bool? = nil) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil, sizeIsKnown: Bool? = nil, registrationBundleID: String? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -148,6 +150,7 @@ public struct Step: Codable, Equatable, Sendable {
         self.evidence = evidence
         self.expectedBytes = expectedBytes
         self.sizeIsKnown = sizeIsKnown
+        self.registrationBundleID = registrationBundleID
         self.capability = capability
         self.reversible = reversible
         self.costOfError = costOfError

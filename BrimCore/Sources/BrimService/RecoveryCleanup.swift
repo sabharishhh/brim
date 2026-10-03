@@ -74,7 +74,8 @@ extension Plan {
                                   targetFingerprint: nil, tier: .A,
                                   evidence: "Retracts the registration for this recovery copy.", expectedBytes: 0,
                                   capability: .ok, reversible: false, costOfError: .medium,
-                                  executionPhase: .registration, disposition: .delete))
+                                  executionPhase: .registration, disposition: .delete,
+                                  registrationBundleID: copy.bundleID))
             }
         }
         return Plan(planId: planId, createdAt: createdAt, engineVersion: engineVersion, osVersion: osVersion,
