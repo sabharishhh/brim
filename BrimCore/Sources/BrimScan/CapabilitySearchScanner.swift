@@ -1,5 +1,6 @@
 import BrimCore
 import BrimOps
+import Darwin
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
@@ -23,7 +24,8 @@ public struct CapabilitySearchScanner: Sendable {
         completeness: ScanCompleteness,
         evidence: [Evidence] = [],
         expectedRegistrations: [Registration] = [],
-        recoveryLocations: [URL] = []
+        recoveryLocations: [URL] = [],
+        removalLocations: [String] = []
     ) async -> CapabilitySearchReport? {
         guard identity.capabilitySurface != nil || identity.bundleID != nil else { return nil }
         let surface = identity.capabilitySurface
@@ -57,42 +59,13 @@ public struct CapabilitySearchScanner: Sendable {
                 coverage = .withheld(.systemExtension, "VPN settings cannot be listed for another application.")
                 found = []
             case .launchServices:
-                if root.rootURL.standardizedFileURL.path != "/" {
-                    coverage = .withheld(.launchServices, "Launch Services is unavailable in a fixture.")
-                    found = []
-                } else {
-                    let ids = Array(Set(identity.searchBundleIdentifiers
-                            + expectedRegistrations.filter { $0.kind == .launchServices }
-                            .map(\.identifier).filter { !$0.hasPrefix("/") }))
-                    do {
-                        let urls = try ids.flatMap { identifier in
-                            try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: identifier)
-                                .map { (identifier: identifier, url: $0) }
-                        }
-                        coverage = .available(.launchServices)
-                        found = urls.filter { entry in
-                            let url = entry.url
-                            guard let bundle else { return false }
-                            let path = url.resolvingSymlinksInPath().path
-                            return path == bundle || path.hasPrefix(bundle + "/") || recoveryLocations.contains {
-                                let recovery = $0.resolvingSymlinksInPath().path
-                                return path == recovery || path.hasPrefix(recovery + "/")
-                            }
-                        }.map { entry in
-                            let url = entry.url
-                            return Registration(kind: .launchServices,
-                                                identifier: entry.identifier,
-                                                label: url.lastPathComponent,
-                                                owningBundleID: entry.identifier,
-                                                programPath: url.path, targetExists: true,
-                                                evidence: "Registered with Launch Services.",
-                                                targetPresence: PathObservation.observe(url.path))
-                        }
-                    } catch {
-                        coverage = .unavailable(.launchServices, "Launch Services could not be read.")
-                        found = []
-                    }
-                }
+                let check = Self.launchServicesCheck(
+                    identity: identity, in: root, removalLocations: removalLocations,
+                    expectedRegistrations: expectedRegistrations, recoveryLocations: recoveryLocations,
+                    discoverApplications: !removalLocations.isEmpty
+                )
+                coverage = check.coverage
+                found = check.registrations
             case .applicationGroups:
                 coverage = completeness.isComplete
                     ? .available(.bundlePlugin)
@@ -214,5 +187,164 @@ public struct CapabilitySearchScanner: Sendable {
                              + "\(signatureGaps.count == 1 ? "signature" : "signatures") unavailable.")
         ]
         return CapabilitySearchReport(checks: checks, signatureCoverage: signature)
+    }
+}
+
+public extension CapabilitySearchScanner {
+    /// Reads only the reviewed paths. Other installations with the same
+    /// identifier keep their own registrations.
+    static func launchServicesCheck(
+        identity: Identity, in root: FileSystemRoot,
+        removalLocations: [String] = [], expectedRegistrations: [Registration] = [],
+        recoveryLocations: [URL] = [], discoverApplications: Bool = false,
+        reviewedCoverage: RegistrationCoverage? = nil,
+        lookup: (String) throws -> [URL] = LaunchServicesRegistration.checkedApplicationURLs
+    ) -> CapabilitySearchReport.Check {
+        let observedAt = Date()
+        guard root.rootURL.standardizedFileURL.path == "/" else {
+            return .init(capability: .launchServices, declaration: .unknown,
+                         coverage: .withheld(.launchServices, "Launch Services is unavailable in a fixture."),
+                         observedAt: observedAt, readerVersion: 2)
+        }
+        let discovered = discoverApplications ? applicationsInside(removalLocations) : (records: [], complete: true)
+        let reviewed = expectedRegistrations.filter { $0.kind == .launchServices }
+        let exactPaths = Set((reviewed + discovered.records).compactMap(\.programPath))
+        let identifiers = Set(identity.searchBundleIdentifiers
+            + (reviewed + discovered.records).map(\.identifier).filter { !$0.hasPrefix("/") })
+        let prefixes = removalLocations + recoveryLocations.map(\.path)
+            + [identity.bundlePath].compactMap(\.self)
+        do {
+            let records = try identifiers.sorted().flatMap { identifier in
+                try lookup(identifier).filter { url in
+                    let path = url.standardizedFileURL.path
+                    return exactPaths.contains(path) || prefixes.contains {
+                        let prefix = URL(fileURLWithPath: $0).standardizedFileURL.path
+                        return path == prefix || path.hasPrefix(prefix + "/")
+                    }
+                }.map { url in
+                    Registration(kind: .launchServices, identifier: identifier, label: url.lastPathComponent,
+                                 owningBundleID: identifier, programPath: url.path, targetExists: true,
+                                 evidence: "Registered with Launch Services.",
+                                 targetPresence: PathObservation.observe(url.path))
+                }
+            }
+            let knownIDs = reviewed.allSatisfy { !$0.identifier.hasPrefix("/") }
+            return .init(capability: .launchServices, declaration: .unknown,
+                         coverage: discovered.complete && knownIDs && reviewedCoverage?.available != false
+                             ? .available(.launchServices)
+                             : .unavailable(.launchServices, "An application registration could not be checked."),
+                         registrations: records.sorted { $0.id < $1.id },
+                         observedAt: observedAt, readerVersion: 2)
+        } catch {
+            return .init(capability: .launchServices, declaration: .unknown,
+                         coverage: .unavailable(.launchServices, "Launch Services could not be read."),
+                         observedAt: observedAt, readerVersion: 2)
+        }
+    }
+
+    /// The removed cache/support folder can contain complete helper apps.
+    /// Bound discovery and never descend through links to surviving software.
+    private static func applicationsInside(_ paths: [String]) -> (records: [Registration], complete: Bool) {
+        let budget = ScanBudget(total: 4)
+        var remaining = 20000
+        var complete = true
+        var applications = Set<String>()
+        for path in Set(paths).sorted() {
+            guard remaining > 0, !budget.hasRunOut else { complete = false; break }
+            let root = URL(fileURLWithPath: path)
+            // An alias to a directory does not extend the approved scope to
+            // the bundle on the other side of that link.
+            guard root.resolvingSymlinksInPath().path == root.standardizedFileURL.path else {
+                complete = false
+                continue
+            }
+            do {
+                let values = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard values.isSymbolicLink != true, values.isDirectory == true else { continue }
+            } catch {
+                if !PathObservation.observe(path).isAbsent {
+                    complete = false
+                }
+                continue
+            }
+            if root.pathExtension.lowercased() == "app" {
+                applications.insert(path)
+            }
+            let walked = applicationPaths(in: root, maximum: remaining, budget: budget)
+            remaining -= walked.entries
+            complete = complete && walked.complete
+            applications.formUnion(walked.paths)
+        }
+        let records = applications.sorted().compactMap { path -> Registration? in
+            guard let identifier = applicationIdentifier(at: path) else {
+                complete = false
+                return nil
+            }
+            return Registration(kind: .launchServices, identifier: identifier,
+                                label: URL(fileURLWithPath: path).lastPathComponent,
+                                owningBundleID: identifier, programPath: path, targetExists: true,
+                                evidence: "Application inside a selected removal location.")
+        }
+        return (records, complete)
+    }
+
+    private struct ApplicationWalk {
+        var paths = Set<String>()
+        var complete = true
+        var entries = 0
+    }
+
+    private static func applicationPaths(in root: URL, maximum: Int, budget: ScanBudget) -> ApplicationWalk {
+        var result = ApplicationWalk()
+        guard let walk = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isSymbolicLinkKey],
+            errorHandler: { _, _ in result.complete = false; return true }
+        ) else {
+            result.complete = false
+            return result
+        }
+        while let child = walk.nextObject() as? URL {
+            guard result.entries < maximum, !budget.hasRunOut else {
+                result.complete = false
+                break
+            }
+            result.entries += 1
+            guard let values = try? child.resourceValues(forKeys: [.isSymbolicLinkKey]) else {
+                result.complete = false
+                walk.skipDescendants()
+                continue
+            }
+            if values.isSymbolicLink == true {
+                walk.skipDescendants()
+                continue
+            }
+            if child.pathExtension.lowercased() == "app" {
+                result.paths.insert(child.path)
+            }
+        }
+        return result
+    }
+
+    /// Only a bounded regular metadata file can name a reviewed application.
+    static func applicationIdentifier(at path: String) -> String? {
+        let bundle = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard bundle >= 0 else { return nil }
+        defer { close(bundle) }
+        let contents = openat(bundle, "Contents", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard contents >= 0 else { return nil }
+        defer { close(contents) }
+        let descriptor = openat(contents, "Info.plist", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        defer { close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_size > 0, info.st_size <= 4 * 1024 * 1024 else { return nil }
+        let size = Int(info.st_size)
+        var data = Data(count: size)
+        let count = data.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, size) }
+        guard count == size,
+              let metadata = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let identifier = metadata["CFBundleIdentifier"] as? String, !identifier.isEmpty else { return nil }
+        return identifier
     }
 }

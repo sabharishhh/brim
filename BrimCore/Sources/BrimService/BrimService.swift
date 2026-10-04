@@ -150,10 +150,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
-        let report = explicitTargets.isEmpty ? await CapabilitySearchScanner().scan(
-            identity: subject, in: root, completeness: completeness,
-            evidence: footprint.items.map(\.evidence)
-        ) : nil
         var payloads: [String: [String]] = [:]
         for item in evaluated.items where item.footprintItem.evidence.mechanism == "InstallerReceiptSource" {
             guard case .selected = item.selection else { continue }
@@ -163,9 +159,32 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 payloads[identifier] = paths
             }
         }
+        let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
+                                                    footprint: footprint, payloads: payloads)
         let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
                                       capabilityReport: report, receiptPayloads: payloads)
         return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
+    }
+
+    private func registrationSearchReport(
+        evaluated: EvaluatedFootprint, intent: PlanIntent, footprint: Footprint, payloads: [String: [String]]
+    ) async -> CapabilitySearchReport? {
+        let selected = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
+                                          receiptPayloads: payloads)
+        let removalLocations = selected.steps.filter {
+            [.trashPath, .trashPathPrivileged].contains($0.kind)
+        }.map(\.target)
+        if intent.explicitTargets.isEmpty {
+            return await CapabilitySearchScanner().scan(
+                identity: footprint.identity, in: root, completeness: footprint.completeness,
+                evidence: footprint.items.map(\.evidence), removalLocations: removalLocations
+            )
+        }
+        let check = CapabilitySearchScanner.launchServicesCheck(
+            identity: footprint.identity, in: root, removalLocations: removalLocations, discoverApplications: true
+        )
+        return check.registrations.isEmpty && (check.coverage.available || check.coverage.absence == .byDesign)
+            ? nil : CapabilitySearchReport(checks: [check], signatureCoverage: [])
     }
 
     private func enriched(_ identity: Identity) async -> (identity: Identity, completeness: ScanCompleteness) {
@@ -846,13 +865,30 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private func registrationPostChecks(plan: Plan, journal: JournalEntry?) async -> [RegistrationVerification] {
-        guard plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty else { return [] }
+        guard plan.intent.type == .uninstall else { return [] }
         let observedAt = Date()
         let recoveries = Array(journal?.stepTrashedURLs?.values ?? [Int: URL]().values)
+        var expected = plan.capabilityReport?.checks.flatMap(\.registrations) ?? []
+        expected += plan.steps.filter { $0.kind == .unregisterLaunchServices }.map { step in
+            Registration(kind: .launchServices, identifier: step.registrationBundleID ?? step.target,
+                         label: URL(fileURLWithPath: step.target).lastPathComponent,
+                         programPath: step.target, targetExists: true, evidence: step.evidence)
+        }
+        if !plan.intent.explicitTargets.isEmpty {
+            guard expected.contains(where: { $0.kind == .launchServices })
+                || plan.capabilityReport?.checks.contains(where: { $0.capability == .launchServices }) == true
+            else { return [] }
+            let check = CapabilitySearchScanner.launchServicesCheck(
+                identity: plan.intent.subjectIdentity, in: root, expectedRegistrations: expected,
+                recoveryLocations: recoveries,
+                reviewedCoverage: plan.capabilityReport?.checks.first { $0.capability == .launchServices }?.coverage
+            )
+            return [Self.registrationObservation(check, copies: [], recoveries: recoveries, observedAt: observedAt)]
+        }
         guard let fresh = await CapabilitySearchScanner().scan(
             identity: plan.intent.subjectIdentity, in: root,
             completeness: plan.scanCompleteness ?? .complete,
-            expectedRegistrations: plan.capabilityReport?.checks.flatMap(\.registrations) ?? [],
+            expectedRegistrations: expected,
             recoveryLocations: recoveries
         ) else { return [] }
         let copies = (plan.survivingCopies ?? []).filter { copy in
@@ -863,7 +899,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return identifier == copy.bundleID
         }
         var results = fresh.checks.filter { $0.capability != .applicationGroups }.map {
-            Self.registrationObservation($0, copies: copies, recoveries: recoveries, observedAt: observedAt)
+            Self.registrationObservation($0, copies: copies, recoveries: recoveries, observedAt: observedAt,
+                                         reviewedCoverage: plan.capabilityReport?.checks
+                                             .first { $0.capability == .launchServices }?.coverage)
         }
         if let index = results.firstIndex(where: { $0.capability == .launchdJob }) {
             let reviewed = plan.capabilityReport?.checks.first { $0.capability == .launchdJob }?.registrations ?? []
@@ -872,8 +910,17 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return results
     }
 
-    private static func registrationObservation(_ check: CapabilitySearchReport.Check, copies: [Identity],
-                                                recoveries: [URL], observedAt: Date) -> RegistrationVerification {
+    private static func registrationObservation(
+        _ check: CapabilitySearchReport.Check, copies: [Identity], recoveries: [URL], observedAt: Date,
+        reviewedCoverage: RegistrationCoverage? = nil
+    ) -> RegistrationVerification {
+        let coverage: RegistrationCoverage = if check.capability == .launchServices,
+                                                reviewedCoverage?.available == false,
+                                                reviewedCoverage?.absence != .byDesign {
+            .unavailable(.launchServices, "The reviewed application search was incomplete.")
+        } else {
+            check.coverage
+        }
         var remaining: [Registration] = []
         var preserved: [Registration] = []
         var recoveryCopies: [Registration] = []
@@ -897,7 +944,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
         return RegistrationVerification(capability: check.capability, observedAt: check.observedAt ?? observedAt,
-                                        readerVersion: check.readerVersion ?? 2, coverage: check.coverage,
+                                        readerVersion: check.readerVersion ?? 2, coverage: coverage,
                                         remaining: remaining, preserved: preserved,
                                         recoveryCopies: recoveryCopies)
     }
@@ -1126,7 +1173,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             guard root.rootURL.standardizedFileURL.path == "/" else { continue }
             guard journal.stepOutcomes[step.index] == "ok",
                   let bundleStep = plan.steps.first(where: {
-                      $0.target == step.target && $0.executionPhase == .appBundle
+                      ($0.target == step.target || step.target.hasPrefix($0.target + "/"))
+                          && [.trashPath, .removeLaunchdPlist].contains($0.kind)
                           && $0.effectiveDisposition == .trash && trashedURLs[$0.index] != nil
                   }), let fingerprint = bundleStep.targetFingerprint else { continue }
             if journal.restoreOutcomes?[step.index] == "ok" {
@@ -1134,8 +1182,19 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
             guard PathExistence.exists(atPath: step.target) else { continue }
             do {
-                try SafeOps.verifyTargetFingerprint(targetPath: step.target,
+                try SafeOps.verifyTargetFingerprint(targetPath: bundleStep.target,
                                                     expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
+                let restoredRoot = URL(fileURLWithPath: bundleStep.target).resolvingSymlinksInPath().path
+                let restoredApp = URL(fileURLWithPath: step.target).resolvingSymlinksInPath().path
+                guard restoredApp == restoredRoot || restoredApp.hasPrefix(restoredRoot + "/"),
+                      step.registrationBundleID.map({
+                          CapabilitySearchScanner.applicationIdentifier(at: step.target) == $0
+                      }) != false else {
+                    throw NSError(domain: "BrimRegistration", code: 409, userInfo: [
+                        NSLocalizedDescriptionKey: "The restored application's identity changed. "
+                            + "Its registration was kept."
+                    ])
+                }
                 try await LaunchServicesRegistration.registerBounded(bundlePath: step.target)
                 try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
             } catch {
@@ -1305,8 +1364,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// nothing better to say than the folder's permissions.
     static func recordedReason(_ outcome: String) -> String? {
         if outcome == "needs_helper_not_set_up" {
-            return "Brim's helper is not turned on, so nothing in a system folder could move. "
-                + "It can be turned on in Background."
+            return "Administrator cleanup was unavailable, so protected items could not be moved. "
+                + "Review the removal again in a signed copy of Brim."
         }
         if outcome.hasPrefix("helper_refused: ") {
             return "Brim's helper would not move this. "
