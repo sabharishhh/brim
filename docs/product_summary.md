@@ -72,3 +72,11 @@ The priority is accurate attribution, dependable supported actions and clear
 verification. Future selective adapters need proven ownership, authority and
 lifecycle behavior. Known bugs in supported routes still need fixing;
 deferral does not justify skipping discovery or hiding leftovers.
+
+## Loading and review performance, 4 October 2026
+
+Review planning uses ancestor lookups, ownership checks reuse one raw claim
+read per bundle, and overlapping Apps and Updates loads share one inventory.
+Independent footprint sizing has four workers; volumes appear before the
+leftovers estimate finishes. Discovery coverage and fresh removal checks remain.
+See [the measurements and limits](performance.md).

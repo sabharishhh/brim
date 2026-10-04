@@ -28,6 +28,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private let toolCleanupClient: ToolCleanup.Client
     private let launchdRuntime: LaunchdRuntimeClient
     private var leftoversTask: Task<[Leftover], Error>?
+    private var applicationInventoryTask: Task<[InstalledApplication], Never>?
+    private var pendingInterruptedUpdates: [String: String] = [:]
+    private var applicationInventoryReader: (@Sendable () async -> [InstalledApplication])?
+    private var updateRecoveryReader: (@Sendable () async -> [String: String])?
     private var activePlans = Set<UUID>()
 
     private func beginOperation(planId: UUID) throws {
@@ -98,14 +102,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func inspect(identity: Identity) async throws -> Footprint {
         let projector = FootprintProjector(engine: engine)
-        let resolved = await enriched(identity)
+        let resolved = try await enriched(identity)
         let footprint = try await projector.project(identity: resolved.identity, in: root)
         let accounting = await StorageAccountant().account(for: footprint.items)
+        try Task.checkCancellation()
         return accounting.applying(to: footprint, additionalCompleteness: resolved.completeness)
     }
 
     public func plan(intent: PlanIntent) async throws -> Plan {
         let plan = try await makePlan(intent: intent)
+        try Task.checkCancellation()
         try await planStore.save(plan: plan)
         return plan
     }
@@ -124,7 +130,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let recoveryCopies = try await reviewedRecoveryCopies(for: explicitTargets)
         let ordinaryTargets = explicitTargets.filter { RecoveryCopy.identifier(for: $0.path) == nil }
         let resolved = explicitTargets.isEmpty
-            ? await enriched(intent.subjectIdentity)
+            ? try await enriched(intent.subjectIdentity)
             : (identity: intent.subjectIdentity, completeness: ScanCompleteness.complete)
         let subject = resolved.identity
         if !explicitTargets.isEmpty {
@@ -150,6 +156,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
+        try Task.checkCancellation()
         var payloads: [String: [String]] = [:]
         for item in evaluated.items where item.footprintItem.evidence.mechanism == "InstallerReceiptSource" {
             guard case .selected = item.selection else { continue }
@@ -161,6 +168,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
         let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
                                                     footprint: footprint, payloads: payloads)
+        try Task.checkCancellation()
         let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
                                       capabilityReport: report, receiptPayloads: payloads)
         return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
@@ -187,18 +195,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             ? nil : CapabilitySearchReport(checks: [check], signatureCoverage: [])
     }
 
-    private func enriched(_ identity: Identity) async -> (identity: Identity, completeness: ScanCompleteness) {
+    private func enriched(_ identity: Identity) async throws -> (identity: Identity, completeness: ScanCompleteness) {
         let clean = identity.withoutDerivedSurfaces()
         let candidates = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
         let rootPath = root.rootURL.resolvingSymlinksInPath().standardizedFileURL.path
-        let scanRoot = root
         for candidate in candidates {
+            try Task.checkCancellation()
             let path = candidate.resolvingSymlinksInPath().standardizedFileURL.path
             guard rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/") else { continue }
             guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
-            let (surface, capabilities) = await Task.detached {
-                BundleSurfaceReader.read(at: candidate, in: scanRoot)
-            }.value
+            let (surface, capabilities) = try await Self.readBundleSurface(at: candidate, in: root)
             guard let first = surface.components.first else { continue }
             let matches = identity.bundleID == nil || first.bundleIdentifier == identity.bundleID
             guard matches else { continue }
@@ -206,6 +212,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
         let gaps = identity.bundlePath.map { ScanCompleteness(unreadable: [$0]) } ?? .complete
         return (clean, gaps)
+    }
+
+    @concurrent
+    private static func readBundleSurface(
+        at url: URL, in root: FileSystemRoot
+    ) async throws -> (IdentitySurface, CapabilitySurface) {
+        try Task.checkCancellation()
+        let result = BundleSurfaceReader.read(at: url, in: root)
+        try Task.checkCancellation()
+        return result
     }
 
     public func explain(planId: UUID) async throws -> String {
@@ -1440,7 +1456,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func installedApplications() async throws -> [InstalledApplication] {
-        let applications = await ApplicationInventory(root: root).installedApplications()
+        try Task.checkCancellation()
+        let applications = await applicationInventoryRead().value
+        try Task.checkCancellation()
 
         // Every enumeration is written down, so "what changed" is the
         // last two snapshots differenced and nothing has to watch for
@@ -1448,6 +1466,49 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // written must not stop the list being returned.
         await recordSnapshot(of: applications)
         return await withInstallDates(applications)
+    }
+
+    /// Apps and Updates can open together. Share their active read, then drop
+    /// it so a later check always describes the filesystem again. The service
+    /// owns the task; cancelling one waiter cannot stop the other one's read.
+    func applicationInventoryRead() -> Task<[InstalledApplication], Never> {
+        if let applicationInventoryTask {
+            return applicationInventoryTask
+        }
+        let task = Task {
+            // Recovery can put a staged application back. Finish it before
+            // either caller describes the installed bundles, and keep the
+            // interrupted results until Updates has had a chance to show them.
+            let interrupted: [String: String] = if let updateRecoveryReader {
+                await updateRecoveryReader()
+            } else if root.rootURL.standardizedFileURL.path == "/" {
+                UpdateInstaller.recoverInterrupted(
+                    in: Self.updatesDirectory.appendingPathComponent("Downloads")
+                )
+            } else {
+                [:]
+            }
+            pendingInterruptedUpdates.merge(interrupted) { _, newer in newer }
+            let applications: [InstalledApplication] = if let applicationInventoryReader {
+                await applicationInventoryReader()
+            } else {
+                await ApplicationInventory(root: root).installedApplications()
+            }
+            applicationInventoryTask = nil
+            return applications
+        }
+        applicationInventoryTask = task
+        return task
+    }
+
+    /// Injected reads keep concurrency tests away from the person's update
+    /// recovery directory and make overlapping enumerations reproducible.
+    func useApplicationInventory(
+        reader: @escaping @Sendable () async -> [InstalledApplication],
+        recovery: @escaping @Sendable () async -> [String: String]
+    ) {
+        applicationInventoryReader = reader
+        updateRecoveryReader = recovery
     }
 
     /// Each application's install date: the snapshot it first appeared
@@ -1522,11 +1583,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Reaches the network: Apple's catalogue, the feeds applications read
     /// themselves, and Homebrew's public catalogue at most once a day.
     public func checkForUpdates() async -> UpdateCheck {
-        // Whatever an earlier run left unfinished is settled first, so the
-        // list below describes the apps as they now are.
-        let interrupted = UpdateInstaller
-            .recoverInterrupted(in: Self.updatesDirectory.appendingPathComponent("Downloads"))
-        let applications = await ApplicationInventory(root: root).installedApplications()
+        let applications = await applicationInventoryRead().value
+        let interrupted = pendingInterruptedUpdates
+        pendingInterruptedUpdates = [:]
         var check = await UpdateFinder(catalogueDirectory: Self.updatesDirectory.appendingPathComponent("Catalogue"))
             .check(applications)
         check.recent = await recentUpdates(applications)
