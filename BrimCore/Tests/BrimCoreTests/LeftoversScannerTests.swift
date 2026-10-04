@@ -245,7 +245,10 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
             launchServicesLookup: { $0 == "com.example.alpha" ? [live] : [] }
         ).scanLeftovers()
         XCTAssertEqual(withLiveParent.count, 1)
-        XCTAssertEqual(withLiveParent.first?.potentialOwner?.name, "Other beta", "developer and product, not the product label alone")
+        XCTAssertEqual(
+            withLiveParent.first?.potentialOwner?.name, "Other beta",
+            "developer and product, not the product label alone"
+        )
     }
 
     func testMacOSRelocationFolderIsNotSoftwareResidue() async throws {

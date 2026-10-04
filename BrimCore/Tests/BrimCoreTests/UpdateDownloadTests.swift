@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Updates apps downloaded to install themselves, and which of them Brim
 /// may clear.
@@ -38,7 +38,10 @@ final class UpdateDownloadTests: XCTestCase {
 
     private func app(_ name: String, version: String) throws -> URL {
         let bundle = apps.appendingPathComponent("\(name).app")
-        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundle.appendingPathComponent("Contents"),
+            withIntermediateDirectories: true
+        )
         try (["CFBundleShortVersionString": version] as NSDictionary)
             .write(to: bundle.appendingPathComponent("Contents/Info.plist"))
         return bundle
@@ -71,10 +74,18 @@ final class UpdateDownloadTests: XCTestCase {
         let installed = try app("Code", version: "1.139.1")
         try put("Library/Caches/com.microsoft.VSCode.ShipIt/update.old/Code.app/Contents/MacOS/Code")
         try (["CFBundleShortVersionString": "1.139.0"] as NSDictionary).write(
-            to: home.appendingPathComponent("Library/Caches/com.microsoft.VSCode.ShipIt/update.old/Code.app/Contents/Info.plist"))
+            to: home
+                .appendingPathComponent(
+                    "Library/Caches/com.microsoft.VSCode.ShipIt/update.old/Code.app/Contents/Info.plist"
+                )
+        )
         try put("Library/Caches/com.microsoft.VSCode.ShipIt/update.new/Code.app/Contents/MacOS/Code")
         try (["CFBundleShortVersionString": "1.140.0"] as NSDictionary).write(
-            to: home.appendingPathComponent("Library/Caches/com.microsoft.VSCode.ShipIt/update.new/Code.app/Contents/Info.plist"))
+            to: home
+                .appendingPathComponent(
+                    "Library/Caches/com.microsoft.VSCode.ShipIt/update.new/Code.app/Contents/Info.plist"
+                )
+        )
         // The log and state beside them are ShipIt's own, not a download.
         try put("Library/Caches/com.microsoft.VSCode.ShipIt/ShipItState.plist")
 
@@ -91,7 +102,10 @@ final class UpdateDownloadTests: XCTestCase {
     func testADownloadThatNeverFinishedIsClearedAfterAWeek() throws {
         let notion = try app("Notion", version: "7.25.0")
         let past = Date(timeIntervalSinceNow: -30 * 24 * 60 * 60)
-        try put("Library/Application Support/Caches/notion-updater/pending/temp-Notion-arm64-7.26.0.zip", modified: past)
+        try put(
+            "Library/Application Support/Caches/notion-updater/pending/temp-Notion-arm64-7.26.0.zip",
+            modified: past
+        )
 
         let found = scanner(["notion": notion]).scan(home: home)
         XCTAssertEqual(found.map(\.cost), [.rebuilt])

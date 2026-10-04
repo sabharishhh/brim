@@ -102,10 +102,10 @@ struct AppInspector: View {
         } else {
             Button("Remove", action: remove)
                 .buttonStyle(.borderedProminent)
-            // Never disabled while the footprint loads: the review works out
-            // its own plan, and a disabled button drawn at full strength
-            // took a press and did nothing.
-            .buttonBorderShape(.capsule)
+                // Never disabled while the footprint loads: the review works out
+                // its own plan, and a disabled button drawn at full strength
+                // took a press and did nothing.
+                .buttonBorderShape(.capsule)
             // Said before the press: removing it removes the app it ships in.
             if let host = app.enclosingApp {
                 Label("Removed with \(host)", systemImage: "shippingbox")

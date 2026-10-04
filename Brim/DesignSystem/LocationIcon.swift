@@ -10,8 +10,7 @@ struct LocationIcon: View {
     var size: CGFloat = 22
 
     var body: some View {
-        if ["app", "appex", "prefpane", "plugin", "bundle"].contains(url.pathExtension.lowercased()),
-           FileManager.default.fileExists(atPath: url.path) {
+        if usesBundleIcon {
             BrimIcon(source: .finder(url), size: size)
         } else {
             Image(systemName: Self.symbol(for: url))
@@ -23,10 +22,29 @@ struct LocationIcon: View {
         }
     }
 
+    private var usesBundleIcon: Bool {
+        ["app", "appex", "prefpane", "plugin", "bundle"].contains(url.pathExtension.lowercased())
+            && FileManager.default.fileExists(atPath: url.path)
+    }
+
     static func symbol(for url: URL) -> String {
-        if url.path.contains("/LaunchAgents/") || url.path.contains("/LaunchDaemons/") { return "clock.arrow.circlepath" }
-        if url.path.contains("/var/db/receipts/") { return "shippingbox" }
-        if url.path.hasPrefix("/usr/local/bin") || url.path.contains("/.local/bin") { return "terminal" }
+        specialSymbol(for: url) ?? domainSymbol(for: url)
+    }
+
+    private static func specialSymbol(for url: URL) -> String? {
+        if url.path.contains("/LaunchAgents/") || url.path.contains("/LaunchDaemons/") {
+            return "clock.arrow.circlepath"
+        }
+        if url.path.contains("/var/db/receipts/") {
+            return "shippingbox"
+        }
+        if url.path.hasPrefix("/usr/local/bin") || url.path.contains("/.local/bin") {
+            return "terminal"
+        }
+        return nil
+    }
+
+    private static func domainSymbol(for url: URL) -> String {
         switch LeftoverDomain.of(url) {
         case .cache, .darwinPerUser: return "arrow.triangle.2.circlepath"
         case .applicationSupport: return "folder"

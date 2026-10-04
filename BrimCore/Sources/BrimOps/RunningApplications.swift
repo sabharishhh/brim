@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 
 /// Whether the thing being removed is running right now.
 ///
@@ -13,7 +13,6 @@ import AppKit
 /// So this is a refusal, not a warning to click past. The person quits the
 /// app and asks again, which takes five seconds and works.
 public enum RunningApplications {
-
     public struct Running: Equatable, Sendable {
         public let bundleIdentifier: String?
         public let name: String
@@ -68,12 +67,12 @@ public enum RunningApplications {
         }
         guard !parts.isEmpty else { return true }
         await MainActor.run { parts.forEach { $0.terminate() } }
-        for _ in 0..<15 where await stillUp(parts) {
+        for _ in 0 ..< 15 where await stillUp(parts) {
             try? await Task.sleep(for: .milliseconds(200))
         }
         if await stillUp(parts) {
             await MainActor.run { parts.forEach { $0.forceTerminate() } }
-            for _ in 0..<10 where await stillUp(parts) {
+            for _ in 0 ..< 10 where await stillUp(parts) {
                 try? await Task.sleep(for: .milliseconds(200))
             }
         }
@@ -87,9 +86,9 @@ public enum RunningApplications {
         bundleID: String?, bundlePath: String?, among running: [Running] = current(),
         selfBundleID: String? = Bundle.main.bundleIdentifier
     ) -> [Running]? {
-        let up = whatIsRunning(bundleID: bundleID, bundlePath: bundlePath, among: running)
+        let runningParts = whatIsRunning(bundleID: bundleID, bundlePath: bundlePath, among: running)
             .filter { $0.bundleIdentifier != selfBundleID }
-        return up.allSatisfy(\.isBackground) ? up : nil
+        return runningParts.allSatisfy(\.isBackground) ? runningParts : nil
     }
 
     private static func stillUp(_ parts: [NSRunningApplication]) async -> Bool {
@@ -143,13 +142,13 @@ public enum RunningApplications {
         let names = Array(Set(blocking.map(\.name))).sorted()
         if names.count == 1 {
             return "\(names[0]) is running. Quit it first: an application that is still open "
-                 + "writes its settings back out when it closes, so removing them now would "
-                 + "undo itself a few minutes from now."
+                + "writes its settings back out when it closes, so removing them now would "
+                + "undo itself a few minutes from now."
         }
         let list = names.count <= 3
             ? names.joined(separator: ", ")
             : "\(names.prefix(3).joined(separator: ", ")) and \(names.count - 3) more"
         return "These are running: \(list). Quit them first, or what they write out when "
-             + "they close will undo the removal."
+            + "they close will undo the removal."
     }
 }

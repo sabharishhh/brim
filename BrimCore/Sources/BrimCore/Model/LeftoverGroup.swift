@@ -144,10 +144,12 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         removedAt = removed
         let replacements = Set(items.map(\.replacedBy))
         replacedBy = replacements.count == 1 ? replacements.first ?? nil : nil
-        sharedObstacle = {
-            guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
-            return only
-        }()
+        sharedObstacle = Self.sharedObstacle(in: obstacles)
+    }
+
+    private static func sharedObstacle(in obstacles: Set<Capability>) -> Capability? {
+        guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
+        return only
     }
 
     /// What a screen reader should say for this entry.

@@ -1,12 +1,11 @@
-import XCTest
 import BrimCore
 import BrimOps
 import BrimPrivileged
 @testable import BrimService
+import XCTest
 
 /// Forgetting an installer receipt, and the things that are never forgotten.
 final class ReceiptRulesTests: XCTestCase {
-
     func testAppleReceiptsAreRefused() {
         // Forgetting a system receipt can leave a later macOS update unable
         // to reason about what is installed, and it cannot be rebuilt.
@@ -26,8 +25,9 @@ final class ReceiptRulesTests: XCTestCase {
         // It reaches pkgutil as an argument and never touches a shell, but
         // a separator or a leading dash would still let it mean something
         // else.
-        for bad in ["", "../../etc/passwd", "com.example/../../x", "-v", ".hidden",
-                    "com example", "com.example;rm", String(repeating: "a", count: 300)] {
+        let invalid = ["", "../../etc/passwd", "com.example/../../x", "-v", ".hidden",
+                       "com example", "com.example;rm", String(repeating: "a", count: 300)]
+        for bad in invalid {
             XCTAssertFalse(PrivilegedReceiptRemoval.isWellFormed(bad), "accepted \"\(bad)\"")
         }
         for good in ["com.example.app", "com.example.app-1", "com_example_2"] {
@@ -56,8 +56,8 @@ final class ReceiptRulesTests: XCTestCase {
     /// both copies exist. Two copies is how three team identifiers ended
     /// up in one codebase, so they are held together here.
     func testTheAppAndTheDaemonAgreeAboutWhatIsAllowed() {
-        for candidate in ["com.example.app", "com.apple.pkg.X", "../etc", "-v", "",
-                          "com_example_2", "a.b-c"] {
+        let candidates = ["com.example.app", "com.apple.pkg.X", "../etc", "-v", "", "com_example_2", "a.b-c"]
+        for candidate in candidates {
             XCTAssertEqual(
                 PackageReceipts.isWellFormed(candidate),
                 PrivilegedReceiptRemoval.isWellFormed(candidate),
@@ -74,7 +74,6 @@ final class ReceiptRulesTests: XCTestCase {
 
 /// Unlocking a file, and knowing which lock it is.
 final class ImmutableFlagAgreementTests: XCTestCase {
-
     private var directory: URL!
 
     override func setUpWithError() throws {
@@ -165,7 +164,6 @@ final class ImmutableFlagAgreementTests: XCTestCase {
 
 /// Refusing to act on something that is running.
 final class RunningApplicationTests: XCTestCase {
-
     private let running = [
         RunningApplications.Running(
             bundleIdentifier: "com.example.app", name: "Example",
@@ -178,7 +176,7 @@ final class RunningApplicationTests: XCTestCase {
         RunningApplications.Running(
             bundleIdentifier: "com.other.thing", name: "Other",
             bundlePath: "/Applications/Other.app"
-        ),
+        )
     ]
 
     func testTheApplicationItselfBlocks() {
@@ -267,16 +265,19 @@ final class RunningApplicationTests: XCTestCase {
         let bundle = "/Applications/WhatsApp.app"
         let extensionPart = RunningApplications.Running(
             bundleIdentifier: "net.whatsapp.WhatsApp.ServiceExtension", name: "ServiceExtension",
-            bundlePath: bundle + "/Contents/PlugIns/ServiceExtension.appex", isBackground: true)
+            bundlePath: bundle + "/Contents/PlugIns/ServiceExtension.appex", isBackground: true
+        )
         let app = RunningApplications.Running(bundleIdentifier: "net.whatsapp.WhatsApp", name: "WhatsApp",
                                               bundlePath: bundle, isBackground: false)
         let stranger = RunningApplications.Running(bundleIdentifier: "com.other", name: "Other",
                                                    bundlePath: "/Applications/Other.app", isBackground: true)
         let quit = RunningApplications.partsBrimMayQuit(
-            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, stranger], selfBundleID: nil)
+            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, stranger], selfBundleID: nil
+        )
         XCTAssertEqual(quit?.map(\.name), ["ServiceExtension"], "only the app's own, never another app's")
         XCTAssertNil(RunningApplications.partsBrimMayQuit(
-            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, app], selfBundleID: nil),
-            "an app with a window is the person's to quit")
+            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, app], selfBundleID: nil
+        ),
+        "an app with a window is the person's to quit")
     }
 }
