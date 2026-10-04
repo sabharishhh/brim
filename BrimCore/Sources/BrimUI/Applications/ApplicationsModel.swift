@@ -111,6 +111,22 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
+    /// Current inventory rows installed within five days, newest first.
+    /// Removing a row also removes it here; a reinstall receives its latest
+    /// installation date from the snapshot history.
+    public func recentlyInstalled(now: Date = Date()) -> [InstalledApplication] {
+        let cutoff = now.addingTimeInterval(-5 * 86400)
+        return applications.filter {
+            guard let installed = $0.installedAt else { return false }
+            return installed >= cutoff && installed <= now && !$0.isSystemProtected && $0.enclosingApp == nil
+        }.sorted {
+            if $0.installedAt != $1.installedAt {
+                return ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast)
+            }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
     /// Groups the selected app's footprint by what Brim can say about each
     /// item and how sure it is, strongest evidence first.
     @Published public private(set) var footprintGroups: [FootprintGroup] = []

@@ -1,8 +1,8 @@
-import XCTest
 import BrimCore
 import BrimProtocol
-import Combine
 @testable import BrimUI
+import Combine
+import XCTest
 
 private actor LeftoversStub: BrimServiceProtocol {
     let items: [Leftover]
@@ -12,22 +12,54 @@ private actor LeftoversStub: BrimServiceProtocol {
         self.items = items
         self.failure = failure
     }
+
     func leftovers() async throws -> [Leftover] {
         calls += 1
-        if let failure { throw failure }
+        if let failure {
+            throw failure
+        }
         return items
     }
 
-    func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
-    func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
-    func explain(planId: UUID) async throws -> String { throw Nope.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Nope.no }
-    func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
-    func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Nope.no }
-    func installedApplications() async throws -> [InstalledApplication] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
+    func inspect(identity _: Identity) async throws -> Footprint {
+        throw Nope.no
+    }
+
+    func plan(intent _: PlanIntent) async throws -> Plan {
+        throw Nope.no
+    }
+
+    func explain(planId _: UUID) async throws -> String {
+        throw Nope.no
+    }
+
+    func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
+        throw Nope.no
+    }
+
+    func apply(planId _: UUID, token _: ApprovalToken) async throws {
+        throw Nope.no
+    }
+
+    func verify(planId _: UUID) async throws -> VerificationResult {
+        throw Nope.no
+    }
+
+    func history() async throws -> [Plan] {
+        []
+    }
+
+    func undo(planId _: UUID) async throws {
+        throw Nope.no
+    }
+
+    func installedApplications() async throws -> [InstalledApplication] {
+        []
+    }
+
+    func recoverableItems() async throws -> [RecoverableItem] {
+        []
+    }
 }
 
 private enum Nope: Error { case no }
@@ -49,6 +81,16 @@ private func leftover(
 
 @MainActor
 final class LeftoversModelTests: XCTestCase {
+    func testUnknownReviewCountMatchesTheDetailedList() async {
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([
+            leftover("small", .unclaimed, size: 100),
+            leftover("large", .unclaimed, size: 1_000_000),
+            leftover("protected", .unclaimed, size: 0, capability: .needsFullDiskAccess)
+        ]))
+        XCTAssertEqual(Set(model.unclaimedGroupsForReview.map(\.displayName)), ["large", "protected"])
+    }
+
     func testRepeatedSearchBindingDoesNotRepublishDerivedRows() {
         let model = LeftoversModel()
         var publications = 0
@@ -123,6 +165,7 @@ final class LeftoversModelTests: XCTestCase {
         await model.load(service: LeftoversStub([], failure: Nope.no))
 
         XCTAssertNotNil(model.errorMessage)
+        XCTAssertNil(model.checkedAt, "A failed check is not an empty successful scan")
         XCTAssertTrue(model.orphanedGroups.isEmpty, "A failed sweep shows no rows, not old rows")
         XCTAssertTrue(model.all.isEmpty)
         XCTAssertTrue(model.selection.isEmpty, "Nothing stays ticked from a run that did not happen")
