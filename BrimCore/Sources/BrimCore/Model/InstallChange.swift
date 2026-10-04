@@ -1,5 +1,24 @@
 import Foundation
 
+/// One installation of an application, as Brim's snapshots record it.
+///
+/// The Journal used to take its installs from the apps on the disk now, so
+/// an app's installs vanished when it was removed: Figma read removed,
+/// removed, with the install between them gone, and so did eqMac.
+public struct InstallRecord: Equatable, Sendable, Codable {
+    public let bundleID: String
+    public let name: String
+    public let bundlePath: String?
+    public let installedAt: Date
+
+    public init(bundleID: String, name: String, bundlePath: String?, installedAt: Date) {
+        self.bundleID = bundleID
+        self.name = name
+        self.bundlePath = bundlePath
+        self.installedAt = installedAt
+    }
+}
+
 /// One application as it stood at one moment.
 ///
 /// The unit of the append-only history. Nothing is updated in place and

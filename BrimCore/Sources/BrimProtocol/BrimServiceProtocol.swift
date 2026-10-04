@@ -74,6 +74,8 @@ public protocol BrimServiceProtocol: Sendable {
     /// looked, worked out by subtracting one snapshot from the one
     /// before it. Nothing watches, and nothing runs at login.
     func whatChanged() async -> InstallHistory
+    /// Every installation Brim's snapshots record, removed apps included.
+    func installRecords() async -> [InstallRecord]
     /// Checks every application for a newer version. Reaches the network.
     func checkForUpdates() async -> UpdateCheck
     /// Puts one update in place, reporting download progress from 0 to 1.
@@ -161,5 +163,9 @@ public extension BrimServiceProtocol {
     }
     func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
         .failed("Not supported here.")
+    }
+
+    func installRecords() async -> [InstallRecord] {
+        []
     }
 }
