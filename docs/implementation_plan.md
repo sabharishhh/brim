@@ -19,7 +19,9 @@ reads and overlapping application enumeration. Footprint sizing is bounded to fo
 workers and volume results publish before leftovers estimates. The existing
 registration preparation and aggregate accounting passes remain separate.
 [Measurements and validation](performance.md) distinguish component timings from
-real-app observations and list deferred work.
+real-app observations and list deferred work. The combined audit corrected
+registration maintenance protocol dispatch, bound launch-job restoration to the
+recorded declaration and preserved incomplete measurement status in Space.
 
 ## 1. Invariants
 

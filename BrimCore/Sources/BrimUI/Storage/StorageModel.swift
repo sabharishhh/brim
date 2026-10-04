@@ -30,6 +30,15 @@ public final class StorageModel: ObservableObject {
         volumes.first { $0.url.path == "/" } ?? volumes.first
     }
 
+    /// Failed and incomplete measurements have no exact size to display.
+    public var brimCanClearFigure: String {
+        guard hasEstimate else { return "…" }
+        if estimateUnavailable {
+            return brimCanClear > 0 ? "At least " + ByteText.short(brimCanClear) : "Size unavailable"
+        }
+        return ByteText.short(brimCanClear)
+    }
+
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         guard volumes.isEmpty, !isLoading else { return }
         await load(service: service)
@@ -61,11 +70,11 @@ public final class StorageModel: ObservableObject {
         volumes = newVolumes
         let leftovers = await found
         guard !Task.isCancelled else { return }
-        estimateUnavailable = leftovers == nil
         // Only what a record ties to a removed app counts, in apps, the
         // same way Home and Leftovers count. Something nobody can be
         // named for is shown in the list and never added to a figure.
         let orphaned = (leftovers ?? []).filter { $0.category == .orphaned }
+        estimateUnavailable = leftovers == nil || orphaned.contains { $0.sizeIsKnown == false }
         brimCanClear = orphaned.reduce(0) { $0 + $1.size }
         brimCanClearCount = orphaned.groupedByOwner().count
         hasEstimate = true
