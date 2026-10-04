@@ -75,7 +75,7 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
     private func header(_ section: ItemGroup<Item>) -> some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation(reduceMotion ? nil : Motion.standard) {
+                withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                     flipped.formSymmetricDifference([section.id])
                 }
             } label: {
@@ -108,7 +108,7 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
 
     private func showAll(_ section: ItemGroup<Item>) -> some View {
         Button {
-            withAnimation(reduceMotion ? nil : Motion.standard) {
+            withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                 expanded.formSymmetricDifference([section.id])
             }
         } label: {
@@ -135,7 +135,10 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         guard !order.isEmpty else { return .ignored }
         let current = order.firstIndex { $0.id == inspected }
         let next = current.map { min(max($0 + step, 0), order.count - 1) } ?? 0
-        inspect(order[next])
+        // Immediate from the keyboard; only a pointer selection crossfades.
+        var immediate = Transaction()
+        immediate.disablesAnimations = true
+        withTransaction(immediate) { inspect(order[next]) }
         return .handled
     }
 }

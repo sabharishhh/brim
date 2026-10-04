@@ -24,18 +24,13 @@ enum Destination: String, Hashable, CaseIterable {
     ///
     /// The sidebar once listed these in one order and the menu numbered
     /// them from `allCases`, which was a different one, so the shortcuts
-    /// opened the wrong rows. Both read from this. It is also the vertical
-    /// space page changes move through (`AnyTransition.brimPage`).
+    /// opened the wrong rows. Both read from this.
     static let displayOrder: [Destination] = brim + yourMac + [.journal]
 
     /// The number a person types with Command to get here.
     var keyboardDigit: Character? {
         guard let index = Self.displayOrder.firstIndex(of: self), index < 9 else { return nil }
         return Character("\(index + 1)")
-    }
-
-    var position: Int {
-        Self.displayOrder.firstIndex(of: self) ?? 0
     }
 
     var icon: String {
