@@ -2,6 +2,55 @@
 
 This implementation separates bundle declarations, current registration observations and successful commands. Only a fresh, complete read can establish absence. A missing path is not proof that a registration has disappeared or that a running service stopped.
 
+## Release scope, 4 October 2026
+
+The release goal is reliable supported deep uninstall. Automatic removal of
+every file, helper, permission and registration for every app is not achieved
+and is not a release completion requirement.
+
+| Area | Achieved | Limit |
+| --- | --- | --- |
+| Ownership | Traces associated files/components and protects surviving installations and shared claims | An incomplete search stays incomplete; resemblance alone does not authorize removal. |
+| Files and helpers | Removes approved items through qualified user/admin routes; discovers helper apps in selected support/cache folders | OS-protected, shared and unsupported locations can remain. No installation type has a universal all-traces guarantee. |
+| Registrations | Exact Launch Services cleanup/readback, supported launch-job stop/readback and qualified receipt cleanup | Many login/background, plug-in, firewall, extension, VPN, profile and provider records remain observational or manual. |
+| Privacy | Scoped reset commands for eligible identifiers before code moves | Command success is not an independent read of every private permission record. |
+| Remnants and recovery | Grouped selection/removal, Trash and eligible Undo, explicit protected-copy deletion | Permanent actions and protected recovery copies have no restore action in Brim. |
+| Administrator access | Shared authentication through execution/verification of a selected batch; temporary process exits afterward or when Brim closes | Protected work still needs authentication. Reading protected copies is a separate explicit action. |
+| Verification | Distinguishes absent files, remaining records, unreadable paths, surviving copies and action receipts; Journal rechecks unfinished removals | A stopped job or deleted file does not prove its registration disappeared. |
+
+### What has not been verified universally
+
+There is no complete lifecycle qualification across every app package,
+installation method and macOS version. Actual machine checks and fixture
+coverage are recorded separately below. The latest folder-registration and
+shutdown fixes have fixture coverage; no additional destructive live batch
+was run. Emptying Trash, opening Settings, logging in again or restarting is
+not a universal cleanup guarantee. Restart guidance must name a supported
+pending state, not promise that every remaining record will vanish.
+
+### Why further universal removal is deferred
+
+A selective removal route can be valuable when a remaining item still starts
+software or controls an active permission. A stale display entry alone does
+not establish a running helper. Forcing that entry out of a shared database
+can change unrelated apps' state. Owner-scoped APIs, protected data and
+version-specific formats make universal erasure a much larger compatibility
+and recovery commitment than its immediate benefit warrants for this release.
+
+Further universal erasure is therefore deferred, not another completion
+blocker. Brim retains and explains unsupported records. Broad resets,
+private database surgery, arbitrary vendor scripts and blanket restart advice
+remain outside the scope.
+
+Future contributors should first fix reproducible defects in attribution,
+supported execution, verification and recovery. Consider a new selective
+adapter when it offers concrete user benefit, legitimate authority, exact
+ownership, repeatable independent readback and known failure/recovery behavior.
+Qualify it in an isolated account or VM while preserving unrelated sentinel
+apps. This keeps the foundation extensible without an unlimited removal loop.
+Deferral does not justify skipping associated-file discovery, weakening
+classification or hiding failed supported actions.
+
 ## Supported removal and recovery
 
 - Privacy resets run before code is moved, under the current user. The host and eligible embedded application, extension and XPC identifiers are reviewed separately. Positive surviving claims and bundled library identifiers are excluded. A successful reset is an action receipt, never a claim that Brim read the private permissions database.
@@ -49,7 +98,7 @@ Journal offers Check removal as a read-only action. Each recheck appends an obse
 
 ## Validation
 
-Validation was performed on macOS 27.0.1 with Xcode 27. The full package suite and signed app build pass strict concurrency and warnings-as-errors. The lint comparison adds no violations. Regression coverage includes ambiguous parent records, invalid successful listings, disconnected targets, persisted-data migration, shared claims, failed job stops, full receipt payload checks and protected provider data.
+Validation was performed on macOS 27.0.1 with Xcode 27. The full package suite and signed app build pass strict concurrency. The final build reported no compiler warnings and the lint comparison adds no violations. Regression coverage includes ambiguous parent records, invalid successful listings, disconnected targets, persisted-data migration, shared claims, failed job stops, full receipt payload checks and protected provider data.
 
 The owned current-user launchd fixture passed real bootstrap, approved removal, exact-domain readback and undo. Its declaration, runtime job, temporary recovery file and journal were cleaned up, and no fixture jobs or sleep processes remained. The test also triggered macOS background activity notifications. Removing a job does not guarantee collection of its BTM record. This fixture was therefore moved out of the regular test targets into an [isolated-account recipe](fixtures/ScopedRegistrationLifecycleTests.swift.example); do not rerun it in a personal account. Synthetic filesystem tests inject a separate runtime client and never bootstrap their fake declarations.
 
@@ -78,15 +127,18 @@ Apple's `loginItem(identifier:)` discussion ties its lookup to the calling app's
 - Added bounded reading of embedded LaunchAgents and LaunchDaemons before the host moves. Exact Label, namespace, declaration path and resolved BundleProgram are retained for post-removal runtime checks. A replaced label, unreadable declaration or escaping symlink produces a gap, not a guessed job. Declaration presence is not described as a loaded service. Embedded automatic stopping remains withheld until it has controlled lifecycle evidence.
 - Regression tests verify that a loaded job remains in the result after its embedded declaration disappears, and that conditional login instructions are offered only for remaining records. Preserved installations, recovery copies and unavailable empty reads do not produce that instruction.
 
-### Remaining qualification work
+### Deferred qualification research
+
+This is an optional research path if a selective route is revisited, not
+unfinished implementation required for this release.
 
 Use the isolated-account fixture recipe with two unrelated sentinel apps and a target containing both an embedded agent and daemon. Record BTM identity, namespace, registration type, actual target, runtime and Settings visibility before and after: owner unregister; exact service bootout; moving the host to Trash; removing its recovery copy; reopening Settings; logout/login; restart; reinstall. Test disabled and missing-target records separately. Never infer record erasure from a stopped process or a vanished Settings row.
 
-Then test the legacy exact-path removal adapter and the foreign login-item attempt independently. Preserve sentinel registrations and their enabled state after every step. A mutation can ship only after repeatable readback, denial behavior, ownership checks and recovery semantics are established. Private BTM archive surgery, global reset and launching arbitrary vendor code remain excluded. No selective BTM erasure has yet met that gate.
+Evaluate legacy exact-path removal only if there is a legitimate selective route. An owner-scoped API does not qualify merely because it accepts another app's identifier. Preserve sentinel registrations and their enabled state after every step. A mutation can ship only after repeatable readback, denial behavior, ownership checks and recovery semantics are established. Private BTM archive surgery, global reset and launching arbitrary vendor code remain excluded. No selective automatic BTM erasure has yet met that gate.
 
 Trash remains the default for files. Registration changes such as privacy reset and receipt forgetting cannot be restored by moving a file back and are reviewed as such before approval. A recovery copy is intentionally retained, not a missing-target leftover. Emptying Trash permanently removes its files, but cannot be presented as a guarantee that every macOS database entry vanished.
 
-Earlier built-app inspection confirmed the result sheet's leading alignment, capability icons, scrolling Details and reachable Done button. A historical removal check reported files absent, a background-job read gap and the saved privacy-reset receipt. The application-only scan subsequently excluded protected OS job folders, while malformed or unreadable application declarations still report a gap. These reads are distinct snapshots; neither predicts when macOS collects another record. The default suite and app build passed strict concurrency and warnings-as-errors at that checkpoint, and the lint comparison added zero violations. Both app signature verification and the pinned helper requirement passed.
+Earlier built-app inspection confirmed the result sheet's leading alignment, capability icons, scrolling Details and reachable Done button. A historical removal check reported files absent, a background-job read gap and the saved privacy-reset receipt. The application-only scan subsequently excluded protected OS job folders, while malformed or unreadable application declarations still report a gap. These reads are distinct snapshots; neither predicts when macOS collects another record. The default suite and app build passed strict concurrency at that checkpoint, and the lint comparison added zero violations. Both app signature verification and the pinned helper requirement passed.
 
 Following the user's final visual review, Details icons are vertically centered against each complete text block rather than aligned to the title's top edge.
 
