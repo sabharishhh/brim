@@ -258,4 +258,25 @@ final class RunningApplicationTests: XCTestCase {
             among: sibling, selfBundleID: "com.sabharishhh.brim"
         ))
     }
+
+    /// WhatsApp's notification extension ran with the app quit, and the
+    /// removal told the person to quit something with no window. Brim quits
+    /// the app's own background parts itself, but never while any part of
+    /// the app has a window, which may hold unsaved work.
+    func testBrimQuitsOnlyWindowlessPartsOfTheAppBeingRemoved() {
+        let bundle = "/Applications/WhatsApp.app"
+        let extensionPart = RunningApplications.Running(
+            bundleIdentifier: "net.whatsapp.WhatsApp.ServiceExtension", name: "ServiceExtension",
+            bundlePath: bundle + "/Contents/PlugIns/ServiceExtension.appex", isBackground: true)
+        let app = RunningApplications.Running(bundleIdentifier: "net.whatsapp.WhatsApp", name: "WhatsApp",
+                                              bundlePath: bundle, isBackground: false)
+        let stranger = RunningApplications.Running(bundleIdentifier: "com.other", name: "Other",
+                                                   bundlePath: "/Applications/Other.app", isBackground: true)
+        let quit = RunningApplications.partsBrimMayQuit(
+            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, stranger], selfBundleID: nil)
+        XCTAssertEqual(quit?.map(\.name), ["ServiceExtension"], "only the app's own, never another app's")
+        XCTAssertNil(RunningApplications.partsBrimMayQuit(
+            bundleID: "net.whatsapp.WhatsApp", bundlePath: bundle, among: [extensionPart, app], selfBundleID: nil),
+            "an app with a window is the person's to quit")
+    }
 }

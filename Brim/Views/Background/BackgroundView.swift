@@ -1,8 +1,8 @@
-import SwiftUI
 import BrimCore
+import BrimPrivileged
 import BrimProtocol
 import BrimUI
-import BrimPrivileged
+import SwiftUI
 
 /// What your software runs in the background, and what macOS is still being
 /// told to run for software that is no longer here.
@@ -12,399 +12,365 @@ import BrimPrivileged
 /// often as a bare identifier with no name, and no amount of deleting files
 /// clears it.
 ///
-/// Two lists, because they call for different things. A job pointing at a
-/// program that has gone is a loose end. A job pointing at something real is
-/// simply what your Mac is doing, and is here so you can see it.
-///
-/// Apple's own registrations are not in either list and there is no longer a
-/// switch to add them. They were 1,398 rows of the 1,421 on this Mac, every
-/// launchd job among them Apple's, and nothing in that list could be removed
-/// or was worth reading. `BackgroundModel` holds the measurement.
+/// Apple's own registrations are not here and there is no switch to add
+/// them. They were 1,398 rows of the 1,421 on this Mac, and nothing among
+/// them could be removed or was worth reading. `BackgroundModel` holds the
+/// measurement.
 struct BackgroundView: View {
     @ObservedObject var model: BackgroundModel
-    @SwiftUI.Environment(\.brimService) private var service
-
-    @State private var removalRequest: PlanIntent?
     @ObservedObject private var helper: PrivilegedHelperClient
+    @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(ShellState.self) private var shell
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var inspectedID: String?
+    @State private var reviewRequest: PlanIntent?
+    @State private var removedInReview = 0
+    /// Worked out once per scan: resolving an icon reads the disk.
+    @State private var icons: [String: IconSource] = [:]
+    /// Each record's file for Finder, by registration id, for the same reason.
+    @State private var reveals: [String: URL] = [:]
 
     init(model: BackgroundModel) {
         self.model = model
-        self.helper = model.helper
+        helper = model.helper
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            content
-            if model.canRemoveSelection {
-                Divider()
-                footer
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                header
+                notices
+                content
             }
+            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
+            .opacity(reviewRequest == nil ? 1 : 0.55)
+            .allowsHitTesting(reviewRequest == nil)
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
+            inspector
+                .frame(width: reviewRequest == nil ? 340 : 440)
         }
         .task { await model.loadIfNeeded(service: service) }
-        .sheet(item: $removalRequest) { intent in
-            RemovalSheet(
-                intent: intent,
-                service: service,
-                title: "Remove background jobs",
-                subtitle: intent.explicitTargets.count == 1
-                    ? "One job file, unloaded and then moved to the Trash"
-                    : "\(intent.explicitTargets.count) job files, unloaded and then moved to the Trash",
-                onRemoved: { paths in model.forget(paths: paths) },
-                onFinished: {
-                    Task { await model.load(service: service) }
-                }
-            )
+        .task(id: model.revision) {
+            icons = Self.icons(for: sections)
+            reveals = Self.reveals(for: sections)
         }
+        .environment(\.backgroundReveals, reveals)
+        .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
+        .focusedSceneValue(\.selectedItems, SelectedItems(urls: inspectedURLs))
     }
 
-    /// Only appears once something is picked. A permanently visible bar
-    /// with a disabled button is an invitation to a screen where most of
-    /// the rows are not removable at all.
-    private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(model.selectedItems.count) job \(model.selectedItems.count == 1 ? "file" : "files") picked")
-                    .foregroundColor(.secondary)
-                // Said once, here, rather than as a warning on each row.
-                // Whether a folder belongs to you or to the system is
-                // Brim's problem to solve, not something to make anyone
-                // sort their selection by.
-                if model.selectionUsesHelper {
-                    Text("Some need an administrator. The helper sets those aside so they "
-                         + "can be restored.")
-                        .font(.caption).foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            Button("Remove…") {
-                removalRequest = model.removalIntent(requesterIdentity: NSUserName())
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
+    private var sections: [ItemGroup<BackgroundEntry>] {
+        BackgroundGrouper.groups(stale: model.stale, clearing: model.clearingItself, live: model.live)
     }
+
+    private var inspectedURLs: [URL] {
+        inspected?.group.items.compactMap { reveals[$0.id] } ?? []
+    }
+
+    private var inspected: BackgroundEntry? {
+        guard let inspectedID else { return nil }
+        return sections.lazy.flatMap(\.items).first { $0.id == inspectedID }
+    }
+
+    // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Background").font(.title2).fontWeight(.bold)
-                    Text(summary).font(.caption).foregroundColor(.secondary)
+                Text("Background")
+                    .font(.brimPageTitle)
+                    .foregroundStyle(Palette.ink)
+                if hasData {
+                    Text(summary)
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+                if model.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Checking")
                 }
                 Spacer()
-                Button("Rescan") { Task { await model.load(service: service) } }
-                    .disabled(model.isLoading)
             }
             TextField("Search", text: $model.searchText)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Search background items")
         }
-        .padding()
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private var hasData: Bool {
+        !model.report.registrations.isEmpty
     }
 
     private var summary: String {
-        if model.isLoading { return "Reading what macOS has been told to run…" }
-        let stale = model.stale.count
-        let live = model.live.count
-        let apps = live == 1 ? "1 application" : "\(live) applications"
-        if stale == 0 { return "\(apps) running something in the background. Nothing left over." }
-        let left = stale == 1 ? "1 loose end" : "\(stale) loose ends"
-        return "\(left) from software that has gone, and \(apps) you still have"
+        let running = "\(model.live.count) listed"
+        let gone = model.stale.count
+        return gone == 0 ? running : "\(running) · \(gone) left over"
     }
+
+    // MARK: - List
 
     @ViewBuilder
     private var content: some View {
-        if model.isLoading && model.report.registrations.isEmpty {
-            ProgressView("Reading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        if model.isLoading, !hasData {
+            SkeletonRows()
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .frame(maxHeight: .infinity, alignment: .top)
+        } else if sections.isEmpty {
+            if model.searchText.isEmpty {
+                EmptyState(symbol: "checkmark.seal", title: "Nothing listed",
+                           message: "No application background items.")
+            } else {
+                EmptyState(symbol: "magnifyingglass", title: "No matches", message: "Nothing matches your search.")
+            }
         } else {
-            List {
-                if !model.gaps.isEmpty { coverageNote }
-                if !model.waitingOnHelper.isEmpty, !helper.state.canRemove { helperSetUpNote }
-                section(
-                    "Left behind",
-                    "The program these launch is no longer installed.",
-                    model.stale,
-                    ""
-                )
-                if !model.clearingItself.isEmpty {
-                    section(
-                        "macOS is catching up",
-                        "Removed software macOS has not dropped from its list yet. "
-                        + "Nothing to do.",
-                        model.clearingItself,
-                        ""
+            GroupedStacks(
+                sections: sections,
+                summary: { "\($0.items.count)" },
+                revision: model.revision,
+                inspected: inspectedID,
+                inspect: { inspectedID = $0.id },
+                row: row,
+                accessory: selectAll
+            )
+            .refreshing(model.isLoading)
+        }
+    }
+
+    private func row(_ entry: BackgroundEntry) -> some View {
+        BackgroundRow(
+            entry: entry,
+            icon: icons[entry.id] ?? .symbol(.backgroundItem),
+            canPick: model.canSelect(entry.group),
+            isPicked: model.isSelected(entry.group),
+            needsHelper: entry.state == .gone && !model.canSelect(entry.group)
+                && entry.group.stale.contains(where: BackgroundModel.needsTheHelper),
+            isInspected: inspectedID == entry.id,
+            pick: { model.toggle(entry.group) },
+            inspect: { inspectedID = entry.id }
+        )
+        .contextMenu {
+            let urls = entry.group.items.compactMap { reveals[$0.id] }
+            if !urls.isEmpty {
+                ItemMenuItems(urls: urls)
+            }
+            if entry.state == .gone {
+                Divider()
+                Button(model.isSelected(entry.group) ? "Remove from Tray" : "Add to Tray") { model.toggle(entry.group) }
+                    .disabled(!model.canSelect(entry.group))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func selectAll(_ section: ItemGroup<BackgroundEntry>) -> some View {
+        let pickable = section.items.filter { $0.state == .gone && model.canSelect($0.group) }
+        if !pickable.isEmpty {
+            let allPicked = pickable.allSatisfy { model.isSelected($0.group) }
+            Button(allPicked ? "Deselect All" : "Select All") {
+                for entry in pickable where model.isSelected(entry.group) == allPicked {
+                    model.toggle(entry.group)
+                }
+            }
+        }
+    }
+
+    // MARK: - Inspector
+
+    @ViewBuilder
+    private var inspector: some View {
+        if let intent = reviewRequest {
+            RemovalPanel(
+                intent: intent, service: service,
+                onRemoved: { paths in
+                    removedInReview += paths.count
+                    model.forget(paths: paths)
+                },
+                onClose: { proven in
+                    reviewRequest = nil
+                    if let proven {
+                        offerPutBack(proven.planId)
+                    }
+                },
+                onUnverified: { Task { await model.load(service: service) } }
+            )
+            .id(intent.id)
+            .transition(.opacity)
+        } else if let entry = inspected {
+            BackgroundInspector(
+                entry: entry,
+                icon: icons[entry.id] ?? .symbol(.backgroundItem),
+                canPick: model.canSelect(entry.group),
+                isPicked: model.isSelected(entry.group),
+                helperIsReady: helper.state.canRemove,
+                pick: { model.toggle(entry.group) }
+            )
+            .refreshing(model.isLoading)
+            .id(entry.id)
+            .transition(.opacity)
+            .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: entry.id)
+        } else {
+            PanePlaceholder(symbol: "gearshape.2", title: "Select an item")
+        }
+    }
+
+    private static func reveals(for sections: [ItemGroup<BackgroundEntry>]) -> [String: URL] {
+        var reveals: [String: URL] = [:]
+        for item in sections.flatMap(\.items).flatMap(\.group.items) {
+            reveals[item.id] = item.revealableURL
+        }
+        return reveals
+    }
+
+    private static func icons(for sections: [ItemGroup<BackgroundEntry>]) -> [String: IconSource] {
+        var icons: [String: IconSource] = [:]
+        for entry in sections.flatMap(\.items) {
+            icons[entry.id] = entry.icon
+        }
+        return icons
+    }
+}
+
+extension BackgroundView {
+    // MARK: - Notices
+
+    /// What could not be read, and what needs the helper. Only genuine
+    /// gaps: a surface left alone on purpose is not a fault and gets nothing.
+    @ViewBuilder
+    private var notices: some View {
+        let faults = model.faults
+        let waiting = !model.waitingOnHelper.isEmpty && !helper.state.canRemove
+        if !faults.isEmpty || waiting || helper.retirementProblem != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(faults, id: \.kind) { gap in
+                    Notice(
+                        symbol: "eye.slash", title: "\(gap.kind.displayName)s not read",
+                        detail: gap.limitation,
+                        actionTitle: gap.isFixableByTheUser ? "Open Settings" : nil,
+                        action: FullDiskAccess.openSettings
                     )
                 }
-                section(
-                    "Still in use",
-                    "Installed software running in the background.",
-                    model.live,
-                    model.searchText.isEmpty ? "" : "Nothing matches."
-                )
+                if let problem = helper.retirementProblem {
+                    Notice(symbol: "exclamationmark.triangle", title: "Earlier background registration remains",
+                           detail: problem)
+                }
+                if waiting {
+                    helperNotice
+                }
             }
-            .listStyle(.inset)
-            .animation(.easeOut(duration: 0.22), value: model.revision)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 6)
         }
     }
 
-    /// Offered only when there is something it would actually do. A
-    /// standing invitation to install a root daemon, on a Mac with
-    /// nothing for it to remove, is not a thing to put in front of
-    /// anybody.
-    private var helperSetUpNote: some View {
-        Section {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "key.horizontal").foregroundColor(.accentColor)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(model.waitingOnHelper.count) of these need an administrator")
-                        .fontWeight(.medium)
-                    Text("They are in a system folder. A helper can remove them. It touches "
-                         + "only job files in the two system launchd folders, skips Apple's "
-                         + "and any job still in use, and sets aside what it removes rather "
-                         + "than deleting it.")
-                        .font(.callout).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if case .waitingForApproval = helper.state {
-                        Text("Now allow it in System Settings, under Login Items, and it is done.")
-                            .font(.callout).foregroundColor(.orange)
-                    }
-                    if case .unavailable(let why) = helper.state {
-                        Text(why).font(.callout).foregroundColor(.red)
-                    }
-                    if case .stale(let installed) = helper.state {
-                        // Registered, but the root process answering is
-                        // the one an older Brim installed, and its rules
-                        // about what is safe to remove are that version's
-                        // rules. Brim will not use it.
-                        Text("The installed helper is an older version (\(installed)). It has been "
-                             + "replaced and will start next time. Nothing is removed until then.")
-                            .font(.callout).foregroundColor(.orange)
-                    }
-                }
-                Spacer()
-                if case .waitingForApproval = helper.state {
-                    Button("Open Settings") { helper.openSettings() }
-                } else {
-                    Button("Set up") { helper.install() }
-                }
-            }
-            .padding(10)
-            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    private var helperNotice: some View {
+        let count = model.waitingOnHelper.count
+        let title = count == 1 ? "1 protected item cannot be removed" : "\(count) protected items cannot be removed"
+        let detail: String = if case let .unavailable(reason) = helper.state {
+            reason
+        } else {
+            "Administrator cleanup is unavailable."
+        }
+        return Notice(symbol: "key.horizontal", title: title, detail: detail)
             .onAppear { helper.refresh() }
+    }
+
+    // MARK: - Tray
+
+    private var trayContents: TrayContents? {
+        let count = model.selectedItems.count
+        guard count > 0, reviewRequest == nil else { return nil }
+        return TrayContents(
+            count: count, bytes: nil,
+            canReview: !model.isLoading,
+            note: model.selectionUsesHelper ? "Administrator password required" : nil,
+            review: review,
+            clear: { model.selection = [] }
+        )
+    }
+
+    private var removeSelectedIfPossible: FocusedAction<Void>? {
+        guard model.canRemoveSelection else { return nil }
+        return FocusedAction(name: "remove background jobs") { _ in review() }
+    }
+
+    private func review() {
+        removedInReview = 0
+        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
         }
     }
 
-    /// What could not be read, and why.
-    ///
-    /// Only genuine gaps. A surface deliberately left alone is not a
-    /// fault and gets no panel: a box explaining something that is not
-    /// there is three lines about nothing, and it appeared with a button
-    /// offering to open Full Disk Access on a Mac where Full Disk Access
-    /// was already granted.
-    private var coverageNote: some View {
-        Section {
-            ForEach(model.faults, id: \.kind) { gap in
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "eye.slash").foregroundColor(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        // Names the surface rather than announcing a hole.
-                        // "Part of this list is missing" told somebody there
-                        // was a problem without saying which one, and the
-                        // sentence underneath already says the rest.
-                        Text("\(gap.kind.displayName)s are not in this list").fontWeight(.medium)
-                        Text(gap.limitation ?? "\(gap.kind.displayName)s were not read on this pass.")
-                            .font(.callout).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    // Only where a permission is actually the thing in the
-                    // way. Offering Settings for a tool that did not answer
-                    // sends somebody to flip a switch that changes nothing.
-                    if gap.isFixableByTheUser {
-                        Button("Open Settings") { FullDiskAccess.openSettings() }
-                    }
-                }
-                .padding(10)
-                .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-        }
-    }
-
-    /// An empty section is not drawn.    /// An empty section is not drawn. A heading, a caption and a row
-    /// saying "None" is three lines about nothing, and the emptyNote is
-    /// kept only for the one case where a search matched nothing and the
-    /// person needs telling why the list went blank.
-    @ViewBuilder
-    private func section(
-        _ title: String, _ caption: String,
-        _ groups: [RegistrationGroup], _ emptyNote: String
-    ) -> some View {
-        if !groups.isEmpty || !emptyNote.isEmpty {
-            Section {
-                if groups.isEmpty {
-                    Text(emptyNote).font(.caption).foregroundColor(.secondary)
-                } else {
-                    ForEach(groups) { group in
-                        GroupRow(
-                            group: group,
-                            canSelect: model.canSelect(group),
-                            isSelected: model.isSelected(group),
-                            helperIsReady: helper.state.canRemove,
-                            toggle: { model.toggle(group) }
-                        )
-                    }
-                }
-            } header: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(title) (\(groups.count))").font(.headline)
-                Text(caption).font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-    }
-}
-
-
-/// One application, and everything macOS has been told to run for it.
-private struct GroupRow: View {
-    let group: RegistrationGroup
-    var canSelect = false
-    var isSelected = false
-    /// Whether the privileged daemon is set up. A row that needs it stops
-    /// saying so once it does.
-    var helperIsReady = false
-    var toggle: () -> Void = {}
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if canSelect {
-                    // A real label, hidden visually rather than absent. An
-                    // empty one leaves nothing for the accessibility tree
-                    // to expose, and the control reads as scenery: the same
-                    // way the sidebar rows looked operable and were not.
-                    Toggle("Select \(group.displayName)",
-                           isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
-                        .toggleStyle(.checkbox)
-                        .labelsHidden()
-                }
-
-                // The rest of the header is one element, not four. Left as
-                // separate views it reached a reader as a name, then a
-                // badge, then a team identifier, then a count, with nothing
-                // saying they were about the same application.
-                HStack(spacing: 6) {
-                    Text(group.displayName).fontWeight(.semibold)
-                    Spacer()
-                    if let team = group.signedBy {
-                        Text(team).font(.caption2).foregroundColor(.secondary)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.12), in: Capsule())
-                    }
-                    Text(group.composition).font(.caption).foregroundColor(.secondary)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(group.spokenDescription)
-                .accessibilityAddTraits(.isHeader)
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(group.items) { item in
-                    RegistrationRow(registration: item, helperIsReady: helperIsReady)
-                }
-            }
-            .padding(.leading, 12)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct RegistrationRow: View {
-    let registration: Registration
-    var helperIsReady = false
-
-    /// Something Brim cannot reach itself but the daemon can, right now.
-    private var reachableWithHelper: Bool {
-        helperIsReady && BackgroundModel.needsTheHelper(registration)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(registration.label).font(.callout)
-                Text(registration.kind.displayName)
-                    .font(.caption2)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Color.secondary.opacity(0.15), in: Capsule())
-                Spacer()
-                if registration.isActionableStale {
-                    if registration.isClearedByMacOS {
-                        Label("macOS will drop this", systemImage: "clock")
-                            .font(.caption2).foregroundColor(.secondary)
-                    } else {
-                        Label("Points at nothing", systemImage: "exclamationmark.triangle")
-                            .font(.caption2).foregroundColor(.orange)
-                    }
-                }
-            }
-            Text(registration.evidence)
-                .font(.caption).foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            // Who signed the thing macOS is being told to run. Not shown
-            // when it is unremarkable: a line on every row saying the
-            // signature is fine is a line nobody reads, and then the one
-            // that says otherwise is not read either.
-            if let signing = registration.signing, signing.isTrouble {
-                Label(signing.sentence, systemImage: "exclamationmark.shield")
-                    .font(.caption).foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            // Said before it is attempted, not after it fails. Once the
-            // helper is set up this stops being true of the jobs it can
-            // reach, so the row stops saying it.
-            if registration.isActionableStale,
-               !reachableWithHelper,
-               let blocked = RemovalCapability.explanation(registration.capability) {
-                HStack(spacing: 6) {
-                    Label(blocked, systemImage: "lock")
-                        .font(.caption).foregroundColor(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let path = registration.recordPath {
-                        Button("Show in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([
-                                URL(fileURLWithPath: path)
-                            ])
+    private func offerPutBack(_ planId: UUID) {
+        let count = removedInReview
+        guard count > 0 else { return }
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            await model.load(service: service)
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
                         }
-                        .buttonStyle(.link).font(.caption)
                     }
                 }
             }
-            // The record's own path, not just what it points at. Without it
-            // Keystone's four identical rows were indistinguishable, and two
-            // of them are the same job installed in a different domain.
-            if let location = registration.spokenLocation {
-                Text(location)
-                    .font(.caption2).foregroundColor(.secondary)
-                    .truncationMode(.middle).lineLimit(1)
-                    .textSelection(.enabled)
+            shell.show(toast)
+        }
+    }
+}
+
+/// A one-line note above a list: what is missing, and the one thing that
+/// fixes it.
+struct Notice: View {
+    let symbol: String
+    let title: String
+    var detail: String?
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(Palette.caution)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                if let detail {
+                    Text(detail)
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
             }
         }
-        .padding(.vertical, 2)
-        // One element per entry, composed rather than inferred. Left to
-        // SwiftUI this row arrived as seven unrelated fragments, and the
-        // selectable path arrived twice, because textSelection adds a
-        // child of its own.
-        .accessibilityElement(children: .ignore)
-        // Without a trait the combined element has no role and exposes as
-        // AXUnknown, which is how the sidebar rows once looked operable to
-        // a reader while being nothing at all. An entry here is text, so
-        // it says it is text.
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(registration.spokenDescription)
-        .accessibilityValue(registration.spokenLocation ?? "")
+        .padding(12)
+        .background(Palette.caution.opacity(0.08), in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
     }
 }

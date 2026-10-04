@@ -1,3 +1,4 @@
+import BrimCore
 import CoreServices
 import Foundation
 
@@ -28,8 +29,8 @@ public enum LaunchServicesRegistration {
         }
     }
 
-    /// `lsregister` is not on `PATH` and has no public replacement; this is
-    /// the documented location inside the LaunchServices framework.
+    /// An undocumented maintenance tool at a fixed framework location.
+    /// Its result never replaces an independent registration observation.
     public static let lsregisterPath =
         "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks"
             + "/LaunchServices.framework/Versions/A/Support/lsregister"
@@ -42,9 +43,13 @@ public enum LaunchServicesRegistration {
     public static func unregister(
         bundlePath: String,
         runner: ((String, [String]) throws -> Int32)? = nil
-    ) throws {
-        let invoke = runner ?? Self.run
-        let status = try invoke(lsregisterPath, ["-u", bundlePath])
+    ) async throws {
+        try validateBundlePath(bundlePath)
+        let status: Int32 = if let runner {
+            try runner(lsregisterPath, ["-u", bundlePath])
+        } else {
+            try await RegistrationCommand.status(lsregisterPath, ["-u", bundlePath])
+        }
         guard status == 0 else {
             throw UnregisterError.failed(path: bundlePath, code: status)
         }
@@ -52,19 +57,80 @@ public enum LaunchServicesRegistration {
 
     /// Registers a bundle, used to put back a registration an uninstall
     /// retracted when that uninstall is undone.
+    /// Every application bundle inside a folder, found before the folder
+    /// is removed so their records can be retracted afterwards.
+    ///
+    /// Unregistering the application left the ones inside it registered:
+    /// after Muse went, Launch Services still listed Sparkle's `Updater.app`
+    /// inside `Muse.app` and two more copies Sparkle keeps in its cache
+    /// folder, all pointing at nothing.
+    public static func nestedApplications(in path: String, limit: Int = 20000) -> [String] {
+        var isDirectory: ObjCBool = false
+        // Relative paths, joined to the path as given: a URL enumerator
+        // answers `/private/var` for `/var`, and a record is retracted by
+        // the spelling it was registered under.
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let walk = FileManager.default.enumerator(atPath: path) else { return [] }
+        var found: [String] = []
+        var seen = 0
+        while let relative = walk.nextObject() as? String {
+            seen += 1
+            if seen > limit {
+                break
+            }
+            if (relative as NSString).pathExtension.lowercased() == "app" {
+                found.append((path as NSString).appendingPathComponent(relative))
+            }
+        }
+        return found
+    }
+
+    /// Records Launch Services holds inside any of these paths that point
+    /// at nothing.
+    ///
+    /// Finding the applications inside a bundle before it goes misses the
+    /// ones an update already removed: Teams' embedded browser had moved to
+    /// a new version folder, and three helpers in the old one stayed
+    /// registered through its uninstall. Only the database knows those. A
+    /// full dump takes seconds, so this runs after a removal, not during.
+    public static func staleRecords(inside prefixes: [String], dump: String? = nil) async throws -> [String] {
+        let prefixes = prefixes.map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+        guard !prefixes.isEmpty else { return [] }
+        let listing: String = if let dump {
+            dump
+        } else {
+            try await RegistrationCommand.read(lsregisterPath, ["-dump"])
+        }
+        var found = Set<String>()
+        for line in listing.split(separator: "\n") where line.hasPrefix("path:") {
+            var path = line.dropFirst("path:".count).trimmingCharacters(in: .whitespaces)
+            if let marker = path.range(of: " (0x", options: .backwards) {
+                path = String(path[..<marker.lowerBound])
+            }
+            guard prefixes.contains(where: { path.hasPrefix($0) }),
+                  PathObservation.observe(path).isAbsent else { continue }
+            found.insert(path)
+        }
+        return found.sorted()
+    }
+
     public static func register(
         bundlePath: String,
         runner: ((String, [String]) throws -> Int32)? = nil
-    ) throws {
-        let invoke = runner ?? Self.run
-        let status = try invoke(lsregisterPath, ["-f", bundlePath])
+    ) async throws {
+        try validateBundlePath(bundlePath)
+        let status: Int32 = if let runner {
+            try runner(lsregisterPath, ["-f", bundlePath])
+        } else {
+            try await RegistrationCommand.status(lsregisterPath, ["-f", bundlePath])
+        }
         guard status == 0 else {
             throw UnregisterError.failed(path: bundlePath, code: status)
         }
     }
 
-    /// Every location Launch Services still associates with a bundle
-    /// identifier. Empty means the registration is genuinely gone.
+    /// Compatibility lookup that discards errors. Use the checked lookup
+    /// for ownership decisions and absence verification.
     ///
     /// Read-only, and the only way to *check* this surface: the Launch
     /// Services database has no supported reader, and `lsregister -dump`
@@ -88,19 +154,30 @@ public enum LaunchServicesRegistration {
             throw NSError(domain: "LaunchServices", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Launch Services did not answer."])
         }
-        return (result.takeRetainedValue() as? [URL]) ?? []
+        guard let urls = result.takeRetainedValue() as? [URL] else {
+            throw NSError(domain: "LaunchServices", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Launch Services returned an unreadable result."])
+        }
+        return urls
     }
 
-    /// Runs a fixed tool with fixed arguments. No caller-supplied command
-    /// string ever reaches a shell; the step vocabulary forbids it.
-    static func run(_ executable: String, _ arguments: [String]) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+    public static func unregisterBounded(bundlePath: String) async throws {
+        try validateBundlePath(bundlePath)
+        let status = try await RegistrationCommand.status(lsregisterPath, ["-u", bundlePath])
+        guard status == 0 else { throw UnregisterError.failed(path: bundlePath, code: status) }
+    }
+
+    public static func registerBounded(bundlePath: String) async throws {
+        try validateBundlePath(bundlePath)
+        let status = try await RegistrationCommand.status(lsregisterPath, ["-f", bundlePath])
+        guard status == 0 else { throw UnregisterError.failed(path: bundlePath, code: status) }
+    }
+
+    private static func validateBundlePath(_ path: String) throws {
+        guard path.hasPrefix("/"), URL(fileURLWithPath: path).standardizedFileURL.path != "/",
+              !path.contains("\0")
+        else {
+            throw UnregisterError.failed(path: path, code: EINVAL)
+        }
     }
 }

@@ -1,8 +1,8 @@
-import XCTest
 import BrimCore
 import BrimProtocol
-import Combine
 @testable import BrimUI
+import Combine
+import XCTest
 
 private actor LeftoversStub: BrimServiceProtocol {
     let items: [Leftover]
@@ -12,22 +12,54 @@ private actor LeftoversStub: BrimServiceProtocol {
         self.items = items
         self.failure = failure
     }
+
     func leftovers() async throws -> [Leftover] {
         calls += 1
-        if let failure { throw failure }
+        if let failure {
+            throw failure
+        }
         return items
     }
 
-    func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
-    func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
-    func explain(planId: UUID) async throws -> String { throw Nope.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Nope.no }
-    func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
-    func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Nope.no }
-    func installedApplications() async throws -> [InstalledApplication] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
+    func inspect(identity _: Identity) async throws -> Footprint {
+        throw Nope.no
+    }
+
+    func plan(intent _: PlanIntent) async throws -> Plan {
+        throw Nope.no
+    }
+
+    func explain(planId _: UUID) async throws -> String {
+        throw Nope.no
+    }
+
+    func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
+        throw Nope.no
+    }
+
+    func apply(planId _: UUID, token _: ApprovalToken) async throws {
+        throw Nope.no
+    }
+
+    func verify(planId _: UUID) async throws -> VerificationResult {
+        throw Nope.no
+    }
+
+    func history() async throws -> [Plan] {
+        []
+    }
+
+    func undo(planId _: UUID) async throws {
+        throw Nope.no
+    }
+
+    func installedApplications() async throws -> [InstalledApplication] {
+        []
+    }
+
+    func recoverableItems() async throws -> [RecoverableItem] {
+        []
+    }
 }
 
 private enum Nope: Error { case no }
@@ -49,10 +81,20 @@ private func leftover(
 
 @MainActor
 final class LeftoversModelTests: XCTestCase {
+    func testUnknownReviewCountMatchesTheDetailedList() async {
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([
+            leftover("small", .unclaimed, size: 100),
+            leftover("large", .unclaimed, size: 1_000_000),
+            leftover("protected", .unclaimed, size: 0, capability: .needsFullDiskAccess)
+        ]))
+        XCTAssertEqual(Set(model.unclaimedGroupsForReview.map(\.displayName)), ["large", "protected"])
+    }
+
     func testRepeatedSearchBindingDoesNotRepublishDerivedRows() {
         let model = LeftoversModel()
         var publications = 0
-        let observation = model.$visibleOrphanedEntries.sink { _ in publications += 1 }
+        let observation = model.$visibleOrphanedGroups.sink { _ in publications += 1 }
         model.searchText = ""
         model.searchText = ""
         XCTAssertEqual(publications, 1)
@@ -68,6 +110,18 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    func testUndoNeverPutsARemovedItemBackIntoThePlan() async {
+        // Pick, remove, then undo the pick: the removed item is gone from
+        // the disk, and a plan naming it would try to remove it again.
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([leftover("Alpha", .orphaned), leftover("Beta", .orphaned)]))
+        let picked = model.selection
+        model.forget(paths: ["/tmp/leftovers/Alpha"])
+        model.restoreSelection(picked)
+        XCTAssertEqual(model.selection, ["/tmp/leftovers/Beta"])
+        XCTAssertEqual(model.selectedItems.map(\.url.lastPathComponent), ["Beta"])
+    }
+
     func testSearchSnapshotUpdatesAfterRemovalWithoutChangingSelection() async {
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([
@@ -75,11 +129,11 @@ final class LeftoversModelTests: XCTestCase {
         ]))
         let original = model.selection
         model.searchText = " beta "
-        XCTAssertTrue(model.visibleOrphanedEntries.isEmpty)
-        XCTAssertEqual(model.visibleUnclaimedEntries.count, 1)
+        XCTAssertTrue(model.visibleOrphanedGroups.isEmpty)
+        XCTAssertEqual(model.visibleUnclaimedGroups.count, 1)
         XCTAssertEqual(model.selection, original)
         model.forget(paths: ["/tmp/leftovers/Beta"])
-        XCTAssertTrue(model.visibleUnclaimedEntries.isEmpty)
+        XCTAssertTrue(model.visibleUnclaimedGroups.isEmpty)
     }
 
     /// The grouped lists are stored now rather than recomputed on read, so
@@ -111,6 +165,7 @@ final class LeftoversModelTests: XCTestCase {
         await model.load(service: LeftoversStub([], failure: Nope.no))
 
         XCTAssertNotNil(model.errorMessage)
+        XCTAssertNil(model.checkedAt, "A failed check is not an empty successful scan")
         XCTAssertTrue(model.orphanedGroups.isEmpty, "A failed sweep shows no rows, not old rows")
         XCTAssertTrue(model.all.isEmpty)
         XCTAssertTrue(model.selection.isEmpty, "Nothing stays ticked from a run that did not happen")
@@ -225,5 +280,73 @@ final class LeftoversModelTests: XCTestCase {
 
         XCTAssertEqual(model.visible(model.orphaned).count, 1)
         XCTAssertEqual(model.selection, before, "Filtering the view must not silently deselect")
+    }
+
+    func testMixedGroupCanBeDeselectedWithoutSelectingBlockedItems() async throws {
+        // A blocked location used to keep the whole card unchecked even
+        // when every removable location was selected, so toggling could not clear it.
+        let owner = Identity(bundleID: "com.example.removed", name: "Removed App")
+        let items = [
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/cache"), size: 100,
+                     category: .orphaned, potentialOwner: owner),
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/protected"), size: 100,
+                     category: .orphaned, potentialOwner: owner, capability: .refusedByOS)
+        ]
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub(items))
+        let group = try XCTUnwrap(model.orphanedGroups.first)
+        XCTAssertEqual(group.items.count, 2)
+        XCTAssertTrue(model.isSelected(group))
+        model.toggle(group)
+        XCTAssertTrue(model.selection.isEmpty)
+        model.toggle(group)
+        XCTAssertEqual(model.selection, [items[0].id])
+        let intent = try XCTUnwrap(model.removalIntent(for: group, requesterIdentity: "tester"))
+        XCTAssertEqual(intent.explicitTargets, [items[0].url])
+    }
+
+    func testBatchIncludesHelperItemsAndRequiresExplicitUnknownSelection() async throws {
+        let helper = Leftover(
+            url: URL(fileURLWithPath: "/Library/LaunchAgents/com.example.removed.plist"),
+            size: 100, category: .orphaned, capability: .needsHelper
+        )
+        let unknown = leftover("unknown", .unclaimed)
+        let blocked = leftover("blocked", .orphaned, capability: .refusedByOS)
+        let ordinary = leftover("ordinary", .orphaned)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([helper, unknown, blocked, ordinary]))
+        model.toggle(unknown)
+        model.selectAllRemovableOrphans()
+        let batch = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(Set(batch.explicitTargets), [helper.url, ordinary.url])
+        model.toggle(unknown)
+        let selected = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(Set(selected.explicitTargets), [helper.url, ordinary.url, unknown.url])
+    }
+
+    func testBatchKeepsFailedItemsSelectedForRetry() async throws {
+        let removed = leftover("removed", .orphaned)
+        let failed = leftover("failed", .orphaned)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([removed, failed]))
+        model.forget(paths: [removed.url.path])
+        XCTAssertEqual(model.all, [failed])
+        XCTAssertEqual(model.selection, [failed.id])
+        let retry = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(retry.explicitTargets, [failed.url])
+    }
+
+    func testBatchDoesNotOverrideKeptGroupsOrIncludeBlockedSelection() async throws {
+        let kept = leftover("kept", .orphaned)
+        let blocked = leftover("blocked", .unclaimed, capability: .needsFullDiskAccess)
+        let model = LeftoversModel()
+        await model.load(service: LeftoversStub([kept, blocked]))
+        let group = try XCTUnwrap(model.orphanedGroups.first)
+        model.keptGroups = [group.id]
+        model.selectAllRemovableOrphans()
+        XCTAssertTrue(model.removableOrphans.isEmpty)
+        XCTAssertTrue(model.selection.isEmpty)
+        model.toggle(blocked)
+        XCTAssertNil(model.removalIntent(requesterIdentity: "tester"))
     }
 }

@@ -52,6 +52,37 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(count, 1, "One snapshot is not nothing changed, it is nothing to compare")
     }
 
+    func testOnlyWhatArrivedAfterTheFirstLookHasAnArrivalDate() async throws {
+        // Everything is "first seen" at the first look, so taking that as
+        // an install date would call every app on the Mac recently installed.
+        let index = try makeIndex()
+        let firstLook = Date(timeIntervalSince1970: 1_000_000)
+        let later = firstLook.addingTimeInterval(24 * 60 * 60)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: firstLook)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: later)
+
+        let appeared = try await index.appearances()
+        XCTAssertEqual(appeared, ["com.b": later])
+    }
+
+    /// First appearing is not arriving. When the list began including the
+    /// apps inside Xcode, they were in the next snapshot and not the one
+    /// before, and Home called them installed today. The window says when
+    /// Brim last looked before, so the service can check the bundle's own
+    /// date against it.
+    func testAnAppearanceKnowsWhenBrimLastLookedBeforeIt() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        let second = first.addingTimeInterval(3600)
+        let third = second.addingTimeInterval(3600)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: first)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: third)
+
+        let windows = try await index.appearanceWindows()
+        XCTAssertEqual(windows, ["com.b": AppearanceWindow(seen: third, previousLook: second)])
+    }
+
     func testSomethingInstalledBetweenLooksIsFound() async throws {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
@@ -138,10 +169,25 @@ final class InstallHistoryTests: XCTestCase {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta"), app("com.c", "Gamma")])
+
+        let changes = try await index.changesSinceLastScan()
+        XCTAssertEqual(changes.map(\.bundleID), ["com.c"], "Beta appeared two looks ago, not since the last one")
+    }
+
+    /// Every launch takes a snapshot, so a relaunch compared two identical
+    /// ones and Home's Changes emptied each time Brim opened. The last
+    /// change stands until there is a newer one, dated when it happened.
+    func testARelaunchDoesNotEmptyTheLastChange() async throws {
+        let index = try makeIndex()
+        _ = try await index.recordInstalled([app("com.a", "Alpha")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")])
 
         let changes = try await index.changesSinceLastScan()
-        XCTAssertTrue(changes.isEmpty, "Beta appeared two looks ago, not since the last one")
+        XCTAssertEqual(changes.map(\.bundleID), ["com.b"])
+        XCTAssertEqual(changes.first?.kind, .appeared)
     }
 
     /// T-1.4's acceptance criterion, and the one nobody finds out about
@@ -197,5 +243,37 @@ final class InstallHistoryTests: XCTestCase {
         let applied = try manager.appliedMigrations()
         XCTAssertTrue(applied.contains("v1"))
         XCTAssertTrue(applied.contains("v2-install-snapshots"))
+    }
+
+    /// Teams and Microsoft AutoUpdate were removed, Home said so, and what
+    /// they left was still called owner unknown. An app an earlier snapshot
+    /// saw and the latest did not is the record that it was here and went.
+    func testAnAppAnEarlierSnapshotSawIsRemovedAsOfTheLastTimeItWasSeen() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        let second = first.addingTimeInterval(86_400)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta"),
+                                             app("com.apple.x", "Apple")], at: first)
+        _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: second)
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second.addingTimeInterval(86_400))
+
+        let removed = try await index.removedApplications()
+        XCTAssertEqual(Set(removed.keys), ["com.b"], "macOS's own are left out")
+        XCTAssertEqual(removed["com.b"], second)
+    }
+
+    /// "Replaced by" needs where a removed app was, and only the last place:
+    /// an app that moved away from a path before going was not replaced by
+    /// whatever sits there now.
+    func testTheLastPlaceARemovedAppWasSeenIsRecorded() async throws {
+        let index = try makeIndex()
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        _ = try await index.recordInstalled([app("com.b", "Beta")], at: first)
+        _ = try await index.recordInstalled([InstallObservation(bundleID: "com.b", name: "Beta", version: "1.0",
+                                                                bundlePath: "/Users/x/Applications/Beta.app",
+                                                                sizeBytes: 1)],
+                                            at: first.addingTimeInterval(60))
+        let paths = try await index.lastBundlePaths(of: ["com.b", "com.none"])
+        XCTAssertEqual(paths, ["com.b": "/Users/x/Applications/Beta.app"])
     }
 }

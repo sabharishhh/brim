@@ -68,17 +68,32 @@ public struct TeamIDSource: EvidenceSource {
         let siblings = siblingScan.identities
         completeness = completeness.merging(siblingScan.completeness)
 
-        let evidence = candidates.map { url in
+        let evidence = candidates.compactMap { url -> Evidence? in
             let name = url.lastPathComponent
-            let claimant = siblings.first(where: { $0.groupContainers.contains(name) })
-                ?? siblings.first
-            if let claimant {
+            // Another application declaring the group is a claim; one merely
+            // signed by the same vendor is not. Falling back to any sibling
+            // vetoed every group Teams declares because Visual Studio Code,
+            // which declares none, is also Microsoft's, and 22 MB of Teams'
+            // own data outlived its uninstall.
+            if let claimant = siblings.first(where: { $0.groupContainers.contains(name) }) {
                 return Evidence(
                     url: url,
                     tier: .S,
                     mechanism: "TeamIDSource",
-                    humanSentence: "Shared with \(claimant.name), which is still installed. A "
-                        + "team identifier belongs to the developer, not to one application."
+                    humanSentence: "Shared with \(claimant.name), which is still installed and "
+                        + "declares this group."
+                )
+            }
+            // Declared by this application and nobody else: that is
+            // `GroupContainerSource`'s proof, and an S here would outweigh it.
+            if identity.searchGroupContainers.contains(name) { return nil }
+            if let sibling = siblings.first {
+                return Evidence(
+                    url: url,
+                    tier: .S,
+                    mechanism: "TeamIDSource",
+                    humanSentence: "Nobody declares it, and \(sibling.name) is from the same "
+                        + "developer. A team identifier belongs to the developer, not to one application."
                 )
             }
             return Evidence(

@@ -1,0 +1,92 @@
+import BrimCore
+import BrimOps
+import BrimProtocol
+import BrimScan
+import BrimService
+import XCTest
+
+// swiftformat:disable wrapMultilineStatementBraces
+/// Historical validation recipe. Use only in a disposable macOS account or VM.
+/// launchctl registration can trigger background activity notifications and
+/// macOS may retain records after the fixture removes its job and declaration.
+final class ScopedRegistrationLifecycleTests: XCTestCase {
+    private let environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"]
+
+    override func setUpWithError() throws {
+        guard ProcessInfo.processInfo.environment["BRIM_REAL_ENV"] == "1",
+              ProcessInfo.processInfo.environment["BRIM_ISOLATED_REGISTRATION_ENV"] == "1" else {
+            throw XCTSkip("Use a disposable account or VM and explicitly enable isolated registration validation.")
+        }
+    }
+
+    private func command(_ executable: String, _ arguments: [String]) async throws -> NativeCommandRunner.Result {
+        try await NativeCommandRunner.run(executable: executable, arguments: arguments,
+                                          environment: environment, timeout: 10)
+    }
+
+    func testReviewedJobStopsBeforeItsDeclarationMoves() async throws {
+        let label = "com.sabharishhh.brim.fixture." + UUID().uuidString.lowercased()
+        let folder = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/LaunchAgents")
+        let createdFolder = !PathObservation.observe(folder.path).isPresent
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let plist = folder.appendingPathComponent(label + ".plist")
+        let storage = FileManager.default.temporaryDirectory.appendingPathComponent(label)
+        let namespace = "gui/\(getuid())"
+        prepareCleanup(folder: folder, plist: plist, storage: storage,
+                       serviceTarget: namespace + "/" + label, createdFolder: createdFolder)
+        let data = try PropertyListSerialization.data(fromPropertyList: [
+            "Label": label, "ProgramArguments": ["/bin/sleep", "60"], "RunAtLoad": true
+        ], format: .xml, options: 0)
+        try data.write(to: plist, options: .withoutOverwriting)
+        let started = try await command("/bin/launchctl", ["bootstrap", namespace, plist.path])
+        XCTAssertEqual(started.termination, .exited(0))
+        let before = await SafeOps.observeLaunchdService(label: label, namespace: namespace)
+        XCTAssertTrue(before.isPresent)
+
+        let service = BrimService(root: FileSystemRoot(), brimAppURL: storage.appendingPathComponent("Brim.app"),
+                                  planStoreDirectory: storage.appendingPathComponent("Plans"),
+                                  journalStoreDirectory: storage.appendingPathComponent("Journals"))
+        await service.useConsentSource(ConsentSource { _ in true })
+        let plan = try await service.plan(intent: PlanIntent(
+            type: .uninstall, subjectIdentity: Identity(name: label), specificTarget: plist,
+            tickedByHand: [plist.path]
+        ))
+        XCTAssertTrue(plan.steps.contains { $0.kind == .unloadLaunchdJob })
+        XCTAssertTrue(plan.steps.contains { $0.kind == .removeLaunchdPlist })
+        let request = try await service.requestApproval(planId: plan.planId, requesterIdentity: "user")
+        let token = try await service.grantApproval(for: request)
+        try await service.apply(planId: plan.planId, token: token)
+        let result = try await service.verify(planId: plan.planId)
+        XCTAssertTrue(result.success, result.reason ?? "Verification failed")
+        XCTAssertTrue(PathObservation.observe(plist.path).isAbsent)
+        let after = await SafeOps.observeLaunchdService(label: label, namespace: namespace)
+        XCTAssertTrue(after.isAbsent)
+        try await service.undo(planId: plan.planId)
+        XCTAssertTrue(PathObservation.observe(plist.path).isPresent)
+        let restored = await SafeOps.observeLaunchdService(label: label, namespace: namespace)
+        XCTAssertTrue(restored.isPresent)
+    }
+
+    private func prepareCleanup(folder: URL, plist: URL, storage: URL, serviceTarget: String, createdFolder: Bool) {
+        addTeardownBlock { [environment] in
+            _ = try? await NativeCommandRunner.run(executable: "/bin/launchctl",
+                                                   arguments: ["bootout", serviceTarget],
+                                                   environment: environment, timeout: 5)
+            try? FileManager.default.removeItem(at: plist)
+            if createdFolder, (try? FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty) == true {
+                try? FileManager.default.removeItem(at: folder)
+            }
+            let journal = try? await JournalStore(directoryURL: storage.appendingPathComponent("Journals"))
+                .allPlanIds()
+            for id in journal ?? [] {
+                if let entry = try? await JournalStore(directoryURL: storage.appendingPathComponent("Journals"))
+                    .load(planId: id) {
+                    for url in entry.stepTrashedURLs?.values ?? [Int: URL]().values {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(at: storage)
+        }
+    }
+}

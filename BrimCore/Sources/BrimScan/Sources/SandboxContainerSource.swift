@@ -3,7 +3,11 @@ import Foundation
 
 /// Finds sandbox and declared group containers.
 public struct SandboxContainerSource: EvidenceSource {
-    public init() {}
+    private let budget: @Sendable () -> ScanBudget
+
+    public init(budget: @escaping @Sendable () -> ScanBudget = { ScanBudget() }) {
+        self.budget = budget
+    }
 
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
         await scan(for: identity, in: root).evidence
@@ -18,30 +22,41 @@ public struct SandboxContainerSource: EvidenceSource {
             root.url(for: .userGroupContainers),
             root.url(for: .systemLibrary).appendingPathComponent("Group Containers")
         ]
-        let unreadable = (containerDirs + groupDirs)
-            .filter { DirectoryEntries.read($0).isRefused }
-            .map(\.path)
-        let evidence = containerEvidence(for: identity, in: containerDirs)
-            + groupEvidence(for: identity, in: groupDirs)
-        return EvidenceFindings(evidence: evidence,
-                                completeness: ScanCompleteness(unreadable: unreadable))
+        var search = DirectorySearch(budget: budget())
+        let containers = containerEvidence(for: identity, in: containerDirs, search: &search)
+        for directory in groupDirs {
+            _ = search.entries(directory)
+        }
+        return EvidenceFindings(evidence: containers.evidence + groupEvidence(for: identity, in: groupDirs),
+                                completeness: search.completeness.merging(containers.completeness))
     }
 
-    private func containerEvidence(for identity: Identity, in directories: [URL]) -> [Evidence] {
-        identity.searchBundleIdentifiers.flatMap { identifier in
-            directories.compactMap { directory in
-                let url = directory.appendingPathComponent(identifier)
-                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-                let direct = identifier == identity.bundleID
-                return Evidence(
-                    url: url, tier: direct ? .A : .C,
+    private func containerEvidence(
+        for identity: Identity, in directories: [URL], search: inout DirectorySearch
+    ) -> EvidenceFindings {
+        let subject = LocationInventory.Subject(identity)
+        var evidence: [Evidence] = []
+        var completeness = ScanCompleteness.complete
+        for directory in directories {
+            for name in search.entries(directory) where !name.hasPrefix(".") {
+                let url = directory.appendingPathComponent(name)
+                guard search.canContinue(at: url) else { break }
+                let ownership = ContainerOwnershipReader.read(at: url, budget: search.budget)
+                completeness = completeness.merging(ownership.completeness)
+                guard ownership.identifiers.contains(where: { subject.longestIdentifier(prefixing: $0) != nil })
+                else { continue }
+                let identifier = ownership.identifier
+                let owned = identifier.map(identity.ownsIdentifier) ?? false
+                evidence.append(Evidence(
+                    url: url, tier: ownership.uncertainty == nil && owned ? .A : .C,
                     mechanism: "SandboxContainerSource",
-                    humanSentence: direct
+                    humanSentence: ownership.uncertainty ?? (name == identifier
                         ? "Sandbox container keyed to this bundle identifier"
-                        : "Container keyed to an embedded component."
-                )
+                        : "Container metadata names \(identifier ?? name).")
+                ))
             }
         }
+        return EvidenceFindings(evidence: evidence, completeness: completeness)
     }
 
     private func groupEvidence(for identity: Identity, in directories: [URL]) -> [Evidence] {

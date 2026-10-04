@@ -10,11 +10,28 @@ private let log = BrimLog.make("app")
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
-    @FocusedValue(\.navigateAction) var navigateAction
+    @FocusedValue(\.shell) var shell
+    @FocusedValue(\.selectedItems) var selectedItems
     
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
+    /// The Dock's menu, and apps dropped on its icon.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// What outlives a launch: kept items, what was seen, saved icons.
+    /// One for the app, so Settings and the window agree.
+    @State private var session = AppSession()
+    @State private var feedback = FeedbackConfiguration.makeModel()
+    /// View ▸ Compact Rows, for everyone who prefers density.
+    @AppStorage("rows.compact") private var compactRows = false
+
+    init() {
+        BrimTips.configure()
+    }
     
     @State private var showSelfUninstall = false
+    /// Whether a newer Brim is on GitHub.
+    @StateObject private var release = BrimReleaseCheck()
+    /// What Check for Brim Updates found, while its reply is showing.
+    @State private var releaseAnswer: BrimReleaseCheck.Answer?
 
     /// What went wrong removing Brim, when something did.
     ///
@@ -24,9 +41,47 @@ private let log = BrimLog.make("app")
     @State private var selfUninstallProblem: String?
 
     var body: some Scene {
+        mainWindow
+        Settings {
+            SettingsView()
+                .environment(session)
+                .environment(feedback)
+        }
+        .windowResizability(.contentSize)
+        Window("Feedback", id: FeedbackWindow.windowID) {
+            FeedbackWindow()
+                .environment(feedback)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        Window("Keyboard Shortcuts", id: ShortcutsView.windowID) {
+            ShortcutsView()
+        }
+        .windowResizability(.contentSize)
+    }
+
+    private var mainWindow: some Scene {
         WindowGroup {
-            ContentView()
+            root
                 .environment(\.brimService, client)
+                .environment(session)
+                .environment(feedback)
+                .environment(\.compactRows, compactRows)
+                .environmentObject(release)
+                .task { await release.checkIfDue() }
+                .alert(releaseTitle, isPresented: Binding(
+                    get: { releaseAnswer != nil },
+                    set: { if !$0 { releaseAnswer = nil } }
+                )) {
+                    if case let .newer(found) = releaseAnswer {
+                        Button("Download") { NSWorkspace.shared.open(found.page) }
+                        Button("Later", role: .cancel) {}
+                    } else {
+                        Button("OK", role: .cancel) {}
+                    }
+                } message: {
+                    Text(releaseMessage)
+                }
                 .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
                     Button("Uninstall", role: .destructive) {
@@ -50,9 +105,10 @@ private let log = BrimLog.make("app")
                     Text(selfUninstallProblem ?? "")
                 }
         }
-        // The widest section needs the sidebar (200) plus a two pane split
-        // (620), so 900 is the floor, and `.contentMinSize` stops the window
-        // being dragged below what the layout supports.
+        // The widest page needs the sidebar (200), a list (440) and a review
+        // pane (440), so 1100 is the floor (`Metrics.windowMinWidth`), and
+        // `.contentMinSize` stops the window being dragged below it from any
+        // edge or corner.
         //
         // The 1200x800 default is not currently honoured on this machine:
         // the window opens at roughly half the display width whatever is
@@ -63,29 +119,54 @@ private let log = BrimLog.make("app")
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            // Every section reachable from the keyboard, the way a Mac app
-            // is expected to behave. `after: .sidebar` puts these in the
-            // standard View menu next to "Hide Sidebar" — a CommandMenu named
-            // "View" would create a second menu of the same name instead.
-            CommandGroup(after: .sidebar) {
+            CommandGroup(after: .help) {
+                ShortcutsMenuItem()
+                FeedbackMenuItem()
+                    .environment(feedback)
+            }
+            CommandMenu("Go") {
+                Button("Go To or Find") { shell?.showsCommandBar.toggle() }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .disabled(shell == nil)
+                Divider()
+                Button("Back") { shell?.goBack() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(!(shell?.canGoBack ?? false))
+                Button("Forward") { shell?.goForward() }
+                    .keyboardShortcut("]", modifiers: .command)
+                    .disabled(!(shell?.canGoForward ?? false))
                 Divider()
                 // Numbered from the order the sidebar renders, not from
-                // the enum's declaration order. Those were different, so
-                // Command-6 opened the seventh row.
-                ForEach(NavigationItem.displayOrder, id: \.self) { item in
-                    // Only the ones with a digit get a shortcut. Giving
-                    // the tenth a fallback key would attach something
-                    // nobody expects to a menu item, which is worse than
-                    // it having none.
-                    if let digit = item.keyboardDigit {
-                        Button(item.rawValue) { navigateAction?.perform(item) }
-                            .keyboardShortcut(KeyEquivalent(digit), modifiers: .command)
-                            .disabled(navigateAction == nil)
-                    } else {
-                        Button(item.rawValue) { navigateAction?.perform(item) }
-                            .disabled(navigateAction == nil)
-                    }
+                // the enum's declaration order. Those were different once,
+                // so Command-6 opened the seventh row.
+                ForEach(Destination.displayOrder, id: \.self) { destination in
+                    Button(destination.rawValue) { shell?.go(to: destination) }
+                        .keyboardShortcut(KeyEquivalent(destination.keyboardDigit ?? "0"), modifiers: .command)
+                        .disabled(shell == nil)
                 }
+            }
+            CommandGroup(before: .sidebar) {
+                Toggle("Compact Rows", isOn: $compactRows)
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                Divider()
+                Button("Check Again") { shell?.requestCheck() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(shell == nil)
+                Divider()
+            }
+            CommandGroup(after: .newItem) {
+                Divider()
+                Button("Reveal in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
+                Button("Quick Look") { shell?.quickLook(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("y", modifiers: .command)
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
+            }
+            CommandGroup(after: .pasteboard) {
+                Button("Copy Path") { shell?.copyPaths(selectedItems?.urls ?? []) }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
+                    .disabled(selectedItems?.urls.isEmpty ?? true)
             }
             CommandMenu("Action") {
                 Button("Remove Selected") {
@@ -98,13 +179,44 @@ private let log = BrimLog.make("app")
                 Button("About Brim") {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
-                Button("Uninstall Brim…") {
+                Button("Check for Brim Updates…") {
+                    Task { releaseAnswer = await release.check() }
+                }
+                .disabled(release.isChecking)
+                Divider()
+                Button("Uninstall Brim") {
                     showSelfUninstall = true
                 }
             }
         }
     }
     
+    private var releaseTitle: String {
+        switch releaseAnswer {
+        case let .newer(found): return "Brim \(found.version) is available"
+        case let .current(version): return "Brim \(version) is the latest"
+        default: return "Couldn't reach GitHub"
+        }
+    }
+
+    private var releaseMessage: String {
+        switch releaseAnswer {
+        case .newer: return "Download it from GitHub and replace this copy in Applications."
+        case .current: return "You have the newest version."
+        default: return "Check your connection and try again."
+        }
+    }
+
+    /// The app, or in a debug build launched with `-designGallery YES`,
+    /// every design system component on one page.
+    @ViewBuilder private var root: some View {
+        if DesignGallery.isRequested {
+            DesignGallery()
+        } else {
+            ContentView()
+        }
+    }
+
     /// The root daemon, so its own cleanup can run before Brim goes.
     @StateObject private var helper = PrivilegedHelperClient()
 

@@ -12,7 +12,7 @@ extension StepKind {
         case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
             return true
         case .unregisterLaunchServices, .unloadLaunchdJob, .clearImmutableFlag,
-             .revealVendorUninstaller, .archivePath:
+             .revealVendorUninstaller:
             return false
         case .trashPath, .trashPathPrivileged, .removeLaunchdPlist:
             // Depends on the disposition, which the step carries.

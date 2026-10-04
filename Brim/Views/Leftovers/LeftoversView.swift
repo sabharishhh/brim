@@ -3,587 +3,576 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// What is left on this Mac that no installed software claims.
+/// Remnants: apps that have left this Mac and what each one left behind.
 ///
-/// Organised by software rather than by path. The first version listed one
-/// row per directory, which meant the same tool appeared several times with
-/// nothing connecting the rows — `Application Support/Codex` and
-/// `Caches/Codex` sat apart as if unrelated — and each row offered only a
-/// name, a path and a size. None of that helps anyone decide, and the
-/// decision is about an application, not a folder.
+/// Called "Removed" until 29 Sep, which named the apps rather than what
+/// the page is about, and read as a list of things already dealt with.
 ///
-/// So: one entry per piece of software, and a detail pane answering "what is
-/// this, and what do I lose" out of facts Brim already had and was throwing
-/// away — the owner it inferred, the evidence that decided the category, and
-/// what each location is actually for.
+/// One row per app, named and shown as the app was, with when Brim saw it
+/// go. The one action finishes the removal: it opens the same review an
+/// uninstall uses, where what is certain is ticked and what is not is
+/// shown and left. Traces nobody can be named for sit in one collapsible
+/// section and are never counted.
 struct LeftoversView: View {
     @ObservedObject var model: LeftoversModel
-    /// The Trash, shared with the Review banner and the History list because
-    /// the Trash is one thing and two watchers would poll it twice.
+    /// The Trash, shared with Home and the Journal because the Trash is one
+    /// thing and two watchers would poll it twice.
     @ObservedObject var recovery: RecoveryStatusModel
     @SwiftUI.Environment(\.brimService) private var service
-
-    @State private var reviewRequest: PlanIntent?
+    @SwiftUI.Environment(ShellState.self) private var shell
+    @SwiftUI.Environment(AppSession.self) private var session
+    @State private var review: PlanIntent?
+    /// Locations removed while the review was open, for the toast.
+    @State private var removedInReview = 0
+    /// Cards showing the places their app left.
+    @State private var opened: Set<String> = []
+    @State private var showsUnknown = true
+    @State private var recoveryReadError: String?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Not an HSplitView, which is what this was and what made both
-        // panes jittery. NSSplitView lays out with constraints, so
-        // scrolling either pane re-measured its SwiftUI content, the
-        // hosting view handed a new size to the split view, and AppKit ran
-        // `-[NSWindow layoutIfNeeded]` across the whole window. A profile
-        // of eight seconds of scrolling put 25.7% of the main thread in
-        // that call and another 25.1% in the view-tree layout under it,
-        // with the text of both panes being re-resolved each time. The two
-        // panes were coupled through the window, which is why scrolling one
-        // made the other stutter.
-        HStack(spacing: 0) {
-            list.frame(width: 380)
-            Divider()
-            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            header
+            content
+            if !model.all.isEmpty {
+                LeftoverBatchActions(
+                    selectedCount: model.selectedItems.count,
+                    canRemoveSelection: model.canRemoveSelection && !model.isScanning,
+                    canRemoveAll: !model.removableOrphans.isEmpty && !model.isScanning,
+                    clear: { model.deselectAll(in: model.all) },
+                    removeSelected: { openSelection() },
+                    removeAll: {
+                        model.selectAllRemovableOrphans()
+                        openSelection()
+                    }
+                )
+            }
+        }
+        .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+        .alert("Recovery copies could not be read", isPresented: Binding(
+            get: { recoveryReadError != nil },
+            set: {
+                if !$0 {
+                    recoveryReadError = nil
+                }
+            }
+        )) {
+            Button("OK") { recoveryReadError = nil }
+        } message: {
+            Text(recoveryReadError ?? "")
+        }
+        .sheet(item: $review) { intent in
+            RemovalPanel(
+                intent: intent, service: service,
+                onRemoved: { paths in
+                    removedInReview += paths.count
+                    model.forget(paths: paths)
+                },
+                onClose: { proven in
+                    review = nil
+                    if let proven {
+                        offerPutBack(proven.planId)
+                    }
+                },
+                onUnverified: { Task { await model.load(service: service) } },
+                onPhase: { _ in }
+            )
+            .frame(width: 560, height: 600)
         }
         .task { await model.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
-        // Putting something back in Finder puts the file back where it was,
-        // so the row belongs back in the list. The Trash changing is the
-        // signal, and checking costs one `lstat` per row Brim removed and
-        // nothing at all when it has removed none.
-        .onChange(of: recovery.items) { _, _ in
-            model.reconcileWithDisk()
+        .task(id: model.checkedAt) {
+            guard model.checkedAt != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            session.visits.acknowledge("leftovers", current: Set(model.all.map(\.id)))
         }
-        .focusedSceneValue(\.removeSelectedAction, removeSelectedIfPossible)
-        .sheet(item: $reviewRequest) { intent in
-            RemovalSheet(
-                intent: intent,
-                service: service,
-                title: "Remove leftovers",
-                subtitle: "\(intent.explicitTargets.count) items nothing on this Mac claims",
-                onRemoved: { paths in
-                    // The rows go the instant the check proves they are
-                    // gone, with the sheet still open behind them, because
-                    // that is when it became true. The animation comes from
-                    // the list watching `revision`, not from wrapping this
-                    // call: this runs in an async context and a transaction
-                    // opened here does not reliably travel with the change.
-                    model.forget(paths: paths)
-                },
-                onFinished: {
-                    Task { await model.load(service: service) }
-                }
-            )
-        }
+        // Restoring from the Trash puts files back where they were, so
+        // their rows belong back in the list.
+        .onChange(of: recovery.items) { _, _ in model.reconcileWithDisk() }
     }
 
-    /// Backs the Action menu's Remove Selected, so the keyboard reaches the
-    /// same place the button does. Nil when there is nothing to remove,
-    /// which is what greys the menu item out.
-    private var removeSelectedIfPossible: FocusedAction<Void>? {
-        guard model.canRemoveSelection else { return nil }
-        return FocusedAction(name: "remove leftovers") { _ in
-            reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
+    // MARK: - Header
+}
+
+private extension LeftoversView {
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Remnants")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+            if model.checkedAt != nil {
+                Text(summary)
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+            if model.isScanning {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Checking")
+            }
+            Spacer()
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private var summary: String {
+        let groups = model.orphanedGroups
+        guard !groups.isEmpty else {
+            return model.hasUnreadRecoveryCopies ? "Recovery copies not checked" : "Nothing left behind"
+        }
+        let apps = groups.count == 1 ? "1 app" : "\(groups.count) apps"
+        if groups.flatMap(\.items).contains(where: { $0.sizeIsKnown == false }) {
+            return "\(apps) left traces, size not fully measured"
+        }
+        return "\(apps) left \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
     }
 
     // MARK: - List
 
-    private var list: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            content
-            Divider()
-            footer
-        }
+    private var unknowns: [LeftoverGroup] {
+        model.unclaimedGroupsForReview.sorted { $0.totalBytes > $1.totalBytes }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Leftovers").font(.title2).fontWeight(.bold)
-                    Text(summary).font(.caption).foregroundColor(.secondary)
-                }
-                Spacer()
-                Button("Rescan") { Task { await model.load(service: service) } }
-                    .disabled(model.isScanning)
-            }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-        }
-        .padding()
-    }
-
-    private var summary: String {
-        if model.isScanning {
-            return "Checking ownership…"
-        }
-        return "\(model.orphanedEntries.count) orphaned · \(model.unclaimedEntries.count) unclaimed"
+    private var apps: [LeftoverGroup] {
+        model.orphanedGroups.sorted { $0.totalBytes > $1.totalBytes }
     }
 
     @ViewBuilder
     private var content: some View {
         if model.isScanning, model.all.isEmpty {
-            ProgressView("Searching…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            SkeletonRows(showsTick: false)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage {
-            VStack(spacing: 6) {
-                Text("The scan stopped early").font(.headline).foregroundColor(.red)
-                Text(error).foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
+        } else if apps.isEmpty, unknowns.isEmpty {
+            EmptyState(symbol: "checkmark.circle", title: "Nothing left behind",
+                       message: "No removed app has left anything on this Mac.")
         } else {
-            List {
-                section(
-                    "Orphaned",
-                    "Owner recorded. App no longer installed.",
-                    model.visibleOrphanedEntries,
-                    model.visibleOrphanedGroups,
-                    "Nothing here. No record on this Mac points at software that has gone."
-                )
-                section(
-                    "Unclaimed",
-                    "No owner found. Select items to remove.",
-                    model.visibleUnclaimedEntries,
-                    model.visibleUnclaimedGroups,
-                    "Everything here has an owner."
-                )
-            }
-            .listStyle(.inset)
-            // Rows leaving and arriving are worth seeing happen. Keyed to a
-            // counter the model bumps when the grouping changes, so it fires
-            // for a removal, for a restore and for a rescan, and for nothing
-            // else: not for ticking a box, not for typing in the search
-            // field, and never for a scroll.
-            .animation(.easeOut(duration: 0.22), value: model.revision)
+            list.refreshing(model.isScanning)
         }
     }
 
-    private func section(
-        _ title: String, _ caption: String,
-        _ entries: [LeftoverListEntry],
-        _ groups: [LeftoverGroup], _ emptyNote: String
-    ) -> some View {
-        Section {
-            if entries.isEmpty {
-                Text(emptyNote).font(.caption).foregroundColor(.secondary)
-            } else {
-                ForEach(entries) { entry in
-                    LeftoverEntryRow(entry: entry, model: model)
-                }
-            }
-        } header: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text("\(title) (\(entries.count))").font(.headline)
-                    Spacer()
-                    if !groups.isEmpty {
-                        Button("Select all") { model.selectAll(groups: groups) }
-                            .buttonStyle(.link).font(.caption)
-                        Button("None") { model.deselectAll(groups: groups) }
-                            .buttonStyle(.link).font(.caption)
-                    }
-                }
-                Text(caption).font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                if model.selectedItems.isEmpty {
-                    Text("Nothing picked yet").foregroundColor(.secondary)
-                } else {
-                    let label = Text("\(model.selectedItems.count) locations · ").foregroundColor(.secondary)
-                    let amount = Text(ByteText.short(model.selectedBytes)).bold().monospacedDigit()
-                    Text("\(label)\(amount)")
-                }
-                if !model.blockedSelection.isEmpty {
-                    Label("\(model.blockedSelection.count) need Full Disk Access", systemImage: "lock")
-                        .font(.caption).foregroundColor(.orange)
-                }
-            }
-            Spacer()
-            Button("Review & Remove…") {
-                reviewRequest = model.removalIntent(requesterIdentity: NSUserName())
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!model.canRemoveSelection)
-        }
-        .padding()
-    }
-
-    // MARK: - Detail
-
-    @ViewBuilder
-    private var detail: some View {
-        if let group = model.inspected {
-            LeftoverDetail(group: group)
-                // Keyed on the group, so moving between entries crossfades
-                // instead of cutting. Scoped to the identity rather than
-                // applied to the pane, because an unscoped animation makes
-                // every scroll and every tick animate too, which is how an
-                // app ends up feeling slower for having been animated.
-                .id(group.id)
-                .transition(.opacity)
-        } else {
-            VStack(spacing: 6) {
-                Image(systemName: "questionmark.folder")
-                    .font(.largeTitle).foregroundColor(.secondary)
-                Text("Select an entry").font(.headline)
-                Text("Review the owner, locations, and removal effect.")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 320)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}
-
-// MARK: - Row
-
-private struct LeftoverEntryRow: View {
-    let entry: LeftoverListEntry
-    @ObservedObject var model: LeftoversModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            switch entry {
-            case let .owner(group):
-                ownerRow(group)
-            case let .vendor(cluster):
-                DisclosureGroup {
-                    ForEach(cluster.groups) { group in
-                        ownerRow(group)
-                            .padding(.leading, 8)
-                    }
-                } label: {
-                    HStack {
-                        Text(cluster.title).fontWeight(.medium)
-                        Spacer()
-                        Text("\(cluster.groups.count) apps")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private func ownerRow(_ group: LeftoverGroup) -> some View {
-        GroupRow(
-            group: group,
-            isSelected: model.isSelected(group),
-            isInspected: model.inspected?.id == group.id,
-            toggle: { model.toggle(group) },
-            inspect: { model.inspected = group }
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { model.inspected = group }
-    }
-}
-
-private struct GroupRow: View {
-    let group: LeftoverGroup
-    let isSelected: Bool
-    let isInspected: Bool
-    let toggle: () -> Void
-    /// Opening the detail pane. A tap gesture does this for a mouse and
-    /// exposes nothing, so without an action of its own the pane that
-    /// explains each entry could not be reached at all without one.
-    let inspect: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            // Named for the accessibility tree even though the name is not
-            // drawn. An empty label exposes nothing to press.
-            Toggle("Select \(group.displayName)",
-                   isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(!group.isFullyActionable)
-
-            // One element rather than nine. The toggle beside it stays
-            // addressable on its own, which is the part a reader acts on.
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(group.displayName).fontWeight(.medium)
-                    if !group.isFullyActionable {
-                        Image(systemName: "lock").font(.caption2).foregroundColor(.orange)
-                    }
-                    Spacer()
-                    Text(ByteText.short(group.totalBytes))
-                        .font(.caption).foregroundColor(.secondary).monospacedDigit()
-                }
-
-                // What it is made of, rather than a path to parse.
-                HStack(spacing: 4) {
-                    Text("\(group.items.count) \(group.items.count == 1 ? "location" : "locations")")
-                    ForEach(group.domains.prefix(4), id: \.self) { domain in
-                        Text(domain.title)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(
-                                (domain.isRegenerated ? Color.secondary : Color.orange).opacity(0.15),
-                                in: Capsule()
-                            )
-                    }
-                }
-                .font(.caption2).foregroundColor(.secondary)
-
-                if group.meaningfulBytes > 0 {
-                    Text(ByteText.short(group.meaningfulBytes) + " may not return")
-                        .font(.caption2).foregroundColor(.orange)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(isInspected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityLabel(group.spokenDescription)
-            .accessibilityValue(ByteText.short(group.totalBytes))
-            .accessibilityHint("Shows what this is and where it lives")
-            .accessibilityAction { inspect() }
-        }
-        .padding(.vertical, 3)
-        .background(isInspected ? Color.accentColor.opacity(0.10) : .clear)
-    }
-}
-
-// MARK: - Detail pane
-
-private struct LeftoverDetail: View {
-    let group: LeftoverGroup
-    @State private var selectedFact: String?
-
-    /// Built once for the process. A `RelativeDateTimeFormatter` is
-    /// expensive to construct and was being constructed inside the body,
-    /// so every pass of this pane paid for a new one.
-    private static let relative = RelativeDateTimeFormatter()
-
-    /// A `List`, not a `ScrollView` wrapping a `VStack`.
-    ///
-    /// A vertical `ScrollView` proposes its own width and a *nil* height, so
-    /// the stack inside has to work out its ideal height, and every
-    /// `.fixedSize(horizontal: false, vertical: true)` in it re-measures its
-    /// text to answer. There are a dozen of those here. Profiling eight
-    /// seconds of scrolling this pane put half the main thread in
-    /// `GraphHost.flushTransactions`, a quarter in `-[NSWindow
-    /// layoutIfNeeded]`, and another eighth in `ResolvedTextFilter`, and
-    /// none of the samples contained any of Brim's own code: no view body
-    /// was re-running, SwiftUI was re-measuring the same text on every
-    /// frame.
-    ///
-    /// `List` is `NSTableView` underneath. It measures a row once, caches
-    /// the height, and reuses the view, which is the whole difference.
-    var body: some View {
+    /// Two kinds of thing, drawn as two kinds of thing. An app that left
+    /// something is a card: its icon, when it went, and the places it left
+    /// folded inside. What nobody can be named for is a plain, quieter list
+    /// beneath, open by default and never counted. They used to be the same
+    /// row in two sections, so the page read as one list of equals.
+    private var list: some View {
         List {
             Group {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(group.displayName).font(.title2).fontWeight(.bold)
-                    if let identifier = group.identifier {
-                        Text(identifier).font(.caption).foregroundColor(.secondary)
+                sectionTitle("Removed apps", count: apps.count, bytes: apps.reduce(0) { $0 + $1.totalBytes },
+                             sizeIsKnown: !apps.flatMap(\.items).contains { $0.sizeIsKnown == false })
+                if apps.isEmpty {
+                    nothingLeft
+                }
+                ForEach(apps) { group in
+                    HStack(alignment: .top, spacing: 8) {
+                        selectionToggle(for: group).padding(.top, 22)
+                        RemnantCard(
+                            group: group, isOpen: opened.contains(group.id),
+                            isScanning: model.isScanning,
+                            toggle: { toggle(group.id) }, finish: { open(group) }
+                        )
+                    }
+                    .padding(.bottom, 8)
+                }
+                if !unknowns.isEmpty {
+                    unknownTitle
+                        .padding(.top, 20)
+                    if showsUnknown {
+                        Text("Nobody can be named for these, so they are never counted.")
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkTertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 4)
+                        ForEach(unknowns) { group in
+                            HStack(spacing: 8) {
+                                selectionToggle(for: group)
+                                UnknownRow(
+                                    group: group, isScanning: model.isScanning,
+                                    readRecovery: {
+                                        if let problem = await HelperRoute.authorizeRecoveryRead() {
+                                            recoveryReadError = problem
+                                        } else {
+                                            await model.load(service: service)
+                                        }
+                                    },
+                                    review: { open(group) }
+                                )
+                            }
+                        }
                     }
                 }
-
-                // What is stopping this, before anything about what it is.
-                //
-                // The checkbox on this group will not tick and the lock
-                // beside its name does not say why. Without this the person
-                // clicks, nothing happens, and the only explanation arrives
-                // after an authorization that was never going to work.
-                if let obstacle = group.sharedObstacle,
-                   let why = RemovalCapability.explanation(obstacle) {
-                    blockedCallout(why, revealing: group.items.map(\.url))
-                }
-
-                // Why Brim thinks this is a leftover at all — the sentence
-                // the flat list computed and then discarded.
-                callout(
-                    group.category == .orphaned ? "checkmark.seal" : "questionmark.circle",
-                    group.category == .orphaned ? "Orphaned" : "Unclaimed",
-                    overview,
-                    group.category == .orphaned ? .accentColor : .secondary
-                )
-
-                if let accessed = group.lastAccessed {
-                    Text("Last opened " + Self.relative.localizedString(
-                        for: accessed, relativeTo: Date()
-                    ))
-                    .font(.caption).foregroundColor(.secondary)
-                }
-
-                Divider()
-
-                Text("Where it is").font(.headline)
             }
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
             .listRowBackground(Color.clear)
-
-            // One row per location, so each is measured once and reused
-            // rather than re-measured with the rest of the pane.
-            ForEach(group.items) { item in
-                location(item)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
-                    .listRowBackground(Color.clear)
-            }
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            ListBottomSpacing()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .task(id: contextFacts) {
-            selectedFact = nil
-            let choice = await EvidenceNarrator.shared.choose(from: contextFacts, limit: 1)
-            guard !Task.isCancelled else { return }
-            selectedFact = choice
-        }
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: opened)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: showsUnknown)
     }
 
-    private var contextFacts: [String] {
-        group.domains.map(\.whatItHolds)
+    private func toggle(_ id: String) {
+        opened.formSymmetricDifference([id])
     }
 
-    private var overview: String {
-        var facts = [group.evidence]
-        if group.meaningfulBytes > 0 {
-            facts.append("\(ByteText.short(group.meaningfulBytes)) may not return.")
-        }
-        if group.regeneratedBytes > 0 {
-            facts.append("\(ByteText.short(group.regeneratedBytes)) can be rebuilt.")
-        }
-        if let context = selectedFact ?? contextFacts.first {
-            facts.append(context)
-        }
-        return facts.filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
-    /// What is stopping this, and the one thing that gets somebody past it.
-    ///
-    /// Finder can remove these; Brim, running as the person, cannot. So the
-    /// button hands the whole group over at once and with every file
-    /// **selected**, rather than opening the folder and leaving somebody to
-    /// find nine names among twenty-seven. `activateFileViewerSelecting`
-    /// highlights a broken symbolic link the same as anything else, which
-    /// is the case that matters here and the one worth having checked.
-    private func blockedCallout(_ why: String, revealing urls: [URL]) -> some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "lock").foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Brim cannot remove this").fontWeight(.medium)
-                Text(why).font(.callout).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(urls.count == 1
-                    ? "Finder can, and will ask you for a password."
-                    : "Finder can, and will ask you once for all \(urls.count).")
-                    .font(.callout).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(urls.count == 1 ? "Show in Finder" : "Show all \(urls.count) in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(urls)
-                }
-                .controlSize(.small)
+    private func sectionTitle(_ title: String, count: Int, bytes: Int64, sizeIsKnown: Bool = true) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.brimGroupTitle)
+                .foregroundStyle(Palette.ink)
+            if count > 0 {
+                Text("\(count) · \(sizeIsKnown ? ByteText.short(bytes) : "Not measured")")
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
             }
             Spacer()
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .contain)
+        .padding(.horizontal, 4)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .accessibilityAddTraits(.isHeader)
     }
 
-    private func callout(_ symbol: String, _ title: String, _ body: String, _ tint: Color) -> some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: symbol).foregroundColor(tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).fontWeight(.medium)
-                Text(body).font(.callout).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+    private var unknownTitle: some View {
+        Button { showsUnknown.toggle() } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.inkTertiary)
+                    .rotationEffect(.degrees(showsUnknown ? 90 : 0))
+                Text("Unknown")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.inkSecondary)
+                Text("\(unknowns.count)")
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkTertiary)
+                Spacer()
             }
+            .contentShape(.rect)
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .padding(.bottom, 6)
+        .accessibilityLabel("Unknown, \(unknowns.count)")
+        .accessibilityValue(showsUnknown ? "Expanded" : "Collapsed")
     }
 
-    private func location(_ item: Leftover) -> some View {
-        let domain = LeftoverDomain.of(item.url)
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(domain.title).fontWeight(.medium)
-                Text(domain.consequence)
-                    .font(.caption2)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(
-                        (domain.isRegenerated ? Color.secondary : Color.orange).opacity(0.15),
-                        in: Capsule()
-                    )
-                Spacer()
-                Text(ByteText.short(item.size))
-                    .font(.caption).foregroundColor(.secondary).monospacedDigit()
-            }
-            Text(domain.whatItHolds)
-                .font(.callout).foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                // Not selectable. `.textSelection(.enabled)` builds a
-                // second, separately measured text element behind the
-                // visible one, and six of those in a scrolling pane showed
-                // up as `ResolvedTextFilter.updateValue` taking an eighth of
-                // the main thread. The button beside it does the job the
-                // selection was there for, and the row already reads the
-                // path aloud as its accessibility value.
-                Text(item.url.path)
-                    .font(.caption).foregroundColor(.secondary)
-                    .truncationMode(.middle).lineLimit(1)
-                Spacer()
-                // Answers "is this really where it says it is" directly,
-                // rather than asking someone to trust a path string. Finder
-                // shows a broken symlink with its own overlay, so this
-                // works exactly the same for the dangling ones.
-                Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
+    /// Said where the removed apps would be, before the unknowns.
+    private var nothingLeft: some View {
+        HStack(spacing: 10) {
+            Image(systemName: model.hasUnreadRecoveryCopies ? "questionmark.circle" : "checkmark.circle.fill")
+                .foregroundStyle(model.hasUnreadRecoveryCopies ? Palette.inkSecondary : .green)
+            Text(model.hasUnreadRecoveryCopies
+                ? "No remnants found in checked locations" : "No removed app has left anything")
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Removing
+
+    private func selectionToggle(for group: LeftoverGroup) -> some View {
+        Toggle("Select \(group.displayName)", isOn: Binding(
+            get: { model.isSelected(group) },
+            set: { _ in model.toggle(group) }
+        ))
+        .toggleStyle(.checkbox)
+        .labelsHidden()
+        .disabled(model.isScanning || model.keptGroups.contains(group.id)
+            || !group.items.contains(where: \.canBeRemovedByBrim))
+    }
+
+    private func openSelection() {
+        removedInReview = 0
+        review = model.removalIntent(requesterIdentity: NSUserName())
+    }
+
+    private func open(_ group: LeftoverGroup) {
+        removedInReview = 0
+        review = model.removalIntent(for: group, requesterIdentity: NSUserName())
+    }
+
+    /// After a removal the check proved: say so, and offer it back.
+    private func offerPutBack(_ planId: UUID) {
+        let count = removedInReview
+        guard count > 0 else { return }
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 item" : "Removed \(count) items"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            recovery.refreshNow()
+                            model.reconcileWithDisk()
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
+                        }
+                    }
                 }
-                .buttonStyle(.borderless)
-                .help("Show in Finder")
             }
-            // Every obstacle, not only the one that had a label written
-            // for it. A broken command in a root-owned folder used to show
-            // nothing at all here and nothing on its checkbox either.
-            //
-            // And only when the group did not already say it. Docker leaves
-            // seven broken commands in one folder for one reason, and the
-            // callout above plus seven copies of the same orange sentence
-            // is the wall this was meant to stop being.
-            // Not for a row the helper takes: "needs an administrator" was
-            // still shown under dead links the helper was about to move.
-            if group.sharedObstacle == nil, !item.canBeRemovedByBrim,
-               let why = RemovalCapability.explanation(item.capability) {
-                Label(why, systemImage: "lock")
-                    .font(.caption2).foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            shell.show(toast)
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        // One element, not nine. Composed the way the background rows
-        // already are: a reader was handed a kind, a consequence, a size, a
-        // sentence and a path as five unrelated fragments, and rebuilding
-        // that many nodes was 8.9% of the main thread while scrolling.
-        // `.ignore`, not `.combine`. Combining walks every child element and
-        // merges them, which is more work than building them; ignoring
-        // throws them away and uses the label below. The rest of the app
-        // composes rows this way for the same reason.
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(SpokenText.sentences([
-            domain.title, domain.consequence, domain.whatItHolds
-        ]))
-        .accessibilityValue(item.url.path)
+    }
+}
+
+private struct LeftoverBatchActions: View {
+    let selectedCount: Int
+    let canRemoveSelection: Bool
+    let canRemoveAll: Bool
+    let clear: () -> Void
+    let removeSelected: () -> Void
+    let removeAll: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedCount) selected")
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+            if selectedCount > 0 {
+                Button("Clear", action: clear).buttonStyle(.borderless)
+            }
+            Spacer()
+            Button("Delete All Remnants", action: removeAll)
+                .disabled(!canRemoveAll)
+                .help("Review all removable items from known removed apps. "
+                    + "Unknown items need to be selected separately.")
+            Button("Delete Selected", action: removeSelected)
+                .buttonStyle(.borderedProminent)
+                .disabled(!canRemoveSelection)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
     }
 }
 
 extension PlanIntent: @retroactive Identifiable {
     public var id: String {
         explicitTargets.map(\.path).joined(separator: "|")
+    }
+}
+
+/// An app that has gone, as a card: what it was, when it went, and the
+/// places it left, folded inside.
+private struct RemnantCard: View {
+    let group: LeftoverGroup
+    let isOpen: Bool
+    let isScanning: Bool
+    let toggle: () -> Void
+    let finish: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                ownerIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.displayName)
+                        .font(.brimRowTitle)
+                        .foregroundStyle(Palette.ink)
+                    Text(facts)
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+                .lineLimit(1)
+                .help([group.evidence, group.replacedBy?.sentence].compactMap(\.self).joined(separator: "\n\n"))
+                Spacer(minLength: 8)
+                Text(group.items.contains { $0.sizeIsKnown == false }
+                    ? "Not measured" : ByteText.short(group.totalBytes))
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+                action
+            }
+            .padding(12)
+
+            Button(action: toggle) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Text(group.items.count == 1 ? "1 place" : "\(group.items.count) places")
+                    Spacer()
+                }
+                .font(.caption)
+                .foregroundStyle(Palette.inkSecondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, isOpen ? 6 : 10)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 44)
+            .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.items.sorted { $0.size > $1.size }, id: \.url) { item in
+                        PlaceRow(item: item)
+                    }
+                }
+                .padding(.leading, 56)
+                .padding(.trailing, 12)
+                .padding(.bottom, 10)
+                .transition(.opacity)
+            }
+        }
+        .background(Palette.surface.opacity(0.6), in: .rect(cornerRadius: Metrics.rowRadius + 2))
+        .overlay(RoundedRectangle(cornerRadius: Metrics.rowRadius + 2).strokeBorder(Palette.well, lineWidth: 0.5))
+    }
+
+    /// The app's own icon when Brim saved one, otherwise the kind of place
+    /// its largest item is in. Letters on a colour said nothing.
+    @ViewBuilder private var ownerIcon: some View {
+        if case .monogram = group.ownerIcon,
+           let largest = group.items.max(by: { $0.size < $1.size }) {
+            LocationIcon(url: largest.url, size: 36)
+        } else {
+            BrimIcon(source: group.ownerIcon, size: 36)
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        if group.items.contains(where: \.canBeRemovedByBrim) {
+            Button("Finish Removal", action: finish)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .disabled(isScanning)
+        } else {
+            // Nothing Brim can take: what is left is for the person.
+            RevealButton(urls: group.items.map(\.url), title: "Show in Finder")
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+        }
+    }
+
+    private var facts: String {
+        var parts: [String] = []
+        if let removed = group.removedAt {
+            parts.append("Removed " + removed.formatted(.dateTime.day().month(.abbreviated)))
+        } else {
+            parts.append("Removed")
+        }
+        if let replacement = group.replacedBy {
+            parts.append("Replaced by " + replacement.name)
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// One place an app left, inside its card.
+private struct PlaceRow: View {
+    let item: Leftover
+
+    var body: some View {
+        HStack(spacing: 8) {
+            LocationIcon(url: item.url, size: 16)
+            Text(item.url.lastPathComponent)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(folder)
+                .foregroundStyle(Palette.inkTertiary)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 8)
+            Text(item.sizeIsKnown == false ? "Not measured" : ByteText.short(item.size))
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+        }
+        .font(.caption)
+        .padding(.vertical, 4)
+        .help(item.url.path)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel("\(item.url.lastPathComponent), in \(folder), "
+            + (item.sizeIsKnown == false ? "Not measured" : ByteText.short(item.size)))
+    }
+
+    /// The folder it is in, with the home folder as a tilde.
+    private var folder: String {
+        (item.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+/// Something nobody can be named for: a flat, quieter row.
+private struct UnknownRow: View {
+    let group: LeftoverGroup
+    let isScanning: Bool
+    let readRecovery: () async -> Void
+    let review: () -> Void
+    @State private var isReadingRecovery = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let largest = group.items.max(by: { $0.size < $1.size }) {
+                LocationIcon(url: largest.url, size: 20)
+                    .opacity(0.7)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(group.displayName)
+                    .foregroundStyle(Palette.inkSecondary)
+                if let first = group.items.first {
+                    Text((first.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkTertiary)
+                        .truncationMode(.head)
+                }
+            }
+            .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(group.items.contains { $0.sizeIsKnown == false } ? "Not measured" : ByteText.short(group.totalBytes))
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkTertiary)
+            if group.items.contains(where: \.canBeRemovedByBrim) {
+                Button("Review", action: review)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(isScanning)
+            } else if group.items.contains(where: { $0.url.path == RecoveryCopy.directory }) {
+                Button("Read Recovery Copies") {
+                    isReadingRecovery = true
+                    Task {
+                        await readRecovery()
+                        isReadingRecovery = false
+                    }
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(isScanning || isReadingRecovery)
+            } else {
+                RevealButton(urls: group.items.map(\.url), title: "Show")
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+            }
+        }
+        .font(.brimFacts)
+        .padding(.horizontal, 12)
+        .frame(height: Metrics.compactRowHeight + 6)
+        .help(group.evidence)
     }
 }

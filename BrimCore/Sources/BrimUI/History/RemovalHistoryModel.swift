@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// One past removal, as History shows it.
 public struct RemovalRecord: Identifiable, Equatable, Sendable {
@@ -9,18 +9,42 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
     /// Present only while the removal can still be undone.
     public let recoverable: RecoverableItem?
 
-    public var id: UUID { plan.planId }
-    public var name: String { plan.intent.subjectIdentity.name }
-    public var itemCount: Int { plan.steps.count }
-    public var bytes: Int64 { plan.expectedTotalBytes }
-    public var canUndo: Bool { recoverable != nil }
+    public var id: UUID {
+        plan.planId
+    }
+
+    public var name: String {
+        plan.intent.subjectIdentity.name
+    }
+
+    public var itemCount: Int {
+        plan.steps.count
+    }
+
+    public var bytes: Int64 {
+        plan.expectedTotalBytes
+    }
+
+    public var canUndo: Bool {
+        recoverable != nil
+    }
 
     /// Why undo is unavailable, in the user's terms — nil when it is.
     public var unavailableReason: String? {
-        if recoverable != nil { return nil }
-        return plan.isReversible
-            ? "No longer in the Trash"
-            : "Deleted permanently"
+        Self.unavailableReason(plan: plan, recoverable: recoverable)
+    }
+
+    private static func unavailableReason(plan: Plan, recoverable: RecoverableItem?) -> String? {
+        if recoverable != nil {
+            return nil
+        }
+        if plan.steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
+            return "Set aside by the helper; restore is unavailable in Brim"
+        }
+        if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
+            return "Run by the tool; cannot be undone"
+        }
+        return plan.isReversible ? "No longer in the Trash" : "Deleted permanently"
     }
 
     /// When it happened, written once.
@@ -40,7 +64,7 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         self.plan = plan
         self.recoverable = recoverable
 
-        self.occurred = Self.dateStyle.format(plan.createdAt)
+        occurred = Self.dateStyle.format(plan.createdAt)
 
         // Moved here verbatim from the view, which was assembling it on
         // every pass. The wording is not incidental: gluing the reason on
@@ -51,11 +75,9 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         let items = "\(count) \(count == 1 ? "item" : "items")"
         var parts = [
             "\(plan.intent.subjectIdentity.name), \(items), "
-            + ByteText.short(plan.expectedTotalBytes)
+                + ByteText.short(plan.expectedTotalBytes)
         ]
-        let reason = recoverable != nil
-            ? nil
-            : (plan.isReversible ? "No longer in the Trash" : "Deleted permanently")
+        let reason = Self.unavailableReason(plan: plan, recoverable: recoverable)
         if recoverable != nil {
             parts.append("Can be undone")
         } else if let reason, !reason.isEmpty {
@@ -63,7 +85,7 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         } else {
             parts.append("Cannot be undone")
         }
-        self.spoken = parts.joined(separator: ". ") + "."
+        spoken = parts.joined(separator: ". ") + "."
     }
 
     /// Built once for the whole process rather than per row. A
