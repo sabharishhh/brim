@@ -142,7 +142,6 @@ final class UninstallExecutionModelTests: XCTestCase {
         await model.prepare(intent: intent, service: stub)
 
         XCTAssertEqual(model.removalSteps.count, 2, "A privacy reset and an unload are not locations")
-        XCTAssertTrue(model.clearsPrivacyGrants)
     }
 
     func testAFailureToPlanIsSurfacedAndBlocksAuthorization() async {

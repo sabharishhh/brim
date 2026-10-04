@@ -184,20 +184,6 @@ struct UninstallPanel: View {
                     }
                 }
             }
-            if model.clearsPrivacyGrants || model.clearsRegistrations {
-                Section {
-                    ReviewHeading(title: "System records", isFirst: true)
-                    if model.clearsPrivacyGrants {
-                        LabeledContent("Privacy permissions", value: "Reset")
-                    }
-                    if model.clearsRegistrations {
-                        LabeledContent("File associations", value: "Remove")
-                    }
-                }
-                .listRowSeparator(.hidden)
-                .listSectionSeparator(.hidden)
-            }
-
             // The inspector's groups, in its order: within each, what moves,
             // then what the person may include, then what stays and why.
             ForEach(model.reviewGroups) { group in
@@ -205,7 +191,8 @@ struct UninstallPanel: View {
                     // Counts what moves; a group with nothing moving shows
                     // no "0" over the rows it offers or keeps.
                     ReviewHeading(title: group.title, count: group.steps.isEmpty ? nil : group.steps.count,
-                                  bytes: group.steps.reduce(0) { $0 + $1.expectedBytes })
+                                  bytes: group.steps.reduce(0) { $0 + $1.expectedBytes },
+                                  isFirst: group.id == model.reviewGroups.first?.id)
                     ForEach(ReviewRun.runs(of: group.steps)) { run in
                         if run.steps.count > 1 {
                             UninstallPlanRow(

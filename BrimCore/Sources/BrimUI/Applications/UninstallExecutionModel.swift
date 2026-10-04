@@ -191,18 +191,6 @@ public final class UninstallExecutionModel: ObservableObject {
         }
     }
 
-    /// Whether this plan also retracts the app's Launch Services
-    /// registration — the reason a removed app stops appearing in
-    /// "Open With".
-    public var clearsRegistrations: Bool {
-        (plan?.steps ?? []).contains { $0.kind == .unregisterLaunchServices }
-    }
-
-    /// Whether this plan also clears the app's privacy permissions.
-    public var clearsPrivacyGrants: Bool {
-        (plan?.steps ?? []).contains { $0.kind == .resetPrivacyGrants }
-    }
-
     public func prepare(intent: PlanIntent, service: any BrimServiceProtocol) async {
         preparation += 1
         self.service = service
