@@ -8,9 +8,9 @@
 
 ---
 
-## Status, 30 September 2026
+## Status, 4 October 2026
 
-Brim is heading for 1.0 on 4 October. Milestones 0 to 3 are built. Milestone 4 is App Intents only. Milestone 5 is built; reset and archive were removed. Milestone 6 is partly built. Milestone 7's first items are done and its audit criterion is still open. Where the build replaced a task, the task below says so in place, and section 15 lists what was left out or drifted.
+The supported cleanup and verification changes have completed their final review. Section 16 and the linked validation record define the current uninstall release scope and override the original milestone ambitions below. Universal erasure of every app-associated record is deferred, not unfinished work required for this release. The older milestone catalogue remains a development record; it is not a claim that all original acceptance criteria shipped.
 
 The work since the last revision, beyond this plan (see also section 15): Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Remnants (was Removed apps) uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
 
@@ -182,11 +182,13 @@ func removeInstalledBundle(domain:name:withReply:)  // a bundle an installer put
 func removeInstalledPayload(packageID:name:withReply:)
 func removeSystemCache(name:withReply:)
 func removeSystemPreference(name:withReply:)        // /Library/Preferences, files only
-func version(withReply:)                     // "7"
+func recoveryItems(withReply:)              // Brim's fixed protected store
+func removeRecoveryItem(identifier:expectedDevice:expectedInode:withReply:)
+func version(withReply:)                     // "12"
 func uninstallSelf(withReply:)
 ```
 
-The helper finds each item from the name it is given, proves it is what the call says (a job whose program is missing, a link that resolves nowhere), and refuses Apple's namespace, Brim's identifier and families macOS ships in `/System/Library`. What it removes it sets aside in a root-owned folder, which it clears in `uninstallSelf` before it is unregistered. `HelperScope` in the app answers the same questions, and a test holds the two to one answer.
+The temporary helper finds ordinary targets from their domain and name, proves they are in its supported scope, and refuses protected namespaces. Recovery removal is restricted to an existing copy in Brim's fixed store with its reviewed identity. Retiring the earlier registered helper preserves recovery copies; deleting them is a separate approved operation. `HelperScope` mirrors ordinary removal scope in the app. No arbitrary command or unrestricted deletion path is accepted.
 
 ---
 
@@ -399,7 +401,7 @@ executable.
 - **Unlocks** the helper.
 
 ### T-2.3 · Privileged helper · done, narrower than planned
-- **As built** `BrimJobHelper`, an `SMAppService` daemon approved in Login Items during setup. It does not read plans. Each call names a kind of item (a defunct launch job, a broken command link, an installer receipt, an installed bundle or payload, a system cache, a system preference file) and the helper finds and proves the item itself. It never accepts a path, and refuses Apple's namespace, Brim's own identifier and families macOS ships in `/System/Library`. `HelperScope` mirrors those rules in the app so a plan promises only what the helper will do. It reports a version, and Brim replaces a daemon it does not recognise. Current version 7.
+- **As built** `BrimJobHelper` is a signed temporary administrator process, not a persistent `SMAppService` daemon. It independently checks supported targets and requesting-user identity. A selected protected batch shares authentication through execution and verification, then closes the process. Disconnect shutdown is bounded. Earlier registered-helper migration preserves recovery copies. Current interface version 12; see section 16 and the validation record for scope and checks.
 - **Acceptance** A plan never offers a root-owned item the helper will refuse; `HelperScopeAgreementTests` holds the two readings to one answer; an unsigned client is refused.
 
 ### T-2.4 · Independent re-validation in the helper
@@ -466,10 +468,9 @@ executable.
 
 ### T-3.3 · Background Task Management ingestion
 - **Objective** See what System Settings hides.
-- **Depends on** T-2.3, deferred spike on `sfltool dumpbtm`.
-- **Work** Invoke `sfltool dumpbtm` through the helper; parse into records; join to identities; mark records whose owner no longer exists. **Treat parsing as an enrichment layer**: a parse failure degrades the view to launchd plus `SMAppService` status and never blocks an action.
+- **As built** Read the current Background Task Management archive with Full Disk Access, without invoking `sfltool dumpbtm` or requesting administrator access for ordinary scans. Attribute application records and retain ambiguous targets and read gaps. A missing target is not evidence that macOS will remove its record.
 - **Acceptance** With parsing deliberately disabled, the background view still renders and targeted removal still works. A synthetic malformed dump produces a degraded view, not an error dialog.
-- **Unlocks** the guided reset.
+- **Unlocks** background registration inspection and removal verification. No guided global reset ships.
 
 ### T-3.4 · Tier S shared-file veto
 - **Objective** The control that prevents the category's signature failure.
@@ -505,7 +506,7 @@ executable.
 - **Work** A view listing every item with its owner, path, signing state and whether the owner still exists. Targeted removal where a backing file exists (unload then remove).
 - **Acceptance** A job pointing at a program that has gone can be removed; one pointing at something real cannot be removed by accident.
 - **Unlocks** a headline feature.
-- **Dropped** the guided `btmReset` flow. `sfltool resetbtm` deregisters every login item on the Mac at once, and the case it would have fixed does not exist: `backgroundtaskmanagementd` collects records for deleted apps by itself, which the Background view already reports as "macOS is catching up". The step, the restore list, the capture and the store were all removed.
+- **Dropped** the guided `btmReset` flow because it changes the machine-wide store rather than selectively removing an app's records. Automatic collection is not a supported completion guarantee. Remaining records are shown with qualified manual guidance; no global reset is part of uninstall.
 
 ### T-3.9 · Evidence golden tests per OS version
 - **Objective** Notice when Apple changes the ground.
@@ -644,8 +645,8 @@ dropped with it.
 ### T-6.6 · Self-policing and self-removal
 - **Objective** Prove the product's central claim on the product itself.
 - **Depends on** T-2.8, T-5.5.
-- **Work** Brim lists its own agent in the background-items view on the same terms as everything else. A self-removal flow that removes the app, the helper, the agent, the index and every registration, then verifies.
-- **Acceptance** After self-removal, a scan from a fresh build finds nothing belonging to Brim.
+- **Work** Brim lists its own records on the same terms as other apps. Self-removal handles supported owned files and services, then reports confirmed absence, retained recovery copies, remaining registrations and unavailable checks.
+- **Acceptance** Self-removal must not label retained or unverified records removed. Universal erasure of every macOS-owned record is outside the current release scope.
 
 ### T-6.7 · Release engineering · changed
 - **As built** No Sparkle. Brim asks GitHub for its latest release when it opens, at most once a day, and on Check for Brim Updates, and shows a notice in the sidebar that opens the release page. It never replaces itself. A 404 before the first release means nothing newer.
@@ -798,7 +799,7 @@ is complete; M7 still depends on later tasks.
 ### T-7.3 · The removal ceiling, reported rather than hidden (was P2.4, P2.5)
 - **Objective** Say what macOS will not allow, once, in the right place.
 - **Depends on** T-7.2, T-3.3.
-- **Work** Three capability tiers as a first-class outcome: removable; removable only destructively (Background Task Management has no per-item API, `sfltool resetbtm` is all-or-nothing, which is why Brim does not offer it); detectable but not removable (a system extension or VPN configuration belonging to a departed application, and TCC entries for a bundle that is already gone, because `tccutil` resolves through Launch Services). Background Task Management needs no action of its own: macOS collects records for deleted applications itself.
+- **Work** Distinguish supported removal from records Brim can only observe or route to their owner or Settings. A machine-wide reset is not a selective uninstall operation and is not offered. Missing-target Background Task Management records can remain; collection is never assumed to complete removal.
 - **Acceptance** A tier-3 outcome names the one action that does work rather than describing what Brim cannot do.
 - **Unlocks** an honest completion claim, and closes the last dead step kind.
 
@@ -1114,3 +1115,81 @@ Drifted from the plan:
 - Home's Changes shows the last change that happened, not the difference between the last two snapshots, which was always empty after a relaunch.
 - The product rule of two things now names Updates as the one addition.
 - Reset and archive (T-5.2) were built in the engine and then removed.
+
+
+## 16. Registration verification and release boundary, 4 October 2026
+
+The current implementation separates declarations, registration observations
+and action receipts. Earlier notes that imply a missing BTM target will be
+collected automatically, or that pre-removal declarations prove registration
+absence, are superseded by this section.
+
+Implemented:
+
+- Typed present, absent and unknown target observations; atomic surface
+  reads with namespace, stable identity, reader version and coverage gaps.
+- Exact surviving-copy discovery and shared embedded-identifier protection.
+- Exact-domain launchd stop and readback before declaration removal;
+  retention on failure, bounded subprocesses and runtime restoration on undo.
+- Full receipt payload binding and fresh absence checks, repeated independently
+  by the helper before forgetting an installer record. Helper version 12 binds
+  the authenticated requesting UID rather than accepting one from the caller.
+- Fresh, append-only registration verification in removal results and Journal.
+  Newly found records never expand an approved plan.
+- Bounded helper-app discovery in selected support/cache folders, exact
+  Launch Services cleanup and readback, and identity-checked registration
+  restoration when the enclosing folder is put back.
+- Grouped remnant removal and explicit protected recovery-copy deletion.
+  Protected execution and verification share one authenticated temporary
+  process; no persistent background service is installed.
+- Provider-data exclusions, precise manual routes and conditional restart advice.
+- Background and Home use listed counts and expose partial reads. Details uses
+  relevant icons and a leading layout with less indentation.
+
+Bugs found and corrected during implementation:
+
+- A successful PluginKit exit can contain an invalid listing. Parsing now
+  validates listing structure and count while retaining useful partial evidence.
+- Synthetic job fixtures previously depended on ignored launchctl failures.
+  They now inject an explicitly separate runtime; production fails closed.
+- The Background inspector revealed the shared BTM archive while displaying
+  individual target paths without distinguishing them. Targets and source are
+  now labeled separately. Finder reveals only individual targets; the shared
+  archive cannot be a fallback. SafetyChecker also protects the archive and
+  its parents from explicit removal. Regression tests cover both boundaries.
+- Home still claimed registrations were running and a partial scan was clear.
+  The real app review exposed this and its status model now preserves read gaps.
+- A PluginKit registration experiment created a sandbox container. That unsafe
+  experiment was removed and the owned container was deleted through Finder
+  with approval. No automatic PluginKit remover is shipped.
+- The launchd lifecycle test produced background activity notifications even
+  after its job was removed. It was moved out of regular test targets into a
+  disposable-account recipe. Future registration experiments use an isolated
+  account or VM, because filesystem cleanup cannot guarantee BTM collection.
+- Strict compiler checks exposed existing Shortcuts, formatter, lock-result and
+  callback capture diagnostics. Small compatibility fixes keep the required
+  package and app checks passing.
+
+PluginKit mutation, legacy login-item automation, firewall mutation and
+foreign-owner extension/provider operations remain gated. There is no global
+reset, private database write or automatic vendor uninstaller.
+
+[The implementation and validation record](uninstall-registration-verification.md)
+contains route-specific limits and actual verification evidence. The earlier
+research remains the rationale; this section records what has shipped on the
+implementation branch rather than declaring every compatibility gate passed.
+
+### Background removal follow-up and deferred work
+
+Open at Login removal and Background App Activity switches are different operations. Remaining user login/background records now receive conditional Open at Login instructions and a direct Settings link, followed by another check. Neither background switches nor restarting are universal erasure guarantees. Exact embedded job labels and domains are saved for post-removal checks, but automatic embedded-job stopping and selective BTM erasure remain unqualified.
+
+Universal removal is deferred for this release. More aggressive shared-store
+changes could affect other apps, cross ownership boundaries and add
+compatibility and recovery work without a proportionate immediate benefit.
+This is a scope decision, not permission to skip discovery or leave known
+supported actions broken. Future work should prioritize concrete defects in
+attribution, execution, verification and Undo. A new selective adapter needs
+legitimate authority, repeatable independent readback and isolated lifecycle
+qualification. The linked validation record separates achieved behavior,
+unverified cases and optional future research; its deferred experiments are
+not the next release task queue.

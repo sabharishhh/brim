@@ -187,7 +187,7 @@ final class CapabilitySurfaceTests: XCTestCase {
         let extensionCheck = try XCTUnwrap(report.checks.first { $0.capability == .appExtension })
         XCTAssertEqual(extensionCheck.declaration, .declared)
         XCTAssertTrue(extensionCheck.coverage.available)
-        XCTAssertEqual(extensionCheck.removalTier, .removable)
+        XCTAssertEqual(extensionCheck.removalTier, .detectableOnly)
         XCTAssertTrue(extensionCheck.registrations.isEmpty)
         let privacyCheck = try XCTUnwrap(report.checks.first { $0.capability == .privacyGrant })
         XCTAssertEqual(privacyCheck.declaration, .unknown)
@@ -221,7 +221,7 @@ final class CapabilitySurfaceTests: XCTestCase {
     }
 
     func testRemovalTiersKeepSystemWideAndReportOnlyRecordsOutOfThePlan() {
-        XCTAssertEqual(RemovalTier.forRegistration(.backgroundItem, ownerPresent: false), .destructiveOnly)
+        XCTAssertEqual(RemovalTier.forRegistration(.backgroundItem, ownerPresent: false), .detectableOnly)
         XCTAssertEqual(RemovalTier.forRegistration(.systemExtension, ownerPresent: true), .detectableOnly)
         XCTAssertEqual(RemovalTier.forRegistration(.privacyGrant, ownerPresent: false), .detectableOnly)
         XCTAssertEqual(RemovalTier.forRegistration(.privacyGrant, ownerPresent: true), .removable)
@@ -257,5 +257,56 @@ final class CapabilitySurfaceTests: XCTestCase {
         XCTAssertEqual(privacy.removalTier, .detectableOnly)
         XCTAssertTrue(privacy.registrations.isEmpty)
         XCTAssertEqual(privacy.followUp, .restoreAppForPrivacyReset)
+    }
+}
+
+extension CapabilitySurfaceTests {
+    func testEmbeddedJobsAreSavedForRuntimeVerificationBeforeTheBundleMoves() async throws {
+        // An embedded SMAppService declaration is absent from global job folders.
+        // Dropping it here meant verification never asked whether its job survived.
+        try info(["CFBundleIdentifier": "org.example.editor"], at: app)
+        let plist = app.appendingPathComponent("Contents/Library/LaunchAgents/misleading-name.plist")
+        try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: [
+            "Label": "org.example.worker", "BundleProgram": "Contents/MacOS/Worker"
+        ], format: .xml, options: 0).write(to: plist)
+        let (surface, capabilities) = read { _ in BundleSurfaceReader.Signature(gap: "Fixture.") }
+        let identity = Identity(bundleID: "org.example.editor", name: "Editor", bundlePath: app.path)
+            .attaching(surface, capabilities: capabilities)
+        let result = await CapabilitySearchScanner(surfaces: [LaunchdRegistrationSurface()])
+            .scan(identity: identity, in: root, completeness: .complete)
+        let report = try XCTUnwrap(result)
+        let check = try XCTUnwrap(report.checks.first { $0.capability == .launchdJob })
+        let record = try XCTUnwrap(check.registrations.first)
+        XCTAssertEqual(record.identifier, "org.example.worker")
+        XCTAssertEqual(record.namespace, "gui/\(getuid())")
+        XCTAssertEqual(record.programPath, app.appendingPathComponent("Contents/MacOS/Worker").path)
+        XCTAssertEqual(record.runtimeState, "declared")
+        XCTAssertEqual(check.removalTier, .detectableOnly)
+
+        // The saved path cannot authorize a different label after a file changes.
+        try PropertyListSerialization.data(fromPropertyList: ["Label": "org.unrelated.job"],
+                                           format: .xml, options: 0).write(to: plist)
+        let changed = EmbeddedLaunchdDeclarations.read(identity: identity)
+        XCTAssertTrue(changed.registrations.isEmpty)
+        XCTAssertFalse(changed.coverage.available)
+    }
+
+    func testBackgroundRecordsDoNotOfferSettingsAsAnErasureRoute() async throws {
+        let record = Registration(kind: .backgroundItem, identifier: "org.example.editor",
+                                  label: "Editor", owningBundleID: "org.example.editor",
+                                  targetExists: false, evidence: "Still listed.")
+        let source = FixedSurface(kind: .backgroundItem, result: RegistrationSnapshot(
+            registrations: [record], coverage: .available(.backgroundItem)
+        ))
+        let result = await CapabilitySearchScanner(surfaces: [source]).scan(
+            identity: Identity(bundleID: "org.example.editor", name: "Editor"),
+            in: root, completeness: .complete
+        )
+        let check = try XCTUnwrap(result?.checks.first { $0.capability == .backgroundItem })
+        XCTAssertEqual(check.registrations, [record])
+        XCTAssertNil(check.followUp)
+        XCTAssertEqual(check.removalTier, .detectableOnly)
     }
 }

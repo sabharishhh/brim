@@ -26,14 +26,22 @@ public struct TokenRecord: Codable, Sendable {
 public actor TokenStore {
     private var tokens: [UUID: TokenRecord] = [:]
     private let timeToLive: TimeInterval = 300 // 5 minutes
+    private let currentTime: @Sendable () -> Date
 
-    public init() {}
+    public init() {
+        currentTime = Date.init
+    }
+
+    /// A controlled clock for expiry tests, never supplied over the service protocol.
+    init(currentTime: @escaping @Sendable () -> Date) {
+        self.currentTime = currentTime
+    }
 
     /// Called from exactly one place: `BrimService.grantApproval(for:)`,
     /// after a person has answered. Nothing else in `Sources` calls this,
     /// and `ApprovalGateTests` fails if that stops being true.
     public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) -> ApprovalToken {
-        let now = Date()
+        let now = currentTime()
         let expiry = now.addingTimeInterval(timeToLive)
         let nonce = UUID()
         tokens[nonce] = TokenRecord(
@@ -85,7 +93,7 @@ public actor TokenStore {
             throw TokenError.notFound
         }
 
-        guard Date() < record.expiresAt else {
+        guard currentTime() < record.expiresAt else {
             tokens.removeValue(forKey: token.nonce)
             throw TokenError.expired
         }

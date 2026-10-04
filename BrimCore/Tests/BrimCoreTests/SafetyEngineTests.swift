@@ -61,8 +61,8 @@ final class SafetyEngineTests: XCTestCase {
         XCTAssertEqual(evaluated.items[2].selection, .selected)
         XCTAssertEqual(evaluated.items[2].costOfError, .medium)
         
-        // 3: Tier C -> Unselected, but cost of error should be low because it's a Cache
+        // 3: A cache-shaped path alone does not prove its contents are disposable.
         XCTAssertEqual(evaluated.items[3].selection, .unselected)
-        XCTAssertEqual(evaluated.items[3].costOfError, .low)
+        XCTAssertEqual(evaluated.items[3].costOfError, .medium)
     }
 }

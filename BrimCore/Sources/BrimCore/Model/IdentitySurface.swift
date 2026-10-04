@@ -113,7 +113,8 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
 
 public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case systemExtension, vpnConfiguration, privilegedHelper, launchdJob, appExtension
-    case privacyGrant, launchServices, applicationGroups, bundlePlugin, installationRecords
+    case privacyGrant, launchServices, applicationGroups, bundlePlugin, installationRecords, backgroundItem,
+         fileProvider, firewallEntry, configurationProfile
 
     public var title: String {
         switch self {
@@ -127,6 +128,10 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .applicationGroups: "App groups"
         case .bundlePlugin: "Plug-ins"
         case .installationRecords: "Installation records"
+        case .backgroundItem: "Login items and background services"
+        case .fileProvider: "Cloud files"
+        case .firewallEntry: "Firewall entries"
+        case .configurationProfile: "Management profiles"
         }
     }
 
@@ -141,12 +146,16 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .applicationGroups: .bundlePlugin
         case .bundlePlugin: .bundlePlugin
         case .installationRecords: .installerReceipt
+        case .backgroundItem: .backgroundItem
+        case .fileProvider: .bundlePlugin
+        case .firewallEntry: .firewallEntry
+        case .configurationProfile: .configurationProfile
         }
     }
 
     public var needsEntitlements: Bool {
         switch self {
-        case .systemExtension, .vpnConfiguration, .privacyGrant, .applicationGroups: true
+        case .systemExtension, .vpnConfiguration, .privacyGrant, .applicationGroups, .fileProvider: true
         default: false
         }
     }
@@ -218,6 +227,8 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
         /// Nil in plans written before removal tiers were recorded.
         public let removalTier: RemovalTier?
         public let followUp: RemovalFollowUp?
+        public let observedAt: Date?
+        public let readerVersion: Int?
         public var id: String {
             capability.rawValue
         }
@@ -225,7 +236,7 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
         public init(capability: DeclaredCapability, declaration: CapabilitySurface.DeclarationState,
                     coverage: RegistrationCoverage, registrations: [Registration] = [],
                     locations: [String] = [], removalTier: RemovalTier? = nil,
-                    followUp: RemovalFollowUp? = nil) {
+                    followUp: RemovalFollowUp? = nil, observedAt: Date? = nil, readerVersion: Int? = nil) {
             self.capability = capability
             self.declaration = declaration
             self.coverage = coverage
@@ -233,6 +244,8 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
             self.locations = locations
             self.removalTier = removalTier
             self.followUp = followUp
+            self.observedAt = observedAt
+            self.readerVersion = readerVersion
         }
     }
 
@@ -242,5 +255,15 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
     public init(checks: [Check], signatureCoverage: [RegistrationCoverage]) {
         self.checks = checks
         self.signatureCoverage = signatureCoverage
+    }
+
+    /// Revalidation compares scope and evidence. Observation times naturally
+    /// advance and must not invalidate an otherwise unchanged reviewed plan.
+    public var reviewScope: Self {
+        Self(checks: checks.map {
+            Check(capability: $0.capability, declaration: $0.declaration, coverage: $0.coverage,
+                  registrations: $0.registrations, locations: $0.locations, removalTier: $0.removalTier,
+                  followUp: $0.followUp, readerVersion: $0.readerVersion)
+        }, signatureCoverage: signatureCoverage)
     }
 }

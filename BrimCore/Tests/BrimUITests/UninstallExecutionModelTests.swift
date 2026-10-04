@@ -1,3 +1,4 @@
+import Testing
 import XCTest
 import BrimCore
 import BrimProtocol
@@ -290,5 +291,40 @@ final class BatchRemovalModelTests: XCTestCase {
         XCTAssertTrue(model.entries.filter { $0.app.name != "Bad" }.allSatisfy {
             if case .verified = $0.removal.phase { true } else { false }
         })
+    }
+}
+
+@Suite("Removal capacity explanations")
+@MainActor
+struct RemovalCapacityExplanationTests {
+    /// A refused capacity read used to become zero and trigger a confident
+    /// snapshot explanation. A failed removal made the same false claim.
+    @Test("Unmeasured or failed removals do not claim delayed recovery",
+          arguments: [(false, Optional(true)), (true, Optional(false)), (true, nil)])
+    func unavailableCapacity(success: Bool, measured: Bool?) async {
+        let model = await completedModel(success: success, measured: measured)
+        #expect(model.spaceExplanation == nil)
+    }
+
+    @Test("A measured shortfall describes possible causes")
+    func measuredShortfall() async {
+        let model = await completedModel(success: true, measured: true)
+        #expect(model.spaceExplanation?.contains("can explain") == true)
+    }
+
+    private func completedModel(success: Bool, measured: Bool?) async -> UninstallExecutionModel {
+        let target = Step(index: 0, kind: .trashPath, target: "/fixture/build",
+                          targetFingerprint: nil, tier: .A, evidence: "Compiled output",
+                          expectedBytes: 200_000_000, capability: .ok, reversible: false,
+                          costOfError: .low, executionPhase: .auxiliary, disposition: .delete)
+        let plan = makePlan([target])
+        let verification = VerificationResult(planId: plan.planId, expectedBytes: 200_000_000,
+                                              recoveredBytes: 0, success: success, reason: nil,
+                                              freeSpaceMeasured: measured)
+        let service = UninstallStub(plan: plan, verifyResult: verification)
+        let model = UninstallExecutionModel()
+        await model.prepare(intent: plan.intent, service: service)
+        await model.authorize(requesterIdentity: "tester")
+        return model
     }
 }

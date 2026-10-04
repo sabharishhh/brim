@@ -9,7 +9,6 @@ import Foundation
 /// place an owner can be recorded, and the verdict carries the sentence
 /// explaining which of them answered.
 public enum Ownership: Equatable, Sendable {
-
     /// An owner is installed and present, so this is not a leftover at all.
     case present(owner: URL)
 
@@ -18,15 +17,19 @@ public enum Ownership: Equatable, Sendable {
     /// "somebody did, and they have gone".
     case recordedButGone(evidence: String)
 
+    /// An owner lookup failed. Older absence records cannot resolve whether
+    /// another installed copy now claims this data.
+    case unknown(evidence: String)
+
     /// Nothing anywhere claims it. *Unclaimed* — shown, never pre-selected,
     /// because an absence of evidence is not evidence of absence.
     case unattributable
 
     public var category: Leftover.Category? {
         switch self {
-        case .present: return nil
-        case .recordedButGone: return .orphaned
-        case .unattributable: return .unclaimed
+        case .present: nil
+        case .recordedButGone: .orphaned
+        case .unattributable, .unknown: .unclaimed
         }
     }
 }
@@ -37,7 +40,6 @@ public enum Ownership: Equatable, Sendable {
 /// Every source is injected rather than read here, so the ordering below can
 /// be tested without a machine that happens to have the right software on it.
 public struct OwnershipSearch: Sendable {
-
     /// Bundle identifiers of applications found on disk — across all mounted
     /// volumes and every readable user account, not just `/Applications`.
     public let installedBundleIDs: Set<String>
@@ -57,7 +59,7 @@ public struct OwnershipSearch: Sendable {
     public let staleRegistrationOwners: [String: String]
     /// Launch Services' answer for an identifier: every location it still
     /// associates with that bundle.
-    public let launchServicesLookup: @Sendable (String) -> [URL]
+    public let launchServicesLookup: @Sendable (String) throws -> [URL]
     /// Whether a path exists. Injected so the ordering can be tested.
     public let exists: @Sendable (URL) -> Bool
 
@@ -67,7 +69,7 @@ public struct OwnershipSearch: Sendable {
         receiptBundleIDs: Set<String>,
         previouslyRemovedBundleIDs: Set<String>,
         staleRegistrationOwners: [String: String] = [:],
-        launchServicesLookup: @escaping @Sendable (String) -> [URL],
+        launchServicesLookup: @escaping @Sendable (String) throws -> [URL],
         exists: @escaping @Sendable (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
     ) {
         self.installedBundleIDs = installedBundleIDs
@@ -86,8 +88,8 @@ public struct OwnershipSearch: Sendable {
     /// Services is asked — because an app on an unmounted or unusual volume
     /// must never be reported as orphaned on the strength of a database.
     public func ownership(of identifier: String) -> Ownership {
-        if installedBundleIDs.contains(identifier)
-            || installedNames.contains(identifier.lowercased()) {
+        let installed = installedBundleIDs.contains(identifier) || installedNames.contains(identifier.lowercased())
+        if installed {
             return .present(owner: URL(fileURLWithPath: "/"))
         }
 
@@ -95,7 +97,12 @@ public struct OwnershipSearch: Sendable {
         // bundle is still there is an owner the directory walk missed; a
         // record whose bundle has gone is the cleanest orphan evidence there
         // is, because macOS itself recorded the app as installed.
-        let registered = launchServicesLookup(identifier)
+        let registered: [URL]
+        do {
+            registered = try launchServicesLookup(identifier)
+        } catch {
+            return .unknown(evidence: "Launch Services could not check whether \(identifier) is still installed.")
+        }
         if let live = registered.first(where: exists) {
             return .present(owner: live)
         }

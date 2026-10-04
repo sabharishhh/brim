@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import Testing
 @testable import BrimCore
 
 final class PlannerTests: XCTestCase {
@@ -195,5 +196,41 @@ final class PlannerTests: XCTestCase {
             XCTAssertFalse(step.evidence.isEmpty, "Step evidence sentence must not be empty.")
             XCTAssertNotEqual(step.evidence, "System", "Sentence must be human-readable prose, not a raw constant.")
         }
+    }
+}
+
+struct PlannerRevalidationTests {
+    @Test func embeddedApplicationRegistrationsStayTheSameWhenReplanningSavedIntent() {
+        // Figma's review had 17 steps, but apply rebuilt 21 after its saved
+        // intent gained the embedded app identities discovered during scanning.
+        let appPath = "/tmp/planner-revalidation/Example.app"
+        let rawIdentity = Identity(bundleID: "org.example.app", name: "Example", bundlePath: appPath)
+        let helperPaths = [appPath + "/Contents/Frameworks/Example Helper.app",
+                           appPath + "/Contents/Frameworks/Example Helper (Renderer).app"]
+        let components = helperPaths.map { path in
+            IdentitySurface.Component(path: path, bundleIdentifier: "org.example.app.helper", name: "Helper",
+                                      bundleName: nil, teamIdentifier: nil, groups: [],
+                                      urlSchemes: [], exportedTypes: [])
+        }
+        let enrichedIdentity = rawIdentity.attaching(
+            IdentitySurface(bundlePath: appPath, components: components),
+            capabilities: CapabilitySurface(declarations: [])
+        )
+        let item = EvaluatedItem(footprintItem: FootprintItem(
+            evidence: Evidence(url: URL(fileURLWithPath: appPath), tier: .A,
+                               mechanism: "AppBundleSource", humanSentence: "Application bundle"),
+            sizeBytes: 1, capability: .ok
+        ), selection: .selected, costOfError: .medium)
+        let footprint = EvaluatedFootprint(identity: enrichedIdentity, items: [item])
+        let planner = Planner()
+        let reviewed = planner.createPlan(from: footprint,
+                                          intent: PlanIntent(type: .uninstall, subjectIdentity: rawIdentity),
+                                          engineVersion: "test")
+        let rebuilt = planner.createPlan(from: footprint, intent: reviewed.intent, engineVersion: "test")
+        let reviewedTargets = reviewed.steps.filter { $0.kind == .unregisterLaunchServices }.map(\.target)
+        let rebuiltTargets = rebuilt.steps.filter { $0.kind == .unregisterLaunchServices }.map(\.target)
+        #expect(reviewedTargets == ([appPath] + helperPaths).sorted())
+        #expect(rebuiltTargets == reviewedTargets)
+        #expect(rebuilt.steps.count == reviewed.steps.count)
     }
 }

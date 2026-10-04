@@ -1,5 +1,4 @@
 import BrimCore
-import BrimPrivileged
 import BrimUI
 import SwiftUI
 
@@ -42,7 +41,6 @@ private struct GeneralSettings: View {
 
 private struct AccessSettings: View {
     @StateObject private var access = FullDiskAccessModel()
-    @State private var helper: PrivilegedHelperClient.State?
 
     var body: some View {
         Form {
@@ -62,21 +60,8 @@ private struct AccessSettings: View {
                     .foregroundStyle(Palette.inkSecondary)
             }
             Section {
-                LabeledContent("Brim's helper") {
-                    HStack(spacing: 10) {
-                        StatusDot(status: helper == .ready ? .clear : .neutral)
-                        Text(helperText)
-                        if helper != .ready {
-                            Button("Turn On") {
-                                HelperRoute.turnOn()
-                                helper = HelperRoute.currentState()
-                            }
-                        }
-                    }
-                }
-            } footer: {
-                Text("Moves things in system folders aside, where they can be put back")
-                    .font(.caption)
+                Text("macOS requests an administrator password for protected cleanup.")
+                    .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
             }
         }
@@ -86,20 +71,8 @@ private struct AccessSettings: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             access.startObserving()
-            helper = HelperRoute.currentState()
         }
         .onDisappear { access.stopObserving() }
-    }
-
-    private var helperText: String {
-        switch helper {
-        case .ready: "On"
-        case .waitingForApproval: "Waiting in Login Items"
-        case .disabledByUser: "Switched off"
-        case .stale: "Replaced, starts next time"
-        case let .unavailable(reason): reason
-        case .notAsked, .notInstalled, nil: "Off"
-        }
     }
 }
 
