@@ -47,6 +47,12 @@ enum Motion {
 }
 
 extension AnyTransition {
+    /// One view replacing another in the same place: the new one fades
+    /// in and the old one leaves at once. A crossfade drew both pages, or
+    /// the inspector and the review, on top of each other for the length
+    /// of the fade, with their text overlapping.
+    static let replacement = AnyTransition.asymmetric(insertion: .opacity, removal: .identity)
+
     /// Enter: fades in from 6 points below. Exit: fades while shrinking a
     /// little, so a leaving row reads as going away rather than sliding off.
     static func brimRow(reduceMotion: Bool) -> AnyTransition {

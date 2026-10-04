@@ -36,9 +36,15 @@ struct AdaptivePanes<Collection: View, Detail: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
+            // No minimum on the list: the container has to take the width it
+            // is offered, or it would measure its own minimum and never see
+            // that the window had become too narrow. A minimum here held it
+            // at 800 points in a 900 point window, squeezing the sidebar and
+            // clipping the pane off the edge. The threshold below keeps the
+            // list at least 440 points wide whenever the pane sits beside it.
             HStack(spacing: 0) {
                 collection()
-                    .frame(minWidth: isNarrow ? 0 : Metrics.listMinWidth, maxWidth: .infinity)
+                    .frame(maxWidth: .infinity)
                 if !isNarrow {
                     detail()
                         .frame(width: detailWidth)
@@ -49,6 +55,7 @@ struct AdaptivePanes<Collection: View, Detail: View>: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = $0 }
         .animation(Motion.resolved(Motion.openEvidence, reduceMotion: reduceMotion), value: isNarrow && hasDetail)
     }

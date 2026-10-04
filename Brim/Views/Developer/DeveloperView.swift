@@ -220,7 +220,7 @@ struct DeveloperView: View {
                 plan: reviewPlan
             )
             .id(intent.id)
-            .transition(.opacity)
+            .transition(.replacement)
         } else if let cache = inspected {
             DeveloperInspector(
                 cache: cache, isPicked: model.isSelected(cache),
@@ -229,7 +229,7 @@ struct DeveloperView: View {
                 canCleanUp: !model.isScanning && cleanupPlanningTask == nil
             )
             .id(cache.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: cache.id)
         } else {
             PanePlaceholder(symbol: "hammer", title: "Select a cache")

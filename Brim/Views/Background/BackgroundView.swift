@@ -211,7 +211,7 @@ struct BackgroundView: View {
                 onUnverified: { Task { await model.load(service: service) } }
             )
             .id(intent.id)
-            .transition(.opacity)
+            .transition(.replacement)
         } else if let entry = inspected {
             BackgroundInspector(
                 entry: entry,
@@ -223,7 +223,7 @@ struct BackgroundView: View {
             )
             .refreshing(model.isLoading)
             .id(entry.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: entry.id)
         } else {
             PanePlaceholder(symbol: "gearshape.2", title: "Select an item")
