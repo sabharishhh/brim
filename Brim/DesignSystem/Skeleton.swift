@@ -24,6 +24,7 @@ private struct BriefWait: ViewModifier {
             .opacity(waited ? 1 : 0)
             .task {
                 try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
                 waited = true
             }
     }

@@ -19,6 +19,9 @@ struct UninstallPanel: View {
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var showingSearchDetails = false
+    /// Something was removed in this panel, possibly before a Review Again
+    /// that the person then closed without removing anything more.
+    @State private var removedSomething = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -34,6 +37,12 @@ struct UninstallPanel: View {
             return .handled
         }
         .task { await startReview() }
+        .onChange(of: model.phase) { _, phase in
+            switch phase {
+            case .verified, .appliedButUnverified: removedSomething = true
+            default: break
+            }
+        }
     }
 
     /// A fresh plan from what is on the disk now. Identity only, no
@@ -110,10 +119,12 @@ struct UninstallPanel: View {
         }
     }
 
+    /// The page reads the Mac again whenever anything was removed here,
+    /// including when the last thing on screen is a Review Again that the
+    /// person closed. Checking only the current phase left the list stale.
     private func close() {
-        switch model.phase {
-        case .verified, .appliedButUnverified: onFinished()
-        default: break
+        if removedSomething {
+            onFinished()
         }
         onClose()
     }
