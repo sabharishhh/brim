@@ -1,7 +1,7 @@
 import SwiftUI
 import TipKit
 
-/// The three things worth learning once, each shown once and never again
+/// The two things worth learning once, each shown once and never again
 /// (plan §14).
 ///
 /// TipKit only retires a tip that is closed with its own button, so a tip
@@ -23,24 +23,6 @@ struct DropAppTip: Tip {
 
     var image: Image? {
         Image(systemName: "arrow.down.app")
-    }
-}
-
-struct KeepTip: Tip {
-    var options: [any TipOption] {
-        [MaxDisplayCount(1)]
-    }
-
-    var title: Text {
-        Text("Keep what you need")
-    }
-
-    var message: Text? {
-        Text("Kept items stay out of the list")
-    }
-
-    var image: Image? {
-        Image(systemName: "pin")
     }
 }
 
