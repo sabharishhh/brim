@@ -713,6 +713,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .darwinUserCache, rule: .clientOfService,
                  describes: "web view caches",
                  sentence: "Kept by a macOS service on the application's behalf, and named for it."),
+        // WebKit makes the same three folders in the temporary sibling as
+        // in the cache folder. eqMac's removal took the cache copies and
+        // left these.
+        Location(domain: .darwinUserTemp, rule: .clientOfService,
+                 describes: "web view scratch folders",
+                 sentence: "Kept by a macOS service on the application's behalf, and named for it."),
         Location(domain: .darwinUserCache, rule: .temporaryDirectory,
                  describes: "scratch folders",
                  sentence: "Named inside the application's identifier, in the per-user folder.")

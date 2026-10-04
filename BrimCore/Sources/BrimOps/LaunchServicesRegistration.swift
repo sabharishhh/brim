@@ -101,17 +101,31 @@ public enum LaunchServicesRegistration {
         } else {
             try await RegistrationCommand.read(lsregisterPath, ["-dump"])
         }
-        var found = Set<String>()
-        for line in listing.split(separator: "\n") where line.hasPrefix("path:") {
-            var path = line.dropFirst("path:".count).trimmingCharacters(in: .whitespaces)
-            if let marker = path.range(of: " (0x", options: .backwards) {
-                path = String(path[..<marker.lowerBound])
-            }
-            guard prefixes.contains(where: { path.hasPrefix($0) }),
-                  PathObservation.observe(path).isAbsent else { continue }
-            found.insert(path)
+        return Set(recordedPaths(in: listing).filter { path in
+            prefixes.contains(where: { path.hasPrefix($0) }) && PathObservation.observe(path).isAbsent
+        }).sorted()
+    }
+
+    /// Whether the database holds a record for exactly this path.
+    ///
+    /// Asking by bundle identifier is not the same question: Launch
+    /// Services leaves out records whose bundle has gone, so eqMac's login
+    /// helper looked unregistered and its record was never retracted.
+    public static func isRecorded(path: String, dump: String? = nil) async throws -> Bool {
+        let listing: String = if let dump {
+            dump
+        } else {
+            try await RegistrationCommand.read(lsregisterPath, ["-dump"])
         }
-        return found.sorted()
+        return recordedPaths(in: listing).contains(path)
+    }
+
+    private static func recordedPaths(in listing: String) -> [String] {
+        listing.split(separator: "\n").filter { $0.hasPrefix("path:") }.map { line in
+            let path = line.dropFirst("path:".count).trimmingCharacters(in: .whitespaces)
+            guard let marker = path.range(of: " (0x", options: .backwards) else { return path }
+            return String(path[..<marker.lowerBound])
+        }
     }
 
     public static func register(

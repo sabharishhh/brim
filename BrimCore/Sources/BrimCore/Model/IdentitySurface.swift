@@ -64,13 +64,18 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
         }.flatMap { [$0.bundleIdentifier, $0.signingIdentifier].compactMap(\.self) })
     }
 
-    /// A helper that lives inside a framework and is named in somebody
-    /// else's namespace belongs to the library, not the application.
+    /// A framework, or a helper inside one, named in somebody else's
+    /// namespace belongs to the library, not the application.
     /// Sparkle's downloader is `org.sparkle-project.DownloaderService` in
     /// every application that ships Sparkle, re-signed by each, so its
-    /// cookies were offered up with IINA and again with ChatGPT.
+    /// cookies were offered up with IINA and again with ChatGPT. The
+    /// framework itself is `org.sparkle-project.Sparkle` everywhere too,
+    /// and eqMac's removal took the Sparkle cache Codex keeps inside its
+    /// own cache folder.
     static func isLibraryHelper(_ component: Component, ownerVendor: String?) -> Bool {
-        guard let ownerVendor, component.path.contains(".framework/"),
+        let inLibrary = component.path.contains(".framework/")
+            || (component.path as NSString).pathExtension.lowercased() == "framework"
+        guard let ownerVendor, inLibrary,
               let identifier = component.bundleIdentifier ?? component.signingIdentifier,
               let vendor = vendor(of: identifier) else { return false }
         return vendor != ownerVendor

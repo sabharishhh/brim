@@ -1,4 +1,5 @@
 import BrimCore
+import BrimOps
 import BrimProtocol
 @testable import BrimService
 import Testing
@@ -173,7 +174,7 @@ final class RecoveryCleanupTests: XCTestCase {
 struct RecoveryRegistrationTests {
     /// Protected cleanup removed both selected files but reported a failed
     /// unregister because the reviewed bundle identifier was lost from the plan.
-    @Test func recoveryRegistrationRetainsItsIdentifierAndChecksOnlyItsPath() throws {
+    @Test func recoveryRegistrationRetainsItsIdentifierAndChecksOnlyItsPath() async throws {
         let path = RecoveryCopy.directory + "/stamp/Applications/Example.app"
         let copy = RecoveryCopy(path: path, name: "Example.app", bundleID: "org.example.app",
                                 sizeBytes: 0, sizeIsKnown: false,
@@ -186,18 +187,29 @@ struct RecoveryRegistrationTests {
         #expect(step.registrationBundleID == copy.bundleID)
         let decoded = try JSONDecoder().decode(Step.self, from: JSONEncoder().encode(step))
         #expect(decoded.registrationBundleID == copy.bundleID)
-        let alreadyGone = try Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { identifier in
-            #expect(identifier == copy.bundleID)
-            return [URL(fileURLWithPath: "/Applications/Example.app")]
+        let alreadyGone = try await Executor.componentIsAlreadyUnregistered(step: step) { recorded in
+            #expect(recorded == path)
+            return false
         }
         #expect(alreadyGone)
-        #expect(try !Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { _ in
-            [URL(fileURLWithPath: path)]
-        })
-        #expect(throws: (any Error).self) {
-            try Executor.componentIsAlreadyUnregistered(step: step, plan: plan) { _ in
+        #expect(try await !Executor.componentIsAlreadyUnregistered(step: step) { _ in true })
+        await #expect(throws: (any Error).self) {
+            try await Executor.componentIsAlreadyUnregistered(step: step) { _ in
                 throw NSError(domain: "Fixture", code: 1)
             }
         }
+    }
+
+    /// eqMac's login helper was reported already unregistered because the
+    /// lookup by identifier leaves out records whose bundle has gone, and
+    /// its record outlived the removal. The database dump still lists it.
+    @Test func aRecordWhoseBundleHasGoneIsStillRecorded() async throws {
+        let helper = "/Applications/Gone.app/Contents/Library/LoginItems/Helper.app"
+        let dump = """
+        path:                       \(helper) (0x91d0)
+        path:                       /Users/tester/.Trash/Gone.app (0x9200)
+        """
+        #expect(try await LaunchServicesRegistration.isRecorded(path: helper, dump: dump))
+        #expect(try await !LaunchServicesRegistration.isRecorded(path: "/Applications/Gone.app", dump: dump))
     }
 }
