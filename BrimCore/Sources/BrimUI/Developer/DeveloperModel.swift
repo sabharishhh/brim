@@ -1,93 +1,199 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Developer section.
 @MainActor
 public final class DeveloperModel: ObservableObject {
     @Published public private(set) var caches: [DeveloperCache] = []
     @Published public private(set) var isScanning = false
+    @Published public private(set) var scanWasCancelled = false
+    private var hasLoaded = false
+    @Published public var ageFilter: DeveloperAgeFilter = .all
+    @Published public private(set) var excludedFolders: Set<URL> = []
+
+    public var visibleCaches: [DeveloperCache] {
+        caches.filter { ageFilter.includes($0) }
+    }
+
+    public var selectedOutsideFilter: Int {
+        Set(selectedCaches.map(\.id)).subtracting(visibleCaches.map(\.id)).count
+    }
+
+    public func exclude(_ folder: URL) {
+        cancelScan()
+        excludedFolders.insert(folder.standardizedFileURL)
+        caches.removeAll { isExcluded($0.url) }
+        selection = selection.intersection(eligibleCaches.map(\.id))
+        hasLoaded = false
+    }
+
+    public func resetExclusions() {
+        cancelScan()
+        excludedFolders = []
+        hasLoaded = false
+    }
 
     public init() {}
 
-    public var totalBytes: Int64 { caches.reduce(0) { $0 + $1.sizeBytes } }
+    public var totalBytes: Int64 {
+        DeveloperCache.estimatedTotal(of: caches)
+    }
+
+    public static func sizeSummary(_ caches: [DeveloperCache]) -> String {
+        guard !caches.isEmpty else { return ByteText.short(0) }
+        let measured = caches.filter {
+            $0.sizeMeasurement.map { $0.state == .complete || $0.state == .partial } ?? true
+        }
+        guard !measured.isEmpty else {
+            return caches.allSatisfy { $0.sizeMeasurement?.state == .pending } ? "Measuring" : "Size unavailable"
+        }
+        let bytes = DeveloperCache.estimatedTotal(of: measured)
+        let partial = caches.contains {
+            $0.sizeMeasurement.map { $0.state != .complete } ?? false
+        }
+        if partial && bytes == 0 {
+            return "Partial sizes"
+        }
+        return partial ? "Partial estimate: " + ByteText.short(bytes) : ByteText.short(bytes) + " estimated"
+    }
 
     /// What comes back on its own, which is the figure worth acting on.
     public var recoverableBytes: Int64 {
-        caches.filter { $0.cost != .configured }.reduce(0) { $0 + $1.sizeBytes }
+        DeveloperCache.estimatedTotal(of: caches.filter { $0.cost != .configured })
     }
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
-        guard caches.isEmpty, !isScanning else { return }
+        guard !hasLoaded, !isScanning else { return }
         await load(service: service)
     }
 
     private var loadTask: Task<Void, Never>?
+    private var loadGeneration = UUID()
 
-    /// The section owns its scan. Navigation can cancel a view's waiter without
-    /// discarding the result or leaving a second view waiting on an empty model.
+    /// The section owns one scan, with an explicit cancellation boundary when
+    /// its view disappears. A late result cannot replace a newer scan.
     public func load(service: any BrimServiceProtocol) async {
+        guard !Task.isCancelled else { return }
         if let loadTask {
             await loadTask.value
             return
         }
-        let task = Task { await self.performLoad(service: service) }
+        let generation = UUID()
+        loadGeneration = generation
+        let task = Task { await self.performLoad(service: service, generation: generation) }
         loadTask = task
-        defer { loadTask = nil }
+        defer {
+            if loadGeneration == generation {
+                loadTask = nil
+            }
+        }
         await task.value
     }
 
-    private func performLoad(service: any BrimServiceProtocol) async {
-        guard !isScanning else { return }
-        isScanning = true
-        defer { isScanning = false }
-        let fetched = await service.developerCaches()
-        guard !Task.isCancelled else { return }
-        caches = fetched
-        selection = selection.intersection(caches.map(\.id))
+    public func cancelScan() {
+        guard loadTask != nil else { return }
+        loadGeneration = UUID()
+        loadTask?.cancel()
+        loadTask = nil
+        isScanning = false
+        scanWasCancelled = true
+        hasLoaded = false
+        selection = selection.intersection(eligibleCaches.map(\.id))
     }
 
-    /// Caches chosen for removal. Only the regenerable class can be here:
-    /// `toggle` refuses the rest, so nothing downstream has to re-check.
+    private func performLoad(service: any BrimServiceProtocol, generation: UUID) async {
+        guard !Task.isCancelled, loadGeneration == generation, !isScanning else { return }
+        isScanning = true
+        scanWasCancelled = false
+        defer {
+            if loadGeneration == generation {
+                isScanning = false
+            }
+        }
+        let updates = await service.developerCacheUpdates(excluding: Array(excludedFolders))
+        for await fetched in updates {
+            guard !Task.isCancelled, loadGeneration == generation else { return }
+            // Discovery and measurement update the same identity. Selection is
+            // always manual; a newly discovered row never inherits Select All.
+            caches = fetched.filter { !isExcluded($0.url) }
+            // An absent project may not have arrived yet. A present row with
+            // changed eligibility must leave the selection immediately.
+            selection.subtract(caches.filter { !$0.cost.isBrimRemovable }.map(\.id))
+        }
+        guard !Task.isCancelled, loadGeneration == generation else { return }
+        selection = selection.intersection(eligibleCaches.map(\.id))
+        hasLoaded = true
+    }
+
+    /// Artifacts chosen manually. Current eligibility is checked whenever
+    /// selection changes or a removal intent is created.
     @Published public var selection: Set<String> = []
 
-    public func isSelected(_ cache: DeveloperCache) -> Bool { selection.contains(cache.id) }
+    public func isSelected(_ cache: DeveloperCache) -> Bool {
+        selection.contains(cache.id) && cache.cost.isBrimRemovable && !isExcluded(cache.url)
+    }
 
     public func toggle(_ cache: DeveloperCache) {
-        guard cache.cost.isBrimRemovable else { return }
-        if selection.contains(cache.id) { selection.remove(cache.id) }
-        else { selection.insert(cache.id) }
+        guard let current = caches.first(where: { $0.id == cache.id }),
+              current.cost.isBrimRemovable, !isExcluded(current.url) else { return }
+        if selection.contains(cache.id) {
+            selection.remove(cache.id)
+        } else {
+            selection.insert(cache.id)
+        }
     }
 
     public func selectRegenerable() {
-        for cache in caches where cache.cost.isBrimRemovable { selection.insert(cache.id) }
+        for cache in visibleCaches where cache.cost.isBrimRemovable && !isExcluded(cache.url) {
+            selection.insert(cache.id)
+        }
     }
 
-    public func clearSelection() { selection = [] }
+    public func clearSelection() {
+        selection = []
+    }
+
+    private var eligibleCaches: [DeveloperCache] {
+        caches.filter { $0.cost.isBrimRemovable && !isExcluded($0.url) }
+    }
+
+    private var selectedCaches: [DeveloperCache] {
+        eligibleCaches.filter { selection.contains($0.id) }
+    }
+
+    public var selectedCount: Int {
+        selectedCaches.count
+    }
 
     public var selectedBytes: Int64 {
-        caches.filter { selection.contains($0.id) }.reduce(0) { $0 + $1.sizeBytes }
+        DeveloperCache.estimatedTotal(of: selectedCaches)
     }
 
-    public var canRemove: Bool { !selection.isEmpty }
+    public var canRemove: Bool {
+        !selectedCaches.isEmpty
+    }
 
-    /// Removal covers the regenerable class only.
+    private func isExcluded(_ url: URL) -> Bool {
+        excludedFolders.contains { ArtifactSizer.rootsOverlap(url, $0) }
+    }
+
+    /// Removal covers currently eligible artifacts only.
     ///
     /// The guard is here as well as in `toggle` because this is the last
     /// point before a plan exists, and T-5.7 turns on nothing in class
     /// three ever reaching one.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        let targets = caches
-            .filter { selection.contains($0.id) && $0.cost.isBrimRemovable }
-            .map(\.url)
+        let targets = selectedCaches.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
             subjectIdentity: Identity(bundleID: nil, name: "Build caches"),
             requesterKind: "ui",
             requesterIdentity: requesterIdentity,
-            specificTargets: targets
+            specificTargets: targets,
+            excludedFolders: excludedFolders.isEmpty ? nil : excludedFolders.sorted { $0.path < $1.path }
         )
     }
 }

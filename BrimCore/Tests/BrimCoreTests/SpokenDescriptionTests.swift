@@ -1,5 +1,5 @@
-import XCTest
 import BrimCore
+import XCTest
 
 /// What a screen reader is handed for a row.
 ///
@@ -14,7 +14,6 @@ import BrimCore
 /// carries the measurement or the location. A path read aloud in the
 /// middle of every entry buries the part that matters.
 final class SpokenDescriptionTests: XCTestCase {
-
     private func registration(
         _ label: String, kind: Registration.Kind = .launchdJob,
         exists: Bool = true, record: String? = nil, signing: SigningState? = nil
@@ -32,7 +31,7 @@ final class SpokenDescriptionTests: XCTestCase {
 
         XCTAssertTrue(spoken.contains("com.google.keystone.agent"))
         XCTAssertTrue(spoken.contains("Background job"))
-        XCTAssertTrue(spoken.contains("points at nothing"))
+        XCTAssertTrue(spoken.contains("The target is missing"))
         XCTAssertTrue(spoken.contains("An empty job file"))
     }
 
@@ -56,10 +55,10 @@ final class SpokenDescriptionTests: XCTestCase {
         XCTAssertNotEqual(user.spokenLocation, local.spokenLocation)
     }
 
-    func testWhatMacOSWillClearSaysSoRatherThanRaisingAnAlarm() {
+    func testAListedBackgroundItemDoesNotPromiseAutomaticRemoval() {
         let item = registration("AppCleaner", kind: .backgroundItem, exists: false)
-        XCTAssertTrue(item.spokenDescription.contains("macOS will drop this"))
-        XCTAssertFalse(item.spokenDescription.contains("points at nothing"))
+        XCTAssertFalse(item.spokenDescription.contains("macOS will drop this"))
+        XCTAssertTrue(item.spokenDescription.contains("The target is missing"))
     }
 
     func testATroubledSignatureIsSpokenAndAGoodOneIsNot() {

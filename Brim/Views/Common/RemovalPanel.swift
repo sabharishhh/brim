@@ -1,3 +1,4 @@
+import AppKit
 import BrimCore
 import BrimProtocol
 import BrimUI
@@ -15,9 +16,9 @@ struct RemovalPanel: View {
     let service: any BrimServiceProtocol
     /// Told the moment the check proves what went, with those paths.
     let onRemoved: (Set<String>) -> Void
-    /// Closed. The plan when its removal was proven, so the page can offer
-    /// Put Back; nil otherwise.
-    let onClose: (UUID?) -> Void
+    /// Closed with the checked outcome, including a partial removal.
+    /// Callers can offer recovery without claiming that every step succeeded.
+    let onClose: (VerificationResult?) -> Void
     /// A result the check could not confirm: the page reads the disk again.
     let onUnverified: () -> Void
     /// A plan the service already made, reviewed as it is rather than
@@ -94,7 +95,11 @@ struct RemovalPanel: View {
         let count = model.plan == nil ? intent.explicitTargets.count : model.removalSteps.count
         let places = count == 1 ? "1 location" : "\(count) locations"
         guard let plan = model.plan else { return count == 0 ? "" : places }
-        return "\(places) · \(ByteText.short(plan.immediatelyFreedBytes + plan.trashedBytes))"
+        if plan.steps.contains(where: { $0.sizeIsKnown == false }) {
+            return "\(places) · Size not fully measured"
+        }
+        let bytes = plan.immediatelyFreedBytes + plan.trashedBytes + plan.setAsideBytes
+        return "\(places) · \(ByteText.short(bytes)) estimated"
     }
 
     // MARK: - Content
@@ -135,7 +140,6 @@ struct RemovalPanel: View {
                             .font(.brimGroupTitle)
                             .foregroundStyle(Palette.ink)
                             .padding(.horizontal, 8)
-
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
@@ -150,6 +154,33 @@ struct RemovalPanel: View {
                 }
                 .listSectionSeparator(.hidden)
             }
+            if let installation = model.plan?.homebrewInstallation {
+                Section("Package record") {
+                    Text(installation.explanation)
+                        .font(.brimFacts)
+                    if let command = installation.manualCommand {
+                        Text(command).font(.caption.monospaced()).textSelection(.enabled)
+                        Button("Copy uninstall command") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(command, forType: .string)
+                        }
+                    }
+                }
+            }
+            if let copies = model.plan?.survivingCopies, !copies.isEmpty, intent.explicitTargets.isEmpty {
+                Section("Shared identity") {
+                    Text(
+                        "Privacy permissions will not be reset because another installed component "
+                            + "uses this identifier."
+                    )
+                    .font(.brimFacts)
+                    ForEach(Array(copies.enumerated()), id: \.offset) { _, installation in
+                        Text(installation.bundlePath ?? installation.name)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
             StayingSection(items: model.staying)
             ListBottomSpacing()
         }
@@ -163,19 +194,21 @@ struct RemovalPanel: View {
     /// back from the Trash, set aside by the helper, or gone for good.
     private var consequences: [(title: String, steps: [Step])] {
         let all = model.removalSteps.filter(\.kind.targetIsPath)
-        let helper = all.filter { $0.kind == .trashPathPrivileged }
-        let permanent = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition == .delete }
+        let helper = all.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+        let permanent = all.filter { $0.effectiveDisposition == .delete }
         let trash = all.filter { $0.kind != .trashPathPrivileged && $0.effectiveDisposition != .delete }
         let named = model.removalSteps.filter { !$0.kind.targetIsPath }
         let tool = named.filter { $0.kind == .delegateToolCleanup }
         let records = named.filter { $0.kind != .delegateToolCleanup }
         return [
-            ("To the Trash", trash), ("Set aside by the helper", helper), ("Deleted permanently", permanent),
+            ("To the Trash", trash), ("Set aside", helper), ("Deleted permanently", permanent),
             ("Run by the tool", tool), ("Records", records)
         ]
         .filter { !$0.1.isEmpty }
     }
+}
 
+extension RemovalPanel {
     // MARK: - Result
 
     private func proof(_ result: VerificationResult) -> some View {
@@ -214,6 +247,11 @@ struct RemovalPanel: View {
                 Text(freed(plan))
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
+                if model.helperSteps > 0 {
+                    Text("macOS will request an administrator password for protected cleanup.")
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                }
             }
             if isFinished {
                 Button(action: close) {
@@ -255,13 +293,20 @@ struct RemovalPanel: View {
         if isToolRun {
             return "The tool decides what goes"
         }
-        if plan.immediatelyFreedBytes == 0, plan.trashedBytes == 0 {
-            return "Takes no space"
+        if plan.scanCompleteness?.isComplete == false || plan.steps.contains(where: { $0.sizeIsKnown == false }) {
+            return "Size not fully measured"
         }
+        var consequences: [String] = []
         if plan.trashedBytes > 0 {
-            return "\(ByteText.short(plan.trashedBytes)) to the Trash, recoverable"
+            consequences.append("\(ByteText.short(plan.trashedBytes)) to the Trash, recoverable")
         }
-        return "Frees \(ByteText.short(plan.immediatelyFreedBytes))"
+        if plan.setAsideBytes > 0 {
+            consequences.append("\(ByteText.short(plan.setAsideBytes)) set aside; restore unavailable in Brim")
+        }
+        if plan.immediatelyFreedBytes > 0 {
+            consequences.append("\(ByteText.short(plan.immediatelyFreedBytes)) of files deleted. Free space may differ")
+        }
+        return consequences.isEmpty ? "Takes no space" : consequences.joined(separator: ". ")
     }
 
     private var isFinished: Bool {
@@ -273,20 +318,19 @@ struct RemovalPanel: View {
 
     private func close() {
         switch model.phase {
-        case .verified: onClose(model.plan?.planId)
+        case let .verified(result): onClose(result)
         case .appliedButUnverified:
             onUnverified()
             onClose(nil)
         default: onClose(nil)
         }
     }
-}
 
-extension RemovalPanel {
     private func helperNotice(_ problem: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(
-                model.helperSteps == 1 ? "1 needs Brim's helper" : "\(model.helperSteps) need Brim's helper",
+                model.helperSteps == 1 ? "1 needs administrator access"
+                    : "\(model.helperSteps) need administrator access",
                 systemImage: "lock.shield"
             )
             .font(.brimRowTitle)
@@ -296,11 +340,6 @@ extension RemovalPanel {
                 .foregroundStyle(Palette.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button("Turn On") {
-                    HelperRoute.turnOn()
-                    Task { await checkHelper() }
-                }
-                .buttonStyle(.bordered)
                 Button("Check Again") { Task { await checkHelper() } }
                     .buttonStyle(.bordered)
             }

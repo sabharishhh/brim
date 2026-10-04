@@ -22,20 +22,29 @@ public struct UpdateFinder: Sendable {
     private let catalogue: CatalogueCache
     private let platform: UpdatePlatform
     private let region: String
-    private let installedCasks: Set<String>
+    private let installedCasks: HomebrewCaskInventory
 
     public init(
         fetch: @escaping Fetch = UpdateFinder.network,
         catalogueDirectory: URL,
         platform: UpdatePlatform = .current,
         region: String = Locale.current.region?.identifier ?? "US",
-        installedCasks: Set<String> = UpdateSourceScanner().installedCasks()
+        installedCasks: Set<String>? = nil,
+        caskInventory: HomebrewCaskInventory? = nil
     ) {
         self.fetch = fetch
-        self.catalogue = CatalogueCache(directory: catalogueDirectory, fetch: fetch)
+        catalogue = CatalogueCache(directory: catalogueDirectory, fetch: fetch)
         self.platform = platform
         self.region = region
-        self.installedCasks = installedCasks
+        let inventory = caskInventory ??
+            (installedCasks == [] ? HomebrewCaskInventory() : UpdateSourceScanner().installedCaskInventory())
+        self.installedCasks = if let installedCasks {
+            HomebrewCaskInventory(tokens: inventory.tokens.intersection(installedCasks),
+                                  installations: inventory.installations.filter { installedCasks.contains($0.token) },
+                                  completeness: inventory.completeness)
+        } else {
+            inventory
+        }
     }
 
     public static let network: Fetch = { request in
@@ -53,7 +62,9 @@ public struct UpdateFinder: Sendable {
         case noAnswer
 
         var isSilent: Bool {
-            if case .noAnswer = self { return true }
+            if case .noAnswer = self {
+                return true
+            }
             return false
         }
     }
@@ -65,15 +76,15 @@ public struct UpdateFinder: Sendable {
         let storeBundles = candidates.filter(\.hasReceipt).compactMap(\.bundleID)
         let listings = await storeListings(storeBundles)
 
-        let answers = (try? await BoundedTasks.map(candidates, limit: 6) { candidate in
-            (candidate, await self.answer(for: candidate, listings: listings))
+        let answers = await (try? BoundedTasks.map(candidates, limit: 6) { candidate in
+            await (candidate, answer(for: candidate, listings: listings))
         }) ?? []
 
         var updates: [AppUpdate] = []
         var unchecked: [UncheckedApp] = []
         for (candidate, answer) in answers {
             switch answer {
-            case .update(let update): updates.append(update)
+            case let .update(update): updates.append(update)
             case .current: break
             case .noAnswer:
                 unchecked.append(UncheckedApp(
@@ -103,7 +114,9 @@ public struct UpdateFinder: Sendable {
         let hasReceipt: Bool
         let hasElectronFeed: Bool
 
-        var hasOwnSource: Bool { hasReceipt || info["SUFeedURL"] != nil || hasElectronFeed }
+        var hasOwnSource: Bool {
+            hasReceipt || info["SUFeedURL"] != nil || hasElectronFeed
+        }
     }
 
     /// Applications something can update. macOS updates its own; an
@@ -114,32 +127,45 @@ public struct UpdateFinder: Sendable {
         let contents = application.url.appendingPathComponent("Contents")
         let plist = NSDictionary(contentsOf: contents.appendingPathComponent("Info.plist")) as? [String: Any] ?? [:]
         let bundleID = plist["CFBundleIdentifier"] as? String
-        let hasReceipt = FileManager.default.fileExists(atPath: contents.appendingPathComponent("_MASReceipt/receipt").path)
+        let hasReceipt = FileManager.default
+            .fileExists(atPath: contents.appendingPathComponent("_MASReceipt/receipt").path)
         guard !application.isSystemProtected, application.enclosingApp == nil,
               let version = plist["CFBundleShortVersionString"] as? String ?? plist["CFBundleVersion"] as? String,
               !version.isEmpty
         else { return nil }
         if let bundleID {
             let lowered = bundleID.lowercased()
-            if lowered.hasPrefix("com.apple.") && !hasReceipt { return nil }
-            if lowered.hasSuffix("-setapp") { return nil }
+            if lowered.hasPrefix("com.apple."), !hasReceipt {
+                return nil
+            }
+            if lowered.hasSuffix("-setapp") {
+                return nil
+            }
             if all.contains(where: { other in
                 guard let theirs = other.identity.bundleID?.lowercased(), theirs != lowered else { return false }
                 return lowered.hasPrefix(theirs + ".")
-            }) { return nil }
+            }) {
+                return nil
+            }
         }
         var info: [String: String] = [:]
         for key in ["SUFeedURL", "SUPublicEDKey", "LSMinimumSystemVersion"] {
-            if let value = plist[key] as? String, !value.isEmpty { info[key] = value }
+            if let value = plist[key] as? String, !value.isEmpty {
+                info[key] = value
+            }
         }
         return Candidate(
-            application: application, name: application.name, url: application.url, bundleID: bundleID, version: version,
+            application: application, name: application.name, url: application.url, bundleID: bundleID,
+            version: version,
             build: plist["CFBundleVersion"] as? String, info: info, hasReceipt: hasReceipt,
             hasElectronFeed: FileManager.default.fileExists(
-                atPath: contents.appendingPathComponent("Resources/app-update.yml").path)
+                atPath: contents.appendingPathComponent("Resources/app-update.yml").path
+            )
         )
     }
+}
 
+extension UpdateFinder {
     // MARK: - Asking
 
     private func answer(for candidate: Candidate, listings: [String: AppStoreCatalog.Listing]?) async -> Answer {
@@ -147,12 +173,14 @@ public struct UpdateFinder: Sendable {
             return await appStore(candidate, listings: listings)
         }
         let cask = UpdateSourceScanner.matchingCask(for: candidate.application, among: installedCasks)
-        if let cask, case let answer = await homebrew(candidate, cask: cask), !answer.isSilent { return answer }
-        for answer in [await sparkle(candidate), await electron(candidate)] where !answer.isSilent {
+        if let cask, case let answer = await homebrew(candidate, cask: cask), !answer.isSilent {
+            return answer
+        }
+        for answer in await [sparkle(candidate), electron(candidate)] where !answer.isSilent {
             // A cask from a third-party tap is not in the public
             // catalogue. The application's own feed says what is new, and
             // Homebrew still installs it, so its records stay right.
-            guard let cask, case .update(let update) = answer else { return answer }
+            guard let cask, case let .update(update) = answer else { return answer }
             return .update(update.handled(by: .homebrew, cask: cask))
         }
         return cask == nil ? await catalogueAnswer(candidate) : .noAnswer
@@ -209,13 +237,17 @@ public struct UpdateFinder: Sendable {
 
         var download: UpdateDownload?
         var route = UpdateRoute.website
-        if !item.informational, let link = item.enclosureURL, let enclosure = URL(string: link), enclosure.scheme == "https" {
+        let enclosure = item.enclosureURL.flatMap(URL.init(string:))
+        if !item.informational, let enclosure, enclosure.scheme == "https" {
             let integrity: UpdateDownload.Integrity =
                 if let signature = item.edSignature, let key = candidate.info["SUPublicEDKey"] {
                     .edDSA(signature: signature, publicKey: key)
-                } else { .none }
+                } else {
+                    .none
+                }
             download = UpdateDownload(url: enclosure, bytes: item.enclosureLength, integrity: integrity)
-            let packaged = ["package", "interactive-package"].contains(item.installationType ?? "") || download?.isPackage == true
+            let packaged = ["package", "interactive-package"].contains(item.installationType ?? "") || download?
+                .isPackage == true
             route = packaged ? .installer : .replace
         }
         return .update(AppUpdate(
@@ -230,8 +262,10 @@ public struct UpdateFinder: Sendable {
 
     private func electron(_ candidate: Candidate) async -> Answer {
         guard candidate.hasElectronFeed,
-              let text = try? String(contentsOf: candidate.url.appendingPathComponent("Contents/Resources/app-update.yml"),
-                                     encoding: .utf8),
+              let text = try? String(
+                  contentsOf: candidate.url.appendingPathComponent("Contents/Resources/app-update.yml"),
+                  encoding: .utf8
+              ),
               let feed = ElectronFeed.feed(fromConfiguration: text),
               let (data, response) = try? await fetch(URLRequest(url: feed.manifest)), response.statusCode == 200,
               let manifest = ElectronFeed.manifest(from: String(decoding: data, as: UTF8.self))
@@ -274,7 +308,13 @@ public struct UpdateFinder: Sendable {
               let url = URL(string: cask.url)
         else { return .current }
         let route: UpdateRoute =
-            if case .homebrew = origin { .homebrew } else if cask.installsPackage { .installer } else { .replace }
+            if case .homebrew = origin {
+                .homebrew
+            } else if cask.installsPackage {
+                .installer
+            } else {
+                .replace
+            }
         return .update(AppUpdate(
             bundleID: bundleID, name: candidate.name, appURL: candidate.url,
             installedVersion: candidate.version, latestVersion: cask.displayVersion,
@@ -297,7 +337,8 @@ public struct UpdateFinder: Sendable {
                   data: data,
                   options: [.documentType: NSAttributedString.DocumentType.html,
                             .characterEncoding: String.Encoding.utf8.rawValue],
-                  documentAttributes: nil)
+                  documentAttributes: nil
+              )
         else { return html }
         return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -322,7 +363,9 @@ actor CatalogueCache {
     /// a flag set before the download told every other application there
     /// was no catalogue.
     func casks() async -> [CatalogCask]? {
-        if let loading { return await loading.value }
+        if let loading {
+            return await loading.value
+        }
         let task = Task { await load() }
         loading = task
         return await task.value

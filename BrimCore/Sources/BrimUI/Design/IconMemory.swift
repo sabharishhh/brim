@@ -50,7 +50,7 @@ public struct IconMemory: Sendable {
     private static let saved = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
 
     private func noteSaved(_ file: URL) {
-        Self.saved.withLock { cache in
+        _ = Self.saved.withLock { cache in
             cache[directory.path]?.insert(file.lastPathComponent)
         }
     }

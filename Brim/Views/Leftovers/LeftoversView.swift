@@ -27,17 +27,44 @@ struct LeftoversView: View {
     /// Cards showing the places their app left.
     @State private var opened: Set<String> = []
     @State private var showsUnknown = true
+    @State private var recoveryReadError: String?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Under a megabyte, a trace nobody can be named for is not worth a row.
+    /// Selection and grouping helpers are kept outside the view body.
     private static let smallestUnknown: Int64 = 1_000_000
 
     var body: some View {
         VStack(spacing: 0) {
             header
             content
+            if !model.all.isEmpty {
+                LeftoverBatchActions(
+                    selectedCount: model.selectedItems.count,
+                    canRemoveSelection: model.canRemoveSelection && !model.isScanning,
+                    canRemoveAll: !model.removableOrphans.isEmpty && !model.isScanning,
+                    clear: { model.deselectAll(in: model.all) },
+                    removeSelected: { openSelection() },
+                    removeAll: {
+                        model.selectAllRemovableOrphans()
+                        openSelection()
+                    }
+                )
+            }
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+        .alert("Recovery copies could not be read", isPresented: Binding(
+            get: { recoveryReadError != nil },
+            set: {
+                if !$0 {
+                    recoveryReadError = nil
+                }
+            }
+        )) {
+            Button("OK") { recoveryReadError = nil }
+        } message: {
+            Text(recoveryReadError ?? "")
+        }
         .sheet(item: $review) { intent in
             RemovalPanel(
                 intent: intent, service: service,
@@ -47,7 +74,9 @@ struct LeftoversView: View {
                 },
                 onClose: { proven in
                     review = nil
-                    if let proven { offerPutBack(proven) }
+                    if let proven {
+                        offerPutBack(proven.planId)
+                    }
                 },
                 onUnverified: { Task { await model.load(service: service) } },
                 onPhase: { _ in }
@@ -68,7 +97,9 @@ struct LeftoversView: View {
     }
 
     // MARK: - Header
+}
 
+private extension LeftoversView {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("Remnants")
@@ -94,16 +125,23 @@ struct LeftoversView: View {
 
     private var summary: String {
         let groups = model.orphanedGroups
-        guard !groups.isEmpty else { return "Nothing left behind" }
+        guard !groups.isEmpty else {
+            return model.hasUnreadRecoveryCopies ? "Recovery copies not checked" : "Nothing left behind"
+        }
         let apps = groups.count == 1 ? "1 app" : "\(groups.count) apps"
+        if groups.flatMap(\.items).contains(where: { $0.sizeIsKnown == false }) {
+            return "\(apps) left traces, size not fully measured"
+        }
         return "\(apps) left \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
     }
 
     // MARK: - List
 
     private var unknowns: [LeftoverGroup] {
-        model.unclaimedGroups.filter { $0.totalBytes >= Self.smallestUnknown }
-            .sorted { $0.totalBytes > $1.totalBytes }
+        model.unclaimedGroups.filter {
+            $0.totalBytes >= Self.smallestUnknown || $0.items.contains { $0.capability != .ok }
+        }
+        .sorted { $0.totalBytes > $1.totalBytes }
     }
 
     private var apps: [LeftoverGroup] {
@@ -135,16 +173,20 @@ struct LeftoversView: View {
     private var list: some View {
         List {
             Group {
-                sectionTitle("Removed apps", count: apps.count, bytes: apps.reduce(0) { $0 + $1.totalBytes })
+                sectionTitle("Removed apps", count: apps.count, bytes: apps.reduce(0) { $0 + $1.totalBytes },
+                             sizeIsKnown: !apps.flatMap(\.items).contains { $0.sizeIsKnown == false })
                 if apps.isEmpty {
                     nothingLeft
                 }
                 ForEach(apps) { group in
-                    RemnantCard(
-                        group: group, isOpen: opened.contains(group.id),
-                        isScanning: model.isScanning,
-                        toggle: { toggle(group.id) }, finish: { open(group) }
-                    )
+                    HStack(alignment: .top, spacing: 8) {
+                        selectionToggle(for: group).padding(.top, 22)
+                        RemnantCard(
+                            group: group, isOpen: opened.contains(group.id),
+                            isScanning: model.isScanning,
+                            toggle: { toggle(group.id) }, finish: { open(group) }
+                        )
+                    }
                     .padding(.bottom, 8)
                 }
                 if !unknowns.isEmpty {
@@ -157,7 +199,20 @@ struct LeftoversView: View {
                             .padding(.horizontal, 12)
                             .padding(.bottom, 4)
                         ForEach(unknowns) { group in
-                            UnknownRow(group: group, isScanning: model.isScanning) { open(group) }
+                            HStack(spacing: 8) {
+                                selectionToggle(for: group)
+                                UnknownRow(
+                                    group: group, isScanning: model.isScanning,
+                                    readRecovery: {
+                                        if let problem = await HelperRoute.authorizeRecoveryRead() {
+                                            recoveryReadError = problem
+                                        } else {
+                                            await model.load(service: service)
+                                        }
+                                    },
+                                    review: { open(group) }
+                                )
+                            }
                         }
                     }
                 }
@@ -177,13 +232,13 @@ struct LeftoversView: View {
         opened.formSymmetricDifference([id])
     }
 
-    private func sectionTitle(_ title: String, count: Int, bytes: Int64) -> some View {
+    private func sectionTitle(_ title: String, count: Int, bytes: Int64, sizeIsKnown: Bool = true) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title)
                 .font(.brimGroupTitle)
                 .foregroundStyle(Palette.ink)
             if count > 0 {
-                Text("\(count) · \(ByteText.short(bytes))")
+                Text("\(count) · \(sizeIsKnown ? ByteText.short(bytes) : "Not measured")")
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -224,9 +279,10 @@ struct LeftoversView: View {
     /// Said where the removed apps would be, before the unknowns.
     private var nothingLeft: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            Text("No removed app has left anything")
+            Image(systemName: model.hasUnreadRecoveryCopies ? "questionmark.circle" : "checkmark.circle.fill")
+                .foregroundStyle(model.hasUnreadRecoveryCopies ? Palette.inkSecondary : .green)
+            Text(model.hasUnreadRecoveryCopies
+                ? "No remnants found in checked locations" : "No removed app has left anything")
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
             Spacer()
@@ -238,6 +294,22 @@ struct LeftoversView: View {
 
     // MARK: - Removing
 
+    private func selectionToggle(for group: LeftoverGroup) -> some View {
+        Toggle("Select \(group.displayName)", isOn: Binding(
+            get: { model.isSelected(group) },
+            set: { _ in model.toggle(group) }
+        ))
+        .toggleStyle(.checkbox)
+        .labelsHidden()
+        .disabled(model.isScanning || model.keptGroups.contains(group.id)
+            || !group.items.contains(where: \.canBeRemovedByBrim))
+    }
+
+    private func openSelection() {
+        removedInReview = 0
+        review = model.removalIntent(requesterIdentity: NSUserName())
+    }
+
     private func open(_ group: LeftoverGroup) {
         removedInReview = 0
         review = model.removalIntent(for: group, requesterIdentity: NSUserName())
@@ -247,22 +319,60 @@ struct LeftoversView: View {
     private func offerPutBack(_ planId: UUID) {
         let count = removedInReview
         guard count > 0 else { return }
-        shell.show(ToastMessage(
-            symbol: "checkmark.circle.fill",
-            text: count == 1 ? "Moved 1 item to the Trash" : "Moved \(count) items to the Trash",
-            actionTitle: "Put Back",
-            action: {
-                Task {
-                    do {
-                        try await service.undo(planId: planId)
-                        recovery.refreshNow()
-                        model.reconcileWithDisk()
-                    } catch {
-                        shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: "Could not put it back"))
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 item" : "Removed \(count) items"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            recovery.refreshNow()
+                            model.reconcileWithDisk()
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
+                        }
                     }
                 }
             }
-        ))
+            shell.show(toast)
+        }
+    }
+}
+
+private struct LeftoverBatchActions: View {
+    let selectedCount: Int
+    let canRemoveSelection: Bool
+    let canRemoveAll: Bool
+    let clear: () -> Void
+    let removeSelected: () -> Void
+    let removeAll: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedCount) selected")
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+            if selectedCount > 0 {
+                Button("Clear", action: clear).buttonStyle(.borderless)
+            }
+            Spacer()
+            Button("Delete All Remnants", action: removeAll)
+                .disabled(!canRemoveAll)
+                .help("Review all removable items from known removed apps. "
+                    + "Unknown items need to be selected separately.")
+            Button("Delete Selected", action: removeSelected)
+                .buttonStyle(.borderedProminent)
+                .disabled(!canRemoveSelection)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
     }
 }
 
@@ -297,7 +407,8 @@ private struct RemnantCard: View {
                 .lineLimit(1)
                 .help([group.evidence, group.replacedBy?.sentence].compactMap(\.self).joined(separator: "\n\n"))
                 Spacer(minLength: 8)
-                Text(ByteText.short(group.totalBytes))
+                Text(group.items.contains { $0.sizeIsKnown == false }
+                    ? "Not measured" : ByteText.short(group.totalBytes))
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -396,7 +507,7 @@ private struct PlaceRow: View {
                 .lineLimit(1)
                 .truncationMode(.head)
             Spacer(minLength: 8)
-            Text(ByteText.short(item.size))
+            Text(item.sizeIsKnown == false ? "Not measured" : ByteText.short(item.size))
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
         }
@@ -405,7 +516,8 @@ private struct PlaceRow: View {
         .help(item.url.path)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel("\(item.url.lastPathComponent), in \(folder), \(ByteText.short(item.size))")
+        .accessibilityLabel("\(item.url.lastPathComponent), in \(folder), "
+            + (item.sizeIsKnown == false ? "Not measured" : ByteText.short(item.size)))
     }
 
     /// The folder it is in, with the home folder as a tilde.
@@ -418,7 +530,9 @@ private struct PlaceRow: View {
 private struct UnknownRow: View {
     let group: LeftoverGroup
     let isScanning: Bool
+    let readRecovery: () async -> Void
     let review: () -> Void
+    @State private var isReadingRecovery = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -438,7 +552,7 @@ private struct UnknownRow: View {
             }
             .lineLimit(1)
             Spacer(minLength: 8)
-            Text(ByteText.short(group.totalBytes))
+            Text(group.items.contains { $0.sizeIsKnown == false } ? "Not measured" : ByteText.short(group.totalBytes))
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkTertiary)
             if group.items.contains(where: \.canBeRemovedByBrim) {
@@ -446,6 +560,17 @@ private struct UnknownRow: View {
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .disabled(isScanning)
+            } else if group.items.contains(where: { $0.url.path == RecoveryCopy.directory }) {
+                Button("Read Recovery Copies") {
+                    isReadingRecovery = true
+                    Task {
+                        await readRecovery()
+                        isReadingRecovery = false
+                    }
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(isScanning || isReadingRecovery)
             } else {
                 RevealButton(urls: group.items.map(\.url), title: "Show")
                     .buttonStyle(.borderless)

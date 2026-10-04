@@ -3,6 +3,12 @@ import XCTest
 
 /// A Home card may only say what was measured.
 final class HomeStatusTests: XCTestCase {
+    func testUnreadableBackgroundSurfaceDoesNotClaimAnEmptyList() {
+        let summary = HomeStatus.background(leftOver: 0, hasChecked: true, hasFaults: true)
+        XCTAssertEqual(summary.status, .partial)
+        XCTAssertEqual(summary.phrase, "Partial view")
+    }
+
     func testNothingIsClearBeforeTheScanFinishes() {
         // The old header printed a confident "Empty" seconds before the real
         // figure arrived. A zero nobody measured is the number this product

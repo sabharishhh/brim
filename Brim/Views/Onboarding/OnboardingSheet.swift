@@ -1,16 +1,10 @@
 import BrimCore
-import BrimPrivileged
 import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// First run, and the only place Brim asks the person for anything.
-///
-/// Everything it needs is settled here, in one sitting, while they are
-/// paying attention to setup rather than in the middle of looking at
-/// something. After this the app is quiet: no permission dialog between a
-/// person and a list they asked to see, and no fingerprint before anything
-/// that can be undone.
+/// First-run setup for reading protected locations and confirming ownership.
+/// Administrator authentication is requested separately for protected operations.
 ///
 /// It is setup, not a gate. Every step can be skipped and the app still
 /// opens and works, because a scan without Full Disk Access is not wrong,
@@ -21,25 +15,22 @@ import SwiftUI
 /// as though nothing had happened.
 struct OnboardingSheet: View {
     let service: any BrimServiceProtocol
-    /// Scanning behind the sheet, so the helper step can say what it would
-    /// do on this Mac rather than in general.
     @ObservedObject var leftovers: LeftoversModel
     let onFinished: () -> Void
 
     enum Step: Int, CaseIterable {
-        case what, access, helper, confirm, ready
+        case what = 0, access = 1, confirm = 3, ready = 4
     }
 
     @AppStorage("onboarding.step") private var savedStep = Step.what.rawValue
     @StateObject private var access = FullDiskAccessModel()
     @State private var isWorking = false
     @State private var errorMessage: String?
-    /// Read by the helper step, in `OnboardingSheet+Helper.swift`.
-    @State var helperState: PrivilegedHelperClient.State?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var step: Step {
-        Step(rawValue: savedStep) ?? .what
+        // An unfinished setup from the older helper step continues at confirmation.
+        savedStep == 2 ? .confirm : Step(rawValue: savedStep) ?? .what
     }
 
     var body: some View {
@@ -79,7 +70,6 @@ struct OnboardingSheet: View {
         switch step {
         case .what: whatBrimDoes
         case .access: fullDiskAccess
-        case .helper: helperStep
         case .confirm: confirmOwnership
         case .ready: ready
         }
@@ -120,6 +110,7 @@ struct OnboardingSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            administratorNotice
         }
     }
 
@@ -154,19 +145,13 @@ struct OnboardingSheet: View {
                     text: access.isGranted ? "Full Disk Access on" : "Full Disk Access off",
                     symbol: access.isGranted ? "checkmark" : "lock", tone: access.isGranted ? .accent : .caution
                 )
-                StatusChip(
-                    text: helperState == .ready ? "Helper on" : "Helper off",
-                    symbol: helperState == .ready ? "checkmark" : "minus",
-                    tone: helperState == .ready ? .accent : .neutral
-                )
             }
-            Text("Both can be changed later in Settings")
+            Text("Full Disk Access can be changed later in Settings")
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
-        .onAppear { helperState = HelperRoute.currentState() }
     }
 
     // MARK: - Chrome
@@ -254,7 +239,7 @@ extension OnboardingSheet {
             }
             .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: step)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(step.rawValue + 1) of \(Step.allCases.count)")
+            .accessibilityLabel("Step \((Step.allCases.firstIndex(of: step) ?? 0) + 1) of \(Step.allCases.count)")
 
             Spacer()
 
@@ -262,9 +247,12 @@ extension OnboardingSheet {
                 ProgressView().controlSize(.small)
             }
             if step != .what, step != .ready {
-                Button("Back") { go(to: Step(rawValue: step.rawValue - 1) ?? .what) }
-                    .buttonStyle(.borderless)
-                    .disabled(isWorking)
+                Button("Back") {
+                    let index = Step.allCases.firstIndex(of: step) ?? 0
+                    go(to: Step.allCases[max(0, index - 1)])
+                }
+                .buttonStyle(.borderless)
+                .disabled(isWorking)
             }
             buttons
                 .buttonBorderShape(.capsule)
@@ -282,12 +270,6 @@ extension OnboardingSheet {
             // Skipping is a real choice, so it is the plain button until
             // the setting is on and continuing is the obvious next move.
             if access.isGranted {
-                primary("Continue") { go(to: .helper) }
-            } else {
-                secondary("Skip") { go(to: .helper) }
-            }
-        case .helper:
-            if helperState == .ready {
                 primary("Continue") { go(to: .confirm) }
             } else {
                 secondary("Skip") { go(to: .confirm) }
