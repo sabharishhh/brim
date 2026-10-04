@@ -11,7 +11,9 @@ struct FeedbackResultView: View {
             Spacer()
             Image(systemName: feedback.receipt == nil ? "arrow.up.right.square" : "checkmark.seal.fill")
                 .font(.system(size: 52, weight: .light))
-                .foregroundStyle(.tint)
+                // Green only once GitHub confirms the report; the handoff
+                // before that is a next step, in the accent.
+                .foregroundStyle(feedback.receipt == nil ? Color.accentColor : Palette.success)
                 .symbolEffect(.bounce, options: .nonRepeating, isActive: !reduceMotion && feedback.receipt != nil)
                 .accessibilityHidden(true)
             VStack(spacing: 10) {

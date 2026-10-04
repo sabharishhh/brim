@@ -253,11 +253,24 @@ struct Toast: View {
     var actionTitle: String?
     var action: (() -> Void)?
 
+    /// A done mark in the status green, a problem in the status orange,
+    /// anything else in the accent. Every toast's symbol is Brim's own, so
+    /// the mark says which it is; the message still says it in words.
+    private var symbolStyle: Color {
+        if symbol.hasPrefix("checkmark") {
+            return Palette.success
+        }
+        if symbol.hasPrefix("exclamationmark") || symbol.hasPrefix("xmark") {
+            return Palette.caution
+        }
+        return .accentColor
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
+                .foregroundStyle(symbolStyle)
             Text(message)
                 .foregroundStyle(Palette.ink)
             if let actionTitle, let action {

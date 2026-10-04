@@ -156,8 +156,12 @@ struct UpdatesView: View {
         switch model.states[update.id] {
         case let .downloading(fraction): return "Downloading \(Int(fraction * 100))%"
         case .installing: return "Installing"
-        case .openedInstaller: return "Opened in Installer"
-        case .failed: return "Failed"
+        // A handoff, not an installation: Installer still has to finish.
+        case .openedInstaller: return "Finish in Installer"
+        // Also set when the app turned out to be current already, so it
+        // says where the app is now, not that an update happened.
+        case let .updated(version): return "Now \(version)"
+        case .failed, .stillOpen: return "Update failed"
         case .notAllowed: return "Needs App Management"
         default:
             let versions = "\(update.installedVersion) → \(update.latestVersion)"
@@ -169,12 +173,12 @@ struct UpdatesView: View {
     static let appManagementSettings =
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
 
-    /// Why it failed, for the pointer to find. The row itself only says so.
+    /// Why it failed, behind the row's Details button.
     private func failure(_ update: AppUpdate) -> String? {
-        if case let .failed(why) = model.states[update.id] {
-            return why
+        switch model.states[update.id] {
+        case let .failed(why), let .stillOpen(why): why
+        default: nil
         }
-        return nil
     }
 
     private static func facts(_ recent: RecentUpdate) -> String {
@@ -196,10 +200,16 @@ struct UpdatesView: View {
                 .accessibilityLabel("Downloading")
         case .installing:
             ProgressView().controlSize(.small).accessibilityLabel("Installing")
-        case .openedInstaller, .updated:
-            Image(systemName: "checkmark.circle.fill")
+        case .openedInstaller:
+            // Opening Installer is the next step, never the result, so it
+            // gets no verified mark.
+            Image(systemName: "arrow.up.forward.app")
                 .foregroundStyle(Palette.inkSecondary)
-                .accessibilityLabel("Done")
+                .accessibilityLabel("Opened in Installer")
+        case .updated:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Palette.success)
+                .accessibilityLabel("Updated")
         case .notAllowed:
             Button("Open Settings") {
                 open(Self.appManagementSettings)
@@ -207,9 +217,12 @@ struct UpdatesView: View {
             }
             .buttonStyle(.bordered)
         case .failed, .stillOpen:
-            Button("Retry") { Task { await model.install(update, service: service) } }
-                .buttonStyle(.bordered)
-                .disabled(model.isChecking)
+            HStack(spacing: 6) {
+                FailureDetails(reason: failure(update) ?? "")
+                Button("Retry") { Task { await model.install(update, service: service) } }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isChecking)
+            }
         case nil:
             primaryButton(update)
         }
@@ -280,8 +293,8 @@ struct UpdatesView: View {
 }
 
 /// One app in either list: icon, name, one line of facts, one control. A
-/// failure is a mark and the word, with the reason on the pointer for the
-/// few who want it.
+/// failure is a mark and the word, with the reason behind a Details button
+/// a keyboard can reach; it used to be hover help only.
 private struct UpdateRow<Action: View>: View {
     let url: URL
     let name: String
@@ -308,16 +321,41 @@ private struct UpdateRow<Action: View>: View {
                 .foregroundStyle(failed == nil ? Palette.inkSecondary : Palette.caution)
             }
             .lineLimit(1)
-            .help(failed ?? "")
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? ""))
             Spacer(minLength: 8)
+            // A fixed place for the control, so Update, its progress, the
+            // result and Retry take turns without moving anything else.
             action()
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
+                .frame(minWidth: 120, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight)
+    }
+}
+
+/// The reason an update failed, in a popover from a real button.
+private struct FailureDetails: View {
+    let reason: String
+    @State private var shows = false
+
+    var body: some View {
+        Button("Details", systemImage: "info.circle") { shows = true }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.inkSecondary)
+            .help(reason)
+            .accessibilityLabel("Why the update failed")
+            .popover(isPresented: $shows, arrowEdge: .bottom) {
+                Text(reason)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(14)
+                    .frame(width: 300, alignment: .leading)
+            }
     }
 }
