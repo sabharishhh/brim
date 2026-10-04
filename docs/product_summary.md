@@ -16,7 +16,7 @@ knows, and nothing is ticked on a guess.
 | Platform | macOS 27 and later, Apple silicon first. The helper builds for macOS 15. |
 | Stack | Swift 6, SwiftUI with AppKit where it is better. No Rust. |
 | Data | Local only, no account. A SQLite index of snapshots, a plan store and a removal journal on the Mac. |
-| Network | Only for updates: the App Store, Homebrew's catalog, each app's own feed, and GitHub for Brim itself. |
+| Network | Update checks and feedback the person explicitly sends. Reports go through Brim's relay and appear as public issues. |
 | Permissions | Full Disk Access during setup. Protected cleanup shares administrator authentication for the selected batch, then the temporary process exits. No persistent background helper. Permanent user-level actions require a presence check; moving writable items to Trash needs no authentication. |
 | Distribution | Direct download from GitHub Releases, signed with a free Apple Development certificate and not notarised. People open it once through Privacy & Security, Open Anyway. |
 | Price | Free and open source for 1.0. Licence still to be chosen. |
@@ -109,3 +109,20 @@ Release build and lint comparison passed. On the local machine, Home showed
 a full-width recent-app row, no Changes panel and no stale restore banner after refresh.
 Its ten unknown items matched the Remnants list. No new install or removal was
 performed in the real account for this follow-up.
+
+## Main consolidation, 4 October 2026
+
+Cleanup, performance, Home and Settings feedback are combined with the current
+build and release checks. Feedback preserves drafts and confirmed receipts;
+sending is explicit and reports are public. Access settings retain the temporary
+administrator flow, with no registered Brim background helper.
+
+The combined strict package suite, signed Release build, signature checks,
+12 script tests and 12 relay tests passed. The installed app opened Home,
+Settings feedback and Access with the current permission wording. No report
+was submitted and no removal was approved during consolidation.
+
+The merge adds no lint findings relative to the reviewed UI branch. The full
+comparison with older main still flags 560 style and complexity findings from
+the accumulated UI changes, despite the total falling from 4,488 to 3,478.
+These are not claimed to be resolved by this merge.
