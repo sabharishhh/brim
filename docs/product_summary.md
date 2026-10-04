@@ -127,8 +127,10 @@ comparison with older main still flags 560 style and complexity findings from
 the accumulated UI changes, despite the total falling from 4,488 to 3,478.
 These are not claimed to be resolved by this merge.
 
-The consolidation CI run exposed a path-spelling assertion and a shutdown test
-that blocked a worker while waiting for dispatch. Ownership assertions now
-compare filesystem locations. Shutdown uses its own queue and its test waits
-asynchronously, retaining the bounded-exit and single-exit checks. The updated
-strict package suite and signed Release build passed locally.
+The consolidation CI runs exposed test assumptions that differed between the
+local app and the runner. The embedded-component fixture now uses an identifier
+path, rather than relying on inherited provenance to select a name-only folder.
+Ownership assertions compare filesystem locations, and subprocess assertions
+capture errno before assertion evaluation can change it. Shutdown uses its own
+queue and its test waits asynchronously, retaining bounded-exit and single-exit
+checks. The updated strict package suite and signed Release build passed locally.

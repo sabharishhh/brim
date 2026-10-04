@@ -94,7 +94,9 @@ struct NativeCleanupRunnerTests {
         #expect(clock.now - began < .seconds(3))
         #expect(unrelated.isRunning)
         let pid = try #require(started.withLock { $0 })
-        #expect(waitpid(pid, nil, WNOHANG) == -1 && errno == ECHILD, "The direct child must be reaped.")
+        let waitResult = waitpid(pid, nil, WNOHANG)
+        let waitError = errno
+        #expect(waitResult == -1 && waitError == ECHILD, "The direct child must be reaped.")
         await expectGroupGone(pid)
     }
 
@@ -167,6 +169,9 @@ struct NativeCleanupRunnerTests {
         while kill(-pid, 0) == 0, clock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(kill(-pid, 0) == -1 && errno == ESRCH, "No child in the owned group may keep running.")
+        // Assertion evaluation may call code that changes thread-local errno.
+        let result = kill(-pid, 0)
+        let probeError = errno
+        #expect(result == -1 && probeError == ESRCH, "No child in the owned group may keep running.")
     }
 }
