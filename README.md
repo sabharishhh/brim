@@ -1,7 +1,7 @@
 # Brim
 
-Brim shows what software has left on your Mac, and proves it is gone when
-you remove it.
+Brim shows what software has left on your Mac, removes approved items,
+and checks what is gone, what remains and what could not be checked.
 
 Every row says how Brim knows what it claims: an installer receipt, a
 launch job, a record macOS keeps, a matching identifier. Anything another
@@ -66,6 +66,25 @@ current state again. This records another observation without removing
 anything. Some records can be removed only by their owning app or a specific Settings
 control. Background activity switches do not erase registrations. Brim keeps
 remaining records visible rather than claiming they have gone.
+
+### Deep uninstall scope
+
+Brim traces associated files and components, protects shared items, and
+removes approved items through supported cleanup routes. Exact application
+registrations and supported launch jobs are checked again after removal.
+Remnants supports selected and grouped removal; protected cleanup shares
+temporary administrator access for the selected batch.
+
+This does not remove every registration or permission entry for every app.
+Some records are shared, controlled by macOS or removable only by their
+owner. Brim reports those limits and provides a manual route where one is
+available. Emptying Trash or restarting does not guarantee their removal.
+
+Universal removal is deferred for this release. Forcing the last records
+out through shared databases or broad resets could affect other apps and
+would add substantial compatibility and recovery work. The priority is
+reliable detection, removal and verification on supported routes.
+See [achievements, limits and future work](docs/uninstall-registration-verification.md#release-scope-4-october-2026).
 
 ## Privacy
 
