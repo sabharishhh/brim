@@ -53,6 +53,9 @@ import SwiftUI
         var body: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 32) {
+                    section("Inspection") {
+                        DropWell { _ in false }
+                    }
                     section("Type") {
                         Text("Four apps you removed left 2.1 GB behind.").font(.brimHeadline)
                         Text("Leftovers").font(.brimPageTitle)

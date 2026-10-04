@@ -109,8 +109,16 @@ struct MainSidebar: View {
         // accessibility press, so the sidebar looked operable to VoiceOver
         // and to automation while doing nothing.
         List(selection: $selection) {
-            Section("Brim") {
+            Section {
                 rows(Destination.brim)
+            } header: {
+                HStack(spacing: 8) {
+                    BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 28)
+                    Text("Brim")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Palette.ink)
+                }
+                .padding(.vertical, 4)
             }
             Section("Your Mac") {
                 rows(Destination.yourMac)
