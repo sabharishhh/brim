@@ -63,8 +63,13 @@ struct OwnershipResultTests {
         let identity = Identity(bundleID: "org.example.editor", name: "Editor", bundlePath: selected.path)
         let plan = try await fixture.service().plan(intent: PlanIntent(type: .uninstall, subjectIdentity: identity))
         #expect(plan.steps.contains { $0.target == host.path } == false)
+        // Enumeration may return /private/var while the fixture uses /var.
+        // Check the filesystem target rather than Foundation's path spelling.
+        let plannedPaths = try Set(plan.steps.filter { $0.target.hasPrefix("/") }.map {
+            try canonicalPath($0.target)
+        })
         for target in [selected.path, preferences.path, support.path, container.path] {
-            #expect(plan.steps.contains { $0.target == target })
+            #expect(try plannedPaths.contains(canonicalPath(target)), "Missing target: \(target)")
         }
         #expect(plan.steps.contains { $0.kind == .resetPrivacyGrants })
     }

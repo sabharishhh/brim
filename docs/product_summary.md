@@ -126,3 +126,9 @@ The merge adds no lint findings relative to the reviewed UI branch. The full
 comparison with older main still flags 560 style and complexity findings from
 the accumulated UI changes, despite the total falling from 4,488 to 3,478.
 These are not claimed to be resolved by this merge.
+
+The consolidation CI run exposed a path-spelling assertion and a shutdown test
+that blocked a worker while waiting for dispatch. Ownership assertions now
+compare filesystem locations. Shutdown uses its own queue and its test waits
+asynchronously, retaining the bounded-exit and single-exit checks. The updated
+strict package suite and signed Release build passed locally.
