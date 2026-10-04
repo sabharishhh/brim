@@ -410,6 +410,12 @@ public actor LeftoversScanner {
                     continue
                 }
 
+                // macOS protects it for itself, so it is nobody's leftover
+                // and nobody can remove it.
+                if RemovalCapability.isProtectedBySystem(item.path) {
+                    continue
+                }
+
                 var evidence = owner.evidence
                 if let vendor, Self.systemDomains.contains(domain), owner.category == .unclaimed {
                     guard !vendors.hasInstalled(vendor) else { continue }
