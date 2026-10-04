@@ -119,7 +119,7 @@ struct UpdatesView: View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title2)
-                .foregroundStyle(.green)
+                .foregroundStyle(Palette.success)
             VStack(alignment: .leading, spacing: 2) {
                 Text("All apps are up to date")
                     .font(.brimRowTitle)

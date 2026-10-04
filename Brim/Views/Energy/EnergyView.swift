@@ -225,7 +225,7 @@ struct EnergyView: View {
                     // Against the busiest app, so rows compare as a shape.
                     GeometryReader { proxy in
                         Capsule()
-                            .fill(Palette.hue(1))
+                            .fill(Color.accentColor)
                             .frame(width: max(3, proxy.size.width * model.share(of: reading)))
                             .frame(maxHeight: .infinity, alignment: .center)
                     }

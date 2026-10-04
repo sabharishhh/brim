@@ -87,10 +87,10 @@ struct SpaceView: View {
             MeterBar(segments: segments(volume), showsLegend: false)
             // Three facts, never added into one.
             HStack(alignment: .top, spacing: 12) {
-                figure("Used", volume.used, "Files and apps", Palette.hue(1))
+                figure("Used", volume.used, "Files and apps", Color.accentColor)
                 figure(
                     "Held by macOS", volume.reclaimableByTheSystem, "Released when needed",
-                    Palette.hue(1).opacity(0.4)
+                    Color.accentColor.opacity(0.4)
                 )
                 figure("Free", volume.freeRightNow, "Available now", Palette.inkTertiary)
             }
@@ -109,9 +109,9 @@ struct SpaceView: View {
 
     private func segments(_ volume: VolumeAccount) -> [MeterSegment] {
         [
-            MeterSegment(label: "Used", value: volume.used, color: Palette.hue(1)),
+            MeterSegment(label: "Used", value: volume.used, color: Color.accentColor),
             MeterSegment(
-                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Palette.hue(1).opacity(0.4)
+                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Color.accentColor.opacity(0.4)
             ),
             MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
         ]

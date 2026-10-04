@@ -65,6 +65,28 @@ opens with a short spring, and Reduce Motion reduces it. A narrow-window inspect
 window the list and inspector both fit, so it could not be reached. It
 belongs with the adaptive layout work, before the minimum is lowered.
 
+## Colour, 4 October 2026
+
+Brim is dark only. The application's appearance is set to dark before any
+window exists, so every window, sheet, menu and alert is dark whatever the
+system setting; launching with a light-appearance override still drew dark.
+The canvas is the system's own dark window background (#1E1E1E on macOS 27),
+replacing Brim's own #0F0F11, which was darker than any app beside it. Cards
+sit one step up at #2A2A2C, as grouped rows do in System Settings, with a
+lighter variant for Increase Contrast.
+
+Accent, selection and every progress or proportion bar use the person's
+system accent, so Brim's highlights match the rest of their Mac. Status uses
+the Okabe and Ito colour-universal palette, republished by Wong in Nature
+Methods (2011), because its hues stay distinct under the three common forms
+of colour blindness and differ in lightness too: bluish green for done,
+orange for needs a look, vermilion for stopped or permanent, sky blue for
+information. Each was measured against the canvas and the cards: green was
+lifted 6% to reach 4.5:1 as text on a card, and vermilion, at 3.7:1, marks
+icons only, with the word beside it carrying the meaning. Monograms use
+system colours kept clear of the status hues. The eight hand-picked pastels
+are gone.
+
 ## Verification
 
 The package suite completed 484 XCTest cases with one existing skip and no

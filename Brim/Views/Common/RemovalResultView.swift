@@ -350,6 +350,6 @@ extension RemovalResultView {
     }
 
     private var tint: Color {
-        result.success ? .accentColor : Palette.caution
+        result.success ? Palette.success : Palette.caution
     }
 }
