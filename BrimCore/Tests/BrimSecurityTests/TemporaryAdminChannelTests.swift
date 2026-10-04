@@ -1,21 +1,30 @@
 @testable import BrimPrivileged
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 
 struct TemporaryAdminChannelTests {
-    @Test func disconnectSchedulesOneBoundedExitWithoutAsyncJobs() {
+    @Test func disconnectSchedulesOneBoundedExitWithoutAsyncJobs() async throws {
         // Quitting during synchronous recovery deletion used to wait for that
         // deletion, potentially leaving root work alive for fifteen minutes.
         // Exercise the shutdown hook without a root process or any mutation.
         let helper = Helper()
-        let exits = DispatchSemaphore(value: 0)
-        helper.disconnect(after: .milliseconds(10)) { exits.signal() }
-        helper.disconnect(after: .milliseconds(10)) { exits.signal() }
+        let exits = Mutex(0)
+        helper.disconnect(after: .milliseconds(10)) { exits.withLock { $0 += 1 } }
+        helper.disconnect(after: .milliseconds(10)) { exits.withLock { $0 += 1 } }
 
         #expect(helper.connectionCancelled)
-        #expect(exits.wait(timeout: .now() + .seconds(1)) == .success)
-        #expect(exits.wait(timeout: .now() + .milliseconds(50)) == .timedOut)
+        // Suspend rather than blocking a cooperative worker. A loaded CI
+        // runner can delay dispatch without changing the shutdown behavior.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while exits.withLock({ $0 }) == 0, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(exits.withLock { $0 } == 1)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(exits.withLock { $0 } == 1)
     }
 
     @Test(arguments: [UInt32(0), UInt32(1024 * 1024 + 1)])

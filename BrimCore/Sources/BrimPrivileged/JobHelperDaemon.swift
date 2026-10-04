@@ -129,6 +129,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
     }
 
     private let asyncJobs = Mutex(AsyncJobs())
+    private let shutdownQueue = DispatchQueue(label: "com.sabharishhh.brim.helper-shutdown")
 
     init(requesterUID: uid_t? = nil) {
         self.requesterUID = requesterUID
@@ -158,7 +159,8 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         // Native commands get time to terminate and reap their own children.
         // A stalled recursive deletion cannot keep this root process alive
         // until the general fifteen-minute session limit.
-        DispatchQueue.global().asyncAfter(deadline: .now() + gracePeriod, execute: terminate)
+        // Shutdown must not wait behind unrelated work on the global queue.
+        shutdownQueue.asyncAfter(deadline: .now() + gracePeriod, execute: terminate)
     }
 
     /// Register before a disconnect can cancel, and keep the cancellation
