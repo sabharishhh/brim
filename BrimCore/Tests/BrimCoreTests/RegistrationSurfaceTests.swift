@@ -75,13 +75,49 @@ final class AppExtensionSurfaceTests: XCTestCase {
         XCTAssertTrue(found.isEmpty)
     }
 
-    func testAnExtensionIsGroupedUnderItsApplication() {
-        XCTAssertEqual(
-            AppExtensionSurface.owningBundle(of: "net.whatsapp.WhatsApp.Intents"),
-            "net.whatsapp.WhatsApp"
-        )
-        // Too short to split meaningfully; guessing would invent an owner.
-        XCTAssertNil(AppExtensionSurface.owningBundle(of: "com.example.App"))
+    func testIdentifierResemblanceDoesNotInventAnExtensionOwner() async throws {
+        let output = "     org.example.Editor.widget(1)\tUUID\tdate\t"
+            + "/Applications/Other.app/Contents/Widget.appex\n (1 plug-ins)"
+        let snapshot = await AppExtensionSurface(read: { output }).snapshot(in: FileSystemRoot())
+        let registration = try XCTUnwrap(snapshot.registrations.first)
+        XCTAssertNil(registration.owningBundleID)
+        XCTAssertFalse(registration.belongs(
+            to: Identity(bundleID: "org.example.Editor", name: "Editor"), bundleURL: nil
+        ))
+        XCTAssertTrue(registration.belongs(
+            to: Identity(bundleID: "org.example.Other", name: "Other"),
+            bundleURL: URL(fileURLWithPath: "/Applications/Other.app")
+        ))
+    }
+
+    func testAnErrorBeforeAnEmptyFooterRemainsUnreadable() async {
+        let output = "match: Connection invalid\n (0 plug-ins)"
+        let snapshot = await AppExtensionSurface(read: { output }).snapshot(in: FileSystemRoot())
+        XCTAssertFalse(snapshot.coverage.available)
+        XCTAssertTrue(snapshot.registrations.isEmpty)
+    }
+
+    func testRepeatedOrMalformedCountFootersRemainUnreadable() async {
+        for output in [" (0 plug-ins)\n (0 plug-ins)", " (0 invalid plug-ins)"] {
+            let snapshot = await AppExtensionSurface(read: { output }).snapshot(in: FileSystemRoot())
+            XCTAssertFalse(snapshot.coverage.available)
+        }
+    }
+
+    func testAnExtensionWithoutRecordIdentityIsNotAccepted() async {
+        let output = "     org.example.widget(1)\t\tdate\t/Applications/A.appex\n (1 plug-ins)"
+        let snapshot = await AppExtensionSurface(read: { output }).snapshot(in: FileSystemRoot())
+        XCTAssertFalse(snapshot.coverage.available)
+        XCTAssertTrue(snapshot.registrations.isEmpty)
+    }
+
+    func testOfflineRootsWithholdTheNativeReaderForBothEntryPoints() async {
+        let surface = AppExtensionSurface()
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/nonexistent/brim-offline"))
+        let snapshot = await surface.snapshot(in: root)
+        XCTAssertEqual(snapshot.coverage.absence, .byDesign)
+        let registrations = await surface.registrations(in: root)
+        XCTAssertTrue(registrations.isEmpty)
     }
 }
 

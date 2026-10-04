@@ -63,6 +63,60 @@ private func item(_ path: String, mechanism: String, tier: EvidenceTier, bytes: 
 @MainActor
 final class ApplicationsModelTests: XCTestCase {
 
+    /// Command-click marks apps for one review, as in Finder: the app
+    /// already selected is the first mark, one mark is just a selection, and
+    /// an app that is part of macOS cannot be marked.
+    func testMarkingSeveralAppsForOneReview() {
+        let model = ApplicationsModel()
+        let a = app("Alpha"), b = app("Beta"), c = app("Gamma"), system = app("Safari", protected: true)
+        model.select(a)
+        model.toggleMark(b)
+        XCTAssertEqual(model.marked.map(\.name), ["Alpha", "Beta"])
+        model.toggleMark(system)
+        XCTAssertEqual(model.marked.count, 2, "part of macOS is not marked")
+        model.toggleMark(c)
+        XCTAssertEqual(model.marked.count, 3)
+        model.toggleMark(b)
+        model.toggleMark(c)
+        XCTAssertTrue(model.marked.isEmpty, "one mark is a selection")
+        XCTAssertEqual(model.selected?.name, "Alpha")
+        model.toggleMark(b)
+        model.select(c)
+        XCTAssertTrue(model.marked.isEmpty, "a plain click ends marking")
+    }
+
+    /// The Select button: a click ticks rather than opens, one tick is
+    /// allowed while choosing, the open app starts ticked, and Done or a
+    /// plain selection ends it.
+    func testChoosingTicksAppsOneClickAtATime() {
+        let model = ApplicationsModel()
+        let a = app("Alpha"), b = app("Beta"), system = app("Safari", protected: true)
+        model.select(a)
+        model.startChoosing()
+        XCTAssertEqual(model.marked.map(\.name), ["Alpha"])
+        model.toggleChoice(a)
+        XCTAssertTrue(model.marked.isEmpty)
+        XCTAssertTrue(model.isChoosing, "no ticks is still choosing")
+        model.toggleChoice(b)
+        model.toggleChoice(system)
+        XCTAssertEqual(model.marked.map(\.name), ["Beta"])
+        model.stopChoosing()
+        XCTAssertFalse(model.isChoosing)
+        XCTAssertTrue(model.marked.isEmpty)
+        model.startChoosing()
+        model.select(b)
+        XCTAssertFalse(model.isChoosing)
+    }
+
+    func testATableSelectionOfSeveralRowsMarksThem() {
+        let model = ApplicationsModel()
+        model.mark([app("Alpha"), app("Beta")])
+        XCTAssertEqual(model.marked.count, 2)
+        model.mark([app("Alpha"), app("Safari", protected: true)])
+        XCTAssertTrue(model.marked.isEmpty)
+        XCTAssertEqual(model.selected?.name, "Alpha")
+    }
+
     func testSearchMatchesNameOrBundleIdentifier() async {
         let model = ApplicationsModel()
         await model.load(service: AppsStub(apps: [

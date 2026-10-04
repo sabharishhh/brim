@@ -85,6 +85,9 @@ public final class ApplicationsModel: ObservableObject {
     @Published public var searchText = ""
 
     @Published public private(set) var selected: InstalledApplication?
+    /// Apps marked with Command-click for one review together. Empty, or at
+    /// least two: a single mark is just a selection.
+    @Published public private(set) var marked: [InstalledApplication] = []
     @Published public private(set) var footprint: Footprint? {
         didSet { footprintGroups = makeFootprintGroups() }
     }
@@ -105,6 +108,22 @@ public final class ApplicationsModel: ObservableObject {
         return applications.filter {
             $0.name.localizedCaseInsensitiveContains(query)
                 || ($0.identity.bundleID?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    /// Current inventory rows installed within five days, newest first.
+    /// Removing a row also removes it here; a reinstall receives its latest
+    /// installation date from the snapshot history.
+    public func recentlyInstalled(now: Date = Date()) -> [InstalledApplication] {
+        let cutoff = now.addingTimeInterval(-5 * 86400)
+        return applications.filter {
+            guard let installed = $0.installedAt else { return false }
+            return installed >= cutoff && installed <= now && !$0.isSystemProtected && $0.enclosingApp == nil
+        }.sorted {
+            if $0.installedAt != $1.installedAt {
+                return ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast)
+            }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
     }
 
@@ -179,16 +198,7 @@ public final class ApplicationsModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-
-        // After the enumeration, because enumerating is what writes this
-        // run's snapshot. Asking first would compare the machine against
-        // itself.
-        history = await service.whatChanged()
     }
-
-    /// What has changed since Brim last looked, and what came across from
-    /// another Mac and never ran here.
-    @Published public private(set) var history = InstallHistory(changes: [], snapshots: 0)
 
     /// Drops an application the UI already knows is gone, without waiting
     /// for a full re-enumeration.
@@ -201,6 +211,7 @@ public final class ApplicationsModel: ObservableObject {
     public func forgetIfRemoved(_ application: InstalledApplication) -> Bool {
         guard !FileManager.default.fileExists(atPath: application.url.path) else { return false }
         applications.removeAll { $0.id == application.id }
+        marked.removeAll { $0.id == application.id }
         if selected?.id == application.id {
             inspectionTask?.cancel()
             selected = nil
@@ -238,7 +249,75 @@ public final class ApplicationsModel: ObservableObject {
         return true
     }
 
+    /// Command-click: adds the app to the ones marked, or takes it out.
+    /// The app already selected is the first mark, as in Finder. Apps that
+    /// are part of macOS cannot be removed, so they cannot be marked.
+    public func toggleMark(_ application: InstalledApplication) {
+        var next = marked
+        if next.isEmpty, let selected, selected.id != application.id, !selected.isSystemProtected {
+            next = [selected]
+        }
+        if let index = next.firstIndex(where: { $0.id == application.id }) {
+            next.remove(at: index)
+        } else if !application.isSystemProtected {
+            next.append(application)
+        }
+        if next.count >= 2 {
+            marked = next
+        } else {
+            marked = []
+            select(next.first ?? application)
+        }
+    }
+
+    /// Choosing, from the Select button: a click ticks an app rather than
+    /// opening it. Command-click did this already and nobody could find it,
+    /// in the list or the table.
+    @Published public private(set) var isChoosing = false
+
+    /// Starts with the app already open, as Command-click does.
+    public func startChoosing() {
+        isChoosing = true
+        marked = selected.map { $0.isSystemProtected ? [] : [$0] } ?? []
+    }
+
+    public func stopChoosing() {
+        isChoosing = false
+        marked = []
+    }
+
+    /// Ticks or unticks one app while choosing. One or none is allowed
+    /// here: the person is still picking.
+    public func toggleChoice(_ application: InstalledApplication) {
+        guard !application.isSystemProtected else { return }
+        if let index = marked.firstIndex(where: { $0.id == application.id }) {
+            marked.remove(at: index)
+        } else {
+            marked.append(application)
+        }
+    }
+
+    public func isMarked(_ application: InstalledApplication) -> Bool {
+        marked.contains { $0.id == application.id }
+    }
+
+    public func clearMarks() {
+        marked = []
+    }
+
+    /// A table's selection, which can be several rows at once.
+    public func mark(_ applications: [InstalledApplication]) {
+        let removable = applications.filter { !$0.isSystemProtected }
+        if removable.count >= 2 {
+            marked = removable
+        } else {
+            select(applications.first)
+        }
+    }
+
     public func select(_ application: InstalledApplication?) {
+        marked = []
+        isChoosing = false
         selected = application
         footprint = nil
         errorMessage = nil
@@ -274,6 +353,10 @@ public final class ApplicationsModel: ObservableObject {
     public var uninstallBlockedReason: String? {
         guard let selected else { return nil }
         guard selected.isSystemProtected else { return nil }
+        if let host = selected.enclosingApp {
+            // Taking one app out of another breaks the host's signature.
+            return "Part of \(host), and removed with it"
+        }
         return "macOS protects this application. It is part of the system and cannot be removed."
     }
 }

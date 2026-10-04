@@ -5,12 +5,12 @@ import Foundation
 public struct FileSystemRoot: Sendable {
     public let rootURL: URL
     public let userName: String
-    
+
     public init(rootURL: URL = URL(fileURLWithPath: "/"), userName: String = NSUserName()) {
         self.rootURL = rootURL.resolvingSymlinksInPath()
         self.userName = userName
     }
-    
+
     public enum Domain: Sendable, Equatable, Hashable {
         case userLibrary
         case userPreferences
@@ -52,6 +52,7 @@ public struct FileSystemRoot: Sendable {
         case userHTTPStorages
         case userCookies
         case userApplicationScripts
+        case systemApplicationScripts
         case userAutosaveInformation
         /// Crash logs, which name the application that crashed and
         /// accumulate for years after it is gone.
@@ -91,9 +92,12 @@ public struct FileSystemRoot: Sendable {
         case systemAudioVST3
         case systemAudioCLAP
         case systemAudioHAL
+        case systemSecurityAgentPlugins
         case systemAudioMAS
         case systemAudioAvid
         case systemExtensionsFolder
+        case userDictionaries
+        case systemDictionaries
         case privilegedHelperTools
         case startupItems
 
@@ -128,6 +132,11 @@ public struct FileSystemRoot: Sendable {
         case userDotLocalShare
         case userDotLocalState
         case userDotLocalBin
+        /// The home folder itself, for the dot folders software keeps
+        /// there: `~/.vscode`, `~/.antigravity-ide`. Only names beginning
+        /// with a dot are ever considered, because the rest of the home
+        /// folder is the person's own.
+        case userHomeDotFolders
     }
 
     /// Whether a domain can only be matched on a name, which makes
@@ -141,128 +150,132 @@ public struct FileSystemRoot: Sendable {
         switch domain {
         case .usrLocalBin, .usrLocalEtc, .usrLocalOpt,
              .usrLocalSbin, .usrLocalShare, .usrLocalVar,
-             .darwinUserCache, .darwinUserTemp,
+             // Not the Darwin per-user folders: what sits there is named
+             // after a bundle identifier, the same proof as `~/Library/Caches`.
+             // Counted as name-only, a folder called exactly
+             // `com.openai.codex.helper` was a guess and outlived the app.
              .sharedUser, .sharedApplicationSupport,
              // Nothing under `$HOME` carries a bundle identifier. A folder
              // there is linked to an application by a shared name and
              // nothing else, which is the definition of Tier C.
              .userDotConfig, .userDotCache, .userDotLocalShare,
-             .userDotLocalState, .userDotLocalBin:
-            return true
+             .userDotLocalState, .userDotLocalBin, .userHomeDotFolders:
+            true
         default:
-            return false
+            false
         }
     }
-    
+
     /// Resolves the absolute URL for a given domain relative to this root.
     public func url(for domain: Domain) -> URL {
         switch domain {
         case .userLibrary:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library")
+            rootURL.appendingPathComponent("Users/\(userName)/Library")
         case .userPreferences:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Preferences")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Preferences")
         case .userApplicationSupport:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Application Support")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Application Support")
         case .userRecentDocuments:
-            return rootURL.appendingPathComponent(
+            rootURL.appendingPathComponent(
                 "Users/\(userName)/Library/Application Support/com.apple.sharedfilelist"
-                + "/com.apple.LSSharedFileList.ApplicationRecentDocuments"
+                    + "/com.apple.LSSharedFileList.ApplicationRecentDocuments"
             )
         case .userCaches:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Caches")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Caches")
         case .userSavedApplicationState:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Saved Application State")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Saved Application State")
         case .userLogs:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Logs")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Logs")
         case .userWebKit:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/WebKit")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/WebKit")
         case .userContainers:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Containers")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Containers")
         case .userGroupContainers:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/Group Containers")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/Group Containers")
         case .userLaunchAgents:
-            return rootURL.appendingPathComponent("Users/\(userName)/Library/LaunchAgents")
+            rootURL.appendingPathComponent("Users/\(userName)/Library/LaunchAgents")
         case .systemLibrary:
-            return rootURL.appendingPathComponent("Library")
+            rootURL.appendingPathComponent("Library")
         case .systemLaunchDaemons:
-            return rootURL.appendingPathComponent("Library/LaunchDaemons")
+            rootURL.appendingPathComponent("Library/LaunchDaemons")
         case .systemLaunchAgents:
-            return rootURL.appendingPathComponent("Library/LaunchAgents")
+            rootURL.appendingPathComponent("Library/LaunchAgents")
         case .applications:
-            return rootURL.appendingPathComponent("Applications")
+            rootURL.appendingPathComponent("Applications")
         case .userApplications:
-            return rootURL.appendingPathComponent("Users/\(userName)/Applications")
+            rootURL.appendingPathComponent("Users/\(userName)/Applications")
         case .receipts:
-            return rootURL.appendingPathComponent("Library/Receipts")
+            rootURL.appendingPathComponent("Library/Receipts")
         case .tempDirs:
-            return rootURL.appendingPathComponent("private/tmp")
+            rootURL.appendingPathComponent("private/tmp")
         case .volumes:
-            return rootURL.appendingPathComponent("Volumes")
+            rootURL.appendingPathComponent("Volumes")
         case .users:
-            return rootURL.appendingPathComponent("Users")
-
-        case .userPreferencesByHost:  return home("Library/Preferences/ByHost")
-        case .userHTTPStorages:       return home("Library/HTTPStorages")
-        case .userCookies:            return home("Library/Cookies")
-        case .userApplicationScripts: return home("Library/Application Scripts")
-        case .userAutosaveInformation: return home("Library/Autosave Information")
-        case .userDiagnosticReports:  return home("Library/Logs/DiagnosticReports")
-        case .systemDiagnosticReports: return system("Library/Logs/DiagnosticReports")
-        case .systemLogs:             return system("Library/Logs")
-        case .systemApplicationSupport: return system("Library/Application Support")
-        case .systemPreferences:      return system("Library/Preferences")
-        case .systemCaches:           return system("Library/Caches")
-        case .systemContainers:       return system("Library/Containers")
-
-        case .userInternetPlugIns:    return home("Library/Internet Plug-Ins")
-        case .systemInternetPlugIns:  return system("Library/Internet Plug-Ins")
-        case .userPreferencePanes:    return home("Library/PreferencePanes")
-        case .systemPreferencePanes:  return system("Library/PreferencePanes")
-        case .userServices:           return home("Library/Services")
-        case .systemServices:         return system("Library/Services")
-        case .userQuickLook:          return home("Library/QuickLook")
-        case .systemQuickLook:        return system("Library/QuickLook")
-        case .userSpotlight:          return home("Library/Spotlight")
-        case .systemSpotlight:        return system("Library/Spotlight")
-        case .userAutomator:          return home("Library/Automator")
-        case .systemAutomator:        return system("Library/Automator")
-        case .userColorPickers:       return home("Library/ColorPickers")
-        case .systemColorPickers:     return system("Library/ColorPickers")
-        case .userScreenSavers:       return home("Library/Screen Savers")
-        case .systemScreenSavers:     return system("Library/Screen Savers")
-        case .userFonts:              return home("Library/Fonts")
-        case .systemFonts:            return system("Library/Fonts")
-        case .userWidgets:            return home("Library/Widgets")
-        case .userAudioComponents:    return home("Library/Audio/Plug-Ins/Components")
-        case .systemAudioComponents:  return system("Library/Audio/Plug-Ins/Components")
-        case .systemAudioVST:         return system("Library/Audio/Plug-Ins/VST")
-        case .systemAudioVST3:        return system("Library/Audio/Plug-Ins/VST3")
-        case .systemAudioCLAP:        return system("Library/Audio/Plug-Ins/CLAP")
-        case .systemAudioHAL:         return system("Library/Audio/Plug-Ins/HAL")
-        case .systemAudioMAS:         return system("Library/Audio/Plug-Ins/MAS")
-        case .systemAudioAvid:        return system("Library/Application Support/Avid/Audio/Plug-Ins")
-        case .systemExtensionsFolder: return system("Library/Extensions")
-        case .privilegedHelperTools:  return system("Library/PrivilegedHelperTools")
-        case .startupItems:           return system("Library/StartupItems")
-
-        case .usrLocalBin:            return rootURL.appendingPathComponent("usr/local/bin")
-        case .usrLocalEtc:            return rootURL.appendingPathComponent("usr/local/etc")
-        case .usrLocalOpt:            return rootURL.appendingPathComponent("usr/local/opt")
-        case .usrLocalSbin:           return rootURL.appendingPathComponent("usr/local/sbin")
-        case .usrLocalShare:          return rootURL.appendingPathComponent("usr/local/share")
-        case .usrLocalVar:            return rootURL.appendingPathComponent("usr/local/var")
-
-        case .systemReceipts:         return rootURL.appendingPathComponent("private/var/db/receipts")
-        case .sharedUser:             return rootURL.appendingPathComponent("Users/Shared")
+            rootURL.appendingPathComponent("Users")
+        case .userPreferencesByHost: home("Library/Preferences/ByHost")
+        case .userHTTPStorages: home("Library/HTTPStorages")
+        case .userCookies: home("Library/Cookies")
+        case .userApplicationScripts: home("Library/Application Scripts")
+        case .systemApplicationScripts: system("Library/Application Scripts")
+        case .userAutosaveInformation: home("Library/Autosave Information")
+        case .userDiagnosticReports: home("Library/Logs/DiagnosticReports")
+        case .systemDiagnosticReports: system("Library/Logs/DiagnosticReports")
+        case .systemLogs: system("Library/Logs")
+        case .systemApplicationSupport: system("Library/Application Support")
+        case .systemPreferences: system("Library/Preferences")
+        case .systemCaches: system("Library/Caches")
+        case .systemContainers: system("Library/Containers")
+        case .userDictionaries: home("Library/Dictionaries")
+        case .systemDictionaries: system("Library/Dictionaries")
+        case .userInternetPlugIns: home("Library/Internet Plug-Ins")
+        case .systemInternetPlugIns: system("Library/Internet Plug-Ins")
+        case .userPreferencePanes: home("Library/PreferencePanes")
+        case .systemPreferencePanes: system("Library/PreferencePanes")
+        case .userServices: home("Library/Services")
+        case .systemServices: system("Library/Services")
+        case .userQuickLook: home("Library/QuickLook")
+        case .systemQuickLook: system("Library/QuickLook")
+        case .userSpotlight: home("Library/Spotlight")
+        case .systemSpotlight: system("Library/Spotlight")
+        case .userAutomator: home("Library/Automator")
+        case .systemAutomator: system("Library/Automator")
+        case .userColorPickers: home("Library/ColorPickers")
+        case .systemColorPickers: system("Library/ColorPickers")
+        case .userScreenSavers: home("Library/Screen Savers")
+        case .systemScreenSavers: system("Library/Screen Savers")
+        case .userFonts: home("Library/Fonts")
+        case .systemFonts: system("Library/Fonts")
+        case .userWidgets: home("Library/Widgets")
+        case .userAudioComponents: home("Library/Audio/Plug-Ins/Components")
+        case .systemAudioComponents: system("Library/Audio/Plug-Ins/Components")
+        case .systemAudioVST: system("Library/Audio/Plug-Ins/VST")
+        case .systemAudioVST3: system("Library/Audio/Plug-Ins/VST3")
+        case .systemAudioCLAP: system("Library/Audio/Plug-Ins/CLAP")
+        case .systemAudioHAL: system("Library/Audio/Plug-Ins/HAL")
+        case .systemSecurityAgentPlugins: system("Library/Security/SecurityAgentPlugins")
+        case .systemAudioMAS: system("Library/Audio/Plug-Ins/MAS")
+        case .systemAudioAvid: system("Library/Application Support/Avid/Audio/Plug-Ins")
+        case .systemExtensionsFolder: system("Library/Extensions")
+        case .privilegedHelperTools: system("Library/PrivilegedHelperTools")
+        case .startupItems: system("Library/StartupItems")
+        case .usrLocalBin: rootURL.appendingPathComponent("usr/local/bin")
+        case .usrLocalEtc: rootURL.appendingPathComponent("usr/local/etc")
+        case .usrLocalOpt: rootURL.appendingPathComponent("usr/local/opt")
+        case .usrLocalSbin: rootURL.appendingPathComponent("usr/local/sbin")
+        case .usrLocalShare: rootURL.appendingPathComponent("usr/local/share")
+        case .usrLocalVar: rootURL.appendingPathComponent("usr/local/var")
+        case .systemReceipts: rootURL.appendingPathComponent("private/var/db/receipts")
+        case .sharedUser: rootURL.appendingPathComponent("Users/Shared")
         case .sharedApplicationSupport:
-            return rootURL.appendingPathComponent("Users/Shared/Library/Application Support")
-        case .darwinUserCache:        return Self.darwinDirectory(_CS_DARWIN_USER_CACHE_DIR, in: rootURL)
-        case .darwinUserTemp:         return Self.darwinDirectory(_CS_DARWIN_USER_TEMP_DIR, in: rootURL)
-        case .userDotConfig:          return home(".config")
-        case .userDotCache:           return home(".cache")
-        case .userDotLocalShare:      return home(".local/share")
-        case .userDotLocalState:      return home(".local/state")
-        case .userDotLocalBin:        return home(".local/bin")
+            rootURL.appendingPathComponent("Users/Shared/Library/Application Support")
+        case .darwinUserCache: Self.darwinDirectory(_CS_DARWIN_USER_CACHE_DIR, in: rootURL)
+        case .darwinUserTemp: Self.darwinDirectory(_CS_DARWIN_USER_TEMP_DIR, in: rootURL)
+        case .userDotConfig: home(".config")
+        case .userDotCache: home(".cache")
+        case .userDotLocalShare: home(".local/share")
+        case .userDotLocalState: home(".local/state")
+        case .userDotLocalBin: home(".local/bin")
+        case .userHomeDotFolders: rootURL.appendingPathComponent("Users/\(userName)")
         }
     }
 

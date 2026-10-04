@@ -3,7 +3,7 @@ import XCTest
 
 /// The order steps run in, and the order they are undone in, is the rule that
 /// keeps an interrupted or reversed uninstall from corrupting a footprint:
-/// an archive copy must exist before anything is destroyed, a launchd job must
+/// privacy grants are cleared while the bundle still exists, a launchd job must
 /// be unloaded before its plist is removed, and the app bundle must be trashed
 /// last (and restored first, since auxiliary files can live beneath it).
 final class PlanStepOrderingTests: XCTestCase {
@@ -37,18 +37,18 @@ final class PlanStepOrderingTests: XCTestCase {
         )
     }
 
-    func testExecutionOrderRunsArchiveFirstAndAppBundleLast() {
+    func testExecutionOrderRunsPrivacyFirstAndAppBundleLast() {
         // Deliberately shuffled relative to the order they must run in.
         let subject = plan([
             step(0, .appBundle, target: "/Applications/TestApp.app"),
             step(1, .auxiliary, target: "/Users/x/Library/Caches/TestApp"),
             step(2, .launchd, target: "/Users/x/Library/LaunchAgents/com.test.plist"),
-            step(3, .archive, target: "/Users/x/Archive/TestApp.zip")
+            step(3, .privacyReset, target: "com.test.app")
         ])
 
         XCTAssertEqual(
             subject.executionOrderedSteps.map(\.executionPhase),
-            [.archive, .auxiliary, .launchd, .appBundle]
+            [.privacyReset, .auxiliary, .launchd, .appBundle]
         )
     }
 
@@ -57,7 +57,7 @@ final class PlanStepOrderingTests: XCTestCase {
             step(0, .appBundle),
             step(1, .auxiliary),
             step(2, .launchd),
-            step(3, .archive)
+            step(3, .privacyReset)
         ])
 
         XCTAssertEqual(

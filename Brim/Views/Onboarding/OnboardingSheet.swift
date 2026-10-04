@@ -1,44 +1,66 @@
-import SwiftUI
 import BrimCore
 import BrimProtocol
-import BrimPrivileged
 import BrimUI
+import SwiftUI
 
-/// First run, and the only place Brim asks the person for anything.
-///
-/// Everything it needs is settled here, in one sitting, while they are
-/// paying attention to setup rather than in the middle of looking at
-/// something. After this the app is quiet: no permission dialog between a
-/// person and a list they asked to see, and no fingerprint before anything
-/// that can be undone.
+/// First-run setup for reading protected locations and confirming ownership.
+/// Administrator authentication is requested separately for protected operations.
 ///
 /// It is setup, not a gate. Every step can be skipped and the app still
-/// opens and still works, because a scan without Full Disk Access is not
-/// wrong, it is smaller, and it says so. That is the permission ladder the
-/// plan calls for, moved to the front rather than replaced by a wall.
+/// opens and works, because a scan without Full Disk Access is not wrong,
+/// it is smaller, and it says so.
+///
+/// The step is remembered. Turning on Full Disk Access makes macOS quit
+/// Brim, and setup used to start again from the welcome when it reopened,
+/// as though nothing had happened.
 struct OnboardingSheet: View {
     let service: any BrimServiceProtocol
+    @ObservedObject var leftovers: LeftoversModel
     let onFinished: () -> Void
 
-    private enum Step: Int, CaseIterable {
-        case what, access, helper, confirm
+    enum Step: Int, CaseIterable {
+        case what = 0, access = 1, confirm = 3, ready = 4
     }
 
-    @State private var step: Step = .what
+    @AppStorage("onboarding.step") private var savedStep = Step.what.rawValue
     @StateObject private var access = FullDiskAccessModel()
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var step: Step {
+        // An unfinished setup from the older helper step continues at confirmation.
+        savedStep == 2 ? .confirm : Step(rawValue: savedStep) ?? .what
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             content
+                .id(step)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : 16)),
+                    removal: .opacity
+                ))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             footer
         }
         .padding(28)
+        // Fixed, so the sheet never asks the window to re-measure it
+        // (`CLAUDE.md`, on scrolling review sheets).
         .frame(width: 560, height: 470)
         .onAppear { access.startObserving() }
         .onDisappear { access.stopObserving() }
+    }
+
+    private func go(to next: Step) {
+        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            savedStep = next.rawValue
+        }
+    }
+
+    private func finish() {
+        savedStep = Step.what.rawValue
+        onFinished()
     }
 
     // MARK: - Steps
@@ -48,215 +70,145 @@ struct OnboardingSheet: View {
         switch step {
         case .what: whatBrimDoes
         case .access: fullDiskAccess
-        case .helper: helperStep
         case .confirm: confirmOwnership
+        case .ready: ready
         }
     }
 
     private var whatBrimDoes: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(
-                "Welcome to Brim",
-                "Brim tracks down what software leaves behind on this Mac, and shows you the "
-                + "place is empty once you clear it out."
-            )
-
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 22) {
+            title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
+            VStack(alignment: .leading, spacing: 16) {
                 point(
-                    "magnifyingglass",
-                    "It looks in the places an uninstall misses.",
-                    "Login items macOS still runs, launchd jobs pointing at programs that have "
-                    + "gone, settings and caches nothing claims any more."
+                    "magnifyingglass", "Looks where uninstalls miss", "Login items, background jobs, settings, caches"
                 )
-                point(
-                    "checkmark.seal",
-                    "It checks its own work.",
-                    "After a removal Brim goes back to every place it touched, looks again, "
-                    + "and tells you what is there now."
-                )
-                point(
-                    "arrow.uturn.backward",
-                    "Almost everything is undoable.",
-                    "Things go to the Trash, where you can fish them back out. The rare step "
-                    + "that cannot be undone is called out before it runs."
-                )
+                point("checkmark.seal", "Checks its own work", "Every place is read again after a removal")
+                point("arrow.uturn.backward", "Almost everything comes back", "Removals go to the Trash first")
             }
         }
     }
 
     private var fullDiskAccess: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(
-                "Let Brim read the Mac",
-                "One setting, and it is the only one Brim asks for. macOS keeps the interesting "
-                + "parts behind it: the list of login items, application containers, and the "
-                + "records that say who installed what."
-            )
-
+        VStack(alignment: .leading, spacing: 22) {
+            title("Full Disk Access", "The one setting Brim asks for")
             if access.isGranted {
-                status(
-                    "checkmark.circle.fill", .green,
-                    "Everything needed can be read.",
-                    "Nothing more to do here."
-                )
+                status("checkmark.circle.fill", .accentColor, "On", "Everything Brim needs can be read")
             } else {
-                status(
-                    "lock.fill", .orange,
-                    "Full Disk Access is off.",
-                    "Brim works without it and finds plenty. Turning it on adds two things: "
-                    + "what applications keep inside their containers, and the list of login "
-                    + "items macOS runs at startup. Where a number would change, Brim says so "
-                    + "on the spot."
-                )
-
+                status("lock.fill", Palette.caution, "Off", "Containers and login items stay hidden until it is on")
                 Button {
                     access.requestAccess()
                 } label: {
                     Label("Open System Settings", systemImage: "arrow.up.forward.app")
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
                 .controlSize(.large)
-
                 if access.hasRequested {
-                    Text("Find Brim in the list and switch it on. macOS will ask to quit Brim "
-                         + "so the change takes effect. Open it again afterwards and setup "
-                         + "carries on from here.")
-                        .font(.callout).foregroundColor(.secondary)
+                    Text("Switch Brim on. Setup carries on here when macOS reopens it.")
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+            administratorNotice
+        }
+    }
+
+    private var confirmOwnership: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            title("One check", "Confirms this Mac is yours, so Brim can stay quiet later")
+            VStack(alignment: .leading, spacing: 16) {
+                point("trash", "No prompt for the Trash", "It can all be put back")
+                point("touchid", "One prompt for anything permanent", "Once per removal, then quiet for five minutes")
+            }
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.caution)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    /// Read by the helper step, in `OnboardingSheet+Helper.swift`.
-    @State var helperState: PrivilegedHelperClient.State?
-
-    private var confirmOwnership: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(
-                "One check, and then quiet",
-                "Brim would like to confirm once that this Mac is yours. Doing it now is what "
-                + "lets it stop asking later."
-            )
-
-            VStack(alignment: .leading, spacing: 12) {
-                point(
-                    "hand.raised",
-                    "Reversible actions are not confirmed.",
-                    "Anything bound for the Trash just goes. You looked at the list, and it is "
-                    + "all still there if you change your mind."
-                )
-                point(
-                    "exclamationmark.triangle",
-                    "One prompt for the whole job, not one per file.",
-                    "Brim asks again only when something is about to go for good, once for the "
-                    + "entire plan, and then not again for five minutes."
+    private var ready: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.tint)
+                .symbolEffect(.bounce, options: .nonRepeating, value: step)
+            Text("Ready")
+                .font(.brimHeadline)
+                .foregroundStyle(Palette.ink)
+            HStack(spacing: 10) {
+                StatusChip(
+                    text: access.isGranted ? "Full Disk Access on" : "Full Disk Access off",
+                    symbol: access.isGranted ? "checkmark" : "lock", tone: access.isGranted ? .accent : .caution
                 )
             }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.callout).foregroundColor(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("Full Disk Access can be changed later in Settings")
+                .font(.brimFacts)
+                .foregroundStyle(Palette.inkSecondary)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Chrome
 
     func title(_ heading: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(heading).font(.largeTitle).fontWeight(.bold)
+            Text(heading)
+                .font(.brimHeadline)
+                .foregroundStyle(Palette.ink)
             Text(detail)
-                .foregroundColor(.secondary)
+                .font(.body)
+                .foregroundStyle(Palette.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func point(_ symbol: String, _ heading: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .font(.title3).foregroundColor(.accentColor).frame(width: 24)
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(heading).fontWeight(.medium)
+                Text(heading)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
                 Text(detail)
-                    .font(.callout).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(heading). \(detail)")
     }
 
-    func status(
-        _ symbol: String, _ tint: Color, _ heading: String, _ detail: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: symbol).font(.title3).foregroundColor(tint).frame(width: 24)
+    func status(_ symbol: String, _ tint: Color, _ heading: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(tint)
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(heading).fontWeight(.medium)
+                Text(heading)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
                 Text(detail)
-                    .font(.callout).foregroundColor(.secondary)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var footer: some View {
-        HStack(spacing: 12) {
-            ForEach(Step.allCases, id: \.self) { each in
-                Circle()
-                    .fill(each == step ? Color.primary : Color.secondary.opacity(0.3))
-                    .frame(width: 6, height: 6)
-            }
-
-            Spacer()
-
-            if isWorking { ProgressView().controlSize(.small) }
-
-            switch step {
-            case .what:
-                Button("Continue") { step = .access }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-            case .access:
-                // Skipping is a real choice, so it is the plain button
-                // until the setting is on and continuing is the obvious
-                // next move.
-                if access.isGranted {
-                    Button("Continue") { step = .helper }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                } else {
-                    Button("Skip for now") { step = .helper }
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                }
-            case .helper:
-                if helperState == .ready {
-                    Button("Continue") { step = .confirm }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                } else {
-                    Button("Skip for now") { step = .confirm }
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                }
-            case .confirm:
-                Button("Not now") { onFinished() }
-                    .disabled(isWorking)
-                Button("Confirm and start") { Task { await enroll() } }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(isWorking)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(.top, 16)
+        .background(tint.opacity(0.10), in: .rect(cornerRadius: Metrics.rowRadius, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(heading). \(detail)")
     }
 
     private func enroll() async {
@@ -264,11 +216,84 @@ struct OnboardingSheet: View {
         defer { isWorking = false }
         do {
             try await service.enroll()
-            onFinished()
+            go(to: .ready)
         } catch {
-            // Declining setup is not a failure worth blocking on, since
-            // nothing depends on it. Say so plainly and let them carry on.
+            // Declining is not a failure worth blocking on, since nothing
+            // depends on it. Say so plainly and let them carry on.
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+extension OnboardingSheet {
+    // MARK: - Footer
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                ForEach(Step.allCases, id: \.self) { each in
+                    Capsule()
+                        .fill(each == step ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.well))
+                        .frame(width: each == step ? 16 : 6, height: 6)
+                }
+            }
+            .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: step)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \((Step.allCases.firstIndex(of: step) ?? 0) + 1) of \(Step.allCases.count)")
+
+            Spacer()
+
+            if isWorking {
+                ProgressView().controlSize(.small)
+            }
+            if step != .what, step != .ready {
+                Button("Back") {
+                    let index = Step.allCases.firstIndex(of: step) ?? 0
+                    go(to: Step.allCases[max(0, index - 1)])
+                }
+                .buttonStyle(.borderless)
+                .disabled(isWorking)
+            }
+            buttons
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+        }
+        .padding(.top, 16)
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        switch step {
+        case .what:
+            primary("Continue") { go(to: .access) }
+        case .access:
+            // Skipping is a real choice, so it is the plain button until
+            // the setting is on and continuing is the obvious next move.
+            if access.isGranted {
+                primary("Continue") { go(to: .confirm) }
+            } else {
+                secondary("Skip") { go(to: .confirm) }
+            }
+        case .confirm:
+            Button("Not Now") { go(to: .ready) }
+                .buttonStyle(.bordered)
+                .disabled(isWorking)
+            primary("Confirm") { Task { await enroll() } }
+                .disabled(isWorking)
+        case .ready:
+            primary("Open Brim", action: finish)
+        }
+    }
+
+    private func primary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+    }
+
+    private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.defaultAction)
     }
 }

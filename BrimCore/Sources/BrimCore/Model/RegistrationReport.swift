@@ -21,11 +21,17 @@ public struct RegistrationReport: Sendable, Codable, Equatable {
 
     /// Entries pointing at a program that is no longer on disk, and that the
     /// user could actually do something about.
-    public var stale: [Registration] { registrations.filter(\.isActionableStale) }
+    public var stale: [Registration] {
+        registrations.filter(\.isActionableStale)
+    }
 
     /// Entries that still point at something real.
-    public var live: [Registration] { registrations.filter { !$0.isStale } }
+    public var live: [Registration] {
+        registrations.filter { !$0.isStale || !$0.isActionable }
+    }
 
     /// Surfaces that could not be read, so the view can say so.
-    public var gaps: [RegistrationCoverage] { coverage.filter { !$0.available } }
+    public var gaps: [RegistrationCoverage] {
+        coverage.filter { !$0.available }
+    }
 }

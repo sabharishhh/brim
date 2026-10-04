@@ -10,7 +10,7 @@ public actor LeftoversScanner {
     /// Launch Services' answer for a bundle identifier. Injected so the
     /// ownership rules can be tested without depending on what happens to be
     /// installed on the machine running the suite.
-    private let launchServicesLookup: @Sendable (String) -> [URL]
+    private let launchServicesLookup: @Sendable (String) throws -> [URL]
     /// Whether this process can reach protected locations, which decides
     /// whether a container leftover is removable or only visible.
     private let hasFullDiskAccess: Bool
@@ -33,18 +33,37 @@ public actor LeftoversScanner {
     /// record is exactly the kind of evidence that turns an unattributed
     /// folder into a named orphan, and nothing was reading it.
     private let homebrewOrphans: Set<String>
+    /// Paths another part of Brim already accounts for: the Developer
+    /// catalogue's caches. Homebrew's downloads and SwiftPM's cache were
+    /// listed here as "owner unknown" and on Developer as build caches, and
+    /// Space added them twice.
+    private let claimedPaths: Set<String>
+    /// Applications Brim's snapshots saw installed that have since gone,
+    /// by bundle identifier, with when each was last seen.
+    private let removedApplications: [String: Date]
+    /// How recently something must have written to a folder no record names
+    /// for it to count as in use. Nil reads nothing into it.
+    private let inUseWithin: TimeInterval?
 
     public init(
         root: FileSystemRoot,
-        launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
+        launchServicesLookup: (@Sendable (String) throws -> [URL])? = nil,
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
+        claimedPaths: Set<String> = [],
+        removedApplications: [String: Date] = [:],
         protectedAppURL: URL? = nil,
         hasFullDiskAccess: Bool? = nil,
-        commandIsInstalled: (@Sendable (String) -> Bool)? = nil
+        commandIsInstalled: (@Sendable (String) -> Bool)? = nil,
+        inUseWithin: TimeInterval? = nil
     ) {
+        self.inUseWithin = inUseWithin
         self.staleRegistrationOwners = staleRegistrationOwners
         self.homebrewOrphans = homebrewOrphans
+        self.removedApplications = Dictionary(
+            removedApplications.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: max
+        )
+        self.claimedPaths = Set(claimedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
         self.root = root
         resolver = IdentityResolver(root: root)
         self.launchServicesLookup = launchServicesLookup ?? { _ in [] }
@@ -55,7 +74,9 @@ public actor LeftoversScanner {
         self.protectedAppURL = protectedAppURL
     }
 
-    public func scanLeftovers(knownPastBundleIDs: Set<String> = []) async throws -> [Leftover] {
+    public func scanLeftovers(
+        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:]
+    ) async throws -> [Leftover] {
         try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
         try Task.checkCancellation()
@@ -87,8 +108,14 @@ public actor LeftoversScanner {
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
+        // With the names Brim recorded, so a folder named after the app, not
+        // its identifier, is recognised as its too. Short names say too
+        // little to match on.
         let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
-            .map { Identity(bundleID: $0, name: "") }
+            .map { id in
+                let name = knownNames[id.lowercased()] ?? ""
+                return Identity(bundleID: id, name: name.count >= 4 ? name : "")
+            }
 
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -122,10 +149,18 @@ public actor LeftoversScanner {
         // Support` and the caches dominating while the small domains
         // waited their turn. Sorted afterwards, so the answer does not
         // depend on which domain finished first.
+        // What installed applications wrote, by macOS's own record. ChatGPT's
+        // 1.6 GB `~/.cache/codex-runtimes` was offered as a leftover with no
+        // owner while ChatGPT was installed and using it.
+        let writers = ProvenanceSource.owners(of: activeIdentities)
+        let vendors = SystemVendors(
+            installed: activeIdentities, recorded: knownNames,
+            packageFolders: InstalledBundleInventory.packageInstallFolders(in: root), root: root
+        )
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
             walkDomain(domain, search, activeIdentities, pastIdentities,
                        activeBundleIDs, activeNames,
-                       activeGroupContainers, activeTeamIDs, inventoryRoots)
+                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames, vendors)
         }
         let found = batches.flatMap(\.self)
         let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
@@ -143,7 +178,8 @@ public actor LeftoversScanner {
             Leftover(url: item.url, size: item.size, category: .unclaimed,
                      potentialOwner: item.potentialOwner,
                      evidence: "Installed ownership could not be fully checked.",
-                     capability: item.capability, lastAccessed: item.lastAccessed)
+                     capability: item.capability, lastAccessed: item.lastAccessed,
+                     sizeIsKnown: item.sizeIsKnown != false)
         }
     }
 
@@ -158,21 +194,33 @@ public actor LeftoversScanner {
         _ activeNames: Set<String>,
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>,
-        _ inventoryRoots: Set<String>
+        _ inventoryRoots: Set<String>,
+        _ writers: [ProvenanceSource.Owner],
+        _ knownNames: [String: String],
+        _ vendors: SystemVendors
     ) -> [Leftover] {
         var leftovers: [Leftover] = []
         let locationRules = LocationInventory.standard.locations.filter { $0.domain == domain }
         let ownerLookup = OwnerLookup(
             domain: domain, locationRules: locationRules,
-            pastIdentities: pastIdentities, search: search
+            pastIdentities: pastIdentities,
+            pastSubjects: pastIdentities.map(LocationInventory.Subject.init), search: search
         )
+        // Matching reads each identity's identifiers once per file, so they
+        // are worked out once per domain rather than once per question.
+        let activeSubjects = activeIdentities.map(LocationInventory.Subject.init)
+        // Library helpers can protect a shared container even though they
+        // are deliberately excluded from an app's removal identifiers.
+        let containerClaimants = Set(activeIdentities.flatMap {
+            [$0.bundleID].compactMap(\.self) + ($0.identitySurface?.bundleIdentifiers ?? [])
+        }.map { $0.lowercased() })
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
             // itself, so the walk is one level deep and only where there
             // is a reason to go deeper.
             var queue: [(url: URL, vendor: String?)] =
-                scanDirectoryLevel1(dir).map { ($0, nil) }
+                scanDirectoryLevel1(dir, hidden: domain == .userHomeDotFolders).map { ($0, nil) }
             var cursor = 0
             while cursor < queue.count {
                 let (item, vendor) = queue[cursor]
@@ -180,10 +228,26 @@ public actor LeftoversScanner {
                 // A parent domain can contain another inventory root.
                 // Its contents are scanned under their own rule; offering
                 // the root itself would claim the whole subtree is residue.
-                if inventoryRoots.contains(item.resolvingSymlinksInPath().path) {
+                if inventoryRoots.contains(item.resolvingSymlinksInPath().path)
+                    || claimedPaths.contains(item.standardizedFileURL.path) {
                     continue
                 }
                 let name = item.lastPathComponent
+                let containerOwnership = domain == .userContainers || domain == .systemContainers
+                    ? ContainerOwnershipReader.read(at: item) : nil
+                // Every recorded claimant protects a container, even when
+                // its records disagree about which app is the owner.
+                if let ownership = containerOwnership, ownership.identifiers.contains(where: { owner in
+                    Self.isAppleOwned(owner) || containerClaimants.contains {
+                        owner.lowercased() == $0 || owner.lowercased().hasPrefix($0 + ".")
+                    }
+                }) {
+                    continue
+                }
+                // The rest of the home folder is the person's own.
+                if domain == .userHomeDotFolders, !name.hasPrefix(".") {
+                    continue
+                }
                 // The name to reason about: `Chrome` inside `Google` is
                 // `Google Chrome`, which is what the application is
                 // actually called and the only spelling that matches it.
@@ -217,10 +281,10 @@ public actor LeftoversScanner {
                 // suggests. `ParrotAudioPlugin.driver` is Apple's by its
                 // identifier, and `MSTeamsAudioDevice.driver` is signed by the
                 // team that signed Microsoft Teams, which is installed.
-                if let signed = Self.bundleSignature(of: item),
-                   Self.belongsToInstalledSoftware(
-                       identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
-                   ) {
+                let signed = Self.bundleSignature(of: item)
+                if let signed, Self.belongsToInstalledSoftware(
+                    identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
+                ) {
                     continue
                 }
 
@@ -229,8 +293,30 @@ public actor LeftoversScanner {
                 // reverse-DNS test above never sees them, and offering to
                 // remove /Library/Application Support/Apple would be a
                 // serious thing to get wrong.
-                if Self.isSystemOwnedByName(name, in: domain) {
-                    continue
+                //
+                // Unless a third party is known by that name. `Microsoft` in
+                // `/Library/Logs` held Teams' logs and AutoUpdate's after both
+                // had gone, and `Office365` sat in `Application Support/Microsoft`,
+                // and the sweep never looked inside either because neither
+                // name has dots in it. A developer's folder is judged by what
+                // it holds; the folder itself is never offered.
+                //
+                // A bundle is judged by the identifier it declares, never by
+                // its file name. `Flash Player.prefPane` has one dot, so
+                // every third-party plug-in in `/Library` was read as macOS's.
+                if vendor == nil, signed?.identifier == nil, containerOwnership?.identifier == nil,
+                   Self.isSystemOwnedByName(name, in: domain) {
+                    switch vendors.claim(name) {
+                    case .application?:
+                        break
+                    case .developer?:
+                        if Self.nestable.contains(domain), Self.isDirectory(item) {
+                            queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
+                        }
+                        continue
+                    case nil:
+                        continue
+                    }
                 }
 
                 // macOS places files it could not migrate during an update
@@ -252,16 +338,28 @@ public actor LeftoversScanner {
                     break
                 }
 
-                let containerOwner = Self.containerOwnerIdentifier(at: item, in: domain)
+                let containerOwner = containerOwnership?.identifier
 
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
                     locationRules: locationRules, activeIdentities: activeIdentities,
+                    activeSubjects: activeSubjects,
                     activeBundleIDs: activeBundleIDs, activeNames: activeNames,
-                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs
+                    activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs,
+                    writers: writers
                 )
                 if belongsToInstalledApp {
+                    continue
+                }
+
+                // A folder called `Caches` or `Logs` inside a place apps
+                // keep things is somebody's container, not somebody. Notion
+                // keeps its updater in `Application Support/Caches`, and
+                // the row read "Caches".
+                if vendor == nil, Self.nestable.contains(domain),
+                   Self.containerNames.contains(name.lowercased()), Self.isDirectory(item) {
+                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, nil) })
                     continue
                 }
 
@@ -272,12 +370,57 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                guard let owner = resolvedOwner(
-                    for: item, name: name, qualified: qualified,
-                    containerOwner: containerOwner, lookup: ownerLookup
-                ) else { continue }
+                let owner: ResolvedOwner
+                if let uncertainty = containerOwnership?.uncertainty {
+                    owner = ResolvedOwner(category: .unclaimed, evidence: uncertainty, ownerID: "", cask: nil)
+                } else {
+                    guard let resolved = resolvedOwner(
+                        for: item, name: name, qualified: qualified,
+                        containerOwner: containerOwner, declared: signed?.identifier, lookup: ownerLookup
+                    ) else { continue }
+                    owner = resolved
+                }
 
-                let size = calculateSize(url: item)
+                // Inside a developer's folder in a system location, anything no
+                // gone product is named in may be shared, an updater or a
+                // licence, and stays while any of that developer's software is
+                // installed. Google's updater serves Chrome from there.
+                // A folder holding a file macOS names for itself is macOS's,
+                // whatever the folder is called: `CallHistoryDB` holds
+                // `com.apple.callhistory.databaseInfo.plist`, and was offered
+                // while macOS wrote to it the same morning.
+                if owner.category == .unclaimed, Self.holdsApplesOwnFile(item) {
+                    continue
+                }
+                // Where a name is all there is to go on, only a record of an
+                // app that was here and has gone names an owner. A dot folder
+                // nobody claims is a tool's settings as often as not, and a
+                // crash report nobody claims says nothing about whose it is.
+                if Self.recordOnlyDomains.contains(domain), owner.category != .orphaned {
+                    continue
+                }
+                // Nothing names it, and something wrote to it this week.
+                // Whatever that is, it is alive, so this is not what a
+                // removed app left. `Knowledge`, `Animoji` and
+                // `SiriEntityCache` are macOS's and were written the day
+                // they were offered here. Recent writing only ever keeps
+                // a folder out; it never argues that one is a leftover.
+                if owner.category == .unclaimed, let window = inUseWithin,
+                   Self.newestWrite(in: item).map({ Date().timeIntervalSince($0) < window }) == true {
+                    continue
+                }
+
+                var evidence = owner.evidence
+                if let vendor, Self.systemDomains.contains(domain), owner.category == .unclaimed {
+                    guard !vendors.hasInstalled(vendor) else { continue }
+                    evidence = "In \(vendor)'s folder. Nothing from \(vendor) is installed."
+                }
+
+                let measured = ArtifactSizer.measure(at: item)
+                let size = measured.logicalBytes
+                if let limitation = measured.completeness.explanation {
+                    evidence += " " + limitation
+                }
 
                 // An empty folder nobody can name gives back nothing and
                 // says nothing. Two hundred and forty-one of them turn a
@@ -292,7 +435,7 @@ public actor LeftoversScanner {
                 // file there is. Preference plists went straight through
                 // it, which is to say the most ordinary leftover on a
                 // Mac was the one thing the sweep could not report.
-                if size == 0, owner.category != .orphaned, Self.isDirectory(item) {
+                if measured.isEmpty, owner.category != .orphaned, Self.isDirectory(item) {
                     continue
                 }
 
@@ -304,11 +447,14 @@ public actor LeftoversScanner {
                         bundleID: owner.category == .orphaned && owner.ownerID.contains(".")
                             ? owner.ownerID : nil,
                         name: owner.cask?.capitalized
+                            ?? Self.recordedName(for: owner.ownerID, in: knownNames)
                             ?? Self.readableName(ownerID: owner.ownerID, url: item, qualified: qualified)
                     ),
-                    evidence: owner.evidence,
+                    evidence: evidence,
                     capability: capability(for: item, in: domain),
-                    lastAccessed: lastAccessed(of: item)
+                    lastAccessed: lastAccessed(of: item),
+                    removedAt: owner.category == .orphaned ? removedApplications[owner.ownerID.lowercased()] : nil,
+                    sizeIsKnown: measured.state == .complete
                 )
                 leftovers.append(leftover)
             }
@@ -322,6 +468,7 @@ public actor LeftoversScanner {
         let domain: FileSystemRoot.Domain
         let locationRules: [LocationInventory.Location]
         let pastIdentities: [Identity]
+        let pastSubjects: [LocationInventory.Subject]
         let search: OwnershipSearch
     }
 
@@ -334,17 +481,12 @@ public actor LeftoversScanner {
 
     private nonisolated func resolvedOwner(
         for item: URL, name: String, qualified: String,
-        containerOwner: String?, lookup: OwnerLookup
+        containerOwner: String?, declared: String? = nil, lookup: OwnerLookup
     ) -> ResolvedOwner? {
         let embeddedID = lookup.locationRules.contains { $0.rule == .identifierInsideBundle }
-            ? LocationInventorySource.declaredIdentifier(at: item) : nil
-        let recordedOwner = lookup.pastIdentities.first { identity in
-            lookup.locationRules.contains {
-                $0.matchTier(name: name, identity: identity,
-                             declaredIdentifier: embeddedID) != nil
-            }
-        }?.bundleID
-        let ownerID = recordedOwner ?? containerOwner
+            ? LocationInventorySource.declaredIdentifier(at: item) : declared
+        let recordedOwner = Self.recordedOwner(name: name, declaredIdentifier: embeddedID, lookup: lookup)
+        let ownerID = recordedOwner ?? containerOwner ?? declared
             ?? extractOwnerIdentifier(from: item, in: lookup.domain)
 
         // Presence beats any stale record. Try the identifier and both
@@ -360,6 +502,9 @@ public actor LeftoversScanner {
         )
         if case .present = verdict {
             return nil
+        }
+        if let uncertain = Self.uncertainOwner(verdict, ownerID: ownerID) {
+            return uncertain
         }
 
         let cask = Self.matchingOrphanedCask(
@@ -390,6 +535,20 @@ public actor LeftoversScanner {
         )
     }
 
+    private static func recordedOwner(name: String, declaredIdentifier: String?, lookup: OwnerLookup) -> String? {
+        zip(lookup.pastIdentities, lookup.pastSubjects).first { _, subject in
+            lookup.locationRules.contains {
+                $0.matchTier(name: name, subject: subject,
+                             declaredIdentifier: declaredIdentifier) != nil
+            }
+        }?.0.bundleID
+    }
+
+    private static func uncertainOwner(_ verdict: Ownership, ownerID: String) -> ResolvedOwner? {
+        guard case let .unknown(sentence) = verdict else { return nil }
+        return ResolvedOwner(category: .unclaimed, evidence: sentence, ownerID: ownerID, cask: nil)
+    }
+
     private static func strongestOwnership(
         among names: [String], search: OwnershipSearch
     ) -> Ownership {
@@ -398,6 +557,8 @@ public actor LeftoversScanner {
                 switch (strongest, next) {
                 case (.present, _): strongest
                 case (_, .present): next
+                case (.unknown, _): strongest
+                case (_, .unknown): next
                 case (.recordedButGone, _): strongest
                 case (_, .recordedButGone): next
                 default: strongest
@@ -421,14 +582,16 @@ public actor LeftoversScanner {
     /// plainly-named folders and anything else unrecognisable stay out.
     /// `jp.co.nikon.UninstallCenter.Receipts` is a leftover;
     /// `iLifeMediaBrowser` is macOS.
+    static let systemDomains: Set<FileSystemRoot.Domain> = [
+        .systemApplicationSupport, .systemCaches, .systemLogs,
+        .systemPreferences, .systemContainers, .systemDiagnosticReports,
+        .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
+        .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
+        .systemPreferencePanes, .systemExtensionsFolder, .startupItems,
+        .systemApplicationScripts, .systemDictionaries
+    ]
+
     static func isSystemOwnedByName(_ name: String, in domain: FileSystemRoot.Domain) -> Bool {
-        let systemDomains: Set<FileSystemRoot.Domain> = [
-            .systemApplicationSupport, .systemCaches, .systemLogs,
-            .systemPreferences, .systemContainers, .systemDiagnosticReports,
-            .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
-            .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
-            .systemPreferencePanes, .systemExtensionsFolder, .startupItems
-        ]
         guard systemDomains.contains(domain) else { return false }
 
         // Named like a bundle identifier: at least two dot-separated
@@ -477,12 +640,7 @@ public actor LeftoversScanner {
     /// is not a bundle. Read only for bundles, so a folder of caches costs
     /// one failed file lookup.
     static func bundleSignature(of url: URL) -> (identifier: String?, team: String?)? {
-        let info = url.appendingPathComponent("Contents/Info.plist")
-        guard let data = try? Data(contentsOf: info),
-              let plist = try? PropertyListSerialization.propertyList(
-                  from: data, format: nil
-              ) as? [String: Any]
-        else { return nil }
+        guard let plist = LocationInventorySource.bundleInfo(at: url).values else { return nil }
         // The team only from a signature that holds up, read the one way
         // this module reads signatures. A broken signature proves nothing
         // about who made the bundle.
@@ -516,19 +674,8 @@ public actor LeftoversScanner {
     static func containerOwnerIdentifier(
         at url: URL, in domain: FileSystemRoot.Domain
     ) -> String? {
-        guard domain == .userContainers else { return nil }
-        let key = "com.apple.containermanager.identifier"
-        let length = getxattr(url.path, key, nil, 0, 0, 0)
-        guard length > 0, length < 4096 else { return nil }
-        var bytes = [UInt8](repeating: 0, count: length)
-        let read = bytes.withUnsafeMutableBytes {
-            getxattr(url.path, key, $0.baseAddress, length, 0, 0)
-        }
-        guard read > 0,
-              let value = String(bytes: bytes.prefix(read), encoding: .utf8),
-              IdentitySurface.isPathComponent(value)
-        else { return nil }
-        return value
+        guard domain == .userContainers || domain == .systemContainers else { return nil }
+        return ContainerOwnershipReader.read(at: url).identifier
     }
 
     private static func systemComponentStem(_ name: String) -> String {
@@ -664,6 +811,14 @@ public actor LeftoversScanner {
         .sharedUser, .sharedApplicationSupport
     ]
 
+    static let commandNamedDomains: Set<FileSystemRoot.Domain> = [
+        .userCaches, .userApplicationSupport, .userLogs
+    ]
+
+    static let recordOnlyDomains: Set<FileSystemRoot.Domain> = [
+        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports
+    ]
+
     static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
         .userDotConfig, .userDotCache, .userDotLocalShare,
         .userDotLocalState, .userDotLocalBin
@@ -729,12 +884,25 @@ public actor LeftoversScanner {
         containerOwner: String?,
         locationRules: [LocationInventory.Location],
         activeIdentities: [Identity],
+        activeSubjects: [LocationInventory.Subject],
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
         activeGroupContainers: Set<String>,
-        activeTeamIDs: Set<String>
+        activeTeamIDs: Set<String>,
+        writers: [ProvenanceSource.Owner] = []
     ) -> Bool {
         let name = item.lastPathComponent
+        if ProvenanceSource.owner(of: item, among: writers) != nil {
+            return true
+        }
+        // A folder an installed application runs from. Microsoft AutoUpdate
+        // lives in `Application Support/Microsoft/MAU2.0`.
+        let inside = item.standardizedFileURL.path + "/"
+        if activeIdentities.contains(where: { identity in
+            identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(inside) } ?? false
+        }) {
+            return true
+        }
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
            activeNames.contains(name.lowercased()) {
             return true
@@ -749,12 +917,7 @@ public actor LeftoversScanner {
             return true
         }
         if let containerOwner {
-            let ownerIsActive = activeIdentities.contains { identity in
-                identity.searchBundleIdentifiers.contains(containerOwner)
-                    || identity.searchBundleIdentifiers.contains(where: {
-                        containerOwner.hasPrefix($0 + ".")
-                    })
-            }
+            let ownerIsActive = activeSubjects.contains { $0.longestIdentifier(prefixing: containerOwner) != nil }
             if ownerIsActive {
                 return true
             }
@@ -766,8 +929,8 @@ public actor LeftoversScanner {
             ? LocationInventorySource.declaredIdentifier(at: item) : nil
 
         if locationRules.contains(where: { location in
-            activeIdentities.contains { identity in
-                location.matchTier(name: name, identity: identity,
+            activeSubjects.contains { subject in
+                location.matchTier(name: name, subject: subject,
                                    declaredIdentifier: declaredIdentifier) != nil
             }
         }) {
@@ -786,7 +949,7 @@ public actor LeftoversScanner {
         }
 
         switch domain {
-        case .userGroupContainers, .userApplicationScripts:
+        case .userGroupContainers, .userApplicationScripts, .systemApplicationScripts:
             return Self.isActiveGroup(name, groups: activeGroupContainers, teams: activeTeamIDs,
                                       bundleIDs: activeBundleIDs, names: activeNames)
 
@@ -833,9 +996,55 @@ public actor LeftoversScanner {
         return false
     }
 
+    static let containerNames: Set<String> = ["caches", "cache", "logs", "data", "tmp", "temp"]
+
+    /// The newest change to the item or anything two levels inside it,
+    /// reading at most a few hundred entries.
+    static func newestWrite(in url: URL) -> Date? {
+        let key: Set<URLResourceKey> = [.contentModificationDateKey]
+        var newest = (try? url.resourceValues(forKeys: key))?.contentModificationDate
+        guard isDirectory(url), let walk = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: Array(key), options: [.skipsPackageDescendants]
+        ) else { return newest }
+        var read = 0
+        for case let child as URL in walk {
+            read += 1
+            if read > 400 {
+                break
+            }
+            if walk.level > 2 {
+                walk.skipDescendants(); continue
+            }
+            if let date = (try? child.resourceValues(forKeys: key))?.contentModificationDate,
+               date > (newest ?? .distantPast) {
+                newest = date
+            }
+        }
+        return newest
+    }
+
+    /// Whether a folder's own first level holds a file named `com.apple.…`.
+    static func holdsApplesOwnFile(_ url: URL) -> Bool {
+        guard isDirectory(url),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: url.path)
+        else { return false }
+        return names.prefix(200).contains { $0.hasPrefix("com.apple.") }
+    }
+
     private nonisolated func isCommandLineItemActive(
         _ item: URL, in domain: FileSystemRoot.Domain
     ) -> Bool {
+        // A command-line tool keeps its cache and support folder under its
+        // own name, `SwiftLint` for `swiftlint`, with nothing an app
+        // inventory would ever claim.
+        if Self.commandNamedDomains.contains(domain), commandIsInstalled(item.lastPathComponent.lowercased()) {
+            return true
+        }
+        // `~/.claude` is the `claude` command's, and `~/.cargo-tools` cargo's.
+        if domain == .userHomeDotFolders {
+            let bare = item.lastPathComponent.dropFirst()
+            return bare.split(separator: "-").first.map { commandIsInstalled(String($0)) } ?? false
+        }
         guard Self.commandLineDataDomains.contains(domain) else {
             return false
         }
@@ -846,9 +1055,11 @@ public actor LeftoversScanner {
             && FileManager.default.isExecutableFile(atPath: item.path)
     }
 
-    private nonisolated func scanDirectoryLevel1(_ url: URL) -> [URL] {
+    private nonisolated func scanDirectoryLevel1(_ url: URL, hidden: Bool = false) -> [URL] {
         let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) else {
+        guard let urls = try? fm.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey], options: hidden ? [] : .skipsHiddenFiles
+        ) else {
             return []
         }
         return urls
@@ -883,6 +1094,16 @@ public actor LeftoversScanner {
 
     /// Something a person can read, instead of a team identifier and a
     /// reverse-DNS name.
+    /// The name Brim recorded for this identifier or the application it is
+    /// inside, the longest match winning, so `com.microsoft.teams2.agent`
+    /// is Microsoft Teams too.
+    static func recordedName(for ownerID: String, in names: [String: String]) -> String? {
+        let owner = ownerID.lowercased()
+        guard !owner.isEmpty, !names.isEmpty else { return nil }
+        return names.filter { owner == $0.key || owner.hasPrefix($0.key + ".") }
+            .max { $0.key.count < $1.key.count }?.value
+    }
+
     static func readableName(ownerID: String, url: URL, qualified: String? = nil) -> String {
         // Inside a vendor folder the vendor is half the name, and
         // dropping it leaves a row saying "Chrome" beside one saying
@@ -898,6 +1119,13 @@ public actor LeftoversScanner {
         if let namespace = OwnerNamespace.key(for: candidate) {
             return OwnerNamespace.displayName(for: namespace)
         }
+        // An updater's folder is named for the app it updates:
+        // `notion-updater` is Notion's.
+        for suffix in ["-updater", "_updater"] where candidate.lowercased().hasSuffix(suffix)
+            && candidate.count > suffix.count {
+            let app = candidate.dropLast(suffix.count)
+            return app.prefix(1).uppercased() + app.dropFirst()
+        }
         // The last meaningful component: dev.warp becomes Warp,
         // com.example.app becomes App.
         let parts = candidate.split(separator: ".")
@@ -909,6 +1137,10 @@ public actor LeftoversScanner {
         let name = url.lastPathComponent
         if domain == .userPreferences && name.hasSuffix(".plist") {
             return String(name.dropLast(6))
+        }
+        // `ChatGPTHelper.binarycookies` is ChatGPTHelper's, not Binarycookies'.
+        if (domain == .userHTTPStorages || domain == .userCookies) && name.hasSuffix(".binarycookies") {
+            return String(name.dropLast(14))
         }
         if domain == .userSavedApplicationState && name.hasSuffix(".savedState") {
             return String(name.dropLast(11))
@@ -961,42 +1193,6 @@ public actor LeftoversScanner {
         try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
     }
 
-    /// What removing this would give back.
-    ///
-    /// A directory enumerator over a plain file yields nothing and
-    /// answers zero, which is how every preference plist on the machine
-    /// came back weightless. A file is asked for its own size, and a
-    /// symbolic link is worth nothing and is never followed: measuring
-    /// through one credits a command with the size of the application it
-    /// points at.
-    private nonisolated func calculateSize(url: URL) -> Int64 {
-        let fm = FileManager.default
-        let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
-        let values = try? url.resourceValues(
-            forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
-        )
-        if values?.isSymbolicLink == true {
-            return 0
-        }
-        if values?.isDirectory == false {
-            return Int64(values?.fileSize ?? 0)
-        }
-
-        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: keys) else {
-            let attrs = try? fm.attributesOfItem(atPath: url.path)
-            return (attrs?[.size] as? Int64) ?? 0
-        }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            let res = try? fileURL.resourceValues(forKeys: Set(keys))
-            if let size = res?.fileSize {
-                total += Int64(size)
-            }
-        }
-        return total
-    }
-
     /// Every installed application's identity.
     ///
     /// Each one carries both names it answers to. `Identity.name` is the
@@ -1025,6 +1221,7 @@ public actor LeftoversScanner {
             identities.append(Identity(bundleID: identity.bundleID, teamID: identity.teamID,
                                        name: identity.name, bundleName: identity.bundleName,
                                        groupContainers: claims.surface.groups,
+                                       bundlePath: bundle.path,
                                        identitySurface: claims.surface))
         }
         return (identities, complete)

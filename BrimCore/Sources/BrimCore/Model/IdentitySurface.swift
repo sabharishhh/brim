@@ -37,11 +37,16 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
     public let bundlePath: String
     public let components: [Component]
     public let helperRequirements: [String: String]
+    /// Dot folders in the home folder the bundle itself names as its own.
+    /// Optional so a plan saved before this existed still reads.
+    public let homeFolders: [String]?
 
-    public init(bundlePath: String, components: [Component], helperRequirements: [String: String] = [:]) {
+    public init(bundlePath: String, components: [Component], helperRequirements: [String: String] = [:],
+                homeFolders: [String] = []) {
         self.bundlePath = bundlePath
         self.components = components
         self.helperRequirements = helperRequirements
+        self.homeFolders = homeFolders.isEmpty ? nil : homeFolders
     }
 
     public var bundleIdentifiers: [String] {
@@ -50,10 +55,33 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
 
     public var searchableBundleIdentifiers: [String] {
         let ownerTeam = components.first?.teamIdentifier
+        let ownerVendor = components.first?.bundleIdentifier.flatMap { Self.vendor(of: $0) }
         return Self.unique(components.filter { component in
-            component.path == bundlePath || ownerTeam == nil
+            guard component.path == bundlePath || ownerTeam == nil
                 || component.teamIdentifier == nil || component.teamIdentifier == ownerTeam
+            else { return false }
+            return !Self.isLibraryHelper(component, ownerVendor: ownerVendor)
         }.flatMap { [$0.bundleIdentifier, $0.signingIdentifier].compactMap(\.self) })
+    }
+
+    /// A helper that lives inside a framework and is named in somebody
+    /// else's namespace belongs to the library, not the application.
+    /// Sparkle's downloader is `org.sparkle-project.DownloaderService` in
+    /// every application that ships Sparkle, re-signed by each, so its
+    /// cookies were offered up with IINA and again with ChatGPT.
+    static func isLibraryHelper(_ component: Component, ownerVendor: String?) -> Bool {
+        guard let ownerVendor, component.path.contains(".framework/"),
+              let identifier = component.bundleIdentifier ?? component.signingIdentifier,
+              let vendor = vendor(of: identifier) else { return false }
+        return vendor != ownerVendor
+    }
+
+    /// The first two labels of a reverse domain identifier, which name the
+    /// developer rather than the product.
+    static func vendor(of identifier: String) -> String? {
+        let labels = identifier.lowercased().split(separator: ".")
+        guard labels.count >= 3 else { return nil }
+        return labels.prefix(2).joined(separator: ".")
     }
 
     public var names: [String] {
@@ -85,7 +113,8 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
 
 public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case systemExtension, vpnConfiguration, privilegedHelper, launchdJob, appExtension
-    case privacyGrant, launchServices, applicationGroups, bundlePlugin, installationRecords
+    case privacyGrant, launchServices, applicationGroups, bundlePlugin, installationRecords, backgroundItem,
+         fileProvider, firewallEntry, configurationProfile
 
     public var title: String {
         switch self {
@@ -99,6 +128,10 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .applicationGroups: "App groups"
         case .bundlePlugin: "Plug-ins"
         case .installationRecords: "Installation records"
+        case .backgroundItem: "Login items and background services"
+        case .fileProvider: "Cloud files"
+        case .firewallEntry: "Firewall entries"
+        case .configurationProfile: "Management profiles"
         }
     }
 
@@ -113,12 +146,16 @@ public enum DeclaredCapability: String, Codable, CaseIterable, Hashable, Sendabl
         case .applicationGroups: .bundlePlugin
         case .bundlePlugin: .bundlePlugin
         case .installationRecords: .installerReceipt
+        case .backgroundItem: .backgroundItem
+        case .fileProvider: .bundlePlugin
+        case .firewallEntry: .firewallEntry
+        case .configurationProfile: .configurationProfile
         }
     }
 
     public var needsEntitlements: Bool {
         switch self {
-        case .systemExtension, .vpnConfiguration, .privacyGrant, .applicationGroups: true
+        case .systemExtension, .vpnConfiguration, .privacyGrant, .applicationGroups, .fileProvider: true
         default: false
         }
     }
@@ -190,6 +227,8 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
         /// Nil in plans written before removal tiers were recorded.
         public let removalTier: RemovalTier?
         public let followUp: RemovalFollowUp?
+        public let observedAt: Date?
+        public let readerVersion: Int?
         public var id: String {
             capability.rawValue
         }
@@ -197,7 +236,7 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
         public init(capability: DeclaredCapability, declaration: CapabilitySurface.DeclarationState,
                     coverage: RegistrationCoverage, registrations: [Registration] = [],
                     locations: [String] = [], removalTier: RemovalTier? = nil,
-                    followUp: RemovalFollowUp? = nil) {
+                    followUp: RemovalFollowUp? = nil, observedAt: Date? = nil, readerVersion: Int? = nil) {
             self.capability = capability
             self.declaration = declaration
             self.coverage = coverage
@@ -205,6 +244,8 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
             self.locations = locations
             self.removalTier = removalTier
             self.followUp = followUp
+            self.observedAt = observedAt
+            self.readerVersion = readerVersion
         }
     }
 
@@ -214,5 +255,15 @@ public struct CapabilitySearchReport: Codable, Equatable, Sendable {
     public init(checks: [Check], signatureCoverage: [RegistrationCoverage]) {
         self.checks = checks
         self.signatureCoverage = signatureCoverage
+    }
+
+    /// Revalidation compares scope and evidence. Observation times naturally
+    /// advance and must not invalidate an otherwise unchanged reviewed plan.
+    public var reviewScope: Self {
+        Self(checks: checks.map {
+            Check(capability: $0.capability, declaration: $0.declaration, coverage: $0.coverage,
+                  registrations: $0.registrations, locations: $0.locations, removalTier: $0.removalTier,
+                  followUp: $0.followUp, readerVersion: $0.readerVersion)
+        }, signatureCoverage: signatureCoverage)
     }
 }

@@ -1,438 +1,292 @@
-import SwiftUI
-import UniformTypeIdentifiers
 import BrimCore
 import BrimUI
+import SwiftUI
 
-/// The Applications view: every installed app, and what each one has actually
-/// put on this Mac.
-///
-/// This is where the product's claim has to be visible. The queue removes
-/// leftovers one path at a time; here the user picks an application and sees
-/// the whole footprint Brim discovered from its identity alone, each group
-/// headed by what Brim knows about every row in it.
+/// Every installed app, grouped by the question people bring to the list:
+/// which of these could go. One app in depth on the right.
 struct ApplicationsView: View {
     @ObservedObject var model: ApplicationsModel
     /// Shared with the rest of the window, so a footprint that came up short
-    /// can name the setting that would complete it instead of only saying it
-    /// came up short.
+    /// can name the setting that would complete it.
     @ObservedObject var access: FullDiskAccessModel
     @SwiftUI.Environment(\.brimService) private var service
-    @State private var uninstalling: InstalledApplication?
-    @State private var resetting: InstalledApplication?
-    /// What a drop that matched nothing should say. Doing nothing at all
-    /// looks like the drop was not noticed.
-    @State private var dropComplaint: String?
+    @SwiftUI.Environment(ShellState.self) private var shell
+
+    @SceneStorage("apps.grouping") private var grouping = AppGrouping.smart
+    @SceneStorage("apps.asTable") private var asTable = false
+    /// Apps being removed together, in the right pane.
+    @State private var batch: [InstalledApplication]?
+    /// The removal under review in the right pane, if any.
+    @State private var review: AppReview?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// "Opened 3 months ago" for each app, formatted once per load.
+    @State private var opened: [String: String] = [:]
+
+    private static let relative: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 
     var body: some View {
-        // Not an HSplitView. That is NSSplitView behind a SwiftUI face, and
-        // it lays out with constraints: scrolling either pane re-measured
-        // its content, the hosting view reported a new size to the split
-        // view, and AppKit ran `-[NSWindow layoutIfNeeded]` over the whole
-        // window on every frame. Profiling the leftovers list found half
-        // the main thread going into that one loop, and the two panes were
-        // dragging each other down through it. The panes here have fixed
-        // widths and nothing was ever dragged.
+        // Fixed panes rather than an HSplitView, which relaid out the whole
+        // window on every scroll (`CLAUDE.md`).
         HStack(spacing: 0) {
-            applicationList
-                .frame(minWidth: 260, idealWidth: 300, maxWidth: 380)
-
-            Divider()
-
-            detail
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                header
+                content
+            }
+            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
+            // Held still while a review is open, and dimmed a little so the
+            // review reads as the focus.
+            .opacity(review == nil ? 1 : 0.55)
+            .allowsHitTesting(review == nil)
+            inspector
+                // Wider for a review, whose rows carry more.
+                .frame(width: review == nil ? 360 : 440)
         }
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
         .task { await model.loadIfNeeded(service: service) }
-        .sheet(item: $resetting) { application in
-            UninstallSheet(application: application, service: service, intentType: .reset) {
-                Task { await model.load(service: service) }
-            }
+        .task(id: model.applications) { opened = Self.openedText(model.applications) }
+        // A removal asked for by a Shortcut or Spotlight: the review opens
+        // here and waits for the person, like any other.
+        .task(id: PendingKey(url: shell.pendingRemoval, loaded: model.applications.count)) { openPendingReview() }
+        .focusedSceneValue(\.selectedItems, SelectedItems(urls: model.selected.map { [$0.url] } ?? []))
+    }
+
+    private struct PendingKey: Equatable {
+        let url: URL?
+        let loaded: Int
+    }
+
+    private func openPendingReview() {
+        guard let url = shell.pendingRemoval, !model.applications.isEmpty else { return }
+        shell.pendingRemoval = nil
+        guard model.selectApplication(at: url), let app = model.selected else {
+            shell.show(ToastMessage(
+                symbol: "questionmark.app", text: "\(url.deletingPathExtension().lastPathComponent) is not in the list"
+            ))
+            return
         }
-        .sheet(item: $uninstalling) { application in
-            UninstallSheet(application: application, service: service) {
-                // Drop the row at once if the bundle really is gone —
-                // re-enumerating every application takes seconds, and a row
-                // that outlives "nothing remains" reads as a failure. The
-                // full refresh still follows, to pick up anything else.
-                model.forgetIfRemoved(application)
-                AppIcon.forget(application.url)
-                Task { await model.load(service: service) }
+        review = AppReview(app: removalTarget(app))
+    }
+
+    /// What removing an app removes. An app shipped inside another cannot
+    /// be taken out of it without breaking the host's signature, so its
+    /// removal is the host's, and the review says so by showing the host.
+    private func removalTarget(_ app: InstalledApplication) -> InstalledApplication {
+        guard let host = app.hostURL else { return app }
+        return model.applications.first { $0.url.path == host.path } ?? app
+    }
+
+    private func finished(_ review: AppReview) {
+        // Drop the row at once if the bundle really is gone:
+        // re-enumerating every app takes seconds, and a row that
+        // outlives "nothing left" reads as a failure.
+        model.forgetIfRemoved(review.app)
+        AppIcon.forget(review.app.url)
+        Task { await model.load(service: service) }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Apps")
+                    .font(.brimPageTitle)
+                    .foregroundStyle(Palette.ink)
+                if !model.applications.isEmpty {
+                    Text("\(model.applications.count) · \(ByteText.short(totalBytes))")
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+                if model.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Checking")
+                }
+                Spacer()
+                if !asTable {
+                    Picker("Group By", selection: $grouping) {
+                        ForEach(AppGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+                // Several apps in one review. Command-click did this and
+                // nobody found it.
+                Button(model.isChoosing ? "Done" : "Select") {
+                    model.isChoosing ? model.stopChoosing() : model.startChoosing()
+                }
+                .disabled(model.applications.isEmpty)
+                Picker("View", selection: $asTable) {
+                    Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
+                    Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
+            TextField("Search", text: $model.searchText)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Search apps")
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private var totalBytes: Int64 {
+        // Apps shipped inside another are already in its size.
+        model.applications.filter { $0.enclosingApp == nil }.reduce(0) { $0 + $1.bundleSizeBytes }
     }
 
     // MARK: - List
 
-    private var applicationList: some View {
-        VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Applications")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    Text(model.isLoading
-                         ? "Scanning…"
-                         : "\(model.applications.count) installed")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top)
-            .accessibilityElement(children: .combine)
-
-            if !model.history.changes.isEmpty {
-                changesNote
-            }
-
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .accessibilityLabel("Search applications")
-
-            Divider()
-
-            if let dropComplaint {
-                Text(dropComplaint)
-                    .font(.caption).foregroundColor(.orange)
-                    .padding(.horizontal).padding(.bottom, 6)
-            }
-
-            List(selection: Binding(
-                get: { model.selected?.id },
-                set: { id in model.select(model.applications.first { $0.id == id }) }
-            )) {
-                ForEach(model.visibleApplications) { application in
-                    row(application).tag(application.id)
-                }
-            }
-            .listStyle(.inset)
-            // Drop an application here, or on the Dock icon, to jump
-            // straight to it.
-            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                load(providers)
-                return true
-            }
-        }
-    }
-
-    private func load(_ providers: [NSItemProvider]) {
-        for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                Task { @MainActor in
-                    if model.selectApplication(at: url) {
-                        dropComplaint = nil
-                    } else {
-                        dropComplaint = "\(url.lastPathComponent) is not an application in "
-                                      + "this list."
-                    }
-                }
-            }
-        }
-    }
-
-    /// What is different since last time, derived by subtracting one
-    /// snapshot from the one before it.
-    private var changesNote: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !model.history.changes.isEmpty {
-                Text("Since the last scan").font(.caption).fontWeight(.semibold)
-                ForEach(Array(model.history.changes.prefix(5).enumerated()), id: \.offset) {
-                    _, change in
-                    Text(change.sentence)
-                        .font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
-        .accessibilityElement(children: .combine)
-    }
-
-    private func row(_ application: InstalledApplication) -> some View {
-        HStack(spacing: 8) {
-            AppIconView(url: application.url, size: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(application.name)
-                    .fontWeight(.medium)
-                HStack(spacing: 5) {
-                    if let version = application.version {
-                        Text(version)
-                    }
-                    // Said out loud, because the detail pane shows a much
-                    // larger number for the same application and the two
-                    // look like a contradiction otherwise. This is the
-                    // bundle; that is everything the app has scattered
-                    // elsewhere as well.
-                    Text(ByteText.short(application.bundleSizeBytes) + " app")
-                        .monospacedDigit()
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            if application.isSystemProtected {
-                Image(systemName: "lock")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .help("Part of macOS, so it stays")
-            }
-        }
-        .padding(.vertical, 2)
-        // `.ignore`, not `.combine`: there is a written label right below,
-        // so merging the children only to throw the result away is work for
-        // nothing on every row of a long list.
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(
-            "\(application.name). "
-            + (application.version.map { "Version \($0). " } ?? "")
-            + ByteText.short(application.bundleSizeBytes)
-            + (application.isSystemProtected ? ". Protected by macOS." : "")
-        )
-    }
-
-    // MARK: - Detail
-
     @ViewBuilder
-    private var detail: some View {
-        if let application = model.selected {
-            VStack(spacing: 0) {
-                detailHeader(application)
-                Divider()
-                footprintBody(application)
-            }
+    private var content: some View {
+        if model.applications.isEmpty, model.isLoading {
+            SkeletonRows(showsTick: false)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .frame(maxHeight: .infinity, alignment: .top)
+        } else if let error = model.errorMessage, model.applications.isEmpty {
+            EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
+        } else if model.visibleApplications.isEmpty, !model.searchText.isEmpty {
+            // A blank list after a search read as the list failing to load.
+            EmptyState(symbol: "magnifyingglass", title: "No matches",
+                       message: "No installed app matches \"\(model.searchText)\"")
         } else {
-            VStack(spacing: 6) {
-                Text("Select an application")
-                    .font(.headline)
-                Text("Everything it has put on this Mac, and how Brim found each one.")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private func detailHeader(_ application: InstalledApplication) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                AppIconView(url: application.url, size: 48)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(application.name)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    if let bundleID = application.identity.bundleID {
-                        Text(bundleID)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                Spacer()
-
-                if let reason = model.uninstallBlockedReason {
-                    Label("Protected", systemImage: "lock")
-                        .foregroundColor(.secondary)
-                        .help(reason)
+            Group {
+                if asTable {
+                    AppTable(model: model, opened: opened)
                 } else {
-                    // Reset keeps the application and its licence and
-                    // clears its state. Offered beside the removal
-                    // because "make it work again" is a different job
-                    // from "get rid of it", and people reach for the
-                    // second when they only wanted the first.
-                    Button("Reset…") { resetting = application }
-                        .disabled(model.isInspecting || model.footprint == nil)
-                    Button("Uninstall…") {
-                        uninstalling = application
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.isInspecting || model.footprint == nil)
+                    AppStacks(
+                        model: model, groups: AppGrouper().groups(model.visibleApplications, by: grouping),
+                        opened: opened, remove: { review = AppReview(app: removalTarget($0)) }
+                    )
+                    // A new grouping is a new order to hold.
+                    .id(grouping)
                 }
             }
-
-            footprintSummary(application)
+            .refreshing(model.isLoading)
         }
-        .padding()
     }
 
+    // MARK: - Inspector
+
     @ViewBuilder
-    private func footprintSummary(_ application: InstalledApplication) -> some View {
-        if model.isInspecting {
-            Label("Discovering everything this app has left behind…", systemImage: "magnifyingglass")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        } else if let footprint = model.footprint {
-            let locations = footprint.items.count
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("**\(locations)** \(locations == 1 ? "location" : "locations")")
-                    Text("·")
-                    // Named, not just printed. The list beside this shows
-                    // the bundle alone, so an unlabelled larger number here
-                    // reads as one of the two being wrong.
-                    Text(ByteText.short(footprint.totalSizeBytes) + " in total")
-                        .monospacedDigit()
-                    Text("·")
-                    Text("\(model.footprintGroups.count) \(model.footprintGroups.count == 1 ? "kind of evidence" : "kinds of evidence")")
-                }
-                FootprintOverviewText(
-                    footprint: footprint,
-                    bundleBytes: application.bundleSizeBytes
-                )
-                .id(application.id)
-                .font(.caption)
-
-                // A search that did not finish cannot claim to be the
-                // whole footprint, so it says so and nothing is ticked
-                // for the person.
-                if let gap = footprint.completeness.explanation {
-                    Label(gap, systemImage: "clock.badge.exclamationmark")
-                        .font(.caption).foregroundColor(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // A total short by an unknown amount has to say so. Without
-                // Full Disk Access every container reads as empty, and a
-                // quietly wrong number is worse than a refused one.
-                //
-                // What it must not do is stop there. The earlier wording ran
-                // "could not be read, so this is at least that much and
-                // probably more", which named a limit, guessed at its size,
-                // and gave the person nothing to do about it. Brim knows why
-                // the read failed and knows the one setting that fixes it,
-                // so it says that instead.
-                if footprint.unreadableEntries > 0 {
-                    let count = footprint.unreadableEntries
-                    let items = count == 1 ? "item" : "items"
-                    let fullDiskAccessIsOn = access.isGranted
-                    Label {
-                        Text(fullDiskAccessIsOn
-                             ? "\(count) \(items) here are protected by macOS and are not "
-                             + "counted in this total."
-                             : "\(count) \(items) sit behind Full Disk Access. Switch it on "
-                             + "and Brim measures them too.")
-                    } icon: {
-                        Image(systemName: fullDiskAccessIsOn ? "lock" : "eye.slash")
-                    }
-                    .font(.caption).foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if !fullDiskAccessIsOn {
-                        Button("Open Full Disk Access") {
-                            FullDiskAccess.openSettings()
-                        }
-                        .buttonStyle(.link).font(.caption)
-                    }
-                }
-            }
-            .font(.subheadline)
-            .foregroundColor(.secondary)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isStaticText)
-            .accessibilityLabel(
-                "\(locations) locations found, across "
-                + "\(model.footprintGroups.count) kinds of evidence. "
-                + "The app itself is \(ByteText.short(application.bundleSizeBytes))."
-                + (footprint.unreadableEntries > 0
-                   ? (access.isGranted
-                      ? " \(footprint.unreadableEntries) items are protected by macOS and are "
-                      + "not in this total."
-                      : " \(footprint.unreadableEntries) items sit behind Full Disk Access.")
-                   : "")
+    private var inspector: some View {
+        if let review {
+            UninstallPanel(
+                application: review.app, service: service,
+                onFinished: { finished(review) },
+                onClose: { self.review = nil }
             )
-            .accessibilityValue(ByteText.short(footprint.totalSizeBytes) + " in total")
+            .id(review.id)
+            .transition(.opacity)
+        } else if let batch {
+            BatchRemovalPanel(
+                apps: batch, service: service,
+                // The list catches up as soon as the apps have gone, not
+                // when the panel is closed.
+                onRemoved: {
+                    batch.forEach { model.forgetIfRemoved($0); AppIcon.forget($0.url) }
+                    Task { await model.load(service: service) }
+                },
+                onFinished: {
+                    self.batch = nil
+                    model.stopChoosing()
+                },
+                onClose: { self.batch = nil }
+            )
+            .id(batch.map(\.id).joined(separator: ","))
+            .transition(.opacity)
+        } else if model.marked.count >= 2 || model.isChoosing {
+            MarkedApps(apps: model.marked) {
+                if model.marked.count == 1, let app = model.marked.first {
+                    review = AppReview(app: removalTarget(app))
+                    model.stopChoosing()
+                } else {
+                    batch = model.marked.map(removalTarget)
+                }
+            }
+            .transition(.opacity)
+        } else if let app = model.selected {
+            AppInspector(
+                app: app, model: model, access: access, opened: opened[app.id],
+                remove: { review = AppReview(app: removalTarget(app)) }
+            )
+            .refreshing(model.isLoading)
+            // Keyed on the app and a crossfade only, so arrowing through
+            // the list does not make the pane swim.
+            .id(app.id)
+            .transition(.opacity)
+            .animation(Motion.inspector, value: app.id)
+        } else {
+            PanePlaceholder(symbol: "square.grid.2x2", title: "Select an app")
         }
     }
 
-    @ViewBuilder
-    private func footprintBody(_ application: InstalledApplication) -> some View {
-        if model.isInspecting {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.footprintGroups.isEmpty {
-            VStack(spacing: 6) {
-                Text("Nothing found beyond the application itself")
-                    .font(.headline)
-                Text("No other files were found for this application.")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+    /// Formatted once when the list loads, never while drawing a row.
+    private static func openedText(_ apps: [InstalledApplication]) -> [String: String] {
+        var text: [String: String] = [:]
+        let now = Date()
+        for app in apps {
+            if app.isMigratedAndUnopened {
+                text[app.id] = "Not opened on this Mac"
+            } else if let lastOpened = app.lastOpened {
+                text[app.id] = "Opened " + relative.localizedString(for: lastOpened, relativeTo: now)
+            } else if app.addedAt != nil {
+                text[app.id] = "Never opened"
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                ForEach(model.footprintGroups) { group in
-                    Section {
-                        ForEach(group.items, id: \.evidence.url) { item in
-                            HStack {
-                                Text(item.evidence.url.path)
-                                    .font(.caption)
-                                    .truncationMode(.middle)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(ByteText.short(item.sizeBytes))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    } header: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Text(group.explanation.isEmpty ? group.mechanism : group.explanation)
-                                    .font(.subheadline)
-                                Spacer()
-                                Text(group.strongestTier.shortLabel)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Text("\(group.items.count) · \(ByteText.short(group.totalBytes))")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
-            .listStyle(.inset)
         }
+        return text
     }
 }
 
-private struct FootprintOverviewText: View {
-    let footprint: Footprint
-    let bundleBytes: Int64
-    @State private var selectedFacts: String?
+/// An app and what is being done to it, for the review in the right pane.
+struct AppReview: Identifiable, Equatable {
+    let app: InstalledApplication
+    var id: String { app.id }
+}
+
+/// The apps ticked with Select or Command-click, before their review.
+private struct MarkedApps: View {
+    let apps: [InstalledApplication]
+    let review: () -> Void
 
     var body: some View {
-        Text("Application: \(ByteText.short(bundleBytes)). "
-             + (selectedFacts ?? facts.prefix(2).joined(separator: " ")))
-            .task(id: footprint) {
-                selectedFacts = nil
-                let choice = await EvidenceNarrator.shared.choose(from: facts)
-                guard !Task.isCancelled else { return }
-                selectedFacts = choice
-            }
+        if apps.isEmpty {
+            PanePlaceholder(symbol: "checkmark.circle", title: "Tick the apps to remove")
+        } else {
+            chosen
+        }
     }
 
-    private var facts: [String] {
-        var totals: [LeftoverDomain: Int64] = [:]
-        for item in footprint.items {
-            let domain = LeftoverDomain.of(item.evidence.url)
-            guard domain != .other else { continue }
-            totals[domain, default: 0] += item.sizeBytes
+    private var chosen: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: -10) {
+                ForEach(apps.prefix(5)) { app in
+                    BrimIcon(source: .bundle(app.url), size: 48)
+                }
+            }
+            .accessibilityHidden(true)
+            Text(apps.count == 1 ? "1 app selected" : "\(apps.count) apps selected")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+            Text(ByteText.short(apps.reduce(0) { $0 + $1.bundleSizeBytes }))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+            Button(apps.count == 1 ? "Review" : "Remove \(apps.count) Apps", action: review)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
         }
-        return totals.sorted { $0.value > $1.value }
-            .map { "\($0.key.title): \(ByteText.short($0.value)). \($0.key.whatItHolds)" }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -74,23 +74,3 @@ public enum AppIcon {
         }
     }
 }
-
-/// An application's icon, sized and cached.
-public struct AppIconView: View {
-    private let url: URL
-    private let size: CGFloat
-
-    public init(url: URL, size: CGFloat = 32) {
-        self.url = url
-        self.size = size
-    }
-
-    public var body: some View {
-        Image(nsImage: AppIcon.image(for: url, size: size))
-            .resizable()
-            .frame(width: size, height: size)
-            // The icon repeats the name beside it, so a screen reader
-            // announcing it would just say everything twice.
-            .accessibilityHidden(true)
-    }
-}

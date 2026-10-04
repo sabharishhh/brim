@@ -44,8 +44,12 @@ public struct ExplanationRenderer: Sendable {
         if reason.contains("Preserved main application bundle") {
             return "Kept, so the application still runs."
         }
-        if reason.contains("ResetFilter") || reason.contains("reset") {
-            return "Kept: settings or licence material a reset preserves."
+        // The claimant's name is the evidence, so it stays. ChatGPT's app
+        // group was kept from its removal as "shared with other installed
+        // software", and with the name gone nobody could say what shared it.
+        if reason.hasPrefix("Shared with "), reason != "Shared with other installed software." {
+            let name = reason.dropFirst("Shared with ".count).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "Shared with \(name), which is still installed."
         }
         if reason.contains("Shared with") || reason.contains("Tier S veto") {
             return "Shared with other installed software."
@@ -71,6 +75,7 @@ public struct ExplanationRenderer: Sendable {
         case "GroupContainerSource": return "A shared folder the application's own entitlements name."
         case "SandboxContainerSource": return "The private folder macOS keeps for this application."
         case "InstallerReceiptSource": return "The installer's record of this package."
+        case "InstallerPayloadSource": return "Installed by the same installer as the application."
         case "TeamIDSource": return "Signed by the same developer as the application."
         case "BundleIdentifierComponentSource": return "Named after the application's bundle identifier."
         case "HeuristicSource": return "Named after the application or its vendor."

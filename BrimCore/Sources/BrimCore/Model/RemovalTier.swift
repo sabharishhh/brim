@@ -9,10 +9,11 @@ public enum RemovalTier: String, Codable, Equatable, Sendable {
     public static func forRegistration(_ kind: Registration.Kind, ownerPresent: Bool) -> RemovalTier {
         switch kind {
         case .backgroundItem:
-            // There is no per-item removal API. A machine-wide reset would
-            // remove every application's background registration.
-            .destructiveOnly
-        case .systemExtension, .keychainItem, .shellProfileLine:
+            // No qualified per-record removal route. A global reset cannot
+            // serve as one application's uninstall step.
+            .detectableOnly
+        case .firewallEntry, .systemExtension, .appExtension, .legacyLoginItem, .keychainItem, .shellProfileLine,
+             .configurationProfile:
             .detectableOnly
         case .privacyGrant:
             ownerPresent ? .removable : .detectableOnly
@@ -23,7 +24,9 @@ public enum RemovalTier: String, Codable, Equatable, Sendable {
 
     public static func forCapability(_ capability: DeclaredCapability, ownerPresent: Bool) -> RemovalTier {
         switch capability {
-        case .systemExtension, .vpnConfiguration:
+        case .backgroundItem:
+            .detectableOnly
+        case .firewallEntry, .systemExtension, .appExtension, .vpnConfiguration, .fileProvider, .configurationProfile:
             .detectableOnly
         case .privacyGrant:
             ownerPresent ? .removable : .detectableOnly
@@ -37,16 +40,41 @@ public enum RemovalTier: String, Codable, Equatable, Sendable {
 public enum RemovalFollowUp: String, Codable, Hashable, Sendable {
     case vendorUninstaller
     case vpnSettings
+    case loginItemsSettings
+    case fileProviderOwner
+    case firewallSettings
+    case deviceManagementSettings
+    case systemExtensionsSettings
+    case restartForSystemExtension
     case restoreAppForPrivacyReset
+    /// Core Audio keeps a device driver loaded until it restarts, so a
+    /// removed driver's device stays in the Sound list until then.
+    case restartForAudioDevice
 
     public var sentence: String {
         switch self {
         case .vendorUninstaller:
             "Use the app's uninstaller for any remaining system extensions."
+        case .firewallSettings:
+            "Review the remaining entry in System Settings > Network > Firewall > Options."
+        case .deviceManagementSettings:
+            "Review the profile in System Settings > General > Device Management. "
+                + "Managed or shared profiles need an administrator."
+        case .fileProviderOwner:
+            "Finish syncing or export cloud files with the owning app before removing its data."
+        case .systemExtensionsSettings:
+            "Review remaining extensions in System Settings > General > Login Items & Extensions."
+        case .restartForSystemExtension:
+            "macOS has scheduled the extension's removal for the next restart. Restart, then check removal again."
+        case .loginItemsSettings:
+            "If the item is listed under Open at Login, select it and click Remove. "
+                + "Background App Activity switches only disable activity. Return to Brim and check again."
         case .vpnSettings:
             "If listed, remove the configuration in System Settings > VPN."
         case .restoreAppForPrivacyReset:
             "If permissions remain, reinstall the app and reset them."
+        case .restartForAudioDevice:
+            "If its audio device is still listed in Sound settings, restart and check again."
         }
     }
 }

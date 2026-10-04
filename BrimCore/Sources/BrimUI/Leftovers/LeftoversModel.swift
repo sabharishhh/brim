@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Leftovers view.
 ///
@@ -14,10 +14,12 @@ import BrimProtocol
 /// Collapsing them into one list would quietly pre-select the second kind.
 @MainActor
 public final class LeftoversModel: ObservableObject {
-
     @Published public private(set) var orphaned: [Leftover] = []
     @Published public private(set) var unclaimed: [Leftover] = []
     @Published public private(set) var isScanning = false
+    /// When the last scan finished, for "Checked 2 hours ago". Nil until
+    /// one has, which is "not checked", never "checked and empty".
+    @Published public private(set) var checkedAt: Date?
     @Published public private(set) var errorMessage: String?
     @Published public var searchText = "" {
         didSet {
@@ -35,24 +37,43 @@ public final class LeftoversModel: ObservableObject {
     /// pass rather than two hundred and seventy.
     @Published public private(set) var selection: Set<String> = []
 
+    /// Groups the person kept, by `LeftoverGroup.id`. Never ticked: not by
+    /// a fresh scan's pre-selection, not by Select All, not by an undo.
+    /// Enforced in `settle()`, the one place every change ends, so no path
+    /// can forget it.
+    @Published public var keptGroups: Set<String> = [] {
+        didSet {
+            guard keptGroups != oldValue else { return }
+            settle()
+        }
+    }
+
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
     @Published public private(set) var visibleOrphanedGroups: [LeftoverGroup] = []
     @Published public private(set) var visibleUnclaimedGroups: [LeftoverGroup] = []
-    @Published public private(set) var visibleOrphanedEntries: [LeftoverListEntry] = []
-    @Published public private(set) var visibleUnclaimedEntries: [LeftoverListEntry] = []
 
     private func filterGroups() {
         visibleOrphanedGroups = visible(orphanedGroups)
         visibleUnclaimedGroups = visible(unclaimedGroups)
-        let searching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        visibleOrphanedEntries = searching ? visibleOrphanedGroups.map(LeftoverListEntry.owner) : orphanedEntries
-        visibleUnclaimedEntries = searching ? visibleUnclaimedGroups.map(LeftoverListEntry.owner) : unclaimedEntries
     }
 
     public init() {}
 
-    public var all: [Leftover] { orphaned + unclaimed }
+    public var all: [Leftover] {
+        orphaned + unclaimed
+    }
+
+    /// Unknown items shown for review use the same rule on Home and Remnants.
+    public var unclaimedGroupsForReview: [LeftoverGroup] {
+        unclaimedGroups.filter {
+            $0.totalBytes >= 1_000_000 || $0.items.contains { $0.capability != .ok || $0.sizeIsKnown == false }
+        }
+    }
+
+    public var hasUnreadRecoveryCopies: Bool {
+        unclaimed.contains { $0.url.path == RecoveryCopy.directory }
+    }
 
     /// One entry per piece of software rather than one per path. The list
     /// was unreadable per-path: the same tool appeared several times with
@@ -65,8 +86,6 @@ public final class LeftoversModel: ObservableObject {
     /// answer only changes when the arrays do, which is where it is done now.
     @Published public private(set) var orphanedGroups: [LeftoverGroup] = []
     @Published public private(set) var unclaimedGroups: [LeftoverGroup] = []
-    @Published public private(set) var orphanedEntries: [LeftoverListEntry] = []
-    @Published public private(set) var unclaimedEntries: [LeftoverListEntry] = []
 
     /// Which group's detail is open. The list answers "what is here"; the
     /// detail answers "what is this and what do I lose".
@@ -82,19 +101,10 @@ public final class LeftoversModel: ObservableObject {
         }
     }
 
-    public func visibleEntries(
-        _ entries: [LeftoverListEntry], groups: [LeftoverGroup]
-    ) -> [LeftoverListEntry] {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return entries
-        }
-        // A search result must never be hidden inside a collapsed vendor.
-        return visible(groups).map(LeftoverListEntry.owner)
-    }
-
     /// Selection is per group: a user reasons about software, not paths.
     public func isSelected(_ group: LeftoverGroup) -> Bool {
-        !group.items.isEmpty && group.items.allSatisfy { selection.contains($0.id) }
+        let removable = group.items.filter(\.canBeRemovedByBrim)
+        return !removable.isEmpty && removable.allSatisfy { selection.contains($0.id) }
     }
 
     public func toggle(_ group: LeftoverGroup) {
@@ -114,6 +124,16 @@ public final class LeftoversModel: ObservableObject {
 
     public func deselectAll(groups: [LeftoverGroup]) {
         selection.subtract(groups.flatMap(\.items).map(\.id))
+        settle()
+    }
+
+    /// Puts a selection back, for undo and for clearing the Tray.
+    ///
+    /// Only what is still here and still Brim's to remove: between a pick
+    /// and its undo, a removal or a rescan can take items away, and undo
+    /// must not put a removed item back into a plan.
+    public func restoreSelection(_ ids: Set<String>) {
+        selection = ids.intersection(all.filter(\.canBeRemovedByBrim).map(\.id))
         settle()
     }
 
@@ -147,6 +167,18 @@ public final class LeftoversModel: ObservableObject {
 
     public var canRemoveSelection: Bool {
         !selectedItems.isEmpty && blockedSelection.isEmpty
+    }
+
+    /// Unknown owners require an explicit selection. Bulk removal includes
+    /// only known remnants, including items covered by the administrator helper.
+    public var removableOrphans: [Leftover] {
+        orphanedGroups.filter { !keptGroups.contains($0.id) }
+            .flatMap(\.items).filter(\.canBeRemovedByBrim)
+    }
+
+    public func selectAllRemovableOrphans() {
+        selection = Set(removableOrphans.map(\.id))
+        settle()
     }
 
     /// Rows Brim removed, kept so they can come back if the person does.
@@ -228,8 +260,6 @@ public final class LeftoversModel: ObservableObject {
     private func regroup() {
         orphanedGroups = orphaned.groupedByOwner()
         unclaimedGroups = unclaimed.groupedByOwner()
-        orphanedEntries = orphanedGroups.arrangedByVendor()
-        unclaimedEntries = unclaimedGroups.arrangedByVendor()
         filterGroups()
         settle()
         revision &+= 1
@@ -238,6 +268,10 @@ public final class LeftoversModel: ObservableObject {
     /// The one place the selection's consequences are worked out. Called
     /// after a batch of changes, never inside the loop making them.
     private func settle() {
+        if !keptGroups.isEmpty {
+            let kept = (orphanedGroups + unclaimedGroups).filter { keptGroups.contains($0.id) }
+            selection.subtract(kept.flatMap(\.items).map(\.id))
+        }
         selectedItems = all.filter { selection.contains($0.id) }
         selectedBytes = selectedItems.reduce(0) { $0 + $1.size }
         blockedSelection = selectedItems.filter { !$0.canBeRemovedByBrim }
@@ -281,6 +315,7 @@ public final class LeftoversModel: ObservableObject {
             let found = try await service.leftovers()
             try Task.checkCancellation()
             hasLoaded = true
+            checkedAt = Date()
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
@@ -296,6 +331,7 @@ public final class LeftoversModel: ObservableObject {
             return
         } catch {
             hasLoaded = false
+            checkedAt = nil
             inspected = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
@@ -334,7 +370,22 @@ public final class LeftoversModel: ObservableObject {
     /// planner treats an intent with explicit targets as tidying rather than
     /// uninstalling, which is exactly right — it must not clear privacy
     /// grants or retract registrations for an app that is already gone.
+    /// The plan intent for one removed app's traces, named for the app so
+    /// the review says whose they are.
+    public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
+        let targets = group.items.filter(\.canBeRemovedByBrim).map(\.url)
+        guard !targets.isEmpty else { return nil }
+        return PlanIntent(
+            type: .uninstall,
+            subjectIdentity: Identity(bundleID: nil, name: group.displayName),
+            requesterKind: "ui",
+            requesterIdentity: requesterIdentity,
+            specificTargets: targets
+        )
+    }
+
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
+        guard !isScanning, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(

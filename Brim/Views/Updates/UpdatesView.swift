@@ -1,299 +1,319 @@
-import SwiftUI
 import BrimCore
 import BrimProtocol
 import BrimUI
+import SwiftUI
 
-/// How each application gets its next version, and what is still checking
-/// for software that has gone.
+/// Which applications have a newer version, and putting it in place.
 ///
-/// This used to list background updaters and nothing else, which answers
-/// "who is checking in the background" and says nothing about the
-/// application in front of you. The more useful question, and T-5.8's, is
-/// whether each application has any route to a new version at all.
-///
-/// Everything here is read from the disk. A Sparkle feed is a string in an
-/// Info.plist, an App Store purchase is a receipt inside the bundle, a
-/// Homebrew cask is a directory in the Caskroom. No request is made, so
-/// this renders identically with the network off and does not have to say
-/// it is offline, because being offline changes nothing.
+/// The section used to describe how each application updates, grouped as
+/// "update themselves" and "you update yourself", and listed background
+/// updater jobs including ones for software that had gone. None of it said
+/// whether anything needed updating. It now lists updates, and nothing else.
 struct UpdatesView: View {
     @ObservedObject var model: UpdatesModel
     @SwiftUI.Environment(\.brimService) private var service
+    @State private var showsUnchecked = false
+
+    /// A row in either list.
+    private enum Entry: Identifiable {
+        case available(AppUpdate)
+        case recent(RecentUpdate)
+
+        var id: String {
+            switch self {
+            case .available(let update): "available:" + update.id
+            case .recent(let recent): "recent:" + recent.id
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             content
+            footer
         }
+        .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
         .task { await model.loadIfNeeded(service: service) }
     }
 
+    // MARK: - Header
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Updates").font(.title2).fontWeight(.bold)
-                Text(summary).font(.caption).foregroundColor(.secondary)
+            Text("Updates")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+            Text(summary)
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+            if model.isChecking {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Checking")
             }
             Spacer()
-            if model.available.contains(where: \.canInstall) {
+            if model.installableHere.count > 1 {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .disabled(!model.installing.isEmpty)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isInstalling || model.isChecking)
             }
-            Button(model.hasChecked ? "Check Again" : "Check for Updates") {
-                Task { await model.check(service: service) }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isChecking || model.isLoading)
         }
-        .padding()
+        .buttonBorderShape(.capsule)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
     }
 
-    private var summary: String { model.headline }
+    private var summary: String {
+        guard let count = model.count else { return model.isChecking ? "Checking" : "" }
+        return count == 1 ? "1 update available" : "\(count) updates available"
+    }
+
+    // MARK: - Lists
+
+    private var sections: [ItemGroup<Entry>] {
+        var sections: [ItemGroup<Entry>] = []
+        if let pending = model.pending, !pending.isEmpty {
+            sections.append(ItemGroup(id: "available", title: "Available", items: pending.map(Entry.available)))
+        }
+        if !model.recent.isEmpty {
+            sections.append(ItemGroup(id: "recent", title: "Updated recently", items: model.recent.map(Entry.recent)))
+        }
+        return sections
+    }
 
     @ViewBuilder
     private var content: some View {
-        if model.isLoading && model.report.coverage.isEmpty {
-            ProgressView("Looking…").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.report.coverage.isEmpty && model.agents.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "checkmark.circle").font(.largeTitle).foregroundColor(.green)
-                Text("Nothing to report").font(.headline)
-                Text("No applications and no background updaters were found.")
-                    .foregroundColor(.secondary)
+        if model.check == nil {
+            if model.isChecking {
+                SkeletonRows(showsTick: false)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                EmptyState(symbol: "arrow.down.circle", title: "Not checked", message: "Check Again looks for updates.")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if sections.isEmpty {
+            EmptyState(symbol: "checkmark.circle", title: "0 updates available",
+                       message: "Every app Brim checked is up to date.")
         } else {
-            List {
-                if let problem = model.problem {
-                    Text(problem).font(.caption).foregroundColor(.orange)
-                }
-                availableSection
-                orphanedCaskSection
-                strandedSection
-                homebrewSection
-                section(
-                    "Checking for software that has gone",
-                    "The program each of these launches is not on this Mac any more. They "
-                    + "wake up on a schedule and find nothing to do.",
-                    model.orphaned,
-                    "None. Every updater here belongs to software you still have."
-                )
-                section(
-                    "Checking for software you have",
-                    "Doing the job they were installed for. Here so you can see what runs "
-                    + "on a timer.",
-                    model.working,
-                    "None."
-                )
+            if model.pending?.isEmpty == true, let check = model.check {
+                upToDate(check)
             }
-            .listStyle(.inset)
+            GroupedStacks(
+                sections: sections,
+                summary: { "\($0.items.count)" },
+                inspected: nil,
+                inspect: { _ in },
+                row: row
+            )
+            .refreshing(model.isChecking)
         }
     }
 
-    /// What can actually be updated, and the button that does it.
-    @ViewBuilder
-    private var availableSection: some View {
-        if !model.available.isEmpty {
-            Section {
-                ForEach(model.available) { update in
-                    HStack(spacing: 8) {
-                        Text(update.name).fontWeight(.medium)
-                        Text("\(update.installed ?? "?") → \(update.latest)")
-                            .font(.caption).foregroundColor(.secondary).monospacedDigit()
-                        Spacer()
-                        if model.installing.contains(update.bundleID) {
-                            ProgressView().controlSize(.small)
-                        } else if update.canInstall {
-                            Button("Update") {
-                                Task { await model.install(update, service: service) }
-                            }
-                        } else if case .appStore = update.source {
-                            Button("Open App Store") {
-                                if let url = URL(string: "macappstore://showUpdatesPage") {
-                                    NSWorkspace.shared.open(url)
-                                }
-                            }
-                        } else {
-                            Button("Open") {
-                                NSWorkspace.shared.open(
-                                    URL(fileURLWithPath: "/Applications/\(update.name).app")
-                                )
-                            }
-                            .help("This application installs its own updates. Opening it "
-                                  + "lets it do so.")
-                        }
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .combine)
-                }
-            } header: {
-                Text("Available (\(model.available.count))").font(.headline)
-                    .padding(.vertical, 4)
+    /// Nothing pending, said where the pending ones would be, so the page
+    /// answers its question before the list of what already happened.
+    private func upToDate(_ check: UpdateCheck) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("All apps are up to date")
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                Text("\(check.checked) \(check.checked == 1 ? "app" : "apps") checked")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
             }
+            Spacer()
         }
-    }
-
-    /// Homebrew records for software that is not on the disk.
-    @ViewBuilder
-    private var orphanedCaskSection: some View {
-        if !model.orphanedCasks.isEmpty {
-            Section {
-                ForEach(model.orphanedCasks) { cask in
-                    HStack(spacing: 8) {
-                        Text(cask.name).fontWeight(.medium)
-                        if let version = cask.installedVersion {
-                            Text(version).font(.caption).foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Button("Remove Record") {
-                            Task { await model.forget(cask, service: service) }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .combine)
-                }
-            } header: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Homebrew records with nothing installed "
-                         + "(\(model.orphanedCasks.count))").font(.headline)
-                    Text("The application was removed but Homebrew still lists it, so it keeps "
-                         + "offering to update software that is not here.")
-                        .font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
-    /// The finding. Software with no route to a new version sits at
-    /// whatever version it is at until somebody notices, which for
-    /// anything that opens a file off the internet is the whole problem.
-    @ViewBuilder
-    private var strandedSection: some View {
-        if !model.stranded.isEmpty {
-            Section {
-                ForEach(model.stranded) { entry in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(entry.application.name).fontWeight(.medium)
-                            if let version = entry.application.version {
-                                Text(version).font(.caption).foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Text(ByteText.short(entry.application.bundleSizeBytes))
-                                .font(.caption).foregroundColor(.secondary).monospacedDigit()
-                        }
-
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .combine)
-                }
-            } header: {
-                VStack(alignment: .leading, spacing: 3) {
-                    // The finding is about the applications, not about Brim.
-                    // "Cannot be checked" made a fact worth knowing, that
-                    // this software will never update itself, read as a hole
-                    // in the product.
-                    Text("You update these yourself (\(model.stranded.count))").font(.headline)
-                    Text("No App Store receipt, no Sparkle feed, no Homebrew cask and no "
-                         + "updater running alongside them. Nothing will tell you when a new "
-                         + "version comes out, so check the developer's site now and again.")
-                        .font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
-    /// Software Homebrew installed, which Homebrew should remove.
-    @ViewBuilder
-    private var homebrewSection: some View {
-        if !model.homebrewManaged.isEmpty {
-            Section {
-                ForEach(model.homebrewManaged) { entry in
-                    HStack(spacing: 6) {
-                        Text(entry.application.name).fontWeight(.medium)
-                        Text(entry.homebrewCask ?? "")
-                            .font(.caption).foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityAddTraits(.isStaticText)
-                    .accessibilityLabel(
-                        "\(entry.application.name), installed by Homebrew as "
-                        + "\(entry.homebrewCask ?? "a cask")"
-                    )
-                }
-            } header: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Installed by Homebrew (\(model.homebrewManaged.count))")
-                        .font(.headline)
-                    Text("Updated with brew upgrade. Remove them with brew uninstall, or "
-                         + "Homebrew will still list them as installed.")
-                        .font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
-    /// A section with nothing in it is not rendered. A heading, a
-    /// paragraph explaining what it would have contained and a row saying
-    /// "None" is three lines about nothing.
-    @ViewBuilder
-    private func section(
-        _ title: String, _ caption: String,
-        _ agents: [UpdaterAgent], _ emptyNote: String
-    ) -> some View {
-        if !agents.isEmpty {
-            Section {
-                ForEach(agents) { agent in row(agent) }
-            } header: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(title) (\(agents.count))").font(.headline)
-                    Text(caption).font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
-    private func row(_ agent: UpdaterAgent) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(agent.vendor).fontWeight(.medium)
-                Text(agent.registration.identifier)
-                    .font(.caption).foregroundColor(.secondary)
-                Spacer()
-                if !agent.productIsInstalled {
-                    Label("Nothing to update", systemImage: "exclamationmark.triangle")
-                        .font(.caption2).foregroundColor(.orange)
-                }
-            }
-            if let program = agent.registration.programPath {
-                Text(program)
-                    .font(.caption2).foregroundColor(.secondary)
-                    .truncationMode(.middle).lineLimit(1).textSelection(.enabled)
-            }
-        }
-        .padding(.vertical, 2)
-        // Composed, because the four pieces arrived as four unrelated
-        // fragments. The location matters more here than anywhere: Google
-        // installs the same updater twice, so without it two rows read
-        // identically and a reader cannot tell which is which.
+        .padding(.horizontal, 26)
+        .padding(.vertical, 12)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(SpokenText.sentences([
-            agent.vendor,
-            agent.registration.identifier,
-            agent.productIsInstalled ? "" : "nothing to update, the program it checks is gone"
-        ]))
-        .accessibilityValue(agent.registration.spokenLocation ?? "")
+        .accessibilityLabel("All apps are up to date, \(check.checked) checked")
+    }
+
+    @ViewBuilder
+    private func row(_ entry: Entry) -> some View {
+        switch entry {
+        case .available(let update):
+            UpdateRow(url: update.appURL, name: update.name, facts: facts(update), failed: failure(update)) {
+                action(update)
+            }
+        case .recent(let recent):
+            UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
+                Button("Open") { NSWorkspace.shared.open(recent.appURL) }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func facts(_ update: AppUpdate) -> String {
+        switch model.states[update.id] {
+        case .downloading(let fraction): return "Downloading \(Int(fraction * 100))%"
+        case .installing: return "Installing"
+        case .openedInstaller: return "Opened in Installer"
+        case .failed: return "Failed"
+        case .notAllowed: return "Needs App Management"
+        default:
+            let versions = "\(update.installedVersion) → \(update.latestVersion)"
+            guard let bytes = update.download?.bytes, bytes > 0 else { return versions }
+            return versions + " · " + ByteText.short(bytes)
+        }
+    }
+
+    static let appManagementSettings =
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
+
+    /// Why it failed, for the pointer to find. The row itself only says so.
+    private func failure(_ update: AppUpdate) -> String? {
+        if case .failed(let why) = model.states[update.id] { return why }
+        return nil
+    }
+
+    private static func facts(_ recent: RecentUpdate) -> String {
+        let versions = recent.fromVersion.map { "\($0) → \(recent.toVersion)" } ?? recent.toVersion
+        let calendar = Calendar.current
+        let when = calendar.isDateInToday(recent.updatedAt) ? "Today"
+            : calendar.isDateInYesterday(recent.updatedAt) ? "Yesterday"
+            : recent.updatedAt.formatted(.dateTime.day().month(.abbreviated))
+        return versions + " · " + when
+    }
+
+    @ViewBuilder
+    private func action(_ update: AppUpdate) -> some View {
+        switch model.states[update.id] {
+        case .downloading(let fraction):
+            ProgressView(value: fraction)
+                .progressViewStyle(.circular)
+                .controlSize(.small)
+                .accessibilityLabel("Downloading")
+        case .installing:
+            ProgressView().controlSize(.small).accessibilityLabel("Installing")
+        case .openedInstaller, .updated:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Palette.inkSecondary)
+                .accessibilityLabel("Done")
+        case .notAllowed:
+            Button("Open Settings") {
+                open(Self.appManagementSettings)
+                model.clearState(of: update)
+            }
+            .buttonStyle(.bordered)
+        case .failed, .stillOpen:
+            Button("Retry") { Task { await model.install(update, service: service) } }
+                .buttonStyle(.bordered)
+                .disabled(model.isChecking)
+        case nil:
+            primaryButton(update)
+        }
+    }
+
+    @ViewBuilder
+    private func primaryButton(_ update: AppUpdate) -> some View {
+        switch update.route {
+        case .replace, .homebrew, .installer:
+            Button("Update") { Task { await model.install(update, service: service) } }
+                .buttonStyle(.bordered)
+                .disabled(model.isChecking)
+        case .appStore:
+            Button("App Store") { open(update.pageURL) }
+                .buttonStyle(.bordered)
+                .disabled(update.pageURL == nil)
+        case .website:
+            Button("Website") { open(update.pageURL ?? update.releaseNotesURL) }
+                .buttonStyle(.bordered)
+                .disabled(update.pageURL == nil && update.releaseNotesURL == nil)
+        }
+    }
+
+    private func open(_ url: URL?) {
+        if let url { NSWorkspace.shared.open(url) }
+    }
+
+    // MARK: - Footer
+
+    @ViewBuilder
+    private var footer: some View {
+        if let check = model.check {
+            HStack(spacing: 6) {
+                Text("Checked \(check.checked) \(check.checked == 1 ? "app" : "apps") "
+                     + check.checkedAt.formatted(.relative(presentation: .named)))
+                if !check.unchecked.isEmpty {
+                    Text("·")
+                    Button("\(check.unchecked.count) can't be checked") { showsUnchecked = true }
+                        .buttonStyle(.link)
+                        .popover(isPresented: $showsUnchecked, arrowEdge: .top) { unchecked(check.unchecked) }
+                }
+                Spacer()
+            }
+            .font(.brimFacts)
+            .foregroundStyle(Palette.inkSecondary)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private func unchecked(_ apps: [UncheckedApp]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(apps) { app in
+                HStack(spacing: 10) {
+                    BrimIcon(source: .bundle(app.appURL), size: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(app.name).font(.brimRowTitle).foregroundStyle(Palette.ink)
+                        Text(app.reason).font(.caption).foregroundStyle(Palette.inkSecondary)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 280, alignment: .leading)
+    }
+}
+
+/// One app in either list: icon, name, one line of facts, one control. A
+/// failure is a mark and the word, with the reason on the pointer for the
+/// few who want it.
+private struct UpdateRow<Action: View>: View {
+    let url: URL
+    let name: String
+    let facts: String
+    let failed: String?
+    @ViewBuilder let action: () -> Action
+
+    var body: some View {
+        HStack(spacing: 12) {
+            BrimIcon(source: .bundle(url))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                HStack(spacing: 4) {
+                    if failed != nil {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .imageScale(.small)
+                    }
+                    Text(facts)
+                        .monospacedDigit()
+                }
+                .font(.brimFacts)
+                .foregroundStyle(failed == nil ? Palette.inkSecondary : Palette.caution)
+            }
+            .lineLimit(1)
+            .help(failed ?? "")
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? ""))
+            Spacer(minLength: 8)
+            action()
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: Metrics.rowHeight)
     }
 }
