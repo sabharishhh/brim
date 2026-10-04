@@ -21,8 +21,8 @@ struct UpdatesView: View {
 
         var id: String {
             switch self {
-            case .available(let update): "available:" + update.id
-            case .recent(let recent): "recent:" + recent.id
+            case let .available(update): "available:" + update.id
+            case let .recent(recent): "recent:" + recent.id
             }
         }
     }
@@ -140,11 +140,11 @@ struct UpdatesView: View {
     @ViewBuilder
     private func row(_ entry: Entry) -> some View {
         switch entry {
-        case .available(let update):
+        case let .available(update):
             UpdateRow(url: update.appURL, name: update.name, facts: facts(update), failed: failure(update)) {
                 action(update)
             }
-        case .recent(let recent):
+        case let .recent(recent):
             UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
                 Button("Open") { NSWorkspace.shared.open(recent.appURL) }
                     .buttonStyle(.bordered)
@@ -154,7 +154,7 @@ struct UpdatesView: View {
 
     private func facts(_ update: AppUpdate) -> String {
         switch model.states[update.id] {
-        case .downloading(let fraction): return "Downloading \(Int(fraction * 100))%"
+        case let .downloading(fraction): return "Downloading \(Int(fraction * 100))%"
         case .installing: return "Installing"
         case .openedInstaller: return "Opened in Installer"
         case .failed: return "Failed"
@@ -171,7 +171,9 @@ struct UpdatesView: View {
 
     /// Why it failed, for the pointer to find. The row itself only says so.
     private func failure(_ update: AppUpdate) -> String? {
-        if case .failed(let why) = model.states[update.id] { return why }
+        if case let .failed(why) = model.states[update.id] {
+            return why
+        }
         return nil
     }
 
@@ -187,7 +189,7 @@ struct UpdatesView: View {
     @ViewBuilder
     private func action(_ update: AppUpdate) -> some View {
         switch model.states[update.id] {
-        case .downloading(let fraction):
+        case let .downloading(fraction):
             ProgressView(value: fraction)
                 .progressViewStyle(.circular)
                 .controlSize(.small)
@@ -232,7 +234,9 @@ struct UpdatesView: View {
     }
 
     private func open(_ url: URL?) {
-        if let url { NSWorkspace.shared.open(url) }
+        if let url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Footer
@@ -242,7 +246,7 @@ struct UpdatesView: View {
         if let check = model.check {
             HStack(spacing: 6) {
                 Text("Checked \(check.checked) \(check.checked == 1 ? "app" : "apps") "
-                     + check.checkedAt.formatted(.relative(presentation: .named)))
+                    + check.checkedAt.formatted(.relative(presentation: .named)))
                 if !check.unchecked.isEmpty {
                     Text("·")
                     Button("\(check.unchecked.count) can't be checked") { showsUnchecked = true }

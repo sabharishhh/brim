@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Old versions of a command line tool are offered only on a link's word:
 /// the command points at one version, and nothing points at the rest.
@@ -84,7 +84,10 @@ final class OldVersionsTests: XCTestCase {
             .resolvingSymlinksInPath()
         defer { try? FileManager.default.removeItem(at: outside) }
         let current = outside.appendingPathComponent("tool/versions/2")
-        try FileManager.default.createDirectory(at: current.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: current.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try Data([1]).write(to: current)
         try Data([1]).write(to: outside.appendingPathComponent("tool/versions/1"))
         try link("tool", to: current)
@@ -92,11 +95,11 @@ final class OldVersionsTests: XCTestCase {
     }
 
     func testTwoCommandsIntoOneFolderKeepBothVersions() throws {
-        let a = try version(".local/share/kit/versions/2/bin/a")
-        let b = try version(".local/share/kit/versions/1/bin/b")
+        let older = try version(".local/share/kit/versions/2/bin/a")
+        let newer = try version(".local/share/kit/versions/1/bin/b")
         try version(".local/share/kit/versions/0/bin/a")
-        try link("a", to: a)
-        try link("b", to: b)
+        try link("a", to: older)
+        try link("b", to: newer)
         XCTAssertEqual(scan().map(\.url.lastPathComponent), ["0"])
     }
 }

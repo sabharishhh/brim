@@ -228,11 +228,11 @@ struct TrayBar: View {
                     BrimTips.learned(TrayTip())
                     review()
                 }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.large)
-                    .disabled(!canReview)
-                    .popoverTip(TrayTip(), arrowEdge: .bottom)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                .disabled(!canReview)
+                .popoverTip(TrayTip(), arrowEdge: .bottom)
             }
             .font(.body.weight(.medium))
             .monospacedDigit()

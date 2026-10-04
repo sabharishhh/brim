@@ -1,5 +1,5 @@
-@testable import BrimService
 import BrimOps
+@testable import BrimService
 import XCTest
 
 /// The result says what happened, from what was recorded when it happened.
@@ -44,7 +44,8 @@ final class RecordedOutcomeCopyTests: XCTestCase {
     /// `cfprefsd`, and the result said nothing was recorded to say why
     /// when the journal said the removal had worked.
     func testSomethingWrittenBackIsSaidToHaveBeenWrittenBack() {
-        let text = BrimService.whyTheseRemain(paths(["prefs.plist"]), recorded: ["\(folder)/prefs.plist": "ok"]) { _ in .ok }
+        let text = BrimService
+            .whyTheseRemain(paths(["prefs.plist"]), recorded: ["\(folder)/prefs.plist": "ok"]) { _ in .ok }
         XCTAssertTrue(text.contains("wrote it back"), text)
         XCTAssertFalse(text.contains("nothing was recorded"), text)
     }
@@ -57,7 +58,8 @@ final class RecordedOutcomeCopyTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let empty = folder.appendingPathComponent("empty.plist")
         let full = folder.appendingPathComponent("full.plist")
-        try PropertyListSerialization.data(fromPropertyList: [String: Any](), format: .binary, options: 0).write(to: empty)
+        try PropertyListSerialization.data(fromPropertyList: [String: Any](), format: .binary, options: 0)
+            .write(to: empty)
         try PropertyListSerialization.data(fromPropertyList: ["k": 1], format: .binary, options: 0).write(to: full)
         XCTAssertTrue(PreferenceDomains.isEmptyStub(atPath: empty.path))
         XCTAssertFalse(PreferenceDomains.isEmptyStub(atPath: full.path))

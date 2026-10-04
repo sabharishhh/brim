@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Reach, not rules for particular apps.
 ///
@@ -40,7 +40,7 @@ final class BreadthTests: XCTestCase {
         let documents = try put("Users/tester/Documents/com.example.sample/notes")
 
         let identity = Identity(bundleID: "com.example.sample", name: "Sample")
-        let found = Set(try await NestedFolderSource().evidence(for: identity, in: root).map(\.url.standardizedFileURL))
+        let found = try await Set(NestedFolderSource().evidence(for: identity, in: root).map(\.url.standardizedFileURL))
         XCTAssertTrue(found.contains(sdk.standardizedFileURL))
         XCTAssertTrue(found.contains(hidden.standardizedFileURL))
         XCTAssertFalse(found.contains(nameOnly.standardizedFileURL), "a name alone never counts")
@@ -67,7 +67,7 @@ final class BreadthTests: XCTestCase {
             Evidence(url: other, tier: .B, mechanism: "LocationInventorySource", humanSentence: ""),
             Evidence(url: job, tier: .B, mechanism: "LaunchdSource", humanSentence: "")
         ]
-        let parts = Set(EvidenceEngine.parts(in: evidence, excluding: []).map { $0.0.lastPathComponent })
+        let parts = Set(EvidenceEngine.parts(in: evidence, excluding: []).map(\.0.lastPathComponent))
         XCTAssertEqual(parts, ["SampleUpdater.app", "Agent.app"])
     }
 }

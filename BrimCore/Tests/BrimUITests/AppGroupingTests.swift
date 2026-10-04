@@ -71,5 +71,4 @@ final class ApplicationFactsTests: XCTestCase {
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.graphics-design"), "Graphics & Design")
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.puzzle-games"), "Games")
     }
-
 }

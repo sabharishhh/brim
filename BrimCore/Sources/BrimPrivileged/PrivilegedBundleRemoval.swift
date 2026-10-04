@@ -25,11 +25,11 @@ public enum PrivilegedBundleRemoval {
 
         public var directory: String {
             switch self {
-            case .applications: return "/Applications"
-            case .halPlugIns: return "/Library/Audio/Plug-Ins/HAL"
-            case .audioComponents: return "/Library/Audio/Plug-Ins/Components"
-            case .vstPlugIns: return "/Library/Audio/Plug-Ins/VST"
-            case .vst3PlugIns: return "/Library/Audio/Plug-Ins/VST3"
+            case .applications: "/Applications"
+            case .halPlugIns: "/Library/Audio/Plug-Ins/HAL"
+            case .audioComponents: "/Library/Audio/Plug-Ins/Components"
+            case .vstPlugIns: "/Library/Audio/Plug-Ins/VST"
+            case .vst3PlugIns: "/Library/Audio/Plug-Ins/VST3"
             }
         }
 
@@ -37,11 +37,11 @@ public enum PrivilegedBundleRemoval {
         /// not an installed bundle, whatever it is.
         public var extensions: Set<String> {
             switch self {
-            case .applications: return ["app"]
-            case .halPlugIns: return ["driver", "plugin"]
-            case .audioComponents: return ["component"]
-            case .vstPlugIns: return ["vst"]
-            case .vst3PlugIns: return ["vst3"]
+            case .applications: ["app"]
+            case .halPlugIns: ["driver", "plugin"]
+            case .audioComponents: ["component"]
+            case .vstPlugIns: ["vst"]
+            case .vst3PlugIns: ["vst3"]
             }
         }
     }
@@ -58,22 +58,22 @@ public enum PrivilegedBundleRemoval {
 
         public var explanation: String {
             switch self {
-            case .unknownDomain(let domain):
-                return "\(domain) is not a place this can touch."
-            case .notAPlainName(let name):
-                return "\(name) is not a plain file name."
-            case .notThatKindOfBundle(let name):
-                return "\(name) is not the kind of bundle that is installed there."
+            case let .unknownDomain(domain):
+                "\(domain) is not a place this can touch."
+            case let .notAPlainName(name):
+                "\(name) is not a plain file name."
+            case let .notThatKindOfBundle(name):
+                "\(name) is not the kind of bundle that is installed there."
             case .notThere:
-                return "It is not there any more."
+                "It is not there any more."
             case .notAFolder:
-                return "That is a link or a file, not an installed bundle."
-            case .belongsToApple(let name):
-                return "\(name) is part of macOS."
+                "That is a link or a file, not an installed bundle."
+            case let .belongsToApple(name):
+                "\(name) is part of macOS."
             case .isBrim:
-                return "That is Brim itself."
-            case .couldNotQuarantine(let why):
-                return "It could not be set aside: \(why)"
+                "That is Brim itself."
+            case let .couldNotQuarantine(why):
+                "It could not be set aside: \(why)"
             }
         }
     }
@@ -93,9 +93,15 @@ public enum PrivilegedBundleRemoval {
         let name = bundle.lastPathComponent
         let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
         let identifier = (info?["CFBundleIdentifier"] as? String)?.lowercased() ?? ""
-        if identifier.hasPrefix("com.apple.") { throw Refusal.belongsToApple(name) }
-        if identifier.hasPrefix("com.sabharishhh.brim") { throw Refusal.isBrim }
-        if isSignedByApple(bundle) { throw Refusal.belongsToApple(name) }
+        if identifier.hasPrefix("com.apple.") {
+            throw Refusal.belongsToApple(name)
+        }
+        if identifier.hasPrefix("com.sabharishhh.brim") {
+            throw Refusal.isBrim
+        }
+        if isSignedByApple(bundle) {
+            throw Refusal.belongsToApple(name)
+        }
     }
 
     static func isSignedByApple(_ bundle: URL) -> Bool {

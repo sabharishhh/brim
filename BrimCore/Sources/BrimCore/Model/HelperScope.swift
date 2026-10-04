@@ -47,7 +47,8 @@ public enum HelperScope {
         }
         if preferenceFolders.contains(folder) {
             let lowered = name.lowercased()
-            return isPreferenceFile(name) && !lowered.hasPrefix("com.apple") && !lowered.hasPrefix("com.sabharishhh.brim")
+            return isPreferenceFile(name) && !lowered.hasPrefix("com.apple") && !lowered
+                .hasPrefix("com.sabharishhh.brim")
                 && !isInSystemFamily(name) && !isLink(path) && !isFolder(path)
         }
         if cacheFolders.contains(folder) {
@@ -77,10 +78,14 @@ public enum HelperScope {
     /// folders. The printer list is `org.cups.printers.plist`.
     static func systemFamilies() -> Set<String> {
         var families = Set<String>()
-        for folder in ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents", "/System/Library/CoreServices"] {
+        let candidates = ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents",
+                          "/System/Library/CoreServices"]
+        for folder in candidates {
             for name in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
                 let labels = name.split(separator: ".")
-                if labels.count >= 3 { families.insert(labels.prefix(2).joined(separator: ".").lowercased()) }
+                if labels.count >= 3 {
+                    families.insert(labels.prefix(2).joined(separator: ".").lowercased())
+                }
             }
         }
         return families
@@ -125,7 +130,7 @@ public enum HelperScope {
         guard parts.count >= 3, parts[0] == "Library",
               !parts.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }),
               !["Apple", "Security", "Audio", "LaunchAgents", "LaunchDaemons", "PrivilegedHelperTools"]
-                .contains(parts[1])
+              .contains(parts[1])
         else { return nil }
         return "/" + parts.joined(separator: "/")
     }

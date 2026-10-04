@@ -166,6 +166,11 @@ swift test --package-path BrimCore
 
 Tests that touch the real machine run only with `BRIM_REAL_ENV=1`.
 
+CI builds the package and app with strict concurrency checks, runs the tests,
+and rejects added formatting or lint findings. Compare against the main branch
+locally with `python3 scripts/lint_changes.py --base origin/main`. Existing lint
+debt is tracked per file and rule; new files have no allowance.
+
 ## Layout
 
 - `Brim/`: the app.
