@@ -178,7 +178,8 @@ public actor LeftoversScanner {
             Leftover(url: item.url, size: item.size, category: .unclaimed,
                      potentialOwner: item.potentialOwner,
                      evidence: "Installed ownership could not be fully checked.",
-                     capability: item.capability, lastAccessed: item.lastAccessed)
+                     capability: item.capability, lastAccessed: item.lastAccessed,
+                     sizeIsKnown: item.sizeIsKnown != false)
         }
     }
 
@@ -415,7 +416,11 @@ public actor LeftoversScanner {
                     evidence = "In \(vendor)'s folder. Nothing from \(vendor) is installed."
                 }
 
-                let size = calculateSize(url: item)
+                let measured = ArtifactSizer.measure(at: item)
+                let size = measured.logicalBytes
+                if let limitation = measured.completeness.explanation {
+                    evidence += " " + limitation
+                }
 
                 // An empty folder nobody can name gives back nothing and
                 // says nothing. Two hundred and forty-one of them turn a
@@ -430,7 +435,7 @@ public actor LeftoversScanner {
                 // file there is. Preference plists went straight through
                 // it, which is to say the most ordinary leftover on a
                 // Mac was the one thing the sweep could not report.
-                if size == 0, owner.category != .orphaned, Self.isDirectory(item) {
+                if measured.isEmpty, owner.category != .orphaned, Self.isDirectory(item) {
                     continue
                 }
 
@@ -448,7 +453,8 @@ public actor LeftoversScanner {
                     evidence: evidence,
                     capability: capability(for: item, in: domain),
                     lastAccessed: lastAccessed(of: item),
-                    removedAt: owner.category == .orphaned ? removedApplications[owner.ownerID.lowercased()] : nil
+                    removedAt: owner.category == .orphaned ? removedApplications[owner.ownerID.lowercased()] : nil,
+                    sizeIsKnown: measured.state == .complete
                 )
                 leftovers.append(leftover)
             }
@@ -1185,42 +1191,6 @@ public actor LeftoversScanner {
 
     private nonisolated func lastAccessed(of url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
-    }
-
-    /// What removing this would give back.
-    ///
-    /// A directory enumerator over a plain file yields nothing and
-    /// answers zero, which is how every preference plist on the machine
-    /// came back weightless. A file is asked for its own size, and a
-    /// symbolic link is worth nothing and is never followed: measuring
-    /// through one credits a command with the size of the application it
-    /// points at.
-    private nonisolated func calculateSize(url: URL) -> Int64 {
-        let fm = FileManager.default
-        let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
-        let values = try? url.resourceValues(
-            forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
-        )
-        if values?.isSymbolicLink == true {
-            return 0
-        }
-        if values?.isDirectory == false {
-            return Int64(values?.fileSize ?? 0)
-        }
-
-        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: keys) else {
-            let attrs = try? fm.attributesOfItem(atPath: url.path)
-            return (attrs?[.size] as? Int64) ?? 0
-        }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            let res = try? fileURL.resourceValues(forKeys: Set(keys))
-            if let size = res?.fileSize {
-                total += Int64(size)
-            }
-        }
-        return total
     }
 
     /// Every installed application's identity.

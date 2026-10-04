@@ -80,3 +80,28 @@ read per bundle, and overlapping Apps and Updates loads share one inventory.
 Independent footprint sizing has four workers; volumes appear before the
 leftovers estimate finishes. Discovery coverage and fresh removal checks remain.
 See [the measurements and limits](performance.md).
+
+## Home summaries, 4 October 2026
+
+Changes shows observed installations, removals and version updates over seven
+days, newest first. Each row gives the check date and time, rather than claiming
+an exact installation time. Recently installed shows current independent apps from the last five days,
+including observed reinstalls. An update does not renew the installation date.
+The cards expire entries while Home is open and refresh from current inventory
+when asked. No installation watcher or resident service was added.
+
+Home checks recoverability on manual refresh as well as existing Trash and
+activation events. A completed registration step counts as recoverable only
+when its owned restore route survives. A failed read cannot support a claim
+that earlier removals can still be restored. Measured removed-app data is independent of unknown
+protected storage; incomplete size reads remain visible in Remnants.
+
+Home and Remnants use the same filter for unknown items worth reviewing. When
+only those items remain, Home shows a review count rather than claiming Empty.
+Saved installation history retains valid removal and reinstall cycles.
+
+Verification: the final package suite passed with one existing skip. The signed
+Release build and lint comparison passed. On the local machine, Home showed
+five recent apps, dated weekly changes and no stale restore banner after refresh.
+Its ten unknown items matched the Remnants list. No new install or removal was
+performed in the real account for this follow-up.

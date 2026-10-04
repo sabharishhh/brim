@@ -72,9 +72,10 @@ not run for this performance change.
 The application list still waits for bundle sizes, and the inspector still
 waits for complete discovery and aggregate accounting. Broader consolidation
 across evidence sources, progressive inspector output, developer discovery
-and leftovers measurement remain outside this pass. No language migration,
+remain outside this performance pass. The separate Home follow-up reuses the
+existing bounded size reader for leftovers. No language migration,
 persistent index or background service was introduced.
 
-The separately queued Home fixes cover recent installs and reinstalls,
+The separate Home follow-up implements recent installs and reinstalls, weekly
 Changes history, restore counts after Trash is emptied, and Remnants measurement
-and wording. They are not included in this performance change.
+and wording. These fixes are separate from the performance change.
