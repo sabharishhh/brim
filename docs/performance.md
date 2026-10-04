@@ -76,6 +76,6 @@ remain outside this performance pass. The separate Home follow-up reuses the
 existing bounded size reader for leftovers. No language migration,
 persistent index or background service was introduced.
 
-The separate Home follow-up implements recent installs and reinstalls, weekly
-Changes history, restore counts after Trash is emptied, and Remnants measurement
-and wording. These fixes are separate from the performance change.
+The separate Home follow-up implements recent installs and reinstalls, restore
+counts after Trash is emptied, and Remnants measurement and wording. Home no
+longer displays Changes or requests its history during an app refresh. These fixes are separate from the performance change.
