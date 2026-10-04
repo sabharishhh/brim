@@ -27,7 +27,7 @@ knows, and nothing is ticked on a guess.
 Home, Apps (with Updates), Remnants, Background, Energy, Space, Developer and
 Journal. Settings holds the rest.
 
-- Home: what changed, and what needs the person.
+- Home: storage, cleanup status and recently installed apps.
 - Apps: every installed app and its footprint, removal with a review panel,
   and Updates for apps Brim can update.
 - Remnants: apps that have gone and left something, with Finish Removal,
@@ -78,7 +78,8 @@ deferral does not justify skipping discovery or hiding leftovers.
 Review planning uses ancestor lookups, ownership checks reuse one raw claim
 read per bundle, and overlapping Apps and Updates loads share one inventory.
 Independent footprint sizing has four workers; volumes appear before the
-leftovers estimate finishes. Discovery coverage and fresh removal checks remain.
+leftovers estimate finishes. Incomplete measurements display a lower bound or
+Size unavailable in Space. Discovery coverage and fresh removal checks remain.
 See [the measurements and limits](performance.md).
 
 ## Home summaries, 4 October 2026
@@ -93,7 +94,9 @@ loads the change history for a panel that does not exist.
 
 Home checks recoverability on manual refresh as well as existing Trash and
 activation events. A completed registration step counts as recoverable only
-when its owned restore route survives. A failed read cannot support a claim
+when its owned restore route survives. A stopped launch job also needs its
+original declaration identity and modification time. Home calls registration
+maintenance through the service protocol. A failed read cannot support a claim
 that earlier removals can still be restored. Measured removed-app data is independent of unknown
 protected storage; incomplete size reads remain visible in Remnants.
 
