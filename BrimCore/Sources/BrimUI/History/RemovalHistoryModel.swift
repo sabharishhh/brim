@@ -101,6 +101,8 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
 @MainActor
 public final class RemovalHistoryModel: ObservableObject {
     @Published public private(set) var records: [RemovalRecord] = []
+    /// Every installation the snapshots record, for the Journal.
+    @Published public private(set) var installs: [InstallRecord] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var undoingPlanIds: Set<UUID> = []
     @Published public var errorMessage: String?
@@ -132,8 +134,10 @@ public final class RemovalHistoryModel: ObservableObject {
 
         async let plansTask = try? await service.history()
         async let recoverableTask = try? await service.recoverableItems()
+        async let installsTask = service.installRecords()
         let plans = await plansTask ?? []
         let recoverable = await recoverableTask ?? []
+        installs = await installsTask
 
         let byPlan = Dictionary(uniqueKeysWithValues: recoverable.map { ($0.planId, $0) })
         records = plans

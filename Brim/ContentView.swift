@@ -278,7 +278,12 @@ struct ContentView: View {
         case .space: await models.storage.load(service: service)
         case .developer: await models.developer.load(service: service)
         case .energy: await models.energy.sample(service: service)
-        case .journal: await models.history.load(service: service)
+        case .journal:
+            // Installs are read from the snapshots, and listing the apps is
+            // what writes one, so an app installed since the last look
+            // appears only if the list is read first.
+            await models.applications.load(service: service)
+            await models.history.load(service: service)
         }
     }
 }
