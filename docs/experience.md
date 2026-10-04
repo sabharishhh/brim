@@ -267,6 +267,26 @@ already on this Mac were left as they are. The new result was verified by
 unit tests and a build only: the running copy was the person's own and was
 not relaunched to look at it.
 
+### Second eqMac removal
+
+eqMac was reinstalled from its disk image and removed again with the new
+build. The app, its audio driver, caches, settings, both Sentry report
+folders (`SentryCrash/eqMac` and `io.sentry/<hash>`, the second found by
+hashing the reporting address in its executable) and the nested helper's
+Launch Services record all went; Codex's Sparkle cache was untouched.
+WebKit's three folders in the per-user temporary folder were planned and
+refused: macOS creates them with `SF_NOUNLINK`, so nobody can remove them.
+Anything carrying a system protection flag is now left out of footprints
+entirely. Core Audio kept the old driver loaded in memory throughout,
+which is what the conditional restart note is for.
+
+The same pass found two Journal and Apps faults. The Journal read installs
+from the apps on the disk now, so a removed app lost every install and
+Figma and eqMac showed two removals in a row; installs now come from the
+snapshots and stay. And a removed app could stay selected in the Apps
+inspector with its old footprint; a fresh list now clears it. Both are
+covered by tests; neither has been looked at on screen yet.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
