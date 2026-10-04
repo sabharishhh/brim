@@ -47,6 +47,51 @@ final class BreadthTests: XCTestCase {
         XCTAssertFalse(found.contains(documents.standardizedFileURL))
     }
 
+    /// Inside another application's folder, an identifier in somebody
+    /// else's namespace is shipped by other applications too. eqMac's
+    /// removal ticked Codex's Sparkle cache this way.
+    func testAnotherNamespaceInsideAnotherFolderIsOnlyANameMatch() async throws {
+        let foreign = try put("Users/tester/Library/Caches/com.other.app/com.vendor.shared/data")
+        let own = try put("Users/tester/Library/Caches/com.other.app/com.example.sample.agent/data")
+        let surface = IdentitySurface(bundlePath: "/Applications/Sample.app", components: [
+            component("/Applications/Sample.app", "com.example.sample"),
+            component("/Applications/Sample.app/Contents/XPCServices/S.xpc", "com.vendor.shared")
+        ])
+        let identity = Identity(bundleID: "com.example.sample", name: "Sample", identitySurface: surface)
+        let tiers = try await Dictionary(
+            NestedFolderSource().evidence(for: identity, in: root).map { ($0.url.standardizedFileURL, $0.tier) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        XCTAssertEqual(tiers[foreign.standardizedFileURL], .C)
+        XCTAssertEqual(tiers[own.standardizedFileURL], .B)
+    }
+
+    /// Sentry keeps an application's crash reports under its bundle name,
+    /// `Caches/SentryCrash/eqMac`, and nothing else names them. The name
+    /// counts only because the bundle ships Sentry.
+    func testACrashReporterFolderCountsOnlyWhenTheBundleShipsIt() async throws {
+        let reports = try put("Users/tester/Library/Caches/SentryCrash/Sample/Reports/r")
+        let other = try put("Users/tester/Library/Caches/SentryCrash/Sampler/Reports/r")
+        func identity(shipping frameworks: [String]) -> Identity {
+            let surface = IdentitySurface(bundlePath: "/Applications/Sample.app", components: [
+                component("/Applications/Sample.app", "com.example.sample")
+            ] + frameworks.map { component("/Applications/Sample.app/Contents/Frameworks/\($0)", "io.sdk") })
+            return Identity(bundleID: "com.example.sample", name: "Sample", identitySurface: surface)
+        }
+        let withSentry = try await Set(NestedFolderSource().evidence(for: identity(shipping: ["Sentry.framework"]),
+                                                                     in: root).map(\.url.standardizedFileURL))
+        XCTAssertTrue(withSentry.contains(reports.deletingLastPathComponent().standardizedFileURL))
+        XCTAssertFalse(withSentry.contains(other.deletingLastPathComponent().standardizedFileURL))
+        let without = try await NestedFolderSource().evidence(for: identity(shipping: []), in: root)
+        XCTAssertTrue(without.isEmpty)
+    }
+
+    private func component(_ path: String, _ identifier: String) -> IdentitySurface.Component {
+        IdentitySurface.Component(path: path, bundleIdentifier: identifier,
+                                  name: (path as NSString).lastPathComponent, bundleName: nil,
+                                  teamIdentifier: "TEAM", groups: [], urlSchemes: [], exportedTypes: [])
+    }
+
     /// A helper application inside one of the app's folders, or run by one
     /// of its launch jobs, names more of the app. One in an Applications
     /// folder is another application and is not followed.
