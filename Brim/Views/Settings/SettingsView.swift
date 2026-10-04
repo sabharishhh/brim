@@ -2,17 +2,23 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// Brim's Settings window: the Dock, what Brim can read, and what it keeps
-/// about the person's use of it.
+/// Feedback alongside the settings Brim already offers.
 struct SettingsView: View {
+    @State private var selection = SettingsTab.feedback
+
     var body: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") { GeneralSettings() }
-            Tab("Access", systemImage: "lock.shield") { AccessSettings() }
-            Tab("Privacy", systemImage: "hand.raised") { PrivacySettings() }
+        TabView(selection: $selection) {
+            Tab("Feedback", systemImage: "bubble.left.and.bubble.right", value: .feedback) { FeedbackSettingsView() }
+            Tab("General", systemImage: "gearshape", value: .general) { GeneralSettings() }
+            Tab("Access", systemImage: "lock.shield", value: .access) { AccessSettings() }
+            Tab("Privacy", systemImage: "hand.raised", value: .privacy) { PrivacySettings() }
         }
-        .frame(width: 480)
+        .frame(width: 640, height: selection == .feedback ? 460 : nil)
     }
+}
+
+private enum SettingsTab {
+    case feedback, general, access, privacy
 }
 
 /// Keys shared between Settings and the window.
