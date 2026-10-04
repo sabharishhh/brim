@@ -1,8 +1,8 @@
 # Working on Brim
 
-Brim tells people what software has left on their Mac and proves it is gone
-when they remove it. Everything below exists because getting one of these
-wrong cost real time in a previous session.
+Brim traces what software has left on a Mac and records what removal
+confirmed, what remains and what could not be checked. Everything below
+exists because getting one of these wrong cost real time in a previous session.
 
 ## How to work here
 
@@ -39,6 +39,16 @@ leaving contradictory claims or adding a second account of the same fact.
 
 **Ask before destroying anything**, including deleting files that look like
 dead code. Everything else, just do.
+
+**Keep the uninstall release scope bounded.** Universal erasure of every
+file, helper, permission and macOS registration is deferred for this release.
+Do not treat unsupported records as another completion blocker or hide them.
+Fix concrete attribution, supported-removal, verification and recovery bugs.
+Broader selective adapters need a legitimate removal route, exact ownership,
+repeatable independent readback and isolated lifecycle qualification. Never
+substitute a shared-store reset, private database edit or blanket restart
+promise for that evidence. This scope decision does not excuse incomplete
+associated-file discovery or failed supported actions.
 
 ## Testing
 
@@ -283,16 +293,15 @@ conversation. Split unrelated changes rather than staging everything.
   644 `NSKeyedArchiver` archives, one per account, named after the directory
   UUID `mbr_uid_to_uuid` returns. Reading them needs Full Disk Access and
   nothing else. `BTMStore` does that; never reach for the tool again.
-- **Nothing third party can make macOS tidy its background list.** The
-  collection pass that drops records for deleted apps runs when a client
-  reaches `BTMManagerService`, and that listener refuses anyone without
-  `com.apple.private.backgroundtaskmanagement.manage`. `sfltool` gets in
-  because Apple signs it with that entitlement. Root does not help: an
-  entitlement comes from the signature, not the user, the same way TCC is
-  judged on the responsible application. Every public `SMAppService` call
-  reaches the daemon by another route that does not collect. Opening
-  Login Items in System Settings does collect, because System Settings is
-  entitled.
+- **A stopped job and an erased background record are different facts.**
+  No selective automatic foreign-app BTM erasure route has been qualified.
+  The live uninstall left one helper listed after Trash was emptied and
+  Settings was opened. Removing its Open at Login entry manually cleared
+  the observed login and background records without restarting. That is
+  evidence for this conditional manual route, not a universal lifecycle
+  guarantee. Background switches disable activity; they do not establish
+  record erasure. Never promise that opening Settings or restarting will
+  finish every removal, or use a global reset to force one entry away.
 - **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
   previous macOS still sits beside the v18 files, listing software that has
   since been removed. Read the highest version only, or invent leftovers.
