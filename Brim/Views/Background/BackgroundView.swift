@@ -43,7 +43,7 @@ struct BackgroundView: View {
 
     var body: some View {
         AdaptivePanes(
-            detailWidth: reviewRequest == nil ? 340 : 440,
+            detailWidth: Metrics.detailWidth,
             hasDetail: reviewRequest != nil || inspectedID != nil,
             isReviewing: reviewRequest != nil,
             close: closeInspector
@@ -211,7 +211,7 @@ struct BackgroundView: View {
                 onUnverified: { Task { await model.load(service: service) } }
             )
             .id(intent.id)
-            .transition(.replacement)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let entry = inspected {
             BackgroundInspector(
                 entry: entry,

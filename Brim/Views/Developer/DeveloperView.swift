@@ -31,7 +31,7 @@ struct DeveloperView: View {
 
     var body: some View {
         AdaptivePanes(
-            detailWidth: reviewRequest == nil ? 340 : 440,
+            detailWidth: Metrics.detailWidth,
             hasDetail: reviewRequest != nil || inspectedID != nil,
             isReviewing: reviewRequest != nil,
             close: closeInspector
@@ -220,7 +220,7 @@ struct DeveloperView: View {
                 plan: reviewPlan
             )
             .id(intent.id)
-            .transition(.replacement)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let cache = inspected {
             DeveloperInspector(
                 cache: cache, isPicked: model.isSelected(cache),

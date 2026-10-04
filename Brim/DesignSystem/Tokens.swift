@@ -108,13 +108,18 @@ enum Metrics {
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7
 
-    /// The smallest window. A list and its pane need 800 points side by
+    /// The smallest window. A list and its pane need 860 points side by
     /// side; narrower than that the pane floats over the list
     /// (`AdaptivePanes`), so every page still works at 900.
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 640
     /// A list column never narrower than this.
     static let listMinWidth: CGFloat = 440
+    /// The inspector or review beside a list. One width for both: the
+    /// pane used to widen from 360 to 440 when a review opened, and the
+    /// review's list re-measured at every step of the animation, which is
+    /// the hitch halfway through the swap.
+    static let detailWidth: CGFloat = 420
 }
 
 /// Type styles. No serif anywhere. SF Pro for everything read in lists,
