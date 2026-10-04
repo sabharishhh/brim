@@ -231,6 +231,42 @@ The full package suite passed (486 XCTest cases, one existing skip, and
 the Swift Testing runs) and the changed-file lint added no violations.
 Launch measurements are in `docs/performance.md`.
 
+## Removal result
+
+After eqMac was removed on the real Mac, its audio device left the Sound
+menu at once, yet the result read as a partial removal. It showed a
+caution mark, counts of places and kinds of registration checked, and
+"cannot be checked" rows for VPN settings, privacy grants, cloud files and
+configuration profiles. The last of those can never be fully read on this
+Mac, so every removal had been marked incomplete.
+
+A check that could not be answered now counts only for a kind of
+registration the review had reason to expect. The result is built from
+`RemovalSummary`:
+
+- the app is gone, and how much is in the Trash or set aside;
+- the groups that went, each with a check;
+- only what actually stayed, quietly: unticked, kept on purpose, could not
+  be moved, still listed by macOS, or a check that could not be answered
+  for a kind the app declares.
+
+Coverage counts and out of scope kinds are not shown. The batch panel
+reads the same summary.
+
+Checking the disk after eqMac found no driver, helper, receipt, login
+record, preferences or privacy grant left. It did find:
+
+- **Codex's Sparkle cache.** It had been moved to the Trash with eqMac, a
+  misattribution through Sparkle.framework's shared identifier.
+- **A stale Launch Services record** for eqMac's nested login helper.
+- **Empty WebKit folders** in the per-user temporary folder.
+- **An empty `Caches/SentryCrash/eqMac` folder.**
+
+All four are fixed for later removals and covered by tests. The items
+already on this Mac were left as they are. The new result was verified by
+unit tests and a build only: the running copy was the person's own and was
+not relaunched to look at it.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
