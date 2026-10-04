@@ -39,20 +39,23 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
             : .unavailable(kind, "The privileged helper folder could not be read.", absence: .needsPermission)
     }
 
-    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
-        if case .refused = DirectoryEntries.read(directory(in: root)) {
-            return RegistrationSnapshot(registrations: [],
-                                        coverage: .unavailable(kind, "The privileged helper folder could not be read."))
-        }
-        return await RegistrationSnapshot(registrations: registrations(in: root), coverage: .available(kind))
+    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        await snapshot(in: root).registrations
     }
 
-    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
         let fm = FileManager.default
         let folder = directory(in: root)
-        guard let names = try? fm.contentsOfDirectory(atPath: folder.path) else { return [] }
-
-        return names.sorted().compactMap { name -> Registration? in
+        let names: [String]
+        switch DirectoryEntries.read(folder) {
+        case .absent: names = []
+        case let .listed(entries): names = entries
+        case .refused:
+            return RegistrationSnapshot(registrations: [], coverage: .unavailable(
+                kind, "The privileged helper folder could not be read."
+            ))
+        }
+        let found = names.sorted().compactMap { name -> Registration? in
             guard !name.hasPrefix(".") else { return nil }
             let tool = folder.appendingPathComponent(name)
 
@@ -86,9 +89,11 @@ public struct PrivilegedHelperToolSurface: RegistrationSurface {
                 evidence: evidence,
                 isSystemOwned: name.hasPrefix("com.apple."),
                 signing: signing,
-                capability: RemovalCapability.forDeleting(tool.path)
+                capability: RemovalCapability.forDeleting(tool.path),
+                targetPresence: PathObservation.observe(tool.path)
             )
         }
+        return RegistrationSnapshot(registrations: found, coverage: .available(kind))
     }
 
     /// The bundle identifier a helper's label implies.

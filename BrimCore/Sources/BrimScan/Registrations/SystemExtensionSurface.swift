@@ -17,29 +17,36 @@ import Foundation
 public struct SystemExtensionSurface: RegistrationSurface {
     public let kind: Registration.Kind = .systemExtension
 
+    private let usesSystemTool: Bool
     private let read: @Sendable () -> String?
 
-    public init(
-        read: @escaping @Sendable () -> String? = {
-            ToolOutput.read("/usr/bin/systemextensionsctl", ["list"])
+    public init(read: (@Sendable () -> String?)? = nil) {
+        usesSystemTool = read == nil
+        self.read = read ?? { ToolOutput.read("/usr/bin/systemextensionsctl", ["list"]) }
+    }
+
+    public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+        await snapshot(in: root).coverage
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        if usesSystemTool, root.rootURL.standardizedFileURL.path != "/" {
+            return RegistrationSnapshot(registrations: [], coverage: .withheld(
+                kind, "The system registration tool is outside this filesystem."
+            ))
         }
-    ) {
-        self.read = read
-    }
-
-    public func coverage(in _: FileSystemRoot) async -> RegistrationCoverage {
-        read() == nil
-            ? .unavailable(kind, "systemextensionsctl did not answer, so system extensions "
-                + "were not read.")
-            : .available(kind)
-    }
-
-    public func snapshot(in _: FileSystemRoot) async -> RegistrationSnapshot {
         guard let output = read() else {
             return RegistrationSnapshot(registrations: [],
                                         coverage: .unavailable(kind, "System extensions could not be read."))
         }
-        return RegistrationSnapshot(registrations: Self.parse(output), coverage: .available(kind))
+        let records = Self.parse(output)
+        let count = output.split(separator: "\n").first { $0.hasSuffix("extension(s)") }
+            .flatMap { Int($0.split(separator: " ").first ?? "") }
+        let complete = count != nil && count == records.count
+        return RegistrationSnapshot(registrations: records, coverage: RegistrationCoverage(
+            kind: kind, available: complete,
+            limitation: complete ? nil : "The system extension listing could not be fully checked."
+        ), readerVersion: 2)
     }
 
     public func registrations(in _: FileSystemRoot) async -> [Registration] {
@@ -101,10 +108,12 @@ public struct SystemExtensionSurface: RegistrationSurface {
                 evidence: isTerminated
                     ? "A system extension macOS has marked \(state). Only the application "
                     + "that installed it can withdraw it."
-                    : "An active system or network extension. Only the application that "
+                    : "A system or network extension listed as \(state). Only the application that "
                     + "installed it can withdraw it.",
                 isSystemOwned: identifier.hasPrefix("com.apple."),
-                capability: .refusedByOS
+                capability: .refusedByOS,
+                targetPresence: .unknown("The system extension listing does not expose a backing path."),
+                recordIdentity: fields.joined(separator: "|"), namespace: "system", runtimeState: state
             ))
         }
 

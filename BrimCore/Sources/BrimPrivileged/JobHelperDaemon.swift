@@ -1,6 +1,9 @@
+import BrimProcess
 import Foundation
 import os
+import Synchronization
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// Brim's privileged daemon, and deliberately almost nothing.
 ///
 /// It runs as root, so every line here is worth more scrutiny than the
@@ -18,84 +21,264 @@ private let log = Logger(subsystem: "com.sabharishhh.brim.jobhelper", category: 
 /// as root is one thing, in one place, covered by the package's tests.
 public enum BrimJobHelperDaemon {
     public static func run() -> Never {
-        let helper = Helper()
-        let listener = NSXPCListener(machServiceName: BrimJobHelper.machServiceName)
-        listener.delegate = helper
-        listener.resume()
-        log.info("BrimJobHelper \(BrimJobHelper.version) listening")
-        RunLoop.main.run()
-        fatalError("the run loop returned, which it does not")
+        guard CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--temporary" else {
+            exit(64)
+        }
+        do {
+            let connection = try TemporaryAdminChannel.connectToApp(path: CommandLine.arguments[2])
+            runTemporary(descriptor: connection.descriptor, requesterUID: connection.requesterUID)
+        } catch {
+            log.error("administrator connection refused: \(error.localizedDescription, privacy: .public)")
+            exit(77)
+        }
+    }
+
+    private static func runTemporary(descriptor: Int32, requesterUID: uid_t) -> Never {
+        let helper = Helper(requesterUID: requesterUID)
+        let finished = DispatchSemaphore(value: 0)
+        // An idle connection and an unfinished request both have a finite lifetime.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 15 * 60) { exit(75) }
+        let disconnect = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        disconnect.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        disconnect.setEventHandler {
+            var state = pollfd(fd: descriptor, events: 0, revents: 0)
+            if poll(&state, 1, 0) > 0, state.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
+                helper.disconnect { exit(75) }
+                _ = shutdown(descriptor, SHUT_RDWR)
+            }
+        }
+        disconnect.resume()
+        Task.detached {
+            defer {
+                TemporaryAdminChannel.close(descriptor)
+                finished.signal()
+            }
+            do {
+                while true {
+                    let request = try TemporaryAdminChannel.receiveRequest(from: descriptor)
+                    let response = await reply(to: request, using: helper)
+                    try TemporaryAdminChannel.sendResponse(response, to: descriptor)
+                }
+            } catch {
+                // EOF is the ordinary end of a selection, including app termination.
+                log.info("administrator connection ended: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        finished.wait()
+        disconnect.cancel()
+        exit(0)
+    }
+
+    private static func reply(to request: TemporaryAdminRequest, using helper: Helper) async -> TemporaryAdminResponse {
+        guard !helper.connectionCancelled else {
+            return TemporaryAdminResponse(complaint: "The administrator operation was cancelled.")
+        }
+        switch request {
+        case .version:
+            return TemporaryAdminResponse(data: Data(BrimJobHelper.version.utf8))
+        case .recoveryItems:
+            return await withCheckedContinuation { continuation in
+                helper.recoveryItems { data, complaint in
+                    continuation.resume(returning: TemporaryAdminResponse(data: data, complaint: complaint))
+                }
+            }
+        default:
+            return await withCheckedContinuation { continuation in
+                let reply: @Sendable (String?) -> Void = { complaint in
+                    continuation.resume(returning: TemporaryAdminResponse(complaint: complaint))
+                }
+                dispatchRemoval(request, using: helper, reply: reply)
+            }
+        }
+    }
+
+    private static func dispatchRemoval(
+        _ request: TemporaryAdminRequest, using helper: Helper, reply: @escaping @Sendable (String?) -> Void
+    ) {
+        switch request {
+        case let .removeDefunctJob(domain, name):
+            helper.removeDefunctJob(domain: domain, name: name, withReply: reply)
+        case let .removeBrokenCommand(domain, name):
+            helper.removeBrokenCommand(domain: domain, name: name, withReply: reply)
+        case let .forgetReceipt(packageID):
+            helper.forgetReceipt(packageID: packageID, withReply: reply)
+        case let .removeInstalledBundle(domain, name):
+            helper.removeInstalledBundle(domain: domain, name: name, withReply: reply)
+        case let .removeInstalledPayload(packageID, name):
+            helper.removeInstalledPayload(packageID: packageID, name: name, withReply: reply)
+        case let .removeSystemCache(name):
+            helper.removeSystemCache(name: name, withReply: reply)
+        case let .removeSystemPreference(name):
+            helper.removeSystemPreference(name: name, withReply: reply)
+        case let .removeRecoveryItem(identifier, device, inode):
+            helper.removeRecoveryItem(identifier: identifier, expectedDevice: device,
+                                      expectedInode: inode, withReply: reply)
+        case .uninstallSelf:
+            helper.uninstallSelf(withReply: reply)
+        case .version, .recoveryItems:
+            reply("The operation was not recognized.")
+        }
     }
 }
 
-final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
+final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
+    private let requesterUID: uid_t?
+    private struct AsyncJobs {
+        var cancelled = false
+        var tasks: [UUID: Task<Void, Never>] = [:]
+    }
 
-    // MARK: - Who may speak to it
+    private let asyncJobs = Mutex(AsyncJobs())
 
-    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        // macOS invalidates the connection when the peer does not satisfy
-        // this, which is the enforcement. The previous attempt set a
-        // requirement naming the wrong application and the wrong team,
-        // then returned true regardless, so it accepted everyone.
-        //
-        // Compiled first, because `setCodeSigningRequirement` raises on a
-        // string it cannot parse rather than returning a failure, and a
-        // root daemon crashing on an incoming connection is a worse
-        // outcome than one refusing it.
-        let requirement = BrimJobHelper.clientRequirement()
-        guard BrimJobHelper.isWellFormed(requirement) else {
-            log.error("refusing every connection: the client requirement will not compile")
-            return false
-        }
-        connection.setCodeSigningRequirement(requirement)
-
-        connection.exportedInterface = NSXPCInterface(with: BrimJobHelperProtocol.self)
-        connection.exportedObject = self
-        connection.resume()
-        // Deliberately not logging the peer's pid. A pid is reused, so it
-        // names the wrong process by the time anybody reads the log, and
-        // the grep test that keeps pids out of authorisation decisions is
-        // worth more than the detail.
-        log.info("accepted a connection from a peer that satisfied the requirement")
-        return true
+    init(requesterUID: uid_t? = nil) {
+        self.requesterUID = requesterUID
+        super.init()
     }
 
     // MARK: - What it will do
 
-    func forgetReceipt(packageID: String, withReply reply: @escaping (String?) -> Void) {
-        do {
-            try PrivilegedReceiptRemoval.check(packageID)
-            let status = try runPkgutil(forgetting: packageID)
-            guard status == 0 else {
-                throw PrivilegedReceiptRemoval.Refusal.pkgutilFailed(status)
+    var connectionCancelled: Bool {
+        asyncJobs.withLock { $0.cancelled }
+    }
+
+    /// Cancellation stops owned commands first. A synchronous filesystem
+    /// operation cannot observe task cancellation, so it also needs a finite
+    /// shutdown deadline when Brim closes its connection.
+    func disconnect(after gracePeriod: DispatchTimeInterval = .seconds(3),
+                    terminate: @escaping @Sendable () -> Void) {
+        let tasks = asyncJobs.withLock { jobs -> [Task<Void, Never>]? in
+            guard !jobs.cancelled else { return nil }
+            jobs.cancelled = true
+            return Array(jobs.tasks.values)
+        }
+        guard let tasks else { return }
+        for task in tasks {
+            task.cancel()
+        }
+        // Native commands get time to terminate and reap their own children.
+        // A stalled recursive deletion cannot keep this root process alive
+        // until the general fifteen-minute session limit.
+        DispatchQueue.global().asyncAfter(deadline: .now() + gracePeriod, execute: terminate)
+    }
+
+    /// Register before a disconnect can cancel, and keep the cancellation
+    /// flag so a request already read from the socket cannot start another job.
+    private func runJob(
+        withReply reply: @escaping @Sendable (String?) -> Void,
+        operation: @escaping @Sendable () async -> Void
+    ) {
+        asyncJobs.withLock { jobs in
+            guard !jobs.cancelled else {
+                reply("The administrator operation was cancelled.")
+                return
             }
-            log.info("forgot the receipt for \(packageID, privacy: .public)")
-            reply(nil)
-        } catch let refusal as PrivilegedReceiptRemoval.Refusal {
-            log.error("refused \(packageID, privacy: .public): \(refusal.explanation, privacy: .public)")
-            reply(refusal.explanation)
-        } catch {
-            log.error("failed \(packageID, privacy: .public): \(error.localizedDescription)")
-            reply(error.localizedDescription)
+            let identifier = UUID()
+            jobs.tasks[identifier] = Task {
+                defer { _ = asyncJobs.withLock { $0.tasks.removeValue(forKey: identifier) } }
+                await operation()
+            }
+        }
+    }
+
+    func forgetReceipt(packageID: String, withReply reply: @escaping @Sendable (String?) -> Void) {
+        runJob(withReply: reply) { [self] in
+            do {
+                try Task.checkCancellation()
+                try PrivilegedReceiptRemoval.check(packageID)
+                try await qualifyReceiptPayload(packageID)
+                try Task.checkCancellation()
+                let status = try await runPkgutil(forgetting: packageID)
+                guard status == 0 else {
+                    throw PrivilegedReceiptRemoval.Refusal.pkgutilFailed(status)
+                }
+                log.info("forgot the receipt for \(packageID, privacy: .public)")
+                reply(nil)
+            } catch let refusal as PrivilegedReceiptRemoval.Refusal {
+                log.error("refused \(packageID, privacy: .public): \(refusal.explanation, privacy: .public)")
+                reply(refusal.explanation)
+            } catch {
+                log.error("failed \(packageID, privacy: .public): \(error.localizedDescription)")
+                reply(error.localizedDescription)
+            }
+        }
+    }
+
+    private func qualifyReceiptPayload(_ packageID: String) async throws {
+        let receipt = URL(fileURLWithPath: PrivilegedReceiptRemoval.receiptDirectory)
+            .appendingPathComponent(packageID + ".plist")
+        guard let data = try? Data(contentsOf: receipt),
+              let metadata = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let prefix = metadata["InstallPrefixPath"] as? String else {
+            throw PrivilegedReceiptRemoval.Refusal.payloadNotGone
+        }
+        let result = try await NativeCommandRunner.run(executable: "/usr/sbin/pkgutil",
+                                                       arguments: ["--only-files", "--files", packageID],
+                                                       environment: [
+                                                           "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                                                           "LANG": "C",
+                                                           "LC_ALL": "C"
+                                                       ], timeout: 10)
+        guard result.termination == .exited(0), !result.outputTruncated,
+              let listing = String(data: result.stdout, encoding: .utf8) else {
+            throw PrivilegedReceiptRemoval.Refusal.payloadNotGone
+        }
+        try PrivilegedReceiptRemoval.checkPayload(listing: listing, prefix: prefix) { path in
+            let components = URL(fileURLWithPath: path).pathComponents
+            if components.count > 2, components[1] == "Volumes" {
+                var mount = stat()
+                guard lstat("/Volumes/" + components[2], &mount) == 0 else {
+                    throw PrivilegedReceiptRemoval.Refusal.payloadNotGone
+                }
+            }
+            var info = stat()
+            if lstat(path, &info) == 0 {
+                return true
+            }
+            let failure = errno
+            guard failure == ENOENT || failure == ENOTDIR else {
+                throw PrivilegedReceiptRemoval.Refusal.payloadNotGone
+            }
+            return false
         }
     }
 
     /// A fixed tool with fixed arguments. The package identifier has
     /// already been checked to contain nothing but identifier characters,
     /// and it is passed as an argument rather than through a shell.
-    private func runPkgutil(forgetting packageID: String) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/pkgutil")
-        process.arguments = ["--forget", packageID]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+    private func runPkgutil(forgetting packageID: String) async throws -> Int32 {
+        let result = try await NativeCommandRunner.run(
+            executable: "/usr/sbin/pkgutil", arguments: ["--forget", packageID],
+            environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"],
+            timeout: 10
+        )
+        guard case let .exited(status) = result.termination else {
+            throw NSError(domain: "BrimHelper", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The installer record command did not finish."
+            ])
+        }
+        return status
     }
 
-    func version(withReply reply: @escaping (String) -> Void) {
+    func version(withReply reply: @escaping @Sendable (String) -> Void) {
         reply(BrimJobHelper.version)
+    }
+
+    func recoveryItems(withReply reply: @escaping @Sendable (Data?, String?) -> Void) {
+        do {
+            try reply(JSONEncoder().encode(PrivilegedRecoveryStore().items()), nil)
+        } catch { reply(nil, error.localizedDescription) }
+    }
+
+    func removeRecoveryItem(
+        identifier: String, expectedDevice: Int32, expectedInode: UInt64,
+        withReply reply: @escaping @Sendable (String?) -> Void
+    ) {
+        do {
+            try PrivilegedRecoveryStore().remove(
+                identifier: identifier, expectedDevice: expectedDevice, expectedInode: expectedInode
+            )
+            reply(nil)
+        } catch { reply(error.localizedDescription) }
     }
 
     /// Removes the quarantine, and nothing else.
@@ -104,7 +287,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
     /// there is nowhere left to set anything aside to. The path is a
     /// constant in this binary, never a parameter, so the interface still
     /// cannot be talked into removing something else.
-    func uninstallSelf(withReply reply: @escaping (String?) -> Void) {
+    func uninstallSelf(withReply reply: @escaping @Sendable (String?) -> Void) {
         let quarantine = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
         guard FileManager.default.fileExists(atPath: quarantine.path) else {
             log.info("nothing to clean up on the way out")
@@ -124,26 +307,29 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         } catch {
             log.error("could not remove the quarantine: \(error.localizedDescription)")
             reply("Brim's helper could not clear the folder it kept set-aside files in: "
-                  + error.localizedDescription)
+                + error.localizedDescription)
         }
     }
 
-    func removeDefunctJob(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
-        do {
-            let target = try PrivilegedJobRemoval.target(domain: domain, name: name)
-            try setAside(target)
-            log.info("set aside \(target.path, privacy: .public)")
-            reply(nil)
-        } catch let refusal as PrivilegedJobRemoval.Refusal {
-            log.error("refused \(domain)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
-            reply(refusal.explanation)
-        } catch {
-            log.error("failed \(domain)/\(name, privacy: .public): \(error.localizedDescription)")
-            reply(error.localizedDescription)
+    func removeDefunctJob(domain: String, name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
+        runJob(withReply: reply) { [self] in
+            do {
+                try Task.checkCancellation()
+                let target = try PrivilegedJobRemoval.target(domain: domain, name: name)
+                try await setAside(target)
+                log.info("set aside \(target.path, privacy: .public)")
+                reply(nil)
+            } catch let refusal as PrivilegedJobRemoval.Refusal {
+                log.error("refused \(domain)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+                reply(refusal.explanation)
+            } catch {
+                log.error("failed \(domain)/\(name, privacy: .public): \(error.localizedDescription)")
+                reply(error.localizedDescription)
+            }
         }
     }
 
-    func removeInstalledBundle(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
+    func removeInstalledBundle(domain: String, name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
         do {
             let target = try PrivilegedBundleRemoval.target(domain: domain, name: name)
             try setAsideBundle(target)
@@ -158,17 +344,27 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
-    func removeInstalledPayload(packageID: String, name: String, withReply reply: @escaping (String?) -> Void) {
+    func removeInstalledPayload(
+        packageID: String,
+        name: String,
+        withReply reply: @escaping @Sendable (String?) -> Void
+    ) {
         do {
             let target = try PrivilegedPayloadRemoval.target(packageID: packageID, name: name)
             try setAsideBundle(target)
             log.info("set aside \(target.path, privacy: .public)")
             reply(nil)
         } catch let refusal as PrivilegedPayloadRemoval.Refusal {
-            log.error("refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            log
+                .error(
+                    "refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)"
+                )
             reply(refusal.explanation)
         } catch let refusal as PrivilegedBundleRemoval.Refusal {
-            log.error("refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)")
+            log
+                .error(
+                    "refused \(packageID, privacy: .public)/\(name, privacy: .public): \(refusal.explanation, privacy: .public)"
+                )
             reply(refusal.explanation)
         } catch {
             log.error("failed \(packageID, privacy: .public)/\(name, privacy: .public): \(error.localizedDescription)")
@@ -176,7 +372,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
-    func removeSystemCache(name: String, withReply reply: @escaping (String?) -> Void) {
+    func removeSystemCache(name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
         do {
             let target = try PrivilegedCacheRemoval.target(name: name)
             try setAsideCache(target)
@@ -191,7 +387,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
-    func removeSystemPreference(name: String, withReply reply: @escaping (String?) -> Void) {
+    func removeSystemPreference(name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
         do {
             let target = try PrivilegedPreferenceRemoval.target(name: name)
             try setAsidePreference(target)
@@ -206,7 +402,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
         }
     }
 
-    func removeBrokenCommand(domain: String, name: String, withReply reply: @escaping (String?) -> Void) {
+    func removeBrokenCommand(domain: String, name: String, withReply reply: @escaping @Sendable (String?) -> Void) {
         do {
             let target = try PrivilegedLinkRemoval.target(domain: domain, name: name)
             try setAsideDeadLink(target)
@@ -287,7 +483,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
     /// opened with `O_NOFOLLOW`, so a symlink swapped in between the check
     /// and the move cannot redirect it. That gap is the classic way a root
     /// helper is turned into a tool for deleting something else.
-    private func setAside(_ target: URL) throws {
+    private func setAside(_ target: URL) async throws {
         let directory = target.deletingLastPathComponent().path
         let name = target.lastPathComponent
 
@@ -310,24 +506,88 @@ final class Helper: NSObject, BrimJobHelperProtocol, NSXPCListenerDelegate {
 
         // Read through the same descriptor, so what is judged is what is
         // moved.
-        let file = openat(parent, name, O_RDONLY | O_NOFOLLOW)
-        guard file >= 0 else { throw PrivilegedJobRemoval.Refusal.unreadable }
-        let handle = FileHandle(fileDescriptor: file, closeOnDealloc: true)
-        guard let contents = try? handle.readToEnd() ?? Data() else {
-            throw PrivilegedJobRemoval.Refusal.unreadable
-        }
+        let contents = try PrivilegedJobRemoval.readReviewedPlist(parent: parent, name: name, reviewed: info)
 
         // The rule that makes this safe to expose: a job that still runs
         // something present on this Mac is not a leftover and is never
         // removed, whoever is asking.
         guard PrivilegedJobRemoval.isDefunct(
             plist: contents,
-            programExists: { FileManager.default.fileExists(atPath: $0) }
+            programExists: {
+                var targetInfo = stat()
+                if stat($0, &targetInfo) == 0 {
+                    return true
+                }
+                let failure = errno
+                return failure != ENOENT && failure != ENOTDIR
+            }
         ) else {
             throw PrivilegedJobRemoval.Refusal.stillWorking
         }
 
+        try await stopDeclaredJob(contents, directory: directory, path: target.path, beforeStop: {
+            try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
+        })
+        try Task.checkCancellation()
+        try PrivilegedJobRemoval.validateReviewedEntry(parent: parent, name: name, reviewed: info)
         try moveIntoQuarantine(parent: parent, name: name, from: directory)
+    }
+
+    private func stopDeclaredJob(
+        _ contents: Data, directory: String, path: String, beforeStop: () throws -> Void
+    ) async throws {
+        if let dictionary = try? PropertyListSerialization.propertyList(
+            from: contents, options: [], format: nil
+        ) as? [String: Any], let label = dictionary["Label"] as? String {
+            guard !label.isEmpty, !label.contains("/"), !label.contains("\0"),
+                  !label.hasPrefix("com.apple."), let requesterUID, requesterUID != 0
+            else {
+                throw PrivilegedJobRemoval.Refusal.unreadable
+            }
+            let namespace = directory == "/Library/LaunchDaemons" ? "system" : "gui/\(requesterUID)"
+            try await stopReviewedJob(label: label, namespace: namespace, path: path,
+                                      contents: contents, beforeStop: beforeStop)
+        } else {
+            // Without a label no exact runtime check is possible. Preserve it.
+            throw PrivilegedJobRemoval.Refusal.unreadable
+        }
+    }
+
+    private func stopReviewedJob(
+        label: String, namespace: String, path: String, contents: Data, beforeStop: () throws -> Void
+    ) async throws {
+        let environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"]
+        func query(_ target: String) async throws -> NativeCommandRunner.Result {
+            try await NativeCommandRunner.run(executable: "/bin/launchctl", arguments: ["print", target],
+                                              environment: environment, timeout: 5)
+        }
+        guard try await query(namespace).termination == .exited(0) else {
+            throw PrivilegedJobRemoval.Refusal.unreadable
+        }
+        let service = namespace + "/" + label
+        let loaded = try await query(service)
+        let diagnostic = (String(data: loaded.stderr, encoding: .utf8) ?? "")
+        if loaded.termination == .exited(113), !loaded.outputTruncated,
+           diagnostic.contains("Could not find service") {
+            return
+        }
+        guard loaded.termination == .exited(0), !loaded.outputTruncated,
+              PrivilegedJobRemoval.loadedJobMatchesReviewedDefinition(
+                  String(data: loaded.stdout, encoding: .utf8) ?? "",
+                  reviewedPath: path, reviewedPlist: contents
+              ) else {
+            throw PrivilegedJobRemoval.Refusal.unreadable
+        }
+        try beforeStop()
+        let stopped = try await NativeCommandRunner.run(executable: "/bin/launchctl", arguments: ["bootout", service],
+                                                        environment: environment, timeout: 5)
+        guard stopped.termination == .exited(0) else { throw PrivilegedJobRemoval.Refusal.stillWorking }
+        let after = try await query(service)
+        guard after.termination == .exited(113), !after.outputTruncated,
+              (String(data: after.stderr, encoding: .utf8) ?? "").contains("Could not find service")
+        else {
+            throw PrivilegedJobRemoval.Refusal.stillWorking
+        }
     }
 
     /// Renames the file into the quarantine rather than unlinking it, so a

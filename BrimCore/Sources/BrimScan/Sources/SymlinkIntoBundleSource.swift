@@ -91,10 +91,15 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
     /// Also the one place `LaunchdSource` asks, so a link and a launchd job
     /// are proven by pointing into the same bundles.
     public static func bundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
+        // A selected installation is authoritative. Looking up its name
+        // again can add another copy with the same identifier to removal.
+        if let path = identity.bundlePath {
+            return [URL(fileURLWithPath: path)]
+        }
         let userApplications = root.url(for: .userLibrary)
             .deletingLastPathComponent()
             .appendingPathComponent("Applications")
-        return (identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? []) + [
+        return [
             root.url(for: .applications).appendingPathComponent("\(identity.name).app"),
             userApplications.appendingPathComponent("\(identity.name).app")
         ]

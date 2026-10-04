@@ -1,6 +1,6 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Turning Background Task Management records into registrations, against
 /// fixtures taken verbatim from a real machine.
@@ -14,7 +14,6 @@ import BrimCore
 /// `BTMStoreTests` covers that; what these protect is the mapping from a
 /// record to a row, which is the same either way.
 final class BackgroundItemSurfaceTests: XCTestCase {
-
     private let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
     /// Shape copied from real `sfltool dumpbtm` output.
@@ -134,7 +133,10 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         // inventing one for the wrong account.
         let found = await surface(text, homes: [:]).registrations(in: root)
         let item = try XCTUnwrap(found.first { $0.label == "OtherUserAgent" })
-        XCTAssertEqual(item.programPath, "/Users/999/Library/Thing.app")
+        XCTAssertNil(item.programPath)
+        XCTAssertEqual(item.rawTargetPath, "/Users/999/Library/Thing.app")
+        XCTAssertTrue(item.targetPresence.isUnknown)
+        XCTAssertFalse(item.isStale)
     }
 
     func testAHelperIsAttributedToTheAppThatShipsIt() async throws {
@@ -182,8 +184,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         let ghost = try XCTUnwrap(found.first { $0.label == "Ghost" })
 
         XCTAssertTrue(ghost.isStale)
-        XCTAssertTrue(ghost.isActionableStale, "A third-party leftover is actionable")
-        XCTAssertTrue(ghost.evidence.contains("gone"))
+        XCTAssertFalse(ghost.isActionableStale, "A listed BTM record has no scoped removal API")
+        XCTAssertTrue(ghost.evidence.contains("missing"))
     }
 
     func testAppleItemsAreNeverOfferedAsCleanable() async throws {
@@ -265,7 +267,7 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         XCTAssertEqual(
             BackgroundItemSurface.bundleIdentifier(in: "2."), "",
             "A type and nothing after it names no bundle, and says so rather than "
-            + "offering the type as if it were one"
+                + "offering the type as if it were one"
         )
         XCTAssertEqual(BackgroundItemSurface.bundleIdentifier(in: ""), "")
         XCTAssertEqual(
@@ -294,12 +296,11 @@ final class BackgroundItemSurfaceTests: XCTestCase {
 /// a scan nobody had asked for. Reading the store directly costs nothing,
 /// and this is the test that keeps it that way.
 final class BackgroundItemPromptTests: XCTestCase {
-
     func testTheScanPathDoesNotRunSFLTool() throws {
         let scan = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // BrimCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // BrimCore
+            .deletingLastPathComponent() // BrimCoreTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // BrimCore
             .appendingPathComponent("Sources/BrimScan")
 
         let files = FileManager.default.enumerator(at: scan, includingPropertiesForKeys: nil)?
@@ -315,7 +316,7 @@ final class BackgroundItemPromptTests: XCTestCase {
                 XCTAssertFalse(
                     text.contains(invocation),
                     "\(file.lastPathComponent) reaches for sfltool, which asks the user for an "
-                    + "administrator password in the middle of a scan"
+                        + "administrator password in the middle of a scan"
                 )
             }
         }
@@ -339,8 +340,13 @@ final class BackgroundItemPromptTests: XCTestCase {
     private final class RunCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0
-        func record() { lock.lock(); value += 1; lock.unlock() }
-        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+        func record() {
+            lock.lock(); value += 1; lock.unlock()
+        }
+
+        var count: Int {
+            lock.lock(); defer { lock.unlock() }; return value
+        }
     }
 }
 
@@ -351,11 +357,10 @@ final class BackgroundItemPromptTests: XCTestCase {
 /// for both of its jobs. Brim listed all four under "Still in use" because
 /// a job with no program was treated as a job whose program was fine.
 final class EmptyLaunchdJobTests: XCTestCase {
-
     func testAJobWithNothingToRunIsNotRunning() {
         let job = LaunchdRegistrationSurface.parse(dictionary: [:], fallbackLabel: "com.google.keystone.agent")
 
-        XCTAssertNotNil(job, "launchd falls back to the file name, so this is still a job")
+        XCTAssertNil(job, "An empty dictionary has no required Label and cannot identify a launchd service.")
         XCTAssertNil(job?.program, "An empty plist names no program")
     }
 

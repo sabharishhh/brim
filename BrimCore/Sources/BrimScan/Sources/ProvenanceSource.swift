@@ -23,7 +23,21 @@ import Foundation
 /// Only the first level of the places applications keep data is read, so
 /// this costs one listing and a few attribute reads per folder.
 public struct ProvenanceSource: EvidenceSource {
-    public init() {}
+    private let budget: @Sendable () -> ScanBudget
+    private let readProvenance: @Sendable (String) -> Data?
+
+    public init(budget: @escaping @Sendable () -> ScanBudget = { ScanBudget() }) {
+        self.budget = budget
+        readProvenance = Self.provenance
+    }
+
+    init(
+        budget: @escaping @Sendable () -> ScanBudget = { ScanBudget() },
+        readProvenance: @escaping @Sendable (String) -> Data?
+    ) {
+        self.budget = budget
+        self.readProvenance = readProvenance
+    }
 
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
         await scan(for: identity, in: root).evidence
@@ -31,7 +45,8 @@ public struct ProvenanceSource: EvidenceSource {
 
     public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
         guard let bundlePath = identity.bundlePath,
-              let stamp = Self.provenance(bundlePath) else { return EvidenceFindings(evidence: []) }
+              let stamp = readProvenance(bundlePath) else { return EvidenceFindings(evidence: []) }
+        var search = DirectorySearch(budget: budget())
         let inventory = await Task.detached { InstalledBundleInventory.read(in: root) }.value
         let subject = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
         // Bundles carrying the same value. One is enough to make the value
@@ -39,8 +54,9 @@ public struct ProvenanceSource: EvidenceSource {
         // anything named only for this application.
         let resolver = IdentityResolver(root: root)
         var others: [Owner] = []
-        for bundle in inventory.bundles where bundle.resolvingSymlinksInPath().path != subject
-            && Self.provenance(bundle.path) == stamp {
+        for bundle in inventory.bundles where bundle.resolvingSymlinksInPath().path != subject {
+            guard search.canContinue(at: bundle) else { break }
+            guard readProvenance(bundle.path) == stamp else { continue }
             let other = await resolver.resolve(bundleURL: bundle)
             others.append(Owner(stamp: stamp, identifiers: other.searchBundleIdentifiers.map { $0.lowercased() },
                                 names: Self.names(for: other)))
@@ -51,18 +67,18 @@ public struct ProvenanceSource: EvidenceSource {
         let sentence = "macOS records that \(identity.name) created this, and it is named for it."
         var evidence: [Evidence] = []
         for (directory, hiddenOnly) in Self.places(in: root) {
-            guard case let .listed(entries) = DirectoryEntries.read(directory) else { continue }
-            for entry in entries where !hiddenOnly || entry.hasPrefix(".") {
+            for entry in search.entries(directory) where !hiddenOnly || entry.hasPrefix(".") {
+                guard search.canContinue(at: directory) else { break }
                 guard Self.isNamed(entry, identifiers: identifiers, names: names),
                       !others.contains(where: { Self.isNamed(entry, identifiers: $0.identifiers, names: $0.names) })
                 else { continue }
                 let url = directory.appendingPathComponent(entry)
-                guard Self.provenance(url.path) == stamp else { continue }
+                guard readProvenance(url.path) == stamp else { continue }
                 evidence.append(Evidence(url: url, tier: .B, mechanism: "ProvenanceSource",
                                          humanSentence: sentence))
             }
         }
-        return EvidenceFindings(evidence: evidence)
+        return EvidenceFindings(evidence: evidence, completeness: inventory.completeness.merging(search.completeness))
     }
 
     /// Where applications keep their own data, and whether only hidden
@@ -74,9 +90,9 @@ public struct ProvenanceSource: EvidenceSource {
         return [(home, true)]
             + [FileSystemRoot.Domain.userDotConfig, .userDotCache, .userDotLocalShare, .userDotLocalState,
                .userApplicationSupport, .userCaches, .userLogs, .darwinUserCache, .darwinUserTemp]
-                .map { (root.url(for: $0), false) }
+            .map { (root.url(for: $0), false) }
             + ["Sounds", "HTTPStorages", "WebKit", "Saved Application State"]
-                .map { (library.appendingPathComponent($0), false) }
+            .map { (library.appendingPathComponent($0), false) }
     }
 
     /// The application's names as a folder would spell them: its own name,
@@ -84,7 +100,7 @@ public struct ProvenanceSource: EvidenceSource {
     /// usually the product (`codex` in `com.openai.codex`). Component names
     /// are left out: Sparkle's `Updater` is in half the applications here.
     static func names(for identity: Identity) -> [String] {
-        let generic: Set<String> = [
+        let generic: Set = [
             "client", "desktop", "macos", "application", "helper", "agent", "launcher",
             "service", "electron", "main", "native", "mac", "app"
         ]

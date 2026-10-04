@@ -93,7 +93,7 @@ public enum SparkleAppcast {
         private var current: AppcastItem?
         private var text = ""
         private var deltaDepth = 0
-        nonisolated(unsafe) private static let dateFormat: DateFormatter = {
+        private static let dateFormat: DateFormatter = {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"

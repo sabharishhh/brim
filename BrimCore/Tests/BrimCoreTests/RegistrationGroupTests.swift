@@ -1,5 +1,5 @@
-import XCTest
 import BrimCore
+import XCTest
 
 /// Grouping the background list by application.
 ///
@@ -8,7 +8,6 @@ import BrimCore
 /// listed by mechanism instead of by owner, which is the same failure the
 /// leftovers list had.
 final class RegistrationGroupTests: XCTestCase {
-
     private func item(
         _ kind: Registration.Kind, _ label: String,
         owner: String? = nil, program: String? = nil, record: String? = nil,
@@ -124,14 +123,14 @@ final class RegistrationGroupTests: XCTestCase {
         XCTAssertEqual(groups[0].displayName, "orphan.job")
     }
 
-    func testWhatMacOSClearsIsKeptApartFromWhatItDoesNot() {
+    func testMissingBackgroundTargetsDoNotPromiseAutomaticCollection() {
         // The AppCleaner incident: two background items reported as left
         // behind, which macOS dropped by itself a couple of minutes later.
         let sweeps = RegistrationGroup.group([
             item(.backgroundItem, "AppCleaner", owner: "net.freemacsoft.AppCleaner",
                  program: "/Applications/AppCleaner.app", exists: false)
         ])
-        XCTAssertTrue(sweeps[0].staleClearsItself)
+        XCTAssertFalse(sweeps[0].staleClearsItself)
 
         let persists = RegistrationGroup.group([
             item(.launchdJob, "com.vendor.agent", owner: "com.vendor.agent",
@@ -158,7 +157,6 @@ final class RegistrationGroupTests: XCTestCase {
 /// while still loaded: gone from disk, still running, and nothing left to
 /// explain why.
 final class LaunchdJobFileTests: XCTestCase {
-
     func testJobFilesAreRecognisedByWhereTheyLive() {
         let agents = "/Users/someone/Library/LaunchAgents/com.google.keystone.agent.plist"
         let daemons = "/Library/LaunchDaemons/com.vendor.helper.plist"

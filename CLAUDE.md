@@ -1,8 +1,8 @@
 # Working on Brim
 
-Brim tells people what software has left on their Mac and proves it is gone
-when they remove it. Everything below exists because getting one of these
-wrong cost real time in a previous session.
+Brim traces what software has left on a Mac and records what removal
+confirmed, what remains and what could not be checked. Everything below
+exists because getting one of these wrong cost real time in a previous session.
 
 ## How to work here
 
@@ -29,14 +29,38 @@ lead with the correction and move on. Do not re-explain the mistake.
 and report at the end. Do not stop after each one to ask whether to
 continue.
 
+**Keep the documentation current as work progresses.** Update the relevant
+project overview, implementation notes and task-specific records after a
+meaningful milestone, when a bug changes the understanding of the system,
+and before opening or updating a pull request. Record the defect, its fix,
+what was actually verified and any remaining limitation. Keep planned work
+separate from shipped behavior. Update existing explanations instead of
+leaving contradictory claims or adding a second account of the same fact.
+
 **Ask before destroying anything**, including deleting files that look like
 dead code. Everything else, just do.
+
+**Keep the uninstall release scope bounded.** Universal erasure of every
+file, helper, permission and macOS registration is deferred for this release.
+Do not treat unsupported records as another completion blocker or hide them.
+Fix concrete attribution, supported-removal, verification and recovery bugs.
+Broader selective adapters need a legitimate removal route, exact ownership,
+repeatable independent readback and isolated lifecycle qualification. Never
+substitute a shared-store reset, private database edit or blanket restart
+promise for that evidence. This scope decision does not excuse incomplete
+associated-file discovery or failed supported actions.
 
 ## Testing
 
 Test the defect, not the surface. A test earns its place by failing against
 the old behaviour, and the best ones in this repo name the incident in their
 comment so the next person knows what they are protecting.
+
+Registration lifecycle experiments that can create sandbox containers,
+trigger background activity notifications or leave macOS-owned records must
+run in a disposable account or VM, never in the person's regular account.
+Keep such recipes outside the regular test targets. Removing a job file and
+stopping its process does not prove that its macOS registration disappeared.
 
 Real environment tests live behind `BRIM_REAL_ENV=1`. They touch the actual
 machine, so the harness must leave nothing behind. It has failed at this
@@ -82,11 +106,12 @@ read reports that it could not be read. `RegistrationCoverage` and
 not a directory. Two rows for `Application Support/Codex` and
 `Caches/Codex` is a failure of the list, not of the user.
 
-**Ask once, at the start.** Everything Brim needs from the person is
-settled during setup, while they are paying attention to setup. A
-permission dialog standing between someone and a list they asked to see
-is a bug, and the fix is usually to find the free way to read the same
-thing.
+**Reading a list must not request administrator access.** Full Disk Access
+is offered during setup. Scanning uses the app's permissions and reports
+unreadable locations. Protected recovery copies are read only after the
+person explicitly asks. Protected cleanup requests administrator access
+once for the approved batch, then ends the temporary process. Brim does
+not register a background service or keep workers alive after it quits.
 
 **Approval comes from a person, in Brim's window, or not at all.**
 `requestApproval` returns a receipt and cannot approve anything. The only
@@ -103,12 +128,13 @@ for five minutes: two processes cannot share one, and that is the point.
 fails if a second function ever returns an `ApprovalToken`.
 
 **Both ends of a connection prove who they are.** Brim is
-`com.sabharishhh.brim`, team `9LY29YLFG2`, and `MutualAuthentication` is
-the only place that decides what that means. The listener pins the app,
-the client pins the service, and a connection that cannot be pinned is
-not made. There is no boolean to switch it off: a caller either names one
-of Brim's signed components or names the anonymous same-process case out
-loud, and `XPCAuthenticationTests` fails if a third option appears.
+`com.sabharishhh.brim`, team `9LY29YLFG2`. `MutualAuthentication` pins
+Brim's XPC connections. `TemporaryAdminChannel` checks the kernel peer
+identity and the signature at both ends of its local connection, using
+the requirements in `BrimJobHelper`. The temporary executable is copied
+to a root-owned directory and its signature checked before execution.
+A connection that cannot prove its peer is refused. There is no boolean
+to switch authentication off.
 
 **Interrupt for irreversible things only.** Moving something to the Trash
 needs no fingerprint. Permanently deleting something that matters gets one
@@ -231,6 +257,11 @@ explaining it, not like a model describing it.
 
 ## Commits
 
+PR titles, descriptions, commit messages and other change descriptions must
+explain Brim's own problem and resulting behavior. Do not name reference
+projects, competitor apps, comparisons or unrelated work. Keep the text
+consolidated, brief and natural, without tool attribution or em/en dashes.
+
 Author is the user alone. No co-author trailers, no tool attribution.
 Use the user's configured Git identity for both author and committer.
 Never create a branch under `codex/`. Use a descriptive branch such as
@@ -243,6 +274,12 @@ conversation. Split unrelated changes rather than staging everything.
 
 ## macOS facts learned the hard way
 
+- **Parent folder walks must stop explicitly at the filesystem root.**
+  Foundation file URLs can alternate between root and empty path forms,
+  so comparing only the current and parent URL did not terminate a walk.
+  Require a strictly shorter absolute parent path. Cover both root and
+  ordinary targets without markers; the missed case made a test run grow
+  until the machine ran out of application memory.
 - **TCC is judged on the responsible application, not the effective user.**
   `sudo` does not grant Full Disk Access. A root shell launched from a
   terminal without it is still a process without it.
@@ -256,16 +293,15 @@ conversation. Split unrelated changes rather than staging everything.
   644 `NSKeyedArchiver` archives, one per account, named after the directory
   UUID `mbr_uid_to_uuid` returns. Reading them needs Full Disk Access and
   nothing else. `BTMStore` does that; never reach for the tool again.
-- **Nothing third party can make macOS tidy its background list.** The
-  collection pass that drops records for deleted apps runs when a client
-  reaches `BTMManagerService`, and that listener refuses anyone without
-  `com.apple.private.backgroundtaskmanagement.manage`. `sfltool` gets in
-  because Apple signs it with that entitlement. Root does not help: an
-  entitlement comes from the signature, not the user, the same way TCC is
-  judged on the responsible application. Every public `SMAppService` call
-  reaches the daemon by another route that does not collect. Opening
-  Login Items in System Settings does collect, because System Settings is
-  entitled.
+- **A stopped job and an erased background record are different facts.**
+  No selective automatic foreign-app BTM erasure route has been qualified.
+  The live uninstall left one helper listed after Trash was emptied and
+  Settings was opened. Removing its Open at Login entry manually cleared
+  the observed login and background records without restarting. That is
+  evidence for this conditional manual route, not a universal lifecycle
+  guarantee. Background switches disable activity; they do not establish
+  record erasure. Never promise that opening Settings or restarting will
+  finish every removal, or use a global reset to force one entry away.
 - **Old BTM versions stay on disk.** A `BackgroundItems-v16.btm` from a
   previous macOS still sits beside the v18 files, listing software that has
   since been removed. Read the highest version only, or invent leftovers.
@@ -350,17 +386,16 @@ conversation. Split unrelated changes rather than staging everything.
   `devplaceholder` identifier and matched neither the real application nor
   anything else, so self-removal was silently blocked. The two old
   identifiers are kept only so an upgrade can clear what they left.
-- **An `SMAppService` daemon survives an application update.** The root
-  process answering can be the one an older Brim registered, running that
-  version's rules about what is safe to remove. Check the version on
-  connect and replace a daemon you do not recognise. Bump
-  `BrimJobHelper.version` whenever the interface changes, or an older
-  daemon hangs on a selector it does not implement.
-- **Only root can clear the quarantine.** `/Library/Application
-  Support/Brim/Set aside` is root owned, so `SMAppService.unregister`
-  first and the folder is there for good. The daemon clears it through
-  `uninstallSelf` while it is still running, and only then is it
-  unregistered.
+- **Retire the earlier registered helper without deleting recovery copies.**
+  Older versions installed an `SMAppService` daemon. New protected work
+  runs in the temporary administrator process. The old plist remains
+  only so migration can identify and unregister that earlier service.
+  A failed migration must be reported rather than called complete.
+- **Only root can remove protected recovery copies.**
+  `/Library/Application Support/Brim/Set aside` is root owned. The
+  temporary administrator process lists and removes individual copies
+  after explicit approval, revalidating their identity first. Unregistering
+  the earlier service must not discard these copies or make them invisible.
 - **A Swift error loses its sentence crossing XPC.** `localizedDescription`
   is computed, so bridging an error to `NSError` and replying with it
   arrives as `Code=0 "(null)"`. `BrimXPCServer.wire` pins the sentence into
