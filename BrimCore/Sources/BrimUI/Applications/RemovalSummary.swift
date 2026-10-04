@@ -75,7 +75,7 @@ public struct RemovalSummary: Sendable {
             headline = goneSteps.isEmpty ? "Nothing was removed" : "Removed"
         }
         if isDone || !goneSteps.isEmpty {
-            subline = Self.space(of: goneSteps, result: result)
+            subline = Self.space(of: goneSteps)
         } else {
             subline = result.reason?.components(separatedBy: "\n").first ?? "It could not be moved."
         }
@@ -95,7 +95,7 @@ public struct RemovalSummary: Sendable {
     }
 
     /// Where the space went, by where it can be had back from.
-    private static func space(of steps: [Step], result: VerificationResult) -> String {
+    private static func space(of steps: [Step]) -> String {
         func total(_ include: (Step) -> Bool) -> Int64 {
             steps.filter(include).reduce(0) { $0 + $1.expectedBytes }
         }
