@@ -94,7 +94,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "11"
+    public static let version = "12"
 
     public static let teamID = "9LY29YLFG2"
 

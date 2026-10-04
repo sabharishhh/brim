@@ -4,6 +4,20 @@ import Foundation
 import Testing
 
 struct TemporaryAdminChannelTests {
+    @Test func disconnectSchedulesOneBoundedExitWithoutAsyncJobs() {
+        // Quitting during synchronous recovery deletion used to wait for that
+        // deletion, potentially leaving root work alive for fifteen minutes.
+        // Exercise the shutdown hook without a root process or any mutation.
+        let helper = Helper()
+        let exits = DispatchSemaphore(value: 0)
+        helper.disconnect(after: .milliseconds(10)) { exits.signal() }
+        helper.disconnect(after: .milliseconds(10)) { exits.signal() }
+
+        #expect(helper.connectionCancelled)
+        #expect(exits.wait(timeout: .now() + .seconds(1)) == .success)
+        #expect(exits.wait(timeout: .now() + .milliseconds(50)) == .timedOut)
+    }
+
     @Test(arguments: [UInt32(0), UInt32(1024 * 1024 + 1)])
     func refusesInvalidFrameLength(length: UInt32) throws {
         let pair = try sockets()
