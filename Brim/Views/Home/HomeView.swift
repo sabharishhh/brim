@@ -6,7 +6,7 @@ import SystemConfiguration
 /// The first page: this Mac at a glance, then in depth one click away.
 ///
 /// The Mac's name, cards for Space, Leftovers, Background and Developer,
-/// what changed, and a place to drop an app. Short phrases only, and no
+/// recently installed apps, and a place to drop an app. Short phrases only, and no
 /// number that was not measured: every figure waits for its scan.
 struct HomeView: View {
     // Each model observed directly. Nested `ObservableObject`s do not
@@ -23,7 +23,6 @@ struct HomeView: View {
 
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
-    @SwiftUI.Environment(AppSession.self) private var session
 
     init(models: SectionModels) {
         self.models = models
@@ -60,15 +59,9 @@ struct HomeView: View {
                         updatesCard
                     }
                     TimelineView(.periodic(from: .now, by: 60)) { context in
-                        HStack(alignment: .top, spacing: 16) {
-                            SinceLastLook(
-                                history: applications.history, applications: applications.applications,
-                                now: context.date, newLeftovers: newLeftoverOwners
-                            ) { shell.go(to: .leftovers) }
-                            let recent = applications.recentlyInstalled(now: context.date)
-                            if !recent.isEmpty {
-                                recentCard(recent)
-                            }
+                        let recent = applications.recentlyInstalled(now: context.date)
+                        if !recent.isEmpty {
+                            recentCard(recent)
                         }
                     }
                     DropWell { models.openApplication(from: $0, shell: shell) }
@@ -118,15 +111,6 @@ struct HomeView: View {
             return .failed(error)
         }
         return .notChecked
-    }
-
-    /// Owners with something the Leftovers list did not show last time it
-    /// was looked at (`VisitMemory`). Zero until it has been looked at once.
-    private var newLeftoverOwners: Int {
-        let new = session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id)))
-        guard !new.isEmpty else { return 0 }
-        return leftovers.orphanedGroups
-            .filter { $0.items.contains { new.contains($0.id) } }.count
     }
 
     // MARK: - Notes
@@ -246,13 +230,15 @@ struct HomeView: View {
 
     private func recentCard(_ recent: [InstalledApplication]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently installed")
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            Text("Last 5 days")
-                .font(.brimFacts)
-                .foregroundStyle(Palette.inkSecondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 64, maximum: 80))], spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Recently installed")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.ink)
+                Text("Last 5 days")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 104))], spacing: 14) {
                 ForEach(recent) { app in
                     Button {
                         shell.go(to: .apps, lens: .all)
@@ -264,7 +250,7 @@ struct HomeView: View {
                                 .font(.caption)
                                 .foregroundStyle(Palette.inkSecondary)
                                 .lineLimit(1)
-                                .frame(width: 64)
+                                .frame(width: 84)
                         }
                     }
                     .buttonStyle(.press)
@@ -273,7 +259,7 @@ struct HomeView: View {
             }
         }
         .padding(18)
-        .frame(width: 220, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .card()
     }
 }

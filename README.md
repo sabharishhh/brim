@@ -107,8 +107,8 @@ still read current disk state. See [measurements and remaining work](docs/perfor
 
 ## Home summaries
 
-Home shows installation changes observed in the last seven days, newest first
-with each check time, and currently installed apps that arrived in the last five days. An observed removal clears
+Home shows storage and cleanup summaries, followed by currently installed apps
+that arrived in the last five days. An observed removal clears
 the recent entry; an observed reinstall starts a new five-day period. Brim
 compares its own scans, so activity between scans may not be recorded.
 
