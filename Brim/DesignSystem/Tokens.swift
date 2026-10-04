@@ -108,9 +108,10 @@ enum Metrics {
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7
 
-    /// The smallest window the three columns fit in: sidebar 200, list
-    /// 440, review pane 440, dividers. Below this the layout overlaps.
-    static let windowMinWidth: CGFloat = 1100
+    /// The smallest window. A list and its pane need 800 points side by
+    /// side; narrower than that the pane floats over the list
+    /// (`AdaptivePanes`), so every page still works at 900.
+    static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 640
     /// A list column never narrower than this.
     static let listMinWidth: CGFloat = 440

@@ -24,20 +24,29 @@ struct DeveloperView: View {
     @State private var cleanupPlanningTask: Task<Void, Never>?
     @State private var cleanupPlanningGeneration = UUID()
 
+    /// The floating pane's Close in a narrow window.
+    private func closeInspector() {
+        inspectedID = nil
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        AdaptivePanes(
+            detailWidth: reviewRequest == nil ? 340 : 440,
+            hasDetail: reviewRequest != nil || inspectedID != nil,
+            isReviewing: reviewRequest != nil,
+            close: closeInspector
+        ) {
             VStack(spacing: 0) {
                 header
                 scanScope
                 content
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
+        } detail: {
             inspector
-                .frame(width: reviewRequest == nil ? 340 : 440)
         }
         .task { await model.loadIfNeeded(service: service) }
         .onDisappear {
