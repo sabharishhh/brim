@@ -20,10 +20,10 @@ public actor IdentityResolver {
         if let entry = cache[bundleURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL {
             return entry.identity
         }
-        let identity = await Task.detached {
-            self.parseBundle(bundleURL)
-        }.value
-        cache[bundleURL] = CacheEntry(identity: identity, timestamp: Date())
+        let identity = await parseBundle(bundleURL)
+        if !Task.isCancelled {
+            cache[bundleURL] = CacheEntry(identity: identity, timestamp: Date())
+        }
         return identity
     }
 
@@ -31,10 +31,10 @@ public actor IdentityResolver {
         if let entry = cache[launchdPlistURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL {
             return entry.identity
         }
-        let identity = await Task.detached {
-            self.parseLaunchd(launchdPlistURL)
-        }.value
-        cache[launchdPlistURL] = CacheEntry(identity: identity, timestamp: Date())
+        let identity = await parseLaunchd(launchdPlistURL)
+        if !Task.isCancelled {
+            cache[launchdPlistURL] = CacheEntry(identity: identity, timestamp: Date())
+        }
         return identity
     }
 
@@ -42,16 +42,17 @@ public actor IdentityResolver {
         if let entry = cache[receiptURL], Date().timeIntervalSince(entry.timestamp) < cacheTTL {
             return entry.identity
         }
-        let identity = await Task.detached {
-            self.parseReceipt(receiptURL)
-        }.value
-        cache[receiptURL] = CacheEntry(identity: identity, timestamp: Date())
+        let identity = await parseReceipt(receiptURL)
+        if !Task.isCancelled {
+            cache[receiptURL] = CacheEntry(identity: identity, timestamp: Date())
+        }
         return identity
     }
 
     // MARK: - Offloaded Blocking Parsing
 
-    private nonisolated func parseBundle(_ bundleURL: URL) -> Identity {
+    @concurrent
+    private nonisolated func parseBundle(_ bundleURL: URL) async -> Identity {
         // Enforce boundary check
         let realPath = bundleURL.resolvingSymlinksInPath().path
         let rootPath = root.rootURL.resolvingSymlinksInPath().path
@@ -118,7 +119,8 @@ public actor IdentityResolver {
         )
     }
 
-    private nonisolated func parseLaunchd(_ launchdPlistURL: URL) -> Identity {
+    @concurrent
+    private nonisolated func parseLaunchd(_ launchdPlistURL: URL) async -> Identity {
         let name = launchdPlistURL.deletingPathExtension().lastPathComponent
         var label: String? = nil
         var programPath: String? = nil
@@ -138,7 +140,8 @@ public actor IdentityResolver {
         return Identity(name: name, launchdLabel: label, launchdProgramPath: programPath)
     }
 
-    private nonisolated func parseReceipt(_ receiptURL: URL) -> Identity {
+    @concurrent
+    private nonisolated func parseReceipt(_ receiptURL: URL) async -> Identity {
         let name = receiptURL.deletingPathExtension().lastPathComponent
         return Identity(name: name, packageIdentifier: name)
     }
