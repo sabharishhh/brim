@@ -43,7 +43,7 @@ public enum BrimJobHelperDaemon {
         disconnect.setEventHandler {
             var state = pollfd(fd: descriptor, events: 0, revents: 0)
             if poll(&state, 1, 0) > 0, state.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
-                helper.cancelPendingJobs()
+                helper.disconnect { exit(75) }
                 _ = shutdown(descriptor, SHUT_RDWR)
             }
         }
@@ -141,14 +141,24 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         asyncJobs.withLock { $0.cancelled }
     }
 
-    func cancelPendingJobs() {
-        let tasks = asyncJobs.withLock { jobs in
+    /// Cancellation stops owned commands first. A synchronous filesystem
+    /// operation cannot observe task cancellation, so it also needs a finite
+    /// shutdown deadline when Brim closes its connection.
+    func disconnect(after gracePeriod: DispatchTimeInterval = .seconds(3),
+                    terminate: @escaping @Sendable () -> Void) {
+        let tasks = asyncJobs.withLock { jobs -> [Task<Void, Never>]? in
+            guard !jobs.cancelled else { return nil }
             jobs.cancelled = true
             return Array(jobs.tasks.values)
         }
+        guard let tasks else { return }
         for task in tasks {
             task.cancel()
         }
+        // Native commands get time to terminate and reap their own children.
+        // A stalled recursive deletion cannot keep this root process alive
+        // until the general fifteen-minute session limit.
+        DispatchQueue.global().asyncAfter(deadline: .now() + gracePeriod, execute: terminate)
     }
 
     /// Register before a disconnect can cancel, and keep the cancellation
@@ -164,7 +174,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
             }
             let identifier = UUID()
             jobs.tasks[identifier] = Task {
-                defer { asyncJobs.withLock { $0.tasks.removeValue(forKey: identifier) } }
+                defer { _ = asyncJobs.withLock { $0.tasks.removeValue(forKey: identifier) } }
                 await operation()
             }
         }

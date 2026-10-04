@@ -44,7 +44,10 @@ public enum TemporaryAdminChannel {
         // /tmp keeps sockaddr_un below its 104-byte limit, unlike Darwin's cache path.
         var template = Array("/tmp/brim-admin-XXXXXXXX".utf8CString)
         guard mkdtemp(&template) != nil else { throw systemFailure() }
-        let directory = String(cString: template)
+        let bytes = template.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        guard let directory = String(bytes: bytes, encoding: .utf8) else {
+            throw Failure("The temporary directory could not be read.")
+        }
         let path = directory + "/channel"
         var succeeded = false
         defer {
