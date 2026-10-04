@@ -103,28 +103,24 @@ public struct BundlePluginSurface: RegistrationSurface {
             : .unavailable(kind, "The plug-in folders could not be read.", absence: .needsPermission)
     }
 
-    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
-        let failed = Self.folders.contains { folder in
-            if case .refused = DirectoryEntries.read(url(for: folder, in: root)) {
-                return true
-            }
-            return false
-        }
-        return await RegistrationSnapshot(registrations: registrations(in: root),
-                                          coverage: failed
-                                              ? .unavailable(kind, "A plug-in folder could not be read.")
-                                              : .available(kind))
+    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        await snapshot(in: root).registrations
     }
 
-    public func registrations(in root: FileSystemRoot) async -> [Registration] {
-        let fm = FileManager.default
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        var scopes: [RegistrationCoverage.Scope] = []
         var results: [Registration] = []
-
         for folder in Self.folders {
             let directory = url(for: folder, in: root)
-            guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else {
+            let names: [String]
+            switch DirectoryEntries.read(directory) {
+            case .absent: names = []
+            case let .listed(entries): names = entries
+            case .refused:
+                scopes.append(.init(namespace: directory.path, available: false))
                 continue
             }
+            scopes.append(.init(namespace: directory.path, available: true))
             for name in names.sorted() where !name.hasPrefix(".") {
                 let itemExtension = (name as NSString).pathExtension
                 if !folder.extensions.isEmpty, !folder.extensions.contains(itemExtension) {
@@ -146,13 +142,18 @@ public struct BundlePluginSurface: RegistrationSurface {
                     targetExists: true,
                     recordPath: item.path,
                     evidence: "A \(folder.singular) in \(Self.readablePath(directory.path)). "
-                        + "Loaded by macOS from that folder.",
+                        + "Available to macOS from that folder.",
                     isSystemOwned: directory.path.hasPrefix("/System/"),
-                    capability: RemovalCapability.forDeleting(item.path)
+                    capability: RemovalCapability.forDeleting(item.path),
+                    targetPresence: PathObservation.observe(item.path)
                 ))
             }
         }
-        return results
+        let complete = scopes.allSatisfy(\.available)
+        return RegistrationSnapshot(registrations: results, coverage: RegistrationCoverage(
+            kind: kind, available: complete,
+            limitation: complete ? nil : "A plug-in folder could not be read.", scopes: scopes
+        ))
     }
 
     /// A path a person recognises, with their home written as `~`.

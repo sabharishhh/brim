@@ -1,8 +1,8 @@
-import Foundation
-import Combine
 import BrimCore
-import BrimProtocol
 import BrimPrivileged
+import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Background section: what your software runs in the background,
 /// and what macOS is still being told to run for software that has gone.
@@ -22,10 +22,12 @@ import BrimPrivileged
 /// nothing.
 @MainActor
 public final class BackgroundModel: ObservableObject {
-
     @Published public private(set) var report: RegistrationReport = .empty
     @Published public private(set) var isLoading = false
-    @Published public var searchText = "" { didSet { regroup() } }
+    @Published public var searchText = "" {
+        didSet { regroup() }
+    }
+
     /// Which loose ends are picked for removal, by registration id.
     @Published public var selection: Set<String> = []
 
@@ -34,12 +36,7 @@ public final class BackgroundModel: ObservableObject {
     /// absent by design, and those are already filtered out.
     @Published public private(set) var stale: [RegistrationGroup] = []
 
-    /// Entries whose owner has gone but which macOS clears by itself.
-    ///
-    /// Kept apart from the ones that need doing something about, because
-    /// putting them together made Brim claim two AppCleaner login items
-    /// were left behind when macOS dropped them a couple of minutes later
-    /// without being asked.
+    /// Legacy grouping input. Collection is never assumed from a missing target.
     @Published public private(set) var clearingItself: [RegistrationGroup] = []
 
     /// Entries still pointing at something real, and belonging to software
@@ -47,12 +44,13 @@ public final class BackgroundModel: ObservableObject {
     @Published public private(set) var live: [RegistrationGroup] = []
 
     private var service: (any BrimServiceProtocol)?
+    private var applications: [InstalledApplication] = []
+    private var visibleReport: RegistrationReport = .empty
 
     /// Brim's privileged daemon, for the jobs that live in a folder
     /// belonging to root. Observed directly rather than through a
     /// container, because a nested ObservableObject publishes nothing.
     public let helper = PrivilegedHelperClient()
-
 
     public init() {}
 
@@ -70,7 +68,7 @@ public final class BackgroundModel: ObservableObject {
         }
         guard surviving.count != report.registrations.count else { return }
         report = RegistrationReport(registrations: surviving, coverage: report.coverage)
-        selection.formIntersection(Set(report.stale.map(\.id)))
+        updateVisibleReport()
         regroup()
     }
 
@@ -84,11 +82,19 @@ public final class BackgroundModel: ObservableObject {
     /// the search field paid it again on every character. Holding the
     /// answer is what a model is for.
     private func regroup() {
-        live = RegistrationGroup.group(matching(report.live.filter { !$0.isSystemOwned }))
-        let gone = RegistrationGroup.group(matching(report.stale))
+        live = RegistrationGroup.group(matching(visibleReport.live))
+        let gone = RegistrationGroup.group(matching(visibleReport.stale))
         stale = gone.filter { !$0.staleClearsItself }
         clearingItself = gone.filter(\.staleClearsItself)
         revision &+= 1
+    }
+
+    private func updateVisibleReport() {
+        visibleReport = RegistrationReport(
+            registrations: BackgroundScope.registrations(report.registrations, applications: applications),
+            coverage: report.coverage
+        )
+        selection.formIntersection(Set(visibleReport.stale.map(\.id)))
     }
 
     /// What the list animates on. See `LeftoversModel.revision`: a
@@ -96,11 +102,14 @@ public final class BackgroundModel: ObservableObject {
     /// SwiftUI, so the view watches a value instead.
     @Published public private(set) var revision = 0
 
-
-    public var gaps: [RegistrationCoverage] { report.gaps }
+    public var gaps: [RegistrationCoverage] {
+        report.gaps
+    }
 
     /// Surfaces Brim tried to read and could not. Worth a warning.
-    public var faults: [RegistrationCoverage] { report.gaps.filter(\.isAFault) }
+    public var faults: [RegistrationCoverage] {
+        report.gaps.filter(\.isAFault)
+    }
 
     /// Surfaces Brim will not read on purpose. Worth saying once, quietly,
     /// and never as something the person should go and fix.
@@ -112,7 +121,7 @@ public final class BackgroundModel: ObservableObject {
 
     /// Everything currently selected.
     public var selectedItems: [Registration] {
-        report.stale.filter { selection.contains($0.id) }
+        visibleReport.stale.filter { selection.contains($0.id) }
     }
 
     /// Whether this entry is something Brim can actually take away.
@@ -120,7 +129,7 @@ public final class BackgroundModel: ObservableObject {
     /// A launchd job is a file: unload it, remove the file, done. A
     /// background item is a row in a database macOS owns, and the only
     /// tool it offers resets every application's items at once, so there
-    /// is nothing honest to offer per item. Those clear themselves anyway.
+    /// is no per-item removal to offer. A missing target does not promise collection.
     ///
     /// The capability is the part that was missing. Two jobs in
     /// `/Library/LaunchAgents` were offered, authorized and then failed,
@@ -152,13 +161,15 @@ public final class BackgroundModel: ObservableObject {
 
     /// Whether this entry can be picked at all, now, given what is set up.
     public func canRemove(_ registration: Registration) -> Bool {
-        if Self.isRemovable(registration) { return true }
+        if Self.isRemovable(registration) {
+            return true
+        }
         return Self.needsTheHelper(registration) && helper.state.canRemove
     }
 
     /// Jobs that need the daemon and are waiting on it being set up.
     public var waitingOnHelper: [Registration] {
-        matching(report.stale).filter(Self.needsTheHelper)
+        matching(visibleReport.stale).filter(Self.needsTheHelper)
     }
 
     /// Brings the helper's state up to date where this section has work
@@ -186,7 +197,7 @@ public final class BackgroundModel: ObservableObject {
     /// it is running. Surfaced rather than discovered on failure, the same
     /// way the leftovers list handles a container it cannot reach.
     public var blocked: [Registration] {
-        matching(report.stale).filter {
+        matching(visibleReport.stale).filter {
             $0.kind == .launchdJob && !$0.isSystemOwned && $0.capability != .ok
         }
     }
@@ -203,13 +214,19 @@ public final class BackgroundModel: ObservableObject {
     public func toggle(_ group: RegistrationGroup) {
         let removable = group.stale.filter(canRemove)
         if isSelected(group) {
-            for item in removable { selection.remove(item.id) }
+            for item in removable {
+                selection.remove(item.id)
+            }
         } else {
-            for item in removable { selection.insert(item.id) }
+            for item in removable {
+                selection.insert(item.id)
+            }
         }
     }
 
-    public var canRemoveSelection: Bool { !selectedItems.isEmpty }
+    public var canRemoveSelection: Bool {
+        !selectedItems.isEmpty
+    }
 
     /// Whether anything picked will go through the privileged daemon, so
     /// the review can say so once rather than per row.
@@ -272,11 +289,12 @@ public final class BackgroundModel: ObservableObject {
     private func performLoad(service: any BrimServiceProtocol) async {
         self.service = service
         isLoading = true
-        report = await service.registrations()
+        async let registrationReport = service.registrations()
+        async let installed = try? service.installedApplications()
+        report = await registrationReport
+        applications = await installed ?? []
+        updateVisibleReport()
         regroup()
-        // Anything that has gone is no longer selectable.
-        let present = Set(report.stale.map(\.id))
-        selection.formIntersection(present)
         isLoading = false
 
         // After the scan, not before it. Connecting first meant

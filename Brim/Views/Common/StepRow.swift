@@ -6,6 +6,9 @@ import SwiftUI
 struct StepRow: View {
     let step: Step
     @State private var hovering = false
+    private var sizeText: String {
+        step.sizeIsKnown == false ? "Not measured" : ByteText.short(step.expectedBytes)
+    }
 
     var body: some View {
         if step.kind.targetIsPath {
@@ -49,7 +52,7 @@ struct StepRow: View {
                     .buttonStyle(.borderless)
                     .transition(.opacity)
             }
-            Text(ByteText.short(step.expectedBytes))
+            Text(sizeText)
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
@@ -60,7 +63,7 @@ struct StepRow: View {
         .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovering = inside } }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel("\(url.lastPathComponent), \(ByteText.short(step.expectedBytes))")
+        .accessibilityLabel("\(url.lastPathComponent), \(sizeText)")
         .accessibilityValue(step.target)
         .accessibilityAction(named: "Show in Finder") { RevealButton.reveal([url]) }
     }

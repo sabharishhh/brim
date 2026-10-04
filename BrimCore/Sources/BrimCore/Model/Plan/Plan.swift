@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 public enum Capability: String, Codable, Equatable, Sendable {
     case ok
     case needsHelper
@@ -122,6 +124,10 @@ public struct Step: Codable, Equatable, Sendable {
     public let tier: EvidenceTier
     public let evidence: String
     public let expectedBytes: Int64
+    /// Nil in older plans, whose sizes were measured by the scanner.
+    public let sizeIsKnown: Bool?
+    /// The identifier read before an application copy is removed. Older plans omit it.
+    public let registrationBundleID: String?
     public let capability: Capability
     public let reversible: Bool
     public let costOfError: CostOfError
@@ -135,7 +141,7 @@ public struct Step: Codable, Equatable, Sendable {
         disposition ?? .trash
     }
 
-    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil) {
+    public init(index: Int, kind: StepKind, target: String, targetFingerprint: TargetFingerprint?, tier: EvidenceTier, evidence: String, expectedBytes: Int64, capability: Capability, reversible: Bool, costOfError: CostOfError, executionPhase: ExecutionPhase = .auxiliary, disposition: StepDisposition? = nil, sizeIsKnown: Bool? = nil, registrationBundleID: String? = nil) {
         self.index = index
         self.kind = kind
         self.target = target
@@ -143,6 +149,8 @@ public struct Step: Codable, Equatable, Sendable {
         self.tier = tier
         self.evidence = evidence
         self.expectedBytes = expectedBytes
+        self.sizeIsKnown = sizeIsKnown
+        self.registrationBundleID = registrationBundleID
         self.capability = capability
         self.reversible = reversible
         self.costOfError = costOfError
@@ -165,11 +173,7 @@ public struct ExcludedItem: Codable, Equatable, Sendable {
     /// sheet could offer a row, and read as false.
     public let canBeTickedByHand: Bool?
 
-    public init(
-        target: String, reason: String,
-        evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil,
-        tier: EvidenceTier? = nil
-    ) {
+    public init(target: String, reason: String, evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil, tier: EvidenceTier? = nil) {
         self.target = target
         self.reason = reason
         self.evidence = evidence
@@ -269,10 +273,20 @@ public struct Plan: Codable, Equatable, Sendable {
     public private(set) var homebrewInstallation: HomebrewInstallation?
     /// Reviewed installations that protect identifier-wide state. Nil in older plans.
     public let survivingCopies: [Identity]?
+    public let protectedComponentIdentifiers: [String]?
+    /// Complete receipt payloads reviewed before forgetting any installer record.
+    public let receiptPayloads: [String: [String]]?
 
     public let expectedTotalBytes: Int64
 
-    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String, intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64, scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil, toolCleanupBinding: ToolCleanupBinding? = nil, homebrewInstallation: HomebrewInstallation? = nil, survivingCopies: [Identity]? = nil) {
+    public init(planId: UUID, createdAt: Date, engineVersion: String, osVersion: String,
+                intent: PlanIntent, steps: [Step], excludedItems: [ExcludedItem], expectedTotalBytes: Int64,
+                scanCompleteness: ScanCompleteness? = nil, capabilityReport: CapabilitySearchReport? = nil,
+                toolCleanupBinding: ToolCleanupBinding? = nil, homebrewInstallation: HomebrewInstallation? = nil,
+                survivingCopies: [Identity]? = nil, protectedComponentIdentifiers: [String]? = nil,
+                receiptPayloads: [String: [String]]? = nil) {
+        self.receiptPayloads = receiptPayloads?.isEmpty == false ? receiptPayloads : nil
+        self.protectedComponentIdentifiers = protectedComponentIdentifiers
         formatVersion = 1
         self.planId = planId
         self.createdAt = createdAt
@@ -337,11 +351,14 @@ public struct Plan: Codable, Equatable, Sendable {
 
     /// The helper moves these files aside without a supported restore action.
     public var setAsideBytes: Int64 {
-        steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        steps.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+            .reduce(0) { $0 + $1.expectedBytes }
     }
 
     private var ordinaryFileRemovals: [Step] {
-        steps.filter { $0.kind == .trashPath || $0.kind == .removeLaunchdPlist }
+        steps.filter { $0.kind == .trashPath || $0.kind == .removeLaunchdPlist
+            || ($0.kind == .trashPathPrivileged && $0.effectiveDisposition == .delete)
+        }
     }
 
     /// Whether `undo` can put anything back. False once every step in the plan

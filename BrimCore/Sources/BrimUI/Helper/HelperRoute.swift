@@ -1,19 +1,11 @@
 import BrimCore
 import BrimPrivileged
 import BrimProtocol
+import BrimScan
 import Foundation
 
-/// How the service reaches Brim's helper, installed once for the whole app.
-///
-/// The helper used to be handed to the service by the Background section,
-/// and only when that section had old jobs waiting, so a removal started
-/// from Leftovers or an uninstall found no helper and recorded
-/// `needs_helper_not_set_up` whatever was installed. Installer receipts
-/// travelled the same way and failed the same way.
-///
-/// Installing the route asks macOS nothing. Reading the helper's status is
-/// what makes macOS announce a background item, so the route asks only
-/// when a plan is actually running a step that needs the helper.
+/// Connects approved protected operations to a temporary administrator process.
+/// Availability and normal scans never request authentication.
 @MainActor
 public enum HelperRoute {
     /// The one helper client, kept so a review can ask about it.
@@ -21,6 +13,19 @@ public enum HelperRoute {
 
     public static func connect(_ helper: PrivilegedHelperClient, to service: any BrimServiceProtocol) async {
         connected = helper
+        // Read the existing store first. Calling Service Management on a fresh
+        // installation can itself announce a background item.
+        let previous = await BackgroundItemSurface().registrations(in: FileSystemRoot())
+        if previous.contains(where: { registration in
+            let parts = registration.identifier.split(separator: ".", maxSplits: 1)
+            let identifier = parts.count == 2 && parts[0].allSatisfy(\.isNumber)
+                ? String(parts[1]) : registration.identifier
+            return identifier == BrimJobHelper.machServiceName
+        }) {
+            try? await helper.retireRegisteredHelper()
+        }
+        await service.usePrivilegedBatch(begin: { await helper.beginBatch() },
+                                         end: { await helper.endBatch() })
         await service.usePrivilegedRemover { path in
             await remove(path, helper: helper)
         }
@@ -30,6 +35,34 @@ public enum HelperRoute {
             }
             return await helper.forgetReceipt(packageID: packageID)
         }
+        await service.useRecoveryVerifier {
+            try await helper.freshRecoveryItems().map {
+                RecoveryCopy(path: $0.path, name: $0.name, bundleID: $0.bundleID,
+                             sizeBytes: $0.sizeBytes, sizeIsKnown: $0.sizeIsKnown,
+                             fingerprint: TargetFingerprint(dev: $0.dev, ino: $0.ino, mtime: $0.mtime))
+            }
+        }
+        await service.useRecoveryCopies(reader: {
+            if let problem = await ready(helper) {
+                throw NSError(domain: "BrimRecovery", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: problem])
+            }
+            return try await helper.listRecoveryItems().map {
+                RecoveryCopy(path: $0.path, name: $0.name, bundleID: $0.bundleID,
+                             sizeBytes: $0.sizeBytes, sizeIsKnown: $0.sizeIsKnown,
+                             fingerprint: TargetFingerprint(dev: $0.dev, ino: $0.ino, mtime: $0.mtime))
+            }
+        }, remover: { path, fingerprint in
+            if let problem = await ready(helper) {
+                return problem
+            }
+            guard let identifier = RecoveryCopy.identifier(for: path) else {
+                return "That is not an individual recovery copy."
+            }
+            return await helper.removeRecoveryItem(identifier: identifier,
+                                                   expectedDevice: fingerprint.dev,
+                                                   expectedInode: fingerprint.ino)
+        })
     }
 
     /// Sends a path to whichever of the helper's operations covers its
@@ -76,32 +109,14 @@ public enum HelperRoute {
         return connected?.state
     }
 
-    /// Registers the helper, and opens Login Items when macOS wants the
-    /// person to allow it there.
-    public static func turnOn() {
-        guard let connected else { return }
-        connected.install()
-        if connected.state == .waitingForApproval {
-            connected.openSettings()
-        }
-        checkedThisLaunch = false
+    /// Explicitly reads protected recovery copies, then stops the process.
+    public static func authorizeRecoveryRead() async -> String? {
+        guard let connected else { return "Administrator cleanup is unavailable in this window." }
+        return await connected.authorizeRecoveryRead()
     }
 
-    private static var checkedThisLaunch = false
-
-    /// Nil when the helper can take work, otherwise what the person can do
-    /// about it. The status is read every time, because the person can
-    /// switch the helper off in System Settings while Brim is open. The
-    /// version is checked once per launch: a daemon an older Brim registered
-    /// applies that version's rules.
     private static func ready(_ helper: PrivilegedHelperClient) async -> String? {
         helper.refresh()
-        if helper.state == .ready, !checkedThisLaunch {
-            await helper.verifyVersion()
-            checkedThisLaunch = helper.state == .ready
-        }
-        guard helper.state != .ready else { return nil }
-        return "Brim's helper is not turned on, so nothing in a system folder can move. "
-            + "It can be turned on in Background."
+        return helper.state == .ready ? nil : "Administrator cleanup is unavailable in this copy of Brim."
     }
 }
