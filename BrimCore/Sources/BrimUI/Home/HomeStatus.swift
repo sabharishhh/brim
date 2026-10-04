@@ -24,6 +24,22 @@ public enum CardStatus: Equatable, Sendable {
 /// is partial rather than clear, because an unreadable Library is not an
 /// empty one.
 public enum HomeStatus {
+    /// Changes is a short activity record. Large size drift belongs to the
+    /// application detail; here only installations, removals and updates count.
+    public static func changes(_ history: InstallHistory, now: Date = Date()) -> [InstallChange] {
+        guard history.snapshots >= 2 else { return [] }
+        let cutoff = now.addingTimeInterval(-7 * 86400)
+        return history.changes.filter {
+            guard $0.until >= cutoff, $0.until <= now else { return false }
+            switch $0.kind {
+            case .appeared, .disappeared: return true
+            case let .updated(oldVersion, newVersion):
+                return oldVersion?.isEmpty == false && newVersion?.isEmpty == false
+            case .grew, .shrank: return false
+            }
+        }
+    }
+
     public struct Leftovers: Equatable, Sendable {
         public var removedApps: Int
         /// Counted as the Leftovers list counts its rows.

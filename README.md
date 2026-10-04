@@ -105,6 +105,18 @@ Brim shares overlapping application reads, reuses ownership claims within a
 review, and bounds independent measurements to four workers. Later checks
 still read current disk state. See [measurements and remaining work](docs/performance.md).
 
+## Home summaries
+
+Home shows storage and cleanup summaries, followed by currently installed apps
+that arrived in the last five days. An observed removal clears
+the recent entry; an observed reinstall starts a new five-day period. Brim
+compares its own scans, so activity between scans may not be recorded.
+
+Check Again also checks which removals still have files in Trash. The Remnants
+card measures data belonging to removed apps separately from unknown storage.
+Unreadable locations remain identified in Remnants without asking for
+administrator access merely to open Home.
+
 ## Building from source
 
 You need Xcode 27 and a free Apple ID signed in to Xcode.

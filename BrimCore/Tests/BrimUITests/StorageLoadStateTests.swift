@@ -15,6 +15,7 @@ import Testing
         #expect(model.startupVolume?.freeRightNow == 200)
         #expect(model.isLoading)
         #expect(!model.hasEstimate)
+        #expect(model.brimCanClearFigure == "…")
         #expect(!model.estimateUnavailable)
         let items = [leftover("Removed", bytes: 100), leftover("Unknown", bytes: 400, orphaned: false)]
         await service.finish(.success(items))
@@ -36,6 +37,7 @@ import Testing
         #expect(model.startupVolume?.freeRightNow == 200)
         #expect(model.hasEstimate)
         #expect(model.estimateUnavailable)
+        #expect(model.brimCanClearFigure == "Size unavailable")
         #expect(!model.isLoading)
     }
 
@@ -58,6 +60,25 @@ import Testing
         #expect(model.brimCanClearCount == 0)
         #expect(!model.estimateUnavailable)
         #expect(!model.isLoading)
+    }
+
+    /// A scan can return a removed app's location without being able to size it.
+    /// Space must carry that limitation instead of turning its zero into Empty.
+    @Test(arguments: [Int64(0), Int64(100)])
+    func incompleteMeasurementsKeepTheEstimatePartial(bytes: Int64) async {
+        let service = StorageReads()
+        let model = StorageModel()
+        let load = Task { await model.load(service: service) }
+        await waitUntil { await service.leftoverCalls == 1 }
+        let item = Leftover(url: URL(fileURLWithPath: "/fixture/Removed"), size: bytes,
+                            category: .orphaned, sizeIsKnown: false)
+        await service.finish(.success([item]))
+        await load.value
+        #expect(model.hasEstimate)
+        #expect(model.estimateUnavailable)
+        #expect(model.brimCanClear == bytes)
+        let figure = bytes > 0 ? "At least " + ByteText.short(bytes) : "Size unavailable"
+        #expect(model.brimCanClearFigure == figure)
     }
 
     private func leftover(_ name: String, bytes: Int64, orphaned: Bool = true) -> Leftover {

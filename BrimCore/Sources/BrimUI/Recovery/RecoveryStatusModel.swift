@@ -1,8 +1,8 @@
-import Foundation
-import Combine
 import AppKit
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Live view of what is still recoverable from the Trash.
 ///
@@ -16,12 +16,19 @@ import BrimProtocol
 public final class RecoveryStatusModel: ObservableObject {
     @Published public private(set) var items: [RecoverableItem] = []
     @Published public private(set) var isRefreshing = false
+    /// A failed refresh cannot support a claim that the old items are recoverable.
+    @Published public private(set) var isAvailable = false
     /// True when the watcher could not get kernel events and is polling, so
     /// the UI can explain the delay rather than appear broken.
     @Published public private(set) var isPolling = false
 
-    public var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
-    public var isEmpty: Bool { items.isEmpty }
+    public var totalBytes: Int64 {
+        items.reduce(0) { $0 + $1.bytes }
+    }
+
+    public var isEmpty: Bool {
+        items.isEmpty
+    }
 
     private let watcher: TrashWatcher
     private var service: (any BrimServiceProtocol)?
@@ -44,8 +51,7 @@ public final class RecoveryStatusModel: ObservableObject {
     /// Loads the current state and begins watching. Safe to call repeatedly:
     /// a view that reappears refreshes rather than starting a second watcher.
     public func start(service: any BrimServiceProtocol) async {
-        self.service = service
-        await refresh()
+        await refresh(service: service)
 
         guard !started else { return }
         started = true
@@ -54,7 +60,9 @@ public final class RecoveryStatusModel: ObservableObject {
             await self?.refresh()
         }
         let mode = await watcher.mode
-        if case .polling = mode { isPolling = true }
+        if case .polling = mode {
+            isPolling = true
+        }
 
         observeActivation()
     }
@@ -69,8 +77,16 @@ public final class RecoveryStatusModel: ObservableObject {
         await watcher.stop()
 
         let center = NSWorkspace.shared.notificationCenter
-        for observer in activationObservers { center.removeObserver(observer) }
+        for observer in activationObservers {
+            center.removeObserver(observer)
+        }
         activationObservers = []
+    }
+
+    /// Re-read recoverability when the person asks to check the page again.
+    public func refresh(service: any BrimServiceProtocol) async {
+        self.service = service
+        await refresh()
     }
 
     /// Call after Brim removes something, so the indicator updates without
@@ -84,7 +100,7 @@ public final class RecoveryStatusModel: ObservableObject {
     /// watcher stand down while we are in the background.
     private func observeActivation() {
         let center = NSWorkspace.shared.notificationCenter
-        let watcher = self.watcher
+        let watcher = watcher
 
         activationObservers.append(center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -127,12 +143,6 @@ public final class RecoveryStatusModel: ObservableObject {
             }
             while refreshRequested, !Task.isCancelled {
                 refreshRequested = false
-                // The Trash changing is also the moment a removal's registration
-                // can go stale: emptying it leaves macOS pointing at a bundle
-                // that is no longer there. Reconcile before reading, so the
-                // state the UI shows and the state of the machine agree.
-                await service.reconcileRegistrations()
-                guard !Task.isCancelled else { return }
                 do {
                     let fetched = try await service.recoverableItems()
                     guard !Task.isCancelled else { return }
@@ -140,10 +150,16 @@ public final class RecoveryStatusModel: ObservableObject {
                     if items != fetched {
                         items = fetched
                     }
+                    isAvailable = true
                 } catch {
-                    // A failed read is not proof that the Trash is empty.
-                    return
+                    guard !Task.isCancelled else { return }
+                    // Keep the last reading, but do not present it as current.
+                    isAvailable = false
                 }
+                guard !Task.isCancelled else { return }
+                // Clear registrations pointing at vanished bundles after publishing
+                // the current Trash state. Maintenance must not delay that count.
+                await service.reconcileRegistrations()
             }
         }
         refreshTask = task

@@ -111,6 +111,22 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
+    /// Current inventory rows installed within five days, newest first.
+    /// Removing a row also removes it here; a reinstall receives its latest
+    /// installation date from the snapshot history.
+    public func recentlyInstalled(now: Date = Date()) -> [InstalledApplication] {
+        let cutoff = now.addingTimeInterval(-5 * 86400)
+        return applications.filter {
+            guard let installed = $0.installedAt else { return false }
+            return installed >= cutoff && installed <= now && !$0.isSystemProtected && $0.enclosingApp == nil
+        }.sorted {
+            if $0.installedAt != $1.installedAt {
+                return ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast)
+            }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
     /// Groups the selected app's footprint by what Brim can say about each
     /// item and how sure it is, strongest evidence first.
     @Published public private(set) var footprintGroups: [FootprintGroup] = []
@@ -182,16 +198,7 @@ public final class ApplicationsModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-
-        // After the enumeration, because enumerating is what writes this
-        // run's snapshot. Asking first would compare the machine against
-        // itself.
-        history = await service.whatChanged()
     }
-
-    /// What has changed since Brim last looked, and what came across from
-    /// another Mac and never ran here.
-    @Published public private(set) var history = InstallHistory(changes: [], snapshots: 0)
 
     /// Drops an application the UI already knows is gone, without waiting
     /// for a full re-enumeration.
