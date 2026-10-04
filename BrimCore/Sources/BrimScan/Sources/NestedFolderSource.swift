@@ -34,12 +34,12 @@ public struct NestedFolderSource: EvidenceSource {
         var evidence: [Evidence] = []
         let parents = Self.parents(in: root, search: &search)
         let caches = root.url(for: .userCaches).standardizedFileURL.path
-        let crashFolders = Self.crashFolders(shippedBy: identity)
+        let crashReporters = CrashReporterFolders(identity: identity)
         for parent in parents {
             let parentName = parent.lastPathComponent
             let inCaches = parent.deletingLastPathComponent().standardizedFileURL.path == caches
-            if inCaches, let sdk = crashFolders[parentName] {
-                evidence += Self.crashFolder(in: parent, sdk: sdk, identity: identity, search: &search)
+            if inCaches, let found = crashReporters.evidence(in: parent, search: &search) {
+                evidence += found
                 continue
             }
             // A folder named for the application is the application's
@@ -114,32 +114,6 @@ public struct NestedFolderSource: EvidenceSource {
         let lowered = name.lowercased()
         let base = lowered.hasSuffix(".plist") ? String(lowered.dropLast(6)) : lowered
         return identifiers.filter { base == $0 || base.hasPrefix($0 + ".") }.max { $0.count < $1.count }
-    }
-
-    /// Crash reporting frameworks that keep one folder per application in
-    /// their own cache folder, named with the application's bundle name
-    /// rather than its identifier: `Caches/SentryCrash/eqMac`. The name is
-    /// only evidence because the bundle ships the framework that writes it.
-    static let crashReporters = [
-        "SentryCrash": (framework: "Sentry.framework", product: "Sentry"),
-        "KSCrash": (framework: "KSCrash.framework", product: "KSCrash")
-    ]
-
-    private static func crashFolders(shippedBy identity: Identity) -> [String: String] {
-        let shipped = Set((identity.identitySurface?.components ?? []).map { ($0.path as NSString).lastPathComponent })
-        return crashReporters.filter { shipped.contains($0.value.framework) }.mapValues(\.product)
-    }
-
-    private static func crashFolder(
-        in parent: URL, sdk: String, identity: Identity, search: inout DirectorySearch
-    ) -> [Evidence] {
-        let names = Set([identity.bundleName, identity.name].compactMap(\.self).filter { !$0.isEmpty })
-        return search.entries(parent).filter(names.contains).map { child in
-            Evidence(
-                url: parent.appendingPathComponent(child), tier: .B, mechanism: "NestedFolderSource",
-                humanSentence: "Crash reports \(sdk) keeps for \(identity.name), which ships it."
-            )
-        }
     }
 
     static func isFolder(_ url: URL) -> Bool {
