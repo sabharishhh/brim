@@ -70,7 +70,7 @@ public struct EvidenceEngine: Sendable {
         let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
         var followed = Set([subject].compactMap(\.self))
         var frontier = Self.parts(in: rawEvidence, excluding: followed)
-        for _ in 0..<3 where !frontier.isEmpty {
+        for _ in 0 ..< 3 where !frontier.isEmpty {
             var next: [Evidence] = []
             for (helper, receiptProven) in frontier {
                 followed.insert(helper.standardizedFileURL.path)
@@ -81,7 +81,9 @@ public struct EvidenceEngine: Sendable {
                     : "Belongs to \(part.name), a helper of \(identity.name) from the same developer."
                 // Listed only where nothing already in the removal holds it,
                 // so the plan never names one bundle twice.
-                let held = rawEvidence.contains { helper.standardizedFileURL.path.hasPrefix($0.url.standardizedFileURL.path + "/") }
+                let held = rawEvidence.contains {
+                    helper.standardizedFileURL.path.hasPrefix($0.url.standardizedFileURL.path + "/")
+                }
                 if !receiptProven, !held {
                     next.append(Evidence(url: helper, tier: .B, mechanism: "HelperSource", humanSentence: sentence))
                 }
@@ -100,6 +102,20 @@ public struct EvidenceEngine: Sendable {
             frontier = Self.parts(in: next, excluding: followed)
         }
 
+        let sortedEvidence = deduplicatedEvidence(rawEvidence)
+
+        let bundleID = identity.bundleID ?? identity.name
+
+        return DiscoveredApp(
+            bundleID: bundleID,
+            name: identity.name,
+            evidence: sortedEvidence,
+            engineVersion: EvidenceEngineRevision,
+            completeness: completeness
+        )
+    }
+
+    private func deduplicatedEvidence(_ evidence: [Evidence]) -> [Evidence] {
         // Deduplicate and resolve tier conflicts.
         //
         // Keyed on the file itself rather than on the string naming it.
@@ -116,7 +132,7 @@ public struct EvidenceEngine: Sendable {
         // this is the same notion of sameness the executor holds.
         var bestEvidenceByFile = [String: Evidence]()
 
-        for e in rawEvidence {
+        for e in evidence {
             let key = Self.identity(of: e.url)
             if let existing = bestEvidenceByFile[key] {
                 // Tier comparison: S > A > B > C
@@ -130,17 +146,7 @@ public struct EvidenceEngine: Sendable {
         let bestEvidenceByPath = bestEvidenceByFile
 
         // Sort deterministically (alphabetically by path)
-        let sortedEvidence = bestEvidenceByPath.values.sorted { $0.url.path < $1.url.path }
-
-        let bundleID = identity.bundleID ?? identity.name
-
-        return DiscoveredApp(
-            bundleID: bundleID,
-            name: identity.name,
-            evidence: sortedEvidence,
-            engineVersion: EvidenceEngineRevision,
-            completeness: completeness
-        )
+        return bestEvidenceByPath.values.sorted { $0.url.path < $1.url.path }
     }
 
     /// Helper applications the evidence names, and whether an installer
@@ -159,11 +165,12 @@ public struct EvidenceEngine: Sendable {
                 add(item.url, true)
             } else if item.url.pathExtension == "app" {
                 add(item.url, false)
-            } else if item.url.pathExtension == "plist",
-                      let program = launchProgram(item.url), let bundle = outermostApp(containing: program) {
+            } else if item.url.pathExtension == "plist", let bundle = launchBundle(item.url) {
                 add(bundle, false)
             } else if isFolder(item.url) {
-                for bundle in bundles(inside: item.url) { add(bundle, false) }
+                for bundle in bundles(inside: item.url) {
+                    add(bundle, false)
+                }
             }
         }
         return Array(parts.values)
@@ -174,9 +181,15 @@ public struct EvidenceEngine: Sendable {
         var path = URL(fileURLWithPath: "/")
         for component in url.standardizedFileURL.pathComponents.dropFirst() {
             path.appendPathComponent(component)
-            if component.hasSuffix(".app") { return path }
+            if component.hasSuffix(".app") {
+                return path
+            }
         }
         return nil
+    }
+
+    private static func launchBundle(_ plist: URL) -> URL? {
+        launchProgram(plist).flatMap { outermostApp(containing: $0) }
     }
 
     /// The program a launch job's property list runs.
@@ -199,9 +212,15 @@ public struct EvidenceEngine: Sendable {
         var visited = 0
         for case let url as URL in enumerator {
             visited += 1
-            if visited > 3_000 { break }
-            if enumerator.level > 3 { enumerator.skipDescendants(); continue }
-            if url.pathExtension == "app" { found.append(url) }
+            if visited > 3000 {
+                break
+            }
+            if enumerator.level > 3 {
+                enumerator.skipDescendants(); continue
+            }
+            if url.pathExtension == "app" {
+                found.append(url)
+            }
         }
         return found
     }

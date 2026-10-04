@@ -74,8 +74,10 @@ final class HelperScopeAgreementTests: XCTestCase {
         XCTAssertEqual(HelperScope.preferenceFolders, [PrivilegedPreferenceRemoval.directory])
         XCTAssertEqual(try PrivilegedPreferenceRemoval.target(name: "com.microsoft.autoupdate2.plist").path,
                        "/Library/Preferences/com.microsoft.autoupdate2.plist")
-        for refused in ["com.apple.loginwindow.plist", ".GlobalPreferences.plist", "SystemConfiguration",
-                        "Audio", "../Keychains", "com.sabharishhh.brim.plist", "vendor.plist", "org.cups.printers.plist"] {
+        let candidates = ["com.apple.loginwindow.plist", ".GlobalPreferences.plist", "SystemConfiguration",
+                          "Audio", "../Keychains", "com.sabharishhh.brim.plist", "vendor.plist",
+                          "org.cups.printers.plist"]
+        for refused in candidates {
             XCTAssertThrowsError(try PrivilegedPreferenceRemoval.target(name: refused), refused)
             XCTAssertFalse(HelperScope.covers("/Library/Preferences/\(refused)"), refused)
         }
@@ -86,7 +88,8 @@ final class HelperScopeAgreementTests: XCTestCase {
     /// the way the helper does. Microsoft AutoUpdate, left by Teams, is
     /// the case this exists for.
     func testThePlanAndTheHelperReadAPackagesInstallFolderTheSameWay() throws {
-        let receipts = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("receipts-\(UUID().uuidString)")
+        let receipts = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("receipts-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: receipts, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: receipts) }
         let prefixes = [
@@ -97,8 +100,12 @@ final class HelperScopeAgreementTests: XCTestCase {
             "com.apple.pkg.Thing": "Library/Application Support/Apple/Thing"
         ]
         for (package, prefix) in prefixes {
-            try PropertyListSerialization.data(fromPropertyList: ["InstallPrefixPath": prefix], format: .binary, options: 0)
-                .write(to: receipts.appendingPathComponent("\(package).plist"))
+            try PropertyListSerialization.data(
+                fromPropertyList: ["InstallPrefixPath": prefix],
+                format: .binary,
+                options: 0
+            )
+            .write(to: receipts.appendingPathComponent("\(package).plist"))
         }
         let paths = [
             "/Library/Application Support/Vendor/MAU2.0/Vendor Updater.app",
@@ -116,9 +123,9 @@ final class HelperScopeAgreementTests: XCTestCase {
         XCTAssertEqual(HelperScope.payloadPackage(for: paths[0], receipts: receipts), "com.vendor.updater")
         XCTAssertEqual(paths.dropFirst().compactMap { HelperScope.payloadPackage(for: $0, receipts: receipts) }, [])
         XCTAssertThrowsError(try PrivilegedPayloadRemoval.target(packageID: "com.vendor.updater", name: "../x.app",
-                                                                  receipts: receipts))
+                                                                 receipts: receipts))
         XCTAssertThrowsError(try PrivilegedPayloadRemoval.target(packageID: "../com.vendor.updater", name: "x.app",
-                                                                  receipts: receipts))
+                                                                 receipts: receipts))
     }
 
     func testTheHelperIsNeverPromisedAnythingElse() {

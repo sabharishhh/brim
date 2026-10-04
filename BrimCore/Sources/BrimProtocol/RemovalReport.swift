@@ -146,7 +146,7 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         recorded: [String: String],
         staleRegistrations: Int,
         privacyResetFailed: Bool,
-        survivingExtensions _: Set<String>?,
+        survivingExtensions _: Set<String>? = nil,
         capability: (String) -> Capability = { RemovalCapability.forDeleting($0) },
         exists: ((String) -> Bool)? = nil,
         unknownPaths: Set<String> = [],

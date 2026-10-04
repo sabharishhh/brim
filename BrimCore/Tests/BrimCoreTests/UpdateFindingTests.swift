@@ -1,6 +1,6 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimScan
+import XCTest
 
 /// Finding updates, held to what the first real check on this Mac showed.
 ///
@@ -22,7 +22,8 @@ final class UpdateFindingTests: XCTestCase {
     }
 
     private let sequoia = UpdatePlatform(
-        system: OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0), isAppleSilicon: true)
+        system: OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0), isAppleSilicon: true
+    )
 
     // MARK: - Versions
 
@@ -40,16 +41,21 @@ final class UpdateFindingTests: XCTestCase {
     private let appcast = """
     <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>App</title>
     <description>Channel notes</description>
-    <item><title>3.0</title><sparkle:version>300</sparkle:version><sparkle:shortVersionString>3.0</sparkle:shortVersionString>
+    <item><title>3.0</title><sparkle:version>300</sparkle:version>\
+    <sparkle:shortVersionString>3.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>99.0</sparkle:minimumSystemVersion>
       <enclosure url="https://example.com/3.0.zip" length="10" sparkle:edSignature="sig3"/></item>
-    <item><title>2.9 beta</title><sparkle:version>290</sparkle:version><sparkle:shortVersionString>2.9</sparkle:shortVersionString>
+    <item><title>2.9 beta</title><sparkle:version>290</sparkle:version>\
+    <sparkle:shortVersionString>2.9</sparkle:shortVersionString>
       <sparkle:channel>beta</sparkle:channel><enclosure url="https://example.com/2.9.zip" length="10"/></item>
-    <item><title>2.1</title><sparkle:version>210</sparkle:version><sparkle:shortVersionString>2.1</sparkle:shortVersionString>
+    <item><title>2.1</title><sparkle:version>210</sparkle:version>\
+    <sparkle:shortVersionString>2.1</sparkle:shortVersionString>
       <description><![CDATA[<p>Faster.</p>]]></description>
-      <sparkle:deltas><enclosure url="https://example.com/delta.delta" sparkle:version="210" sparkle:deltaFrom="200"/></sparkle:deltas>
+      <sparkle:deltas><enclosure url="https://example.com/delta.delta" sparkle:version="210" sparkle:deltaFrom="200"/>\
+      </sparkle:deltas>
       <enclosure url="https://example.com/2.1.zip" length="1234" sparkle:edSignature="sig21"/></item>
-    <item><title>2.0</title><sparkle:version>200</sparkle:version><sparkle:shortVersionString>2.0</sparkle:shortVersionString>
+    <item><title>2.0</title><sparkle:version>200</sparkle:version>\
+    <sparkle:shortVersionString>2.0</sparkle:shortVersionString>
       <enclosure url="https://example.com/2.0.zip" length="10"/></item>
     </channel></rss>
     """
@@ -71,7 +77,8 @@ final class UpdateFindingTests: XCTestCase {
         let feed = """
         <rss xmlns:sparkle="x"><channel>
         <item><sparkle:version>300</sparkle:version><sparkle:shortVersionString>2.0</sparkle:shortVersionString></item>
-        <item><sparkle:version>250</sparkle:version><sparkle:shortVersionString>2.0.1</sparkle:shortVersionString></item>
+        <item><sparkle:version>250</sparkle:version><sparkle:shortVersionString>2.0.1</sparkle:shortVersionString>\
+        </item>
         </channel></rss>
         """
         XCTAssertEqual(SparkleAppcast.best(in: SparkleAppcast.items(in: Data(feed.utf8)), for: sequoia)?.version, "300")
@@ -145,7 +152,10 @@ final class UpdateFindingTests: XCTestCase {
         let finder = UpdateFinder(fetch: { request in
             guard request.url?.host == "itunes.apple.com" else { throw URLError(.notConnectedToInternet) }
             let body = #"{"results":[{"bundleId":"net.whatsapp.WhatsApp","version":"26.37.76","trackId":1}]}"#
-            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            )
         }, catalogueDirectory: catalogue, platform: sequoia, installedCasks: [])
 
         let check = await finder.check([store, figma, code])
@@ -162,25 +172,32 @@ final class UpdateFindingTests: XCTestCase {
     /// not checked rather than guessed.
     func testASharedStoreListingIsCheckedAgainstTheMacPage() async throws {
         let video = try app("Prime Video", "com.amazon.aiv.AIVApp", "10.148", receipt: true)
-        let blocker = try app("uBlock Origin Lite", "net.raymondhill.uBlock-Origin-Lite", "2026.920.1710", receipt: true)
+        let blocker = try app(
+            "uBlock Origin Lite",
+            "net.raymondhill.uBlock-Origin-Lite",
+            "2026.920.1710",
+            receipt: true
+        )
         let silent = try app("Silent", "com.example.silent", "1.0", receipt: true)
         let finder = UpdateFinder(fetch: { request in
             let url = request.url!
-            let ok = { (body: String) in
+            let accepted = { (body: String) in
                 (Data(body.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             }
             if url.host == "itunes.apple.com" {
-                return ok(#"{"results":["#
+                return accepted(#"{"results":["#
                     + #"{"bundleId":"com.amazon.aiv.AIVApp","kind":"software","version":"10.150.2","trackId":1},"#
-                    + #"{"bundleId":"net.raymondhill.uBlock-Origin-Lite","kind":"software","version":"2026.926.2202","trackId":2},"#
+                    + #"{"bundleId":"net.raymondhill.uBlock-Origin-Lite","kind":"software","version":"2026.926.2202""#
+                    + #","trackId":2},"#
                     + #"{"bundleId":"com.example.silent","kind":"software","version":"2.0","trackId":3}]}"#)
             }
             switch url.path {
-            case "/in/app/id1": return ok(#"<p>{"primarySubtitle":"Version 10.148"}</p>"#)
-            case "/in/app/id2": return ok(#"<span class="x">Version 2026.926.2202</span>"#)
+            case "/in/app/id1": return accepted(#"<p>{"primarySubtitle":"Version 10.148"}</p>"#)
+            case "/in/app/id2": return accepted(#"<span class="x">Version 2026.926.2202</span>"#)
             default: throw URLError(.notConnectedToInternet)
             }
-        }, catalogueDirectory: folder.appendingPathComponent("none"), platform: sequoia, region: "IN", installedCasks: [])
+        }, catalogueDirectory: folder.appendingPathComponent("none"), platform: sequoia, region: "IN",
+        installedCasks: [])
 
         let check = await finder.check([video, blocker, silent])
         XCTAssertEqual(check.updates.map(\.name), ["uBlock Origin Lite"])
@@ -199,8 +216,12 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertEqual(check.unchecked.map(\.name), ["Lonely"])
     }
 
-    private func app(_ name: String, _ bundleID: String, _ version: String, receipt: Bool = false) throws
-        -> InstalledApplication {
+    private func app(
+        _ name: String,
+        _ bundleID: String,
+        _ version: String,
+        receipt: Bool = false
+    ) throws -> InstalledApplication {
         let url = folder.appendingPathComponent("\(name).app")
         let contents = url.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
