@@ -76,6 +76,23 @@ final class PrivilegedLinkRemovalTests: XCTestCase {
         XCTAssertNil(refusal("kubectl"))
     }
 
+    func testADeadLinkKeepsTheWholeUTF8Destination() throws {
+        let destination = "missing-工具-🧰"
+        try link("unicode", to: destination)
+        XCTAssertEqual(
+            try PrivilegedLinkRemoval.deadDestination(parent: descriptor, name: "unicode"),
+            destination
+        )
+    }
+
+    func testAnUndecodableDestinationIsRefused() {
+        // CI caught the old C-string decoder. A replacement must not invent
+        // a different path when a link contains bytes UTF-8 cannot represent.
+        var destination: [CChar] = [-1, 0]
+        XCTAssertEqual(symlink(&destination, directory.appendingPathComponent("invalid").path), 0)
+        XCTAssertEqual(refusal("invalid"), .unreadable)
+    }
+
     func testARelativeLinkIsJudgedFromItsOwnFolder() throws {
         // `python3t -> ../../../Library/Frameworks/...` is how the Python
         // installer writes them. Relative to the folder, not to wherever
