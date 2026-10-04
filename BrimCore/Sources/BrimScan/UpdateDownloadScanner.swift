@@ -32,8 +32,9 @@ public struct UpdateDownloadScanner: Sendable {
 
     public func scan(home: URL, now: Date = Date()) -> [DeveloperCache] {
         var found: [DeveloperCache] = []
-        for cacheRoot in [home.appendingPathComponent("Library/Caches"),
-                          home.appendingPathComponent("Library/Application Support/Caches")] {
+        let candidates = [home.appendingPathComponent("Library/Caches"),
+                          home.appendingPathComponent("Library/Application Support/Caches")]
+        for cacheRoot in candidates {
             for folder in Self.children(of: cacheRoot) {
                 if Task.isCancelled {
                     return found
@@ -72,13 +73,14 @@ public struct UpdateDownloadScanner: Sendable {
         let files = pending + (FileManager.default.fileExists(atPath: zip.path) ? [zip] : [])
         return files.compactMap { file in
             let downloaded = Self.modified(file)
-            let state: State
-            if file.lastPathComponent.hasPrefix("temp-"), now.timeIntervalSince(downloaded) > 7 * 24 * 60 * 60 {
-                state = .unfinished(downloaded)
+            let unfinished = file.lastPathComponent.hasPrefix("temp-")
+                && now.timeIntervalSince(downloaded) > 7 * 24 * 60 * 60
+            let state: State = if unfinished {
+                .unfinished(downloaded)
             } else if Self.placed(app) >= downloaded {
-                state = .installed
+                .installed
             } else {
-                state = .waiting
+                .waiting
             }
             return item(file, app: app, state: state)
         }
@@ -153,10 +155,15 @@ public struct UpdateDownloadScanner: Sendable {
     /// The installed app a cache folder is named for: by identifier through
     /// Launch Services, otherwise by name in the Applications folders.
     public static let installedApp: Resolve = { key in
-        if key.contains("."),
-           let urls = LSCopyApplicationURLsForBundleIdentifier(key as CFString, nil)?.takeRetainedValue() as? [URL],
-           let app = urls.first(where: { !$0.path.contains("/.Trash/") && FileManager.default.fileExists(atPath: $0.path) }) {
-            return app
+        if key.contains(".") {
+            let urls = LSCopyApplicationURLsForBundleIdentifier(key as CFString, nil)?.takeRetainedValue() as? [URL]
+            if let urls {
+                if let app = urls.first(where: {
+                    !$0.path.contains("/.Trash/") && FileManager.default.fileExists(atPath: $0.path)
+                }) {
+                    return app
+                }
+            }
         }
         guard !key.contains(".") else { return nil }
         let home = FileManager.default.homeDirectoryForCurrentUser

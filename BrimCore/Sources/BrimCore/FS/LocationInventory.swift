@@ -14,7 +14,6 @@ import Foundation
 /// means deciding how a match there is proved, which is the part that
 /// takes the judgement and the part that keeps the claim honest.
 public struct LocationInventory: Sendable {
-
     /// How something in a location is shown to belong to an application.
     public enum Rule: Sendable, Equatable {
         /// A file or folder named exactly the bundle identifier.
@@ -95,7 +94,7 @@ public struct LocationInventory: Sendable {
             self.rule = rule
             self.describes = describes
             self.sentence = sentence
-            self.tier = Self.tier(for: rule, in: domain)
+            tier = Self.tier(for: rule, in: domain)
         }
 
         /// The rule decides the tier, and the domain can only weaken it.
@@ -105,7 +104,9 @@ public struct LocationInventory: Sendable {
         /// is not: two products called "Studio" are ordinary, which is
         /// why a name match is never selected by default.
         static func tier(for rule: Rule, in domain: FileSystemRoot.Domain) -> EvidenceTier {
-            if FileSystemRoot.onlyNameMatchable(domain) { return .C }
+            if FileSystemRoot.onlyNameMatchable(domain) {
+                return .C
+            }
             switch rule {
             case .bundleIdentifier, .bundleIdentifierFile, .bundleIdentifierPrefix,
                  .identifierInsideBundle:
@@ -135,7 +136,8 @@ public struct LocationInventory: Sendable {
                 return subject.identifiers.map { "\($0).\(ext)" }
             case .bundleIdentifierPrefix:
                 return subject.identifiers.flatMap { ["\($0).plist", $0] }
-            case .bundleIdentifierDelimitedPrefix, .temporaryDirectory, .clientOfService:
+            case .bundleIdentifierDelimitedPrefix, .temporaryDirectory, .clientOfService,
+                 .applicationNameDelimitedPrefix, .identifierInsideBundle, .diagnosticReport:
                 return []
             case .groupContainer:
                 if !subject.groups.isEmpty {
@@ -146,10 +148,6 @@ public struct LocationInventory: Sendable {
                 return subject.names
             case .applicationNameLowercased:
                 return subject.lowercasedNames
-            case .applicationNameDelimitedPrefix:
-                return []
-            case .identifierInsideBundle, .diagnosticReport:
-                return []
             case .homeDotFolder:
                 return subject.homeFolders + subject.lowercasedNames.map { "." + $0 }
             }
@@ -188,10 +186,7 @@ public struct LocationInventory: Sendable {
                 guard subject.identifierSet.contains(name) else { return nil }
                 return subject.owns(name) ? tier : .C
             case let .bundleIdentifierFile(ext):
-                guard name.hasSuffix("." + ext) else { return nil }
-                let stem = String(name.dropLast(ext.count + 1))
-                guard subject.identifierSet.contains(stem) else { return nil }
-                return subject.owns(stem) ? tier : .C
+                return identifierFileTier(name: name, extension: ext, subject: subject)
             case .bundleIdentifierPrefix:
                 guard let matched = subject.longestIdentifier(prefixing: name) else { return nil }
                 return subject.owns(matched) ? tier : .C
@@ -200,31 +195,52 @@ public struct LocationInventory: Sendable {
                     name: name, prefixes: subject.identifiers, separator: separator
                 )
             case .temporaryDirectory:
-                guard let matched = subject.identifiers.first(where: {
-                    Self.isTemporary(name: name, of: $0)
-                }) else { return nil }
-                return subject.owns(matched) ? tier : .C
+                return temporaryDirectoryTier(name: name, subject: subject)
             case .clientOfService:
-                guard let plus = name.lastIndex(of: "+"), plus != name.startIndex else { return nil }
-                let client = String(name[name.index(after: plus)...])
-                guard subject.identifierSet.contains(client) else { return nil }
-                return subject.owns(client) ? tier : .C
+                return clientTier(name: name, subject: subject)
             case .identifierInsideBundle:
                 // A plug-in is often named inside a component's identifier,
                 // `com.openai.sky.CUAService.AuthorizationPlugin` for one.
-                guard let declaredIdentifier,
-                      subject.longestIdentifier(prefixing: declaredIdentifier) != nil else { return nil }
-                return subject.owns(declaredIdentifier) ? tier : .C
+                return declaredIdentifierTier(declaredIdentifier, subject: subject)
             case .applicationName, .applicationNameLowercased,
                  .applicationNameDelimitedPrefix, .groupContainer, .homeDotFolder, .diagnosticReport:
                 return nil
             }
         }
 
+        private func temporaryDirectoryTier(name: String, subject: Subject) -> EvidenceTier? {
+            guard let matched = subject.identifiers.first(where: {
+                Self.isTemporary(name: name, of: $0)
+            }) else { return nil }
+            return subject.owns(matched) ? tier : .C
+        }
+
+        private func identifierFileTier(name: String, extension ext: String, subject: Subject) -> EvidenceTier? {
+            guard name.hasSuffix("." + ext) else { return nil }
+            let stem = String(name.dropLast(ext.count + 1))
+            guard subject.identifierSet.contains(stem) else { return nil }
+            return subject.owns(stem) ? tier : .C
+        }
+
+        private func clientTier(name: String, subject: Subject) -> EvidenceTier? {
+            guard let plus = name.lastIndex(of: "+"), plus != name.startIndex else { return nil }
+            let client = String(name[name.index(after: plus)...])
+            guard subject.identifierSet.contains(client) else { return nil }
+            return subject.owns(client) ? tier : .C
+        }
+
+        private func declaredIdentifierTier(_ identifier: String?, subject: Subject) -> EvidenceTier? {
+            guard let identifier,
+                  subject.longestIdentifier(prefixing: identifier) != nil else { return nil }
+            return subject.owns(identifier) ? tier : .C
+        }
+
         /// The bundle's own declaration is a record and outranks the home
         /// folder's name-only floor; a folder sharing the name is a guess.
         private func homeFolderTier(name: String, subject: Subject) -> EvidenceTier? {
-            if subject.homeFolderSet.contains(name) { return .B }
+            if subject.homeFolderSet.contains(name) {
+                return .B
+            }
             guard name.hasPrefix(".") else { return nil }
             let bare = String(name.dropFirst())
             return subject.lowercasedNames.contains(where: { lower in
@@ -237,7 +253,9 @@ public struct LocationInventory: Sendable {
         static func isReport(_ file: String, of process: String) -> Bool {
             for separator in ["-", "_"] where file.hasPrefix(process + separator) {
                 let rest = file.dropFirst(process.count + 1)
-                if rest.prefix(4).allSatisfy(\.isNumber), rest.count > 4 { return true }
+                if rest.prefix(4).allSatisfy(\.isNumber), rest.count > 4 {
+                    return true
+                }
             }
             return false
         }
@@ -313,11 +331,15 @@ public struct LocationInventory: Sendable {
         /// The longest identifier that is the name or a dotted prefix of
         /// it, found by walking the name's own prefixes.
         public func longestIdentifier(prefixing name: String) -> String? {
-            if identifierSet.contains(name) { return name }
+            if identifierSet.contains(name) {
+                return name
+            }
             var end = name.endIndex
             while let dot = name[..<end].lastIndex(of: ".") {
                 let prefix = String(name[..<dot])
-                if identifierSet.contains(prefix) { return prefix }
+                if identifierSet.contains(prefix) {
+                    return prefix
+                }
                 end = dot
             }
             return nil
@@ -340,7 +362,9 @@ public struct LocationInventory: Sendable {
         var seen: Set<FileSystemRoot.Domain> = []
         var result: [FileSystemRoot.Domain] = []
         for location in standard.locations where !notWorthSweeping.contains(location.domain) {
-            if seen.insert(location.domain).inserted { result.append(location.domain) }
+            if seen.insert(location.domain).inserted {
+                result.append(location.domain)
+            }
         }
         return result
     }
@@ -359,7 +383,7 @@ public struct LocationInventory: Sendable {
         // inventory because a folder there named after a bundle is a
         // genuine part of that application's footprint; it is only
         // useless as an answer to "what has been left behind".
-        .darwinUserTemp,
+        .darwinUserTemp
     ]
 
     public let locations: [Location]
@@ -385,12 +409,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .userPreferencesByHost, rule: .bundleIdentifierPrefix,
                  describes: "per-machine preferences",
                  sentence: "Per-machine preferences keyed to the bundle identifier. These are "
-                         + "a second copy of the settings, and a scan of Preferences alone "
-                         + "misses them."),
+                     + "a second copy of the settings, and a scan of Preferences alone "
+                     + "misses them."),
         Location(domain: .systemPreferences, rule: .bundleIdentifierPrefix,
                  describes: "preferences for every user",
                  sentence: "Preferences set for every user on this Mac, keyed to the bundle "
-                         + "identifier."),
+                     + "identifier."),
         // Prefixed rather than exact, and the difference is an updater.
         // An application installed by any route can switch to updating
         // itself afterwards, and Squirrel leaves `<identifier>.ShipIt` in
@@ -436,15 +460,15 @@ public struct LocationInventory: Sendable {
         Location(domain: .userCaches, rule: .applicationName,
                  describes: "caches",
                  sentence: "A cache folder named after the application rather than its "
-                         + "identifier."),
+                     + "identifier."),
         Location(domain: .userLogs, rule: .applicationName,
                  describes: "logs",
                  sentence: "A log folder named after the application rather than its "
-                         + "identifier."),
+                     + "identifier."),
         Location(domain: .userApplicationSupport, rule: .applicationName,
                  describes: "supporting files",
                  sentence: "Application Support named after the application rather than its "
-                         + "identifier."),
+                     + "identifier."),
         Location(domain: .userApplicationSupport, rule: .applicationNameDelimitedPrefix("-"),
                  describes: "supporting files",
                  sentence: "A support folder beginning with the application's name."),
@@ -463,7 +487,7 @@ public struct LocationInventory: Sendable {
         Location(domain: .userRecentDocuments, rule: .bundleIdentifierFile("sfl4"),
                  describes: "recently opened documents",
                  sentence: "The list macOS keeps of documents this application opened. The "
-                         + "list goes; the documents stay where they are."),
+                     + "list goes; the documents stay where they are."),
         Location(domain: .userHTTPStorages, rule: .bundleIdentifierPrefix,
                  describes: "stored web data",
                  sentence: "Cookies and web storage macOS keeps for this application."),
@@ -502,7 +526,7 @@ public struct LocationInventory: Sendable {
         Location(domain: .userDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application. These accumulate for "
-                         + "years and nothing removes them."),
+                     + "years and nothing removes them."),
         Location(domain: .systemDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application."),
@@ -571,7 +595,7 @@ public struct LocationInventory: Sendable {
         Location(domain: .userAudioComponents, rule: .identifierInsideBundle,
                  describes: "an Audio Unit",
                  sentence: "An Audio Unit whose own Info.plist declares this identifier. Audio "
-                         + "plug-ins are invisible to any scan that only reads path names."),
+                     + "plug-ins are invisible to any scan that only reads path names."),
         Location(domain: .systemAudioComponents, rule: .identifierInsideBundle,
                  describes: "an Audio Unit",
                  sentence: "An Audio Unit whose own Info.plist declares this identifier."),
@@ -592,7 +616,7 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemSecurityAgentPlugins, rule: .identifierInsideBundle,
                  describes: "a sign-in plug-in",
                  sentence: "A plug-in in how this Mac signs in or unlocks, whose own Info.plist "
-                         + "declares this identifier."),
+                     + "declares this identifier."),
         Location(domain: .systemAudioMAS, rule: .identifierInsideBundle,
                  describes: "an audio plug-in",
                  sentence: "An audio plug-in whose own Info.plist declares this identifier."),
@@ -611,8 +635,8 @@ public struct LocationInventory: Sendable {
         Location(domain: .usrLocalBin, rule: .applicationName,
                  describes: "a command line tool",
                  sentence: "A command line tool with this name. A tool has no bundle and no "
-                         + "identifier, so the only thing linking it to this application is "
-                         + "that they share a name."),
+                     + "identifier, so the only thing linking it to this application is "
+                     + "that they share a name."),
         Location(domain: .usrLocalSbin, rule: .applicationName,
                  describes: "a command line tool",
                  sentence: "A command line tool with this name, matched on the name alone."),
@@ -633,16 +657,16 @@ public struct LocationInventory: Sendable {
         Location(domain: .sharedApplicationSupport, rule: .bundleIdentifier,
                  describes: "supporting files in the shared folder",
                  sentence: "Something in the shared folder keyed to the bundle identifier. "
-                         + "Anyone on this Mac can put things here, so it is shown rather "
-                         + "than selected."),
+                     + "Anyone on this Mac can put things here, so it is shown rather "
+                     + "than selected."),
         Location(domain: .sharedUser, rule: .applicationName,
                  describes: "files in the shared folder",
                  sentence: "Something in the shared folder with this name. Anyone on this Mac "
-                         + "can put things here."),
+                     + "can put things here."),
         Location(domain: .darwinUserCache, rule: .bundleIdentifier,
                  describes: "a per-boot cache",
                  sentence: "A cache in the per-user folder macOS makes fresh each boot. "
-                         + "Nothing else enumerates these."),
+                     + "Nothing else enumerates these."),
         Location(domain: .darwinUserCache, rule: .bundleIdentifierDelimitedPrefix("-"),
                  describes: "a per-boot cache",
                  sentence: "A cache beginning with the application's identifier."),
@@ -660,26 +684,26 @@ public struct LocationInventory: Sendable {
         Location(domain: .userDotConfig, rule: .applicationNameLowercased,
                  describes: "settings",
                  sentence: "Settings kept the way cross-platform software keeps them, outside "
-                         + "the Library folder. Matched on the name alone."),
+                     + "the Library folder. Matched on the name alone."),
         Location(domain: .userDotCache, rule: .applicationNameLowercased,
                  describes: "caches",
                  sentence: "A cache kept outside the Library folder. Matched on the name "
-                         + "alone."),
+                     + "alone."),
         Location(domain: .userDotLocalShare, rule: .applicationNameLowercased,
                  describes: "stored data",
                  sentence: "Data kept outside the Library folder, which for this kind of "
-                         + "software is usually the bulk of it. Matched on the name alone."),
+                     + "software is usually the bulk of it. Matched on the name alone."),
         Location(domain: .userDotLocalState, rule: .applicationNameLowercased,
                  describes: "saved state",
                  sentence: "State kept outside the Library folder. Matched on the name alone."),
         Location(domain: .userDotLocalBin, rule: .applicationNameLowercased,
                  describes: "command line tools",
                  sentence: "A command installed outside the Library folder. Matched on the "
-                         + "name alone."),
+                     + "name alone."),
         Location(domain: .userHomeDotFolders, rule: .homeDotFolder,
                  describes: "data in your home folder",
                  sentence: "A hidden folder in your home folder. Either the application names "
-                         + "it as its own, or it carries the application's name."),
+                     + "it as its own, or it carries the application's name."),
         Location(domain: .darwinUserTemp, rule: .bundleIdentifier,
                  describes: "per-boot temporary files",
                  sentence: "Temporary files in the per-user folder macOS makes fresh each boot."),
@@ -691,6 +715,6 @@ public struct LocationInventory: Sendable {
                  sentence: "Kept by a macOS service on the application's behalf, and named for it."),
         Location(domain: .darwinUserCache, rule: .temporaryDirectory,
                  describes: "scratch folders",
-                 sentence: "Named inside the application's identifier, in the per-user folder."),
+                 sentence: "Named inside the application's identifier, in the per-user folder.")
     ])
 }

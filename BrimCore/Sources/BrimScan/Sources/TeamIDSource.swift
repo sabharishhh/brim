@@ -68,43 +68,49 @@ public struct TeamIDSource: EvidenceSource {
         let siblings = siblingScan.identities
         completeness = completeness.merging(siblingScan.completeness)
 
-        let evidence = candidates.compactMap { url -> Evidence? in
-            let name = url.lastPathComponent
-            // Another application declaring the group is a claim; one merely
-            // signed by the same vendor is not. Falling back to any sibling
-            // vetoed every group Teams declares because Visual Studio Code,
-            // which declares none, is also Microsoft's, and 22 MB of Teams'
-            // own data outlived its uninstall.
-            if let claimant = siblings.first(where: { $0.groupContainers.contains(name) }) {
-                return Evidence(
-                    url: url,
-                    tier: .S,
-                    mechanism: "TeamIDSource",
-                    humanSentence: "Shared with \(claimant.name), which is still installed and "
-                        + "declares this group."
-                )
-            }
-            // Declared by this application and nobody else: that is
-            // `GroupContainerSource`'s proof, and an S here would outweigh it.
-            if identity.searchGroupContainers.contains(name) { return nil }
-            if let sibling = siblings.first {
-                return Evidence(
-                    url: url,
-                    tier: .S,
-                    mechanism: "TeamIDSource",
-                    humanSentence: "Nobody declares it, and \(sibling.name) is from the same "
-                        + "developer. A team identifier belongs to the developer, not to one application."
-                )
-            }
-            return Evidence(
-                url: url,
-                tier: .C,
-                mechanism: "TeamIDSource",
-                humanSentence: "Sits under this developer's team identifier. The application "
-                    + "does not declare it, so Brim will not tick it for you."
-            )
+        let evidence = candidates.compactMap { url in
+            Self.evidence(for: url, identity: identity, siblings: siblings)
         }
         return EvidenceFindings(evidence: evidence, completeness: completeness)
+    }
+
+    private static func evidence(for url: URL, identity: Identity, siblings: [Identity]) -> Evidence? {
+        let name = url.lastPathComponent
+        // Another application declaring the group is a claim; one merely
+        // signed by the same vendor is not. Falling back to any sibling
+        // vetoed every group Teams declares because Visual Studio Code,
+        // which declares none, is also Microsoft's, and 22 MB of Teams'
+        // own data outlived its uninstall.
+        if let claimant = siblings.first(where: { $0.groupContainers.contains(name) }) {
+            return Evidence(
+                url: url,
+                tier: .S,
+                mechanism: "TeamIDSource",
+                humanSentence: "Shared with \(claimant.name), which is still installed and "
+                    + "declares this group."
+            )
+        }
+        // Declared by this application and nobody else: that is
+        // `GroupContainerSource`'s proof, and an S here would outweigh it.
+        if identity.searchGroupContainers.contains(name) {
+            return nil
+        }
+        if let sibling = siblings.first {
+            return Evidence(
+                url: url,
+                tier: .S,
+                mechanism: "TeamIDSource",
+                humanSentence: "Nobody declares it, and \(sibling.name) is from the same "
+                    + "developer. A team identifier belongs to the developer, not to one application."
+            )
+        }
+        return Evidence(
+            url: url,
+            tier: .C,
+            mechanism: "TeamIDSource",
+            humanSentence: "Sits under this developer's team identifier. The application "
+                + "does not declare it, so Brim will not tick it for you."
+        )
     }
 
     // Other installed applications signed by the same team.

@@ -1,7 +1,7 @@
-import XCTest
 import BrimCore
-@testable import BrimScan
 @testable import BrimOps
+@testable import BrimScan
+import XCTest
 
 /// What Developer finds, held to what this Mac actually had.
 ///
@@ -65,11 +65,20 @@ final class DeveloperCoverageTests: XCTestCase {
         try put("Library/Caches/node-gyp/22.0/include")
         try put("Library/Caches/vscode-cpptools/ipch/x")
         let clang = darwin.appendingPathComponent("clang/ModuleCache/x.pcm")
-        try FileManager.default.createDirectory(at: clang.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: clang.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try Data([1]).write(to: clang)
 
-        let caches = DeveloperCacheScanner(home: home, darwinCache: darwin, projects: nil, updates: nil, oldVersions: nil)
-        let tools = Set(try XCTUnwrap(awaitResult { await caches.scan() }).map(\.tool))
+        let caches = DeveloperCacheScanner(
+            home: home,
+            darwinCache: darwin,
+            projects: nil,
+            updates: nil,
+            oldVersions: nil
+        )
+        let tools = try Set(XCTUnwrap(awaitResult { await caches.scan() }).map(\.tool))
         XCTAssertTrue(tools.isSuperset(of: ["npx", "uv", "node-gyp", "VS Code C/C++", "Clang"]), "\(tools)")
 
         let claimed = DeveloperCacheScanner.claimedPaths(home: home, darwinCache: darwin)
