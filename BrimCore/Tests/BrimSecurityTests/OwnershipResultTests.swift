@@ -56,7 +56,9 @@ struct OwnershipResultTests {
         let host = try fixture.bundle("Applications/Host.app", id: "org.example.host")
         let selected = try fixture.bundle("Applications/Host.app/Contents/Helpers/Editor.app")
         let preferences = try fixture.file("Users/tester/Library/Preferences/org.example.editor.plist")
-        let support = try fixture.file("Users/tester/Library/Application Support/Editor/state.bin")
+        // Identifier-based evidence is deterministic. A name-only fixture can
+        // inherit the local app's provenance and be selected only on that Mac.
+        let support = try fixture.file("Users/tester/Library/Application Support/org.example.editor/state.bin")
             .deletingLastPathComponent()
         let container = try fixture.file("Users/tester/Library/Containers/org.example.editor/Data/settings")
             .deletingLastPathComponent().deletingLastPathComponent()
