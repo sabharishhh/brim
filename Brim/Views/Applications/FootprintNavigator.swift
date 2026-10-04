@@ -73,27 +73,3 @@ struct FootprintNavigator: View {
         }
     }
 }
-
-extension FootprintLoss {
-    var navigationTitle: String {
-        switch self {
-        case .app: "App"
-        case .settings: "Settings"
-        case .data: "Data"
-        case .background: "Background"
-        case .rebuilds: "Rebuilds"
-        case .other: "Other"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .app: "app"
-        case .settings: "slider.horizontal.3"
-        case .data: "folder"
-        case .background: "gearshape.2"
-        case .rebuilds: "arrow.trianglehead.2.clockwise.rotate.90"
-        case .other: "doc"
-        }
-    }
-}

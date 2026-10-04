@@ -24,6 +24,11 @@ struct RemovalResultView: View {
     /// Off when the result sits inside something that already scrolls.
     var scrolls = true
 
+    /// The verification mark has settled. It resolves once, and only for a
+    /// verified success; nothing else gets the gesture.
+    @State private var resolved = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         if scrolls {
             ScrollView { column.padding(20) }
@@ -52,6 +57,9 @@ struct RemovalResultView: View {
             }
             if result.toolCleanup == nil, let plan, !gone.isEmpty {
                 removed(plan)
+            }
+            if result.toolCleanup == nil {
+                byGroup
             }
             if result.toolCleanup == nil, let report = result.report {
                 checked(report)
@@ -114,10 +122,6 @@ struct RemovalResultView: View {
             .reduce(0) { $0 + $1.expectedBytes }
         let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
             .reduce(0) { $0 + $1.expectedBytes }
-        let kinds = groups.compactMap { group -> (String, [Step])? in
-            let went = group.steps.filter { isConfirmedGone($0.target) }
-            return went.isEmpty ? nil : (group.title, went)
-        }
         return VStack(alignment: .leading, spacing: 20) {
             FactSection(
                 title: "Removed",
@@ -135,22 +139,41 @@ struct RemovalResultView: View {
                 FactDivider()
                 FactRow(label: "Free space increased", value: measuredSpaceIncrease)
             }
-            if kinds.count > 1 {
-                FactSection(title: "By kind") {
-                    ForEach(Array(kinds.enumerated()), id: \.offset) { index, kind in
-                        if index > 0 {
-                            FactDivider()
-                        }
-                        FactRow(
-                            label: kind.0,
-                            value: "\(kind.1.count.formatted()) · "
-                                + (kind.1.contains { $0.sizeIsKnown == false }
-                                    ? "Not measured" : ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes }))
-                        )
+        }
+    }
+
+    /// Each review group's outcome, in the review's order, so a file can be
+    /// followed from the inspector through the review to here.
+    @ViewBuilder
+    private var byGroup: some View {
+        let outcomes = groups.map { ($0.title, outcome(of: $0)) }.filter { !$0.1.isEmpty }
+        if !outcomes.isEmpty {
+            FactSection(title: "By group") {
+                ForEach(Array(outcomes.enumerated()), id: \.offset) { index, outcome in
+                    if index > 0 {
+                        FactDivider()
                     }
+                    FactRow(label: outcome.0, value: outcome.1)
                 }
             }
         }
+    }
+
+    /// "3 gone · 1 still here", from what the check found for this group's
+    /// own rows. Nothing is counted in two places.
+    private func outcome(of group: UninstallReviewGroup) -> String {
+        let unknown = Set(result.report?.unknownPaths ?? [])
+        let remaining = Set(result.remainingPaths)
+        let unticked = Set(result.report?.leftUnticked ?? [])
+        let steps = group.steps.map(\.target)
+        let parts: [(Int, String)] = [
+            (steps.filter(isConfirmedGone).count, "gone"),
+            (steps.filter { remaining.contains($0) && !unknown.contains($0) }.count, "still here"),
+            (steps.filter { unknown.contains($0) }.count, "not checked"),
+            (group.offers.filter { unticked.contains($0.target) }.count, "left unticked"),
+            (group.staying.count, "kept")
+        ]
+        return parts.filter { $0.0 > 0 }.map { "\($0.0.formatted()) \($0.1)" }.joined(separator: " · ")
     }
 
     private var measuredSpaceIncrease: String {
@@ -263,7 +286,14 @@ extension RemovalResultView {
                 .foregroundStyle(tint)
                 .frame(width: 44, height: 44)
                 .background(tint.opacity(0.14), in: .circle)
-                .symbolEffect(.bounce, value: result.success)
+                // A verified success settles in place once. Under Reduce
+                // Motion it only fades; anything short of success is static.
+                .scaleEffect(isVerified && !resolved && !reduceMotion ? 0.86 : 1)
+                .opacity(isVerified && !resolved ? 0 : 1)
+                .onAppear {
+                    guard isVerified, !resolved else { return }
+                    withAnimation(Motion.resolved(Motion.resolve, reduceMotion: reduceMotion)) { resolved = true }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text(headline)
                     .font(.brimPageTitle)
@@ -345,11 +375,17 @@ extension RemovalResultView {
         return "Selected locations checked again"
     }
 
+    /// Succeeded and every location was checked. A success with paths that
+    /// could not be read is not a verified one, and does not look like one.
+    private var isVerified: Bool {
+        result.success && result.report?.unknownPaths?.isEmpty != false
+    }
+
     private var symbol: String {
-        result.success ? "checkmark" : "exclamationmark"
+        isVerified ? "checkmark" : "exclamationmark"
     }
 
     private var tint: Color {
-        result.success ? Palette.success : Palette.caution
+        isVerified ? Palette.success : Palette.caution
     }
 }
