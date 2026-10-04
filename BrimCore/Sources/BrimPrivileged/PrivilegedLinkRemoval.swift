@@ -93,8 +93,9 @@ public enum PrivilegedLinkRemoval {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
         let length = readlinkat(parent, name, &buffer, Int(PATH_MAX))
         guard length > 0 else { throw Refusal.unreadable }
-        guard let destination = String(bytes: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) },
-                                       encoding: .utf8) else { throw Refusal.unreadable }
+        // readlinkat returns a byte count and does not append a terminator.
+        let bytes = buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }
+        guard let destination = String(bytes: bytes, encoding: .utf8) else { throw Refusal.unreadable }
 
         var far = stat()
         if fstatat(parent, name, &far, 0) == 0 {
