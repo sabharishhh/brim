@@ -137,6 +137,7 @@ struct OnboardingSheet: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
                 .symbolEffect(.bounce, options: .nonRepeating, value: step)
+                .symbolEffectsRemoved(reduceMotion)
             Text("Ready")
                 .font(.brimHeadline)
                 .foregroundStyle(Palette.ink)
@@ -237,7 +238,13 @@ extension OnboardingSheet {
                         .frame(width: each == step ? 16 : 6, height: 6)
                 }
             }
-            .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: step)
+            .animation(reduceMotion ? nil : Motion.quick, value: step)
+            .transaction { transaction in
+                if reduceMotion {
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Step \((Step.allCases.firstIndex(of: step) ?? 0) + 1) of \(Step.allCases.count)")
 

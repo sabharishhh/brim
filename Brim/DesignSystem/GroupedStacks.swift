@@ -64,13 +64,19 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         .scrollContentBackground(.hidden)
         .onKeyPress(.downArrow) { move(by: 1) }
         .onKeyPress(.upArrow) { move(by: -1) }
-        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: revision)
+        .animation(reduceMotion ? nil : Motion.standard, value: revision)
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     private func header(_ section: ItemGroup<Item>) -> some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+                withAnimation(reduceMotion ? nil : Motion.standard) {
                     flipped.formSymmetricDifference([section.id])
                 }
             } label: {
@@ -103,7 +109,7 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
 
     private func showAll(_ section: ItemGroup<Item>) -> some View {
         Button {
-            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            withAnimation(reduceMotion ? nil : Motion.standard) {
                 expanded.formSymmetricDifference([section.id])
             }
         } label: {
