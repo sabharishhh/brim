@@ -381,7 +381,8 @@ final class DeepUninstallTests: XCTestCase {
 
         // Nothing to reconcile while the bundle is still there: the record
         // is accurate, exactly as it is for an app sitting in the Trash.
-        await service.reconcileRegistrations()
+        let serviceInterface: any BrimServiceProtocol = service
+        await serviceInterface.reconcileRegistrations()
         XCTAssertTrue(
             LaunchServicesRegistration
                 .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
@@ -391,7 +392,7 @@ final class DeepUninstallTests: XCTestCase {
 
         // Now it goes, the way emptying the Trash removes it.
         try FileManager.default.removeItem(at: standIn)
-        await service.reconcileRegistrations()
+        await serviceInterface.reconcileRegistrations()
 
         XCTAssertFalse(
             LaunchServicesRegistration
