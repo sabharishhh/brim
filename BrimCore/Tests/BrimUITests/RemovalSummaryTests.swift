@@ -11,8 +11,10 @@ import XCTest
 final class RemovalSummaryTests: XCTestCase {
     private let app = "/Applications/X.app"
 
-    private func step(_ index: Int, _ target: String, bytes: Int64 = 10, kind: StepKind = .trashPath,
-                      phase: ExecutionPhase = .auxiliary) -> Step {
+    private func step(
+        _ index: Int, _ target: String, bytes: Int64 = 10, kind: StepKind = .trashPath,
+        phase: ExecutionPhase = .auxiliary
+    ) -> Step {
         Step(index: index, kind: kind, target: target, targetFingerprint: nil, tier: .B, evidence: "test",
              expectedBytes: bytes, capability: .ok, reversible: true, costOfError: .low, executionPhase: phase,
              disposition: .trash)

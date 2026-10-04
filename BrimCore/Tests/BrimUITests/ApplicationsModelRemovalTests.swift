@@ -45,6 +45,20 @@ final class ApplicationsModelRemovalTests: XCTestCase {
         XCTAssertNil(model.footprint)
     }
 
+    /// eqMac stayed in the inspector with its old footprint and a Remove
+    /// button after it was removed, because the panel that removed it went
+    /// away without reporting the finish. A fresh list settles it.
+    func testAReloadWithoutTheSelectedAppClearsTheSelection() async {
+        let gone = app(at: URL(fileURLWithPath: "/Applications/Gone.app"))
+        let still = app(at: URL(fileURLWithPath: "/Applications/Still.app"))
+        let model = ApplicationsModel()
+        await model.load(service: StubInventoryService(applications: [gone, still]))
+        model.select(gone)
+        await model.load(service: StubInventoryService(applications: [still]))
+        XCTAssertNil(model.selected)
+        XCTAssertNil(model.footprint)
+    }
+
     func testTheSharedTierIsLabelledSharedRatherThanGuaranteed() {
         // It read "Guaranteed", which is the opposite of what Tier S means
         // and would have read to a person as a reason to remove the item
