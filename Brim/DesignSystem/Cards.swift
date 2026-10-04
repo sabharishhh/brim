@@ -96,6 +96,7 @@ struct StatCard<Detail: View>: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -127,7 +128,7 @@ struct StatCard<Detail: View>: View {
                         Text(figure)
                             .font(.brimFigure)
                             .foregroundStyle(Palette.ink)
-                            .contentTransition(.numericText())
+                            .contentTransition(reduceMotion ? .identity : .numericText())
                         HStack(spacing: 6) {
                             StatusDot(status: status)
                             Text(phrase)
@@ -136,14 +137,12 @@ struct StatCard<Detail: View>: View {
                                 .lineLimit(1)
                         }
                     }
-                    .saturation(isRefreshing ? 0 : 1)
-                    .opacity(isRefreshing ? 0.4 : 1)
+                    .refreshAppearance(isRefreshing)
                     .transition(.opacity)
                 }
                 if status != .checking {
                     detail
-                        .saturation(isRefreshing ? 0 : 1)
-                        .opacity(isRefreshing ? 0.4 : 1)
+                        .refreshAppearance(isRefreshing)
                 }
             }
             .padding(20)
@@ -151,15 +150,15 @@ struct StatCard<Detail: View>: View {
             // Keep the card's full height, including its padding, when
             // its meter legend needs more room than the minimum allows.
             .fixedSize(horizontal: false, vertical: true)
-            .animation(Motion.standard, value: status == .checking)
-            .animation(.smooth(duration: isRefreshing ? 0.25 : 0.6), value: isRefreshing)
+            .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
             .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
-            .offset(y: isHovering ? -2 : 0)
+            .offset(y: isHovering && !reduceMotion ? -2 : 0)
+            .animation(nil, value: reduceMotion)
         }
         .buttonStyle(.press)
         .onHover { hovering in
-            withAnimation(Motion.quick) { isHovering = hovering }
+            withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) { isHovering = hovering }
         }
         .accessibilityLabel("\(title), \(figure), \(phrase)")
     }

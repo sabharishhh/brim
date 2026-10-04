@@ -93,19 +93,34 @@ extension View {
     }
 }
 
-private struct Refreshing: ViewModifier {
+extension View {
+    /// Shared visual treatment, separate from whether old results are actionable.
+    func refreshAppearance(_ isRefreshing: Bool) -> some View {
+        modifier(RefreshAppearance(isRefreshing: isRefreshing))
+    }
+}
+
+private struct RefreshAppearance: ViewModifier {
     let isRefreshing: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .saturation(isRefreshing ? 0 : 1)
+            .animation(reduceMotion ? nil : Motion.refresh(isRefreshing, reduceMotion: false), value: isRefreshing)
             .opacity(isRefreshing ? 0.4 : 1)
+            .animation(Motion.refresh(isRefreshing, reduceMotion: reduceMotion), value: isRefreshing)
+            .animation(nil, value: reduceMotion)
+    }
+}
+
+private struct Refreshing: ViewModifier {
+    let isRefreshing: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .refreshAppearance(isRefreshing)
             .disabled(isRefreshing)
             .allowsHitTesting(!isRefreshing)
-            .animation(
-                reduceMotion ? Motion.reduced : .smooth(duration: isRefreshing ? 0.25 : 0.6),
-                value: isRefreshing
-            )
     }
 }

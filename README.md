@@ -110,7 +110,9 @@ still read current disk state. See [measurements and remaining work](docs/perfor
 
 ## Home summaries
 
-Home shows storage and cleanup summaries, followed by currently installed apps
+Home starts with **Inspect an app**, which opens an application chooser, and a
+place to drop an app into the same inspection flow. It then shows storage and
+cleanup summaries, followed by currently installed apps
 that arrived in the last five days. An observed removal clears
 the recent entry; an observed reinstall starts a new five-day period. Brim
 compares its own scans, so activity between scans may not be recorded.
@@ -119,6 +121,11 @@ Check Again also checks which removals still have files in Trash. The Remnants
 card measures data belonging to removed apps separately from unknown storage.
 Unreadable locations remain identified in Remnants without asking for
 administrator access merely to open Home.
+
+The inspection button responds to the pointer locally, while its label and
+click area stay still. Reduce Motion uses stationary feedback. Floating selection
+controls keep Review separate from the status capsule, and totals follow
+selection immediately. See [experience implementation notes](docs/experience.md).
 
 ## Building from source
 

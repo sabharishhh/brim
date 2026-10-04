@@ -1,11 +1,8 @@
 import SwiftUI
 
-/// Four timings, five verbs, and nothing moving while the app is idle.
-///
-/// Motion here explains a change of place or state and does nothing else.
-/// Every animation in the product is one of these, so the app has one
-/// rhythm rather than forty, and Reduce Motion turns every one of them into
-/// a short crossfade in one place instead of forty.
+/// Shared timing for feedback, continuity and active work.
+/// Callers must also gate spatial properties under Reduce Motion;
+/// substituting a timing curve does not remove movement.
 enum Motion {
     /// Hover, press, toggles.
     static let quick = Animation.snappy(duration: 0.2)
@@ -22,6 +19,17 @@ enum Motion {
     static let inspector = Animation.easeInOut(duration: 0.12)
     /// What every animation becomes under Reduce Motion.
     static let reduced = Animation.easeInOut(duration: 0.2)
+
+    static let acknowledge = Animation.easeOut(duration: 0.1)
+    static let lightExit = Animation.easeOut(duration: 0.12)
+    static let pointerLight = Animation.spring(duration: 0.18, bounce: 0)
+    static let release = Animation.spring(duration: 0.18, bounce: 0)
+    static let refreshEnter = Animation.smooth(duration: 0.25)
+    static let refreshSettle = Animation.smooth(duration: 0.6)
+
+    static func refresh(_ isRefreshing: Bool, reduceMotion: Bool) -> Animation {
+        resolved(isRefreshing ? refreshEnter : refreshSettle, reduceMotion: reduceMotion)
+    }
 
     static func resolved(_ animation: Animation, reduceMotion: Bool) -> Animation {
         reduceMotion ? reduced : animation
@@ -100,6 +108,7 @@ struct PressStyle: ButtonStyle {
         configuration.label
             .contentShape(.rect)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed && reduceMotion ? 0.75 : 1)
             .animation(
                 Motion.resolved(
                     configuration.isPressed ? .easeOut(duration: 0.1) : Motion.quick,
@@ -107,6 +116,7 @@ struct PressStyle: ButtonStyle {
                 ),
                 value: configuration.isPressed
             )
+            .animation(nil, value: reduceMotion)
     }
 }
 
