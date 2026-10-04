@@ -15,6 +15,18 @@ import Foundation
 /// jobs, an authorization, and then "2 targets still remain" with no reason
 /// given.
 public enum RemovalCapability {
+    /// Flags only macOS can set, under System Integrity Protection. WebKit
+    /// makes its per-app folders in the per-user temporary folder with
+    /// `SF_NOUNLINK`, and eqMac's removal planned three of them and had all
+    /// three refused. Nobody can remove such an item, root included.
+    static let systemProtectionFlags = UInt32(SF_RESTRICTED) | UInt32(SF_NOUNLINK)
+
+    /// Something macOS protects for itself. It is never an app's to remove,
+    /// so it is not part of any app's footprint.
+    public static func isProtectedBySystem(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && (info.st_flags & systemProtectionFlags) != 0
+    }
 
     /// What it would take to remove this path.
     public static func forDeleting(_ path: String) -> Capability {
@@ -31,7 +43,7 @@ public enum RemovalCapability {
             // outright and skipped this check entirely.
             var info = stat()
             let described = lstat(path, &info) == 0
-            if described, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
+            if described, (info.st_flags & systemProtectionFlags) != 0 {
                 return .refusedByOS
             }
             // A folder is moved, not unlinked, and moving one to another
