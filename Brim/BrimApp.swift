@@ -1,10 +1,10 @@
+import BrimCore
+import BrimPrivileged
+import BrimProtocol
+import BrimUI
 import Foundation
 import os
 import SwiftUI
-import BrimProtocol
-import BrimCore
-import BrimUI
-import BrimPrivileged
 
 private let log = BrimLog.make("app")
 
@@ -12,7 +12,7 @@ private let log = BrimLog.make("app")
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
     @FocusedValue(\.shell) var shell
     @FocusedValue(\.selectedItems) var selectedItems
-    
+
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
     /// The Dock's menu, and apps dropped on its icon.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -26,7 +26,7 @@ private let log = BrimLog.make("app")
     init() {
         BrimTips.configure()
     }
-    
+
     @State private var showSelfUninstall = false
     /// Whether a newer Brim is on GitHub.
     @StateObject private var release = BrimReleaseCheck()
@@ -71,7 +71,11 @@ private let log = BrimLog.make("app")
                 .task { await release.checkIfDue() }
                 .alert(releaseTitle, isPresented: Binding(
                     get: { releaseAnswer != nil },
-                    set: { if !$0 { releaseAnswer = nil } }
+                    set: {
+                        if !$0 {
+                            releaseAnswer = nil
+                        }
+                    }
                 )) {
                     if case let .newer(found) = releaseAnswer {
                         Button("Download") { NSWorkspace.shared.open(found.page) }
@@ -89,15 +93,19 @@ private let log = BrimLog.make("app")
                     }
                 } message: {
                     Text("This removes Brim, the helper that runs as an administrator, its "
-                         + "background agents and everything it has written. Any job files "
-                         + "Brim set aside for you go with it, so restore anything you still "
-                         + "want first.")
+                        + "background agents and everything it has written. Any job files "
+                        + "Brim set aside for you go with it, so restore anything you still "
+                        + "want first.")
                 }
                 .alert(
                     "Brim has not removed itself",
                     isPresented: Binding(
                         get: { selfUninstallProblem != nil },
-                        set: { if !$0 { selfUninstallProblem = nil } }
+                        set: {
+                            if !$0 {
+                                selfUninstallProblem = nil
+                            }
+                        }
                     )
                 ) {
                     Button("OK", role: .cancel) {}
@@ -190,20 +198,20 @@ private let log = BrimLog.make("app")
             }
         }
     }
-    
+
     private var releaseTitle: String {
         switch releaseAnswer {
-        case let .newer(found): return "Brim \(found.version) is available"
-        case let .current(version): return "Brim \(version) is the latest"
-        default: return "Couldn't reach GitHub"
+        case let .newer(found): "Brim \(found.version) is available"
+        case let .current(version): "Brim \(version) is the latest"
+        default: "Couldn't reach GitHub"
         }
     }
 
     private var releaseMessage: String {
         switch releaseAnswer {
-        case .newer: return "Download it from GitHub and replace this copy in Applications."
-        case .current: return "You have the newest version."
-        default: return "Check your connection and try again."
+        case .newer: "Download it from GitHub and replace this copy in Applications."
+        case .current: "You have the newest version."
+        default: "Check your connection and try again."
         }
     }
 
@@ -224,7 +232,7 @@ private let log = BrimLog.make("app")
         let bundleID = Bundle.main.bundleIdentifier ?? "devplaceholder.PJ52YXEB.brim"
         let identity = Identity(bundleID: bundleID, teamID: "PJ52YXEB", name: "Brim")
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
-        
+
         // The daemon first, while it is still running. Its quarantine is
         // root owned, so nothing left behind can remove it afterwards, and
         // an uninstaller that leaves a root-owned folder on the disk is
@@ -239,12 +247,12 @@ private let log = BrimLog.make("app")
             // people's software.
             selfUninstallProblem =
                 "The helper that runs as an administrator could not clear its own folder "
-                + "before it was unregistered, so \(BrimJobHelper.quarantineDirectory) is "
-                + "still on the disk and belongs to root. Removing it now needs an "
-                + "administrator, which Finder will ask for.\n\n"
-                + "Brim is untouched, so nothing else has been removed. Asking again will "
-                + "remove Brim, but it will not remove that folder.\n\n"
-                + complaint
+                    + "before it was unregistered, so \(BrimJobHelper.quarantineDirectory) is "
+                    + "still on the disk and belongs to root. Removing it now needs an "
+                    + "administrator, which Finder will ask for.\n\n"
+                    + "Brim is untouched, so nothing else has been removed. Asking again will "
+                    + "remove Brim, but it will not remove that folder.\n\n"
+                    + complaint
             return
         }
 

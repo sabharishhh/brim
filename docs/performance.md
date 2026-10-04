@@ -107,3 +107,25 @@ large inspectors, retained the latest rapid selection and prepared a removal
 review. The review was closed without approval. Real registration lifecycle
 experiments were excluded; the protocol regression does not establish live
 record erasure.
+
+## Lint and CI cleanup, 4 October 2026
+
+The merged work added 560 formatting and lint findings compared with the
+previous main branch. These blocked CI even though builds and tests passed.
+Formatting, clearer local names and small extractions remove those additions
+without changing the rules or replacing the baseline. New companion files
+must pass both tools without an allowance. Older unrelated lint debt remains.
+
+The update downloader, replacement and verification routines, helper receipt
+and quarantine routines, bundle metadata reader and index writes now live in
+smaller files. Removal checks, command order, cancellation, update decoding and
+recovery boundaries retain their existing behavior. Independent reviews found
+no behavioral regression. Test fixtures were split without dropping cases.
+
+The full strict Swift suite passed with 484 XCTest cases (one existing skip)
+and 253 Swift Testing cases. The 12 script tests passed. The signed Release
+build and strict signature
+verification passed. The built app loaded Home, the application list, an
+associated-file inspector and a removal review. The review was closed without
+approval. No real removal or registration lifecycle experiment was performed.
+Hosted CI results are recorded in the pull request.

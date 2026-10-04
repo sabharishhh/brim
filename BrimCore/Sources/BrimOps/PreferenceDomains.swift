@@ -14,7 +14,6 @@ import Foundation
 /// daemon's copy, and the trash step is what makes the removal
 /// recoverable.
 public enum PreferenceDomains {
-
     /// Whether a path is a preferences file, and which domain it holds.
     ///
     /// Only files directly inside a `Preferences` folder count.
@@ -43,9 +42,11 @@ public enum PreferenceDomains {
 
     /// A ByHost suffix: a UUID, or the older bare MAC address form.
     static func isHardwareIdentifier(_ candidate: String) -> Bool {
-        if UUID(uuidString: candidate) != nil { return true }
+        if UUID(uuidString: candidate) != nil {
+            return true
+        }
         return candidate.count == 12
-            && candidate.allSatisfy { $0.isHexDigit }
+            && candidate.allSatisfy(\.isHexDigit)
     }
 
     /// Tells `cfprefsd` to forget a domain.
@@ -118,7 +119,9 @@ public enum PreferenceDomains {
         while !waiting.isEmpty, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(500))
             for path in waiting where FileManager.default.fileExists(atPath: path) {
-                if isEmptyStub(atPath: path) { try? FileManager.default.removeItem(atPath: path) }
+                if isEmptyStub(atPath: path) {
+                    try? FileManager.default.removeItem(atPath: path)
+                }
                 waiting.remove(path)
             }
         }
@@ -129,7 +132,7 @@ public enum PreferenceDomains {
         let forbidden = [
             ".globalpreferences",
             "kcfpreferencesanyapplication",
-            "apple.global.domain",
+            "apple.global.domain"
         ]
         return !forbidden.contains(domain.lowercased())
     }

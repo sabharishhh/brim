@@ -1,5 +1,5 @@
-import SwiftUI
 import BrimUI
+import SwiftUI
 
 /// Where the window can be: two short groups, plus the Journal on its own,
 /// few enough that the sidebar is read at a glance.

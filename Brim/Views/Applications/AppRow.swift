@@ -82,5 +82,4 @@ struct AppRow: View {
         return [app.developer, place ?? opened ?? (app.isSystemProtected ? "Part of macOS" : nil)]
             .compactMap(\.self).joined(separator: " · ")
     }
-
 }

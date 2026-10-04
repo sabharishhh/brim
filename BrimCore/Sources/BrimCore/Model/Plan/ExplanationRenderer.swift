@@ -3,7 +3,7 @@ import Foundation
 /// T-6.3: Deterministic prose from the evidence model.
 public struct ExplanationRenderer: Sendable {
     public init() {}
-    
+
     /// What a plan step says about itself, in one or two sentences.
     ///
     /// `found` is the sentence the evidence source already wrote when it made
@@ -35,7 +35,7 @@ public struct ExplanationRenderer: Sendable {
         guard let last = trimmed.last, !".!?:".contains(last) else { return trimmed }
         return trimmed + "."
     }
-    
+
     /// Produces a human-readable explanation for an excluded item.
     public func renderRefusal(reason: String) -> String {
         // Reset first. Keeping the application is what a reset is for, so
@@ -65,25 +65,25 @@ public struct ExplanationRenderer: Sendable {
         }
         return reason
     }
-    
+
     /// The fallback, for a step whose source left no sentence of its own.
     private func renderMechanism(mechanism: String) -> String {
         switch mechanism {
-        case "AppBundleSource": return "The application itself."
-        case "LaunchdSource": return "A background job registered with macOS."
-        case "SMAppServiceSource": return "A helper the application registered to run in the background."
-        case "GroupContainerSource": return "A shared folder the application's own entitlements name."
-        case "SandboxContainerSource": return "The private folder macOS keeps for this application."
-        case "InstallerReceiptSource": return "The installer's record of this package."
-        case "InstallerPayloadSource": return "Installed by the same installer as the application."
-        case "TeamIDSource": return "Signed by the same developer as the application."
-        case "BundleIdentifierComponentSource": return "Named after the application's bundle identifier."
-        case "HeuristicSource": return "Named after the application or its vendor."
-        case "DirectTarget": return "You picked this one."
-        default: return "Found while tracing this application."
+        case "AppBundleSource": "The application itself."
+        case "LaunchdSource": "A background job registered with macOS."
+        case "SMAppServiceSource": "A helper the application registered to run in the background."
+        case "GroupContainerSource": "A shared folder the application's own entitlements name."
+        case "SandboxContainerSource": "The private folder macOS keeps for this application."
+        case "InstallerReceiptSource": "The installer's record of this package."
+        case "InstallerPayloadSource": "Installed by the same installer as the application."
+        case "TeamIDSource": "Signed by the same developer as the application."
+        case "BundleIdentifierComponentSource": "Named after the application's bundle identifier."
+        case "HeuristicSource": "Named after the application or its vendor."
+        case "DirectTarget": "You picked this one."
+        default: "Found while tracing this application."
         }
     }
-    
+
     /// Added only where it changes what somebody would do.
     ///
     /// A and B both mean Brim matched something the system itself records,
@@ -95,24 +95,24 @@ public struct ExplanationRenderer: Sendable {
     private func renderConfidence(tier: EvidenceTier) -> String {
         switch tier {
         case .S:
-            return "Other software installed here uses this too, so Brim leaves it alone."
+            "Other software installed here uses this too, so Brim leaves it alone."
         case .A, .B:
-            return ""
+            ""
         case .C:
-            return "Matched on the name alone, so check it before removing it."
+            "Matched on the name alone, so check it before removing it."
         }
     }
 
     private func renderCapability(capability: Capability) -> String {
         switch capability {
         case .ok:
-            return ""
+            ""
         case .needsHelper:
-            return "An administrator password is needed to remove it."
+            "An administrator password is needed to remove it."
         case .needsFullDiskAccess:
-            return "Full Disk Access is needed to remove it."
+            "Full Disk Access is needed to remove it."
         case .refusedByOS:
-            return "macOS will not let anything remove this."
+            "macOS will not let anything remove this."
         }
     }
 }

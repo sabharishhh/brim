@@ -642,20 +642,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
             let journal = try await executor.execute(plan: plan)
 
-            // Record ledger entry
-            let outcomes = journal.stepOutcomes.map { index, resultStr in
-                let completed = resultStr == "ok" || resultStr == "already_gone"
-                let status: StepOutcome = completed ? .success : .failed
-                return Outcome(stepIndex: index, result: status, errorMessage: completed ? nil : resultStr)
-            }
-            let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
-            let ledgerEntry = LedgerEntry(
-                planId: plan.planId,
-                planHash: hash,
-                executedAt: Date(),
-                outcomes: outcomes,
-                recoveredBytes: recovered
-            )
+            let ledgerEntry = Self.ledgerEntry(for: plan, hash: hash, journal: journal)
             try await ledgerStore.write(entry: ledgerEntry)
             // Update list presentation before closing the authenticated process.
             if needsAdministrator {
@@ -670,6 +657,23 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if needsAdministrator, !authenticated {
             await endPrivilegedBatch?()
         }
+    }
+
+    private static func ledgerEntry(for plan: Plan, hash: String, journal: JournalEntry) -> LedgerEntry {
+        // Record ledger entry
+        let outcomes = journal.stepOutcomes.map { index, resultStr in
+            let completed = resultStr == "ok" || resultStr == "already_gone"
+            let status: StepOutcome = completed ? .success : .failed
+            return Outcome(stepIndex: index, result: status, errorMessage: completed ? nil : resultStr)
+        }
+        let recovered = Self.observedSpaceIncrease(before: journal.freeSpaceBefore, after: journal.freeSpaceAfter)
+        return LedgerEntry(
+            planId: plan.planId,
+            planHash: hash,
+            executedAt: Date(),
+            outcomes: outcomes,
+            recoveredBytes: recovered
+        )
     }
 
     private func validateReviewedPlan(_ plan: Plan, rebuilt revalidatedPlan: Plan) throws {
@@ -790,12 +794,14 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let postChecks = await registrationPostChecks(plan: plan, journal: journal)
         let staleRegistrations = postChecks.filter { $0.capability == .launchServices }
             .flatMap(\.remaining).compactMap { $0.programPath.map { URL(fileURLWithPath: $0) } }
-        let (found, privacyResetFailed, survivingExtensions) = await removalFollowUps(
+        let followUpResult = await removalFollowUps(
             plan: plan,
             journal: journal,
             postChecks: postChecks
         )
-        var followUps = found
+        var followUps = followUpResult.actions
+        let privacyResetFailed = followUpResult.privacyResetFailed
+        let survivingExtensions = followUpResult.survivingExtensions
         followUps += Self.registrationRoutes(plan: plan, observations: postChecks)
         followUps.removeAll { $0 == .vendorUninstaller }
         // A failed step whose path is still there is explained with that
@@ -1030,9 +1036,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return Array(Set(followUps)).sorted { $0.rawValue < $1.rawValue }
     }
 
+    private struct RemovalFollowUps {
+        let actions: [RemovalFollowUp]
+        let privacyResetFailed: Bool
+        let survivingExtensions: Set<String>?
+    }
+
     private func removalFollowUps(
         plan: Plan, journal: JournalEntry?, postChecks: [RegistrationVerification]
-    ) async -> ([RemovalFollowUp], Bool, Set<String>?) {
+    ) async -> RemovalFollowUps {
         let privacyResetFailed = journal != nil && plan.steps.contains { step in
             step.kind == .resetPrivacyGrants && journal?.stepOutcomes[step.index] != "ok"
         }
@@ -1051,7 +1063,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if needsPrivacyFollowUp, !actions.contains(.restoreAppForPrivacyReset) {
             actions.append(.restoreAppForPrivacyReset)
         }
-        return (actions, privacyResetFailed, survivingExtensionIDs)
+        return RemovalFollowUps(actions: actions, privacyResetFailed: privacyResetFailed,
+                                survivingExtensions: survivingExtensionIDs)
     }
 
     private static func verificationReason(

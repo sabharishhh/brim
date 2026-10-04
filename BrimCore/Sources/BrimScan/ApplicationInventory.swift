@@ -14,7 +14,7 @@ public actor ApplicationInventory {
 
     public init(root: FileSystemRoot) {
         self.root = root
-        self.resolver = IdentityResolver(root: root)
+        resolver = IdentityResolver(root: root)
     }
 
     /// Domains searched, in the order results are merged. `/System/Applications`
@@ -128,9 +128,9 @@ public actor ApplicationInventory {
         }
         // Spotlight answers only about the real disk, not a test fixture.
         if root.rootURL.path == "/" {
-            let known = Set(found.map { $0.url.standardizedFileURL.path })
-            for url in Self.indexedApplications(in: searchDomains.map(\.url))
-            where !known.contains(url.standardizedFileURL.path) {
+            let known = Set(found.map(\.url.standardizedFileURL.path))
+            let indexed = Self.indexedApplications(in: searchDomains.map(\.url))
+            for url in indexed where !known.contains(url.standardizedFileURL.path) {
                 guard let placement = Self.placement(of: url) else { continue }
                 let host: String? = placement
                 let protected = searchDomains.contains { $0.protected && url.path.hasPrefix($0.url.path + "/") }
