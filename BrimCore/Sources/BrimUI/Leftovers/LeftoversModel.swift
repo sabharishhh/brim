@@ -63,6 +63,10 @@ public final class LeftoversModel: ObservableObject {
 
     public var all: [Leftover] { orphaned + unclaimed }
 
+    public var hasUnreadRecoveryCopies: Bool {
+        unclaimed.contains { $0.url.path == RecoveryCopy.directory }
+    }
+
     /// One entry per piece of software rather than one per path. The list
     /// was unreadable per-path: the same tool appeared several times with
     /// nothing connecting the rows.
@@ -91,7 +95,8 @@ public final class LeftoversModel: ObservableObject {
 
     /// Selection is per group: a user reasons about software, not paths.
     public func isSelected(_ group: LeftoverGroup) -> Bool {
-        !group.items.isEmpty && group.items.allSatisfy { selection.contains($0.id) }
+        let removable = group.items.filter(\.canBeRemovedByBrim)
+        return !removable.isEmpty && removable.allSatisfy { selection.contains($0.id) }
     }
 
     public func toggle(_ group: LeftoverGroup) {
@@ -154,6 +159,18 @@ public final class LeftoversModel: ObservableObject {
 
     public var canRemoveSelection: Bool {
         !selectedItems.isEmpty && blockedSelection.isEmpty
+    }
+
+    /// Unknown owners require an explicit selection. Bulk removal includes
+    /// only known remnants, including items covered by the administrator helper.
+    public var removableOrphans: [Leftover] {
+        orphanedGroups.filter { !keptGroups.contains($0.id) }
+            .flatMap(\.items).filter(\.canBeRemovedByBrim)
+    }
+
+    public func selectAllRemovableOrphans() {
+        selection = Set(removableOrphans.map(\.id))
+        settle()
     }
 
     /// Rows Brim removed, kept so they can come back if the person does.
@@ -347,7 +364,7 @@ public final class LeftoversModel: ObservableObject {
     /// The plan intent for one removed app's traces, named for the app so
     /// the review says whose they are.
     public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
-        let targets = group.items.map(\.url)
+        let targets = group.items.filter(\.canBeRemovedByBrim).map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
@@ -359,6 +376,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
+        guard !isScanning, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(

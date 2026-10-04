@@ -10,7 +10,7 @@ public actor LeftoversScanner {
     /// Launch Services' answer for a bundle identifier. Injected so the
     /// ownership rules can be tested without depending on what happens to be
     /// installed on the machine running the suite.
-    private let launchServicesLookup: @Sendable (String) -> [URL]
+    private let launchServicesLookup: @Sendable (String) throws -> [URL]
     /// Whether this process can reach protected locations, which decides
     /// whether a container leftover is removable or only visible.
     private let hasFullDiskAccess: Bool
@@ -47,7 +47,7 @@ public actor LeftoversScanner {
 
     public init(
         root: FileSystemRoot,
-        launchServicesLookup: (@Sendable (String) -> [URL])? = nil,
+        launchServicesLookup: (@Sendable (String) throws -> [URL])? = nil,
         staleRegistrationOwners: [String: String] = [:],
         homebrewOrphans: Set<String> = [],
         claimedPaths: Set<String> = [],
@@ -479,12 +479,7 @@ public actor LeftoversScanner {
     ) -> ResolvedOwner? {
         let embeddedID = lookup.locationRules.contains { $0.rule == .identifierInsideBundle }
             ? LocationInventorySource.declaredIdentifier(at: item) : declared
-        let recordedOwner = zip(lookup.pastIdentities, lookup.pastSubjects).first { _, subject in
-            lookup.locationRules.contains {
-                $0.matchTier(name: name, subject: subject,
-                             declaredIdentifier: embeddedID) != nil
-            }
-        }?.0.bundleID
+        let recordedOwner = Self.recordedOwner(name: name, declaredIdentifier: embeddedID, lookup: lookup)
         let ownerID = recordedOwner ?? containerOwner ?? declared
             ?? extractOwnerIdentifier(from: item, in: lookup.domain)
 
@@ -501,6 +496,9 @@ public actor LeftoversScanner {
         )
         if case .present = verdict {
             return nil
+        }
+        if let uncertain = Self.uncertainOwner(verdict, ownerID: ownerID) {
+            return uncertain
         }
 
         let cask = Self.matchingOrphanedCask(
@@ -531,6 +529,20 @@ public actor LeftoversScanner {
         )
     }
 
+    private static func recordedOwner(name: String, declaredIdentifier: String?, lookup: OwnerLookup) -> String? {
+        zip(lookup.pastIdentities, lookup.pastSubjects).first { _, subject in
+            lookup.locationRules.contains {
+                $0.matchTier(name: name, subject: subject,
+                             declaredIdentifier: declaredIdentifier) != nil
+            }
+        }?.0.bundleID
+    }
+
+    private static func uncertainOwner(_ verdict: Ownership, ownerID: String) -> ResolvedOwner? {
+        guard case let .unknown(sentence) = verdict else { return nil }
+        return ResolvedOwner(category: .unclaimed, evidence: sentence, ownerID: ownerID, cask: nil)
+    }
+
     private static func strongestOwnership(
         among names: [String], search: OwnershipSearch
     ) -> Ownership {
@@ -539,6 +551,8 @@ public actor LeftoversScanner {
                 switch (strongest, next) {
                 case (.present, _): strongest
                 case (_, .present): next
+                case (.unknown, _): strongest
+                case (_, .unknown): next
                 case (.recordedButGone, _): strongest
                 case (_, .recordedButGone): next
                 default: strongest

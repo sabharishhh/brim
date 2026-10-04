@@ -1,11 +1,12 @@
-import XCTest
 import BrimCore
 @testable import BrimScan
+import Darwin
+import Testing
+import XCTest
 
 /// Parsing and ownership rules for launchd registrations, against a synthetic
 /// tree so the result does not depend on whose Mac runs it.
 final class LaunchdRegistrationSurfaceTests: XCTestCase {
-
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -27,8 +28,12 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         var dict: [String: Any] = [:]
-        if let label { dict["Label"] = label }
-        if let program { dict["ProgramArguments"] = [program, "--daemon"] }
+        if let label {
+            dict["Label"] = label
+        }
+        if let program {
+            dict["ProgramArguments"] = [program, "--daemon"]
+        }
 
         let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
         try data.write(to: dir.appendingPathComponent(fileName))
@@ -38,6 +43,27 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         await LaunchdRegistrationSurface().registrations(
             in: FileSystemRoot(rootURL: root, userName: "tester")
         )
+    }
+
+    func testApplicationJobScopeDoesNotMistakeSystemPolicyForAnUnreadableAppJob() async throws {
+        // macOS stores a jetsam policy plist in its job folder without a
+        // Label. Scanning it as an app job caused a permanent read warning.
+        try writeJob(domain: "System/Library/LaunchDaemons", fileName: "policy.plist", label: nil, program: nil)
+        try writeJob(domain: "Users/tester/Library/LaunchAgents", fileName: "app.plist",
+                     label: "org.example.app.worker", program: nil)
+        let source = LaunchdRegistrationSurface(includeSystemJobs: false)
+        let snapshot = await source.snapshot(in: FileSystemRoot(rootURL: root, userName: "tester"))
+        XCTAssertTrue(snapshot.coverage.available)
+        XCTAssertEqual(snapshot.registrations.map(\.identifier), ["org.example.app.worker"])
+        XCTAssertFalse(snapshot.coverage.scopes?.contains { $0.namespace.contains("System/Library") } ?? false)
+    }
+
+    func testApplicationJobScopeStillReportsMalformedApplicationDeclarations() async throws {
+        try writeJob(domain: "Users/tester/Library/LaunchAgents", fileName: "app.plist", label: nil, program: nil)
+        let snapshot = await LaunchdRegistrationSurface(includeSystemJobs: false).snapshot(
+            in: FileSystemRoot(rootURL: root, userName: "tester")
+        )
+        XCTAssertFalse(snapshot.coverage.available)
     }
 
     func testAJobWhoseProgramIsMissingIsReportedStale() async throws {
@@ -83,20 +109,22 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         try writeJob(domain: "Library/LaunchDaemons",
                      fileName: "com.example.localdaemon.plist", label: "com.example.localdaemon", program: nil)
 
-        let labels = Set(await scan().map(\.identifier))
+        let labels = await Set(scan().map(\.identifier))
         XCTAssertTrue(labels.contains("com.example.user"), "user LaunchAgents missed")
         XCTAssertTrue(labels.contains("com.example.localagent"), "local LaunchAgents missed")
         XCTAssertTrue(labels.contains("com.example.localdaemon"), "local LaunchDaemons missed")
     }
 
-    func testAJobWithNoLabelFallsBackToItsFileNameRatherThanBeingDropped() async throws {
-        // launchd itself falls back to the file name, so a plist without a
-        // Label is still a live job and must not vanish from the inventory.
+    func testAJobWithoutRequiredLabelLeavesAReadGap() async throws {
+        // launchd.plist requires Label. The previous reader invented a label
+        // from the filename, permitting a command against an unproven service.
         try writeJob(domain: "Users/tester/Library/LaunchAgents",
                      fileName: "com.example.unlabelled.plist", label: nil, program: nil)
-
-        let found = await scan()
-        XCTAssertTrue(found.contains { $0.identifier == "com.example.unlabelled" })
+        let snapshot = await LaunchdRegistrationSurface().snapshot(
+            in: FileSystemRoot(rootURL: root, userName: "tester")
+        )
+        XCTAssertFalse(snapshot.registrations.contains { $0.identifier == "com.example.unlabelled" })
+        XCTAssertFalse(snapshot.coverage.available)
     }
 
     func testMalformedPlistsAreSkippedWithoutFailingTheScan() async throws {
@@ -207,5 +235,37 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         )
 
         XCTAssertFalse(job.belongs(to: Identity(bundleID: "com.example.app", name: "Example"), bundleURL: bundle))
+    }
+}
+
+struct LaunchdJobDefinitionSafetyTests {
+    @Test(arguments: ["fifo", "symlink"])
+    func specialFileDeclarationsAreRefusedWithoutFollowingOrWaiting(_ kind: String) async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let target = folder.appendingPathComponent("job.plist")
+        if kind == "fifo" {
+            try #require(mkfifo(target.path, 0o600) == 0)
+        } else {
+            let declaration = folder.appendingPathComponent("ordinary.plist")
+            let contents = try PropertyListSerialization.data(
+                fromPropertyList: ["Label": "org.example.helper", "Program": "/fixture/helper"],
+                format: .binary, options: 0
+            )
+            try contents.write(to: declaration)
+            #expect(try LaunchdJobDefinition.read(declaration.path).label == "org.example.helper")
+            try FileManager.default.createSymbolicLink(at: target, withDestinationURL: declaration)
+        }
+        #expect(throws: (any Error).self) {
+            try LaunchdJobDefinition.read(target.path)
+        }
+        let source = LaunchdRegistrationSurface(includeSystemJobs: false)
+        let directory = folder.appendingPathComponent("Users/tester/Library/LaunchAgents")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: target, to: directory.appendingPathComponent("job.plist"))
+        let snapshot = await source.snapshot(in: FileSystemRoot(rootURL: folder, userName: "tester"))
+        #expect(!snapshot.coverage.available)
+        #expect(snapshot.registrations.isEmpty)
     }
 }

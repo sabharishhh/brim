@@ -4,6 +4,7 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// What a removal did, checked afterwards, in one column.
 ///
 /// It used to be a centred seal and sentence, then a card of counts, then a
@@ -35,6 +36,15 @@ struct RemovalResultView: View {
     private var column: some View {
         VStack(alignment: .leading, spacing: 20) {
             status
+            if let observedAt = result.observedAt {
+                HStack(spacing: 4) {
+                    Text("Checked")
+                    Text(observedAt, style: .date)
+                    Text(observedAt, style: .time)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             if let cleanup = result.toolCleanup {
                 FactSection(title: "Tool cleanup") {
                     FactRow(label: cleanup.command, detail: cleanup.scope)
@@ -60,6 +70,9 @@ struct RemovalResultView: View {
                             detail: shared.installations.map { $0.bundlePath ?? $0.name }.joined(separator: ", "))
                 }
             }
+            if let report = result.report {
+                RegistrationResultSection(report: report)
+            }
             stillHere
             if let actions = result.followUpActions, !actions.isEmpty {
                 FactSection(title: "One more step") {
@@ -68,6 +81,10 @@ struct RemovalResultView: View {
                             FactDivider()
                         }
                         FactRow(label: action.sentence)
+                        if action == .loginItemsSettings,
+                           let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                            Link("Open Login Items", destination: url)
+                        }
                     }
                 }
             }
@@ -84,16 +101,21 @@ struct RemovalResultView: View {
     // MARK: - Removed
 
     private var gone: [Step] {
-        groups.flatMap(\.steps).filter { !result.remainingPaths.contains($0.target) }
+        groups.flatMap(\.steps).filter { isConfirmedGone($0.target) }
+    }
+
+    private func isConfirmedGone(_ path: String) -> Bool {
+        !result.remainingPaths.contains(path) && result.report?.unknownPaths?.contains(path) != true
     }
 
     private func removed(_: Plan) -> some View {
         let steps = gone
-        let setAside = steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
+        let setAside = steps.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }
+            .reduce(0) { $0 + $1.expectedBytes }
         let trashed = steps.filter { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }
             .reduce(0) { $0 + $1.expectedBytes }
         let kinds = groups.compactMap { group -> (String, [Step])? in
-            let went = group.steps.filter { !result.remainingPaths.contains($0.target) }
+            let went = group.steps.filter { isConfirmedGone($0.target) }
             return went.isEmpty ? nil : (group.title, went)
         }
         return VStack(alignment: .leading, spacing: 20) {
@@ -122,7 +144,8 @@ struct RemovalResultView: View {
                         FactRow(
                             label: kind.0,
                             value: "\(kind.1.count.formatted()) · "
-                                + ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes })
+                                + (kind.1.contains { $0.sizeIsKnown == false }
+                                    ? "Not measured" : ByteText.short(kind.1.reduce(0) { $0 + $1.expectedBytes }))
                         )
                     }
                 }
@@ -140,7 +163,7 @@ struct RemovalResultView: View {
         if steps.contains(where: { $0.effectiveDisposition == .trash && $0.kind != .trashPathPrivileged }) {
             facts.append("Items in the Trash still occupy space until it is emptied.")
         }
-        if steps.contains(where: { $0.kind == .trashPathPrivileged }) {
+        if steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
             facts.append("Items set aside by the helper have no restore action in Brim.")
         }
         return facts.joined(separator: " ")
@@ -149,13 +172,13 @@ struct RemovalResultView: View {
     // MARK: - Checked
 
     private func checked(_ report: RemovalReport) -> some View {
-        FactSection(title: "Checked again") {
+        FactSection(title: report.registrationObservations == nil ? "Recorded result" : "Checked again") {
             FactRow(label: "Places, all gone", value: report.checkedGone.formatted())
             if let explanation = searchGap?.explanation {
                 FactDivider()
                 FactRow(label: "Search incomplete", detail: explanation)
             }
-            if !report.registrationsChecked.isEmpty {
+            if report.registrationObservations != nil, !report.registrationsChecked.isEmpty {
                 FactDivider()
                 FactRow(
                     label: "Kinds of registration",
@@ -166,7 +189,7 @@ struct RemovalResultView: View {
             if !report.declaredNone.isEmpty {
                 FactDivider()
                 FactRow(
-                    label: "Never used by the app",
+                    label: "Not declared by the app",
                     value: report.declaredNone.count.formatted(),
                     detail: report.declaredNone.map(\.title).joined(separator: ", ")
                 )
@@ -184,7 +207,8 @@ struct RemovalResultView: View {
         let unticked = report?.leftUnticked ?? []
         let other = report?.stillThere ?? 0
         let protectedPaths = protected.map(\.target).filter { $0.hasPrefix("/") }
-        let remaining = Array(Set(result.remainingPaths.sorted() + unticked + protectedPaths)).sorted()
+        let remaining = Array(Set(result.remainingPaths.sorted() + unticked + protectedPaths)
+            .subtracting(report?.unknownPaths ?? [])).sorted()
         if !kept.isEmpty || !protected.isEmpty || !unticked.isEmpty || other > 0 {
             let title = protected.contains(where: { $0.presence == .unknown }) ? "Kept or not checked" : "Still here"
             FactSection(title: title) {
@@ -267,30 +291,35 @@ extension RemovalResultView {
         if let cleanup = result.toolCleanup {
             return cleanup.headline
         }
-        guard result.success else { return "Some of it remains" }
-        if result.followUpActions?.isEmpty == false {
-            return "One more step"
+        if let host = plan?.intent.subjectIdentity.bundlePath,
+           plan?.intent.type == .uninstall, plan?.intent.explicitTargets.isEmpty == true,
+           let bundleStep = plan?.steps.first(where: {
+               $0.executionPhase == .appBundle && $0.target == host
+                   && [.trashPath, .trashPathPrivileged].contains($0.kind)
+           }),
+           !result.remainingPaths.contains(bundleStep.target),
+           result.report?.registrationObservations != nil {
+            return "App removed"
         }
-        if let record = result.packageRecord, record.state != .absent {
-            return "Files removed"
+        if result.report?.unknownPaths?.isEmpty == false {
+            return "Removal needs a check"
         }
-        if plan?.intent.explicitTargets.isEmpty == false {
-            return "Selected items removed"
-        }
-        let kept = result.report?.keptByMacOS.isEmpty == false || result.report?.protectedItems.isEmpty == false
-        if kept || result.report?.sharedIdentityProtection != nil {
-            return "Removed"
-        }
-        // Everything ticked went. What was left unticked is still here, and
-        // "Nothing left" over it was read as everything.
-        return untickedCount > 0 || searchGap?.isComplete == false ? "Removed" : "Nothing left"
+        guard result.success else { return "Removal incomplete" }
+        return "Selected items removed"
     }
 
     private var detail: String {
         if let cleanup = result.toolCleanup {
             return cleanup.detail
         }
-        guard result.success else { return result.reason ?? "Some of it is still on disk" }
+        if result.report?.unknownPaths?.isEmpty == false
+            || result.report?.registrationObservations?.contains(where: \.couldNotCheck) == true {
+            return "Some locations could not be checked. See the details below."
+        }
+        if result.report?.registrationObservations?.contains(where: { !$0.remaining.isEmpty }) == true {
+            return "Some registrations remain listed. See the next steps below."
+        }
+        guard result.success else { return result.reason ?? "Some actions could not be completed." }
         if searchGap?.isComplete == false {
             return "Selected items removed. The search was incomplete."
         }
@@ -313,7 +342,7 @@ extension RemovalResultView {
         if result.report?.sharedIdentityProtection != nil {
             return "Selected items removed. Identifier-wide privacy permissions were not reset."
         }
-        return "Every place checked again"
+        return "Selected locations checked again"
     }
 
     private var symbol: String {
@@ -322,78 +351,5 @@ extension RemovalResultView {
 
     private var tint: Color {
         result.success ? .accentColor : Palette.caution
-    }
-}
-
-// MARK: - Sections
-
-/// A titled group of facts on one surface, with hairlines between rows.
-struct FactSection<Content: View>: View {
-    let title: String
-    var footer: String?
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.brimFacts.weight(.semibold))
-                .foregroundStyle(Palette.inkSecondary)
-                .padding(.leading, 4)
-                .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 0) {
-                content
-            }
-            .padding(.horizontal, 12)
-            .background(Palette.surface.opacity(0.6), in: .rect(cornerRadius: Metrics.rowRadius))
-            .overlay(RoundedRectangle(cornerRadius: Metrics.rowRadius).strokeBorder(Palette.well, lineWidth: 0.5))
-            if let footer {
-                Text(footer)
-                    .font(.caption)
-                    .foregroundStyle(Palette.inkTertiary)
-                    .padding(.leading, 4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-/// A label on the left, its figure on the right, and a quieter line under
-/// the label when there is more to say.
-struct FactRow: View {
-    let label: String
-    var value: String?
-    var detail: String?
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .foregroundStyle(Palette.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(Palette.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 8)
-            if let value {
-                Text(value)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
-        }
-        .font(.brimFacts)
-        .padding(.vertical, 9)
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel([label, value, detail].compactMap(\.self).joined(separator: ", "))
-    }
-}
-
-struct FactDivider: View {
-    var body: some View {
-        Divider().opacity(0.6)
     }
 }

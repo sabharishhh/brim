@@ -2,6 +2,10 @@ import Foundation
 
 public struct BTMRecord: Equatable, Sendable {
     public let uuid: String
+    public let namespace: String?
+    public let storePath: String?
+    public let rawType: Int?
+    public let rawDisposition: Int?
     public let name: String?
     public let developerName: String?
     public let type: String?
@@ -48,9 +52,15 @@ public struct BTMRecord: Equatable, Sendable {
         rawURLPath: String?,
         parentIdentifier: String? = nil,
         bundleIdentifier: String?,
-        teamIdentifier: String? = nil
+        teamIdentifier: String? = nil,
+        namespace: String? = nil, storePath: String? = nil,
+        rawType: Int? = nil, rawDisposition: Int? = nil
     ) {
         self.uuid = uuid
+        self.namespace = namespace
+        self.storePath = storePath
+        self.rawType = rawType
+        self.rawDisposition = rawDisposition
         self.name = name
         self.developerName = developerName
         self.type = type
@@ -60,5 +70,13 @@ public struct BTMRecord: Equatable, Sendable {
         self.parentIdentifier = parentIdentifier
         self.bundleIdentifier = bundleIdentifier
         self.teamIdentifier = teamIdentifier
+    }
+
+    func inStore(_ path: String, namespace: String) -> Self {
+        Self(uuid: uuid, name: name, developerName: developerName, type: type,
+             disposition: disposition, identifier: identifier, rawURLPath: rawURLPath,
+             parentIdentifier: parentIdentifier, bundleIdentifier: bundleIdentifier,
+             teamIdentifier: teamIdentifier, namespace: namespace, storePath: path,
+             rawType: rawType, rawDisposition: rawDisposition)
     }
 }

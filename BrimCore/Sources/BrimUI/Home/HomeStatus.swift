@@ -1,6 +1,8 @@
 import BrimCore
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// The state a Home card shows as a dot and a short phrase.
 public enum CardStatus: Equatable, Sendable {
     /// Brim has not finished looking. No dot.
@@ -50,11 +52,13 @@ public enum HomeStatus {
         return (.clear, "Nothing left behind")
     }
 
-    public static func background(leftOver: Int, hasChecked: Bool) -> (status: CardStatus, phrase: String) {
+    public static func background(leftOver: Int, hasChecked: Bool, hasFaults: Bool = false)
+        -> (status: CardStatus, phrase: String) {
         guard hasChecked else { return (.checking, "Checking") }
+        guard !hasFaults else { return (.partial, "Partial view") }
         if leftOver > 0 {
             return (.attention, "\(leftOver) left over")
         }
-        return (.clear, "Nothing left over")
+        return (.clear, "No missing targets found")
     }
 }
