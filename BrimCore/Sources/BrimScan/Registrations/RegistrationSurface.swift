@@ -1,6 +1,7 @@
 import BrimCore
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// A place macOS records that an application exists, other than the
 /// filesystem.
 ///
@@ -26,9 +27,14 @@ public protocol RegistrationSurface: Sendable {
 public struct RegistrationSnapshot: Sendable {
     public let registrations: [Registration]
     public let coverage: RegistrationCoverage
-    public init(registrations: [Registration], coverage: RegistrationCoverage) {
+    public let observedAt: Date
+    public let readerVersion: Int
+    public init(registrations: [Registration], coverage: RegistrationCoverage,
+                observedAt: Date = Date(), readerVersion: Int = 1) {
         self.registrations = registrations
         self.coverage = coverage
+        self.observedAt = observedAt
+        self.readerVersion = readerVersion
     }
 }
 
@@ -45,6 +51,22 @@ public actor RegistrationInventory {
 
     public init(surfaces: [any RegistrationSurface]) {
         self.surfaces = surfaces
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationReport {
+        let results = await withTaskGroup(of: (Int, RegistrationSnapshot).self) { group in
+            for (index, source) in surfaces.enumerated() {
+                group.addTask { await (index, source.snapshot(in: root)) }
+            }
+            var results: [Int: RegistrationSnapshot] = [:]
+            for await (index, result) in group {
+                results[index] = result
+            }
+            return results
+        }
+        let ordered = surfaces.indices.compactMap { results[$0] }
+        return RegistrationReport(registrations: ordered.flatMap(\.registrations),
+                                  coverage: ordered.map(\.coverage))
     }
 
     /// Every registration on the machine, from every readable surface.

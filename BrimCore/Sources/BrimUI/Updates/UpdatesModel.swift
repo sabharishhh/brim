@@ -105,7 +105,7 @@ public final class UpdatesModel: ObservableObject {
         guard states[update.id]?.isBusy != true else { return }
         states[update.id] = update.download == nil ? .installing : .downloading(0)
         let id = update.id
-        let outcome = await service.installUpdate(update) { fraction in
+        let outcome = await service.installUpdate(update) { [weak self] fraction in
             Task { @MainActor [weak self] in
                 guard let self, case .downloading = self.states[id] else { return }
                 self.states[id] = fraction >= 1 ? .installing : .downloading(fraction)

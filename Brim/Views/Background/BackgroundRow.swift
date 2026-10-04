@@ -10,7 +10,7 @@ extension Registration {
         case .launchdJob: recordPath?.contains("/LaunchDaemons/") == true ? .launchDaemon : .launchAgent
         case .privilegedHelper: .launchDaemon
         case .legacyLoginItem: .loginItem
-        case .privacyGrant, .keychainItem: .privacyPermission
+        case .firewallEntry, .privacyGrant, .keychainItem, .configurationProfile: .privacyPermission
         case .launchServices: .launchServicesRecord
         case .appExtension, .bundlePlugin: .appExtension
         case .systemExtension: .systemExtension
@@ -31,10 +31,9 @@ extension Registration {
         return nil
     }
 
-    /// The file to show in Finder: the record itself, or failing that what
-    /// it runs, whichever is still there.
+    /// An individual declaration or target, never a shared macOS store.
     var revealableURL: URL? {
-        [recordPath, programPath].compactMap(\.self).map { URL(fileURLWithPath: $0) }
+        revealCandidatePaths.map { URL(fileURLWithPath: $0) }
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
@@ -86,11 +85,18 @@ struct BackgroundRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if entry.state == .gone {
-                Toggle("Select \(entry.group.displayName)", isOn: Binding(get: { isPicked }, set: { wanted in if wanted != isPicked { pick() } }))
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!canPick)
-                    .help(canPick ? (isPicked ? "Remove from Tray" : "Add to Tray") : "Needs Brim's helper")
+                Toggle(
+                    "Select \(entry.group.displayName)",
+                    isOn: Binding(get: { isPicked }, set: { wanted in
+                        if wanted != isPicked {
+                            pick()
+                        }
+                    })
+                )
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .disabled(!canPick)
+                .help(canPick ? (isPicked ? "Remove from Tray" : "Add to Tray") : "Needs Brim's helper")
             }
             BrimIcon(source: icon, size: Metrics.rowIcon(compact: compact), badge: badge)
             VStack(alignment: .leading, spacing: 2) {

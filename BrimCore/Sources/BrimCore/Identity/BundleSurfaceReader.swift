@@ -288,11 +288,15 @@ public enum BundleSurfaceReader {
             var seen = 0
             while let next = walk.nextObject() as? URL {
                 seen += 1
-                guard seen <= 50_000, !budget.hasRunOut else { timedOut.insert(resources.path); break }
-                if walk.level >= 8 { walk.skipDescendants() }
+                guard seen <= 50000, !budget.hasRunOut else { timedOut.insert(resources.path); break }
+                if walk.level >= 8 {
+                    walk.skipDescendants()
+                }
                 guard next.pathExtension.lowercased() == "app" else { continue }
                 let values = try? next.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                if values?.isDirectory == true, values?.isSymbolicLink != true { found.append(next) }
+                if values?.isDirectory == true, values?.isSymbolicLink != true {
+                    found.append(next)
+                }
             }
             return found
         }
@@ -332,6 +336,9 @@ public enum BundleSurfaceReader {
             let path = url.path
             let extensionInfo = info["NSExtension"] as? [String: Any]
             let extensionPoint = extensionInfo?["NSExtensionPointIdentifier"] as? String ?? ""
+            if extensionPoint.hasPrefix("com.apple.fileprovider") {
+                add(.fileProvider, key: "NSExtensionPointIdentifier", value: extensionPoint, path: path)
+            }
             let providers = info["NEProviderClasses"] as? [String: Any] ?? [:]
             let networkEntitlement = "com.apple.developer.networking.networkextension"
             let network = !providers.isEmpty || extensionPoint.hasPrefix("com.apple.networkextension")
