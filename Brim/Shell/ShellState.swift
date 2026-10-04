@@ -14,9 +14,10 @@ import SwiftUI
 final class ShellState: Equatable {
     private(set) var selection: Destination = .home
     var appsLens: AppsLens = .all
-    /// Which way the last page change went through the sidebar, so the
-    /// arriving page drifts in from the right side.
-    private(set) var movedDown = true
+    /// The last page change came from the keyboard: arrow keys in the
+    /// sidebar, a Command-digit or Back and Forward from the menu. Those are
+    /// immediate; only a change made with the pointer fades.
+    private(set) var navigatedByKeyboard = false
     private var back: [Destination] = []
     private var forward: [Destination] = []
 
@@ -81,7 +82,7 @@ final class ShellState: Equatable {
     private func move(to destination: Destination) {
         // A preview belongs to the page that asked for it.
         previewURL = nil
-        movedDown = destination.position >= selection.position
+        navigatedByKeyboard = NSApp.currentEvent?.type == .keyDown
         selection = destination
     }
 

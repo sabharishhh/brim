@@ -42,7 +42,7 @@ struct ContentView: View {
             ZStack {
                 page(shell.selection)
                     .id(shell.selection)
-                    .transition(.brimPage(movingDown: shell.movedDown, reduceMotion: reduceMotion))
+                    .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas)
@@ -50,7 +50,13 @@ struct ContentView: View {
             // Keyed to the page, so a change of page is animated and
             // nothing inside one inherits it: an animation over the whole
             // column would animate every scroll and every checkbox too.
-            .animation(Motion.resolved(Motion.page, reduceMotion: reduceMotion), value: shell.selection)
+            // A fade replaces the old blur, scale and drift, which made the
+            // page swim for 280 ms after every click; from the keyboard
+            // the new page is simply there.
+            .animation(
+                shell.navigatedByKeyboard ? nil : Motion.resolved(Motion.navigate, reduceMotion: reduceMotion),
+                value: shell.selection
+            )
             // Pages with a list column centre the Tray and toast on that
             // column themselves; the rest show the toast across the page.
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -246,6 +252,7 @@ struct ContentView: View {
                     // Turns once per press, so the click is answered even
                     // before the check has anything to show.
                     .symbolEffect(.rotate.clockwise, options: .nonRepeating, value: shell.checkRequests)
+                    .symbolEffectsRemoved(reduceMotion)
             }
             .help("Check this page again (⌘R)")
         }

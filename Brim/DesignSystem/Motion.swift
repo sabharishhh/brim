@@ -10,13 +10,20 @@ enum Motion {
     static let standard = Animation.smooth(duration: 0.35)
     /// A change of page: quick enough that the next click never waits.
     static let page = Animation.smooth(duration: 0.28)
+    /// A page chosen with the pointer replaces the last one by fading,
+    /// keeping the shell fixed. Chosen from the keyboard, it is immediate.
+    static let navigate = Animation.easeOut(duration: 0.18)
+    /// A toast or tray settling into place, and leaving it.
+    static let toastArrive = Animation.easeOut(duration: 0.18)
+    static let trayArrive = Animation.spring(duration: 0.22, bounce: 0)
+    static let leave = Animation.easeOut(duration: 0.12)
     /// The tray, a drop, the proof. One of these per flow.
     static let emphasis = Animation.spring(response: 0.45, dampingFraction: 0.82)
     /// Numbers and bars.
     static let data = Animation.smooth(duration: 0.5)
     /// The inspector's content when the selection changes. Short, and a
     /// crossfade only: arrowing through a list must not make it swim.
-    static let inspector = Animation.easeInOut(duration: 0.12)
+    static let inspector = Animation.easeOut(duration: 0.12)
     /// What every animation becomes under Reduce Motion.
     static let reduced = Animation.easeInOut(duration: 0.2)
 
@@ -28,7 +35,7 @@ enum Motion {
     /// One verified mark finishing in place.
     static let resolve = Animation.easeOut(duration: 0.24)
     static let refreshEnter = Animation.smooth(duration: 0.25)
-    static let refreshSettle = Animation.smooth(duration: 0.6)
+    static let refreshSettle = Animation.smooth(duration: 0.18)
 
     static func refresh(_ isRefreshing: Bool, reduceMotion: Bool) -> Animation {
         resolved(isRefreshing ? refreshEnter : refreshSettle, reduceMotion: reduceMotion)
@@ -50,38 +57,15 @@ extension AnyTransition {
         )
     }
 
-    /// A page arriving: it comes into focus, rising a little from the
-    /// direction of travel through the sidebar, while the one leaving
-    /// softens and fades. Nothing is carried from one page to the next;
-    /// a title flying into a card read as a trick rather than a place.
-    static func brimPage(movingDown: Bool, reduceMotion: Bool) -> AnyTransition {
-        guard !reduceMotion else { return .opacity }
+    /// A floating notice or the tray: arrives from 4 points below in the
+    /// given time and leaves by fading in 120 ms. Under Reduce Motion it
+    /// only fades.
+    static func floating(arrival: Animation, reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity.animation(Motion.reduced) }
         return .asymmetric(
-            insertion: .modifier(
-                active: PageFocus(blur: 6, scale: 0.99, offset: movingDown ? 10 : -10, opacity: 0),
-                identity: PageFocus()
-            ),
-            removal: .modifier(
-                active: PageFocus(blur: 4, scale: 1.005, offset: 0, opacity: 0),
-                identity: PageFocus()
-            )
+            insertion: .opacity.combined(with: .offset(y: 4)).animation(arrival),
+            removal: .opacity.animation(Motion.leave)
         )
-    }
-}
-
-/// One frame of a page coming into or out of focus.
-private struct PageFocus: ViewModifier {
-    var blur: CGFloat = 0
-    var scale: CGFloat = 1
-    var offset: CGFloat = 0
-    var opacity: Double = 1
-
-    func body(content: Content) -> some View {
-        content
-            .blur(radius: blur)
-            .scaleEffect(scale)
-            .offset(y: offset)
-            .opacity(opacity)
     }
 }
 

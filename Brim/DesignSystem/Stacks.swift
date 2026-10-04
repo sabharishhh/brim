@@ -220,7 +220,7 @@ struct StackCard<Item: Identifiable, Row: View, HeaderAccessory: View>: View {
             }
             if items.count > Metrics.rowsBeforeShowAll {
                 Button {
-                    withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+                    withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                         showsAll.toggle()
                     }
                 } label: {
