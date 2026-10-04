@@ -36,26 +36,25 @@ public struct FootprintProjector: Sendable {
     /// Structured work retains the caller's cancellation, unlike Task.detached.
     @concurrent
     private static func measureItems(_ evidenceList: [Evidence]) async throws -> [FootprintItem] {
-        var items: [FootprintItem] = []
-        for evidence in evidenceList {
+        let items: [FootprintItem?] = try await BoundedTasks.map(evidenceList) { evidence in
             try Task.checkCancellation()
             // A Boolean existence check also hides permission and link-loop
             // failures. Skip only proven absence; measure every other result
             // without following the entry itself, including a broken link.
             var information = stat()
             if lstat(evidence.url.path, &information) != 0, errno == ENOENT || errno == ENOTDIR {
-                continue
+                return nil
             }
             let measured = ArtifactSizer.measure(at: evidence.url)
             try Task.checkCancellation()
-            items.append(FootprintItem(
+            return FootprintItem(
                 evidence: evidence, sizeBytes: measured.logicalBytes,
                 capability: determineCapability(for: evidence.url.path),
                 unreadableEntries: measured.completeness.unreadable.count + measured.completeness.timedOut.count,
                 sizeMeasurement: measured
-            ))
+            )
         }
-        return items
+        return items.compactMap(\.self)
     }
 
     /// The same answer the leftovers sweep gives, from the same rule.

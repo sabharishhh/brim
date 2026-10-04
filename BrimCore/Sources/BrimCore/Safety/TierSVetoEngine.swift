@@ -4,19 +4,30 @@ import Foundation
 public struct TierSVetoEngine: Sendable {
     private let lookup: @Sendable (String) throws -> [URL]
     private let root: FileSystemRoot
-    private let readGroups: @Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool)
+    private let readClaims: @Sendable (URL, FileSystemRoot) -> (surface: IdentitySurface, complete: Bool)
+    private let readGroups: (@Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool))?
 
     public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] }) {
         self.lookup = lookup
         self.root = root
-        readGroups = { BundleSurfaceReader.groupClaims(at: $0, in: $1) }
+        readClaims = { BundleSurfaceReader.protectionClaims(at: $0, in: $1) }
+        readGroups = nil
     }
 
     init(root: FileSystemRoot,
          readGroups: @escaping @Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool)) {
         lookup = { _ in [] }
         self.root = root
+        readClaims = { BundleSurfaceReader.protectionClaims(at: $0, in: $1) }
         self.readGroups = readGroups
+    }
+
+    init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] },
+         readClaims: @escaping @Sendable (URL, FileSystemRoot) -> (surface: IdentitySurface, complete: Bool)) {
+        self.lookup = lookup
+        self.root = root
+        self.readClaims = readClaims
+        readGroups = nil
     }
 
     public func applyVeto(to footprint: EvaluatedFootprint) async -> EvaluatedFootprint {
@@ -25,11 +36,10 @@ public struct TierSVetoEngine: Sendable {
         let hasGroupTarget = footprint.items.contains {
             Self.isGroupPath($0.footprintItem.evidence.url)
         }
-        let inventory = await otherApplications(besides: footprint.identity)
+        let inventory = await otherApplications(besides: footprint.identity, includeGroups: hasGroupTarget)
         let applications = inventory.identities
-        let groupClaims = await hasGroupTarget ? Self.mergingGroupClaims(
-            otherGroupClaims(besides: footprint.identity), applications: applications,
-            complete: inventory.completeness.isComplete
+        let groupClaims = hasGroupTarget ? Self.mergingGroupClaims(
+            inventory.groupClaims, applications: applications, complete: inventory.completeness.isComplete
         ) : (owners: [String: String](), complete: true)
         var completeness = footprint.completeness.merging(inventory.completeness)
         let others = Dictionary(applications.flatMap { other in
@@ -113,6 +123,9 @@ public struct TierSVetoEngine: Sendable {
             vettedItems.append(uncertainContainer ? Self.leftUnticked(item) : item)
         }
 
+        if Task.isCancelled {
+            completeness = completeness.merging(ScanCompleteness(timedOut: [root.rootURL.path]))
+        }
         // A partial claimant search cannot support automatic selection either.
         if !completeness.isComplete {
             vettedItems = vettedItems.map(Self.leftUnticked)
@@ -156,50 +169,75 @@ public struct TierSVetoEngine: Sendable {
     }
 
     /// Other installations, retaining paths even when identifiers agree.
+    @concurrent
     private func otherApplications(
-        besides identity: Identity
-    ) async -> (identities: [Identity], completeness: ScanCompleteness) {
-        let root = root
-        let lookup = lookup
-        return await Task.detached {
-            let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-            var found: [Identity] = []
-            let inventory = InstalledBundleInventory.read(
-                in: root, including: identity.searchBundleIdentifiers,
-                knownLocations: identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? [],
-                lookup: lookup
-            )
-            var completeness = inventory.completeness
-            let budget = ScanBudget(total: 10)
-            for bundle in inventory.bundles {
-                // Its own parts are not somebody else.
-                let path = bundle.resolvingSymlinksInPath().path
-                if let subject, path == subject || path.hasPrefix(subject + "/") {
-                    continue
-                }
-                guard !budget.hasRunOut else {
-                    completeness = completeness.merging(ScanCompleteness(timedOut: [bundle.path]))
-                    break
-                }
-                let claims = BundleSurfaceReader.protectionClaims(at: bundle, in: root)
-                if !claims.complete {
-                    completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
-                }
-                guard let identifier = claims.surface.components.first?.bundleIdentifier else {
-                    completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
-                    continue
-                }
-                let components = claims.surface.components.filter {
-                    !Self.isInsideSelectedBundle(URL(fileURLWithPath: $0.path), identity: identity)
-                }
-                let surface = IdentitySurface(bundlePath: claims.surface.bundlePath, components: components,
-                                              helperRequirements: claims.surface.helperRequirements,
-                                              homeFolders: claims.surface.homeFolders ?? [])
-                found.append(Identity(bundleID: identifier, name: bundle.deletingPathExtension().lastPathComponent,
-                                      bundlePath: path, identitySurface: surface))
+        besides identity: Identity, includeGroups: Bool
+    ) async -> OtherClaimants {
+        guard !Task.isCancelled else {
+            return OtherClaimants(identities: [], completeness: ScanCompleteness(timedOut: [root.rootURL.path]),
+                                  groupClaims: ([:], false))
+        }
+        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        var found: [Identity] = []
+        var owners: [String: String] = [:]
+        var groupsComplete = true
+        let inventory = InstalledBundleInventory.read(
+            in: root, including: identity.searchBundleIdentifiers,
+            knownLocations: identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? [],
+            lookup: lookup
+        )
+        var completeness = inventory.completeness
+        let budget = ScanBudget(total: 10)
+        for bundle in inventory.bundles {
+            // Embedded components of the subject are not other owners.
+            let path = bundle.resolvingSymlinksInPath().path
+            if let subject, path == subject || path.hasPrefix(subject + "/") {
+                continue
             }
-            return (found, completeness)
-        }.value
+            guard !budget.hasRunOut else {
+                completeness = completeness.merging(ScanCompleteness(timedOut: [bundle.path]))
+                break
+            }
+            let claims = readClaims(bundle, root)
+            if !claims.complete {
+                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+            }
+            if includeGroups {
+                // Keep raw claims even when the host has no usable identifier.
+                // The injected reader still controls group coverage in its fixtures.
+                let groups = readGroups.map { $0(bundle, root) }
+                    ?? (groups: Set(claims.surface.groups), complete: claims.complete)
+                groupsComplete = groupsComplete && groups.complete
+                for group in groups.groups.sorted() {
+                    owners[group] = bundle.deletingPathExtension().lastPathComponent
+                }
+            }
+            guard let identifier = claims.surface.components.first?.bundleIdentifier else {
+                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+                continue
+            }
+            found.append(Self.claimantIdentity(identifier: identifier, path: path,
+                                               claims: claims.surface, subject: identity))
+        }
+        if Task.isCancelled {
+            completeness = completeness.merging(ScanCompleteness(timedOut: [root.rootURL.path]))
+        }
+        return OtherClaimants(identities: found, completeness: completeness,
+                              groupClaims: (owners: owners, complete: groupsComplete))
+    }
+
+    private static func claimantIdentity(
+        identifier: String, path: String, claims: IdentitySurface, subject: Identity
+    ) -> Identity {
+        let components = claims.components.filter {
+            !isInsideSelectedBundle(URL(fileURLWithPath: $0.path), identity: subject)
+        }
+        let surface = IdentitySurface(bundlePath: claims.bundlePath, components: components,
+                                      helperRequirements: claims.helperRequirements,
+                                      homeFolders: claims.homeFolders ?? [])
+        let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        return Identity(bundleID: identifier, name: name,
+                        bundlePath: path, identitySurface: surface)
     }
 
     private static func survivingCopies(of identity: Identity, among applications: [Identity]) -> [Identity] {
@@ -232,37 +270,6 @@ public struct TierSVetoEngine: Sendable {
             return "Shared with \(owner)."
         }
         return claims.complete ? nil : "Shared ownership could not be checked."
-    }
-
-    private func otherGroupClaims(besides identity: Identity) async -> (owners: [String: String], complete: Bool) {
-        let root = root
-        let readGroups = readGroups
-        return await Task.detached {
-            let inventory = InstalledBundleInventory.read(in: root)
-            var owners: [String: String] = [:]
-            var complete = inventory.completeness.isComplete
-            let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-            let budget = ScanBudget(total: 10)
-            for bundle in inventory.bundles {
-                // Its own parts are not somebody else. ChatGPT carries
-                // CodexCLI.app inside it, claiming the same app group, and the
-                // group was kept from ChatGPT's removal as "shared with other
-                // installed software" when the other software was ChatGPT.
-                let path = bundle.resolvingSymlinksInPath().path
-                if let subject, path == subject || path.hasPrefix(subject + "/") {
-                    continue
-                }
-                if budget.hasRunOut {
-                    complete = false; break
-                }
-                let claims = readGroups(bundle, root)
-                complete = complete && claims.complete
-                for group in claims.groups.sorted() {
-                    owners[group] = bundle.deletingPathExtension().lastPathComponent
-                }
-            }
-            return (owners, complete)
-        }.value
     }
 
     private func checkSharedClaims(for url: URL, identity: Identity, resolver: IdentityResolver) async -> Identity? {
@@ -312,4 +319,10 @@ extension TierSVetoEngine {
         Set(([identity.bundleID].compactMap(\.self) + (identity.identitySurface?.bundleIdentifiers ?? []))
             .map { $0.lowercased() })
     }
+}
+
+private struct OtherClaimants: Sendable {
+    let identities: [Identity]
+    let completeness: ScanCompleteness
+    let groupClaims: (owners: [String: String], complete: Bool)
 }
