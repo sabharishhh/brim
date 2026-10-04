@@ -58,6 +58,12 @@ private let log = BrimLog.make("app")
             ShortcutsView()
         }
         .windowResizability(.contentSize)
+        Window("About Brim", id: AboutView.windowID) {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
     }
 
     private var mainWindow: some Scene {
@@ -113,10 +119,11 @@ private let log = BrimLog.make("app")
                     Text(selfUninstallProblem ?? "")
                 }
         }
-        // The widest page needs the sidebar (200), a list (440) and a review
-        // pane (440), so 1100 is the floor (`Metrics.windowMinWidth`), and
-        // `.contentMinSize` stops the window being dragged below it from any
-        // edge or corner.
+        // 900 is the floor (`Metrics.windowMinWidth`), and `.contentMinSize`
+        // stops the window being dragged below it from any edge or corner.
+        // It was 1100, the sidebar plus a list plus a review pane side by
+        // side; below that width the pane now floats over the list
+        // (`AdaptivePanes`), and Home's cards wrap two by two.
         //
         // The 1200x800 default is not currently honoured on this machine:
         // the window opens at roughly half the display width whatever is
@@ -184,9 +191,7 @@ private let log = BrimLog.make("app")
                 .disabled(removeSelectedAction == nil)
             }
             CommandGroup(replacing: .appInfo) {
-                Button("About Brim") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(nil)
-                }
+                AboutMenuItem()
                 Button("Check for Brim Updates…") {
                     Task { releaseAnswer = await release.check() }
                 }

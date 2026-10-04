@@ -31,20 +31,25 @@ struct ApplicationsView: View {
     var body: some View {
         // Fixed panes rather than an HSplitView, which relaid out the whole
         // window on every scroll (`CLAUDE.md`).
-        HStack(spacing: 0) {
+        AdaptivePanes(
+            // Wider for a review, whose rows carry more.
+            detailWidth: review == nil && batch == nil ? 360 : 440,
+            hasDetail: review != nil || batch != nil || model.isChoosing
+                || model.marked.count >= 2 || model.selected != nil,
+            isReviewing: review != nil || batch != nil,
+            close: closeDetail
+        ) {
             VStack(spacing: 0) {
                 header
                 content
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
             // Held still while a review is open, and dimmed a little so the
             // review reads as the focus.
             .opacity(review == nil ? 1 : 0.55)
             .allowsHitTesting(review == nil)
+        } detail: {
             inspector
-                // Wider for a review, whose rows carry more.
-                .frame(width: review == nil ? 360 : 440)
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
         .task { await model.loadIfNeeded(service: service) }
@@ -70,6 +75,16 @@ struct ApplicationsView: View {
             return
         }
         review = AppReview(app: removalTarget(app))
+    }
+
+    /// The floating pane's Close, in a narrow window: ends choosing, or
+    /// clears the selection it was showing.
+    private func closeDetail() {
+        if model.isChoosing {
+            model.stopChoosing()
+        } else {
+            model.select(nil)
+        }
     }
 
     /// What removing an app removes. An app shipped inside another cannot
@@ -172,7 +187,7 @@ struct ApplicationsView: View {
                     .id(grouping)
                 }
             }
-            .refreshing(model.isLoading)
+            .refreshingBrowsable(model.isLoading)
         }
     }
 
@@ -220,7 +235,7 @@ struct ApplicationsView: View {
                 app: app, model: model, access: access, opened: opened[app.id],
                 remove: { review = AppReview(app: removalTarget(app)) }
             )
-            .refreshing(model.isLoading)
+            .refreshingBrowsable(model.isLoading)
             // Keyed on the app and a crossfade only, so arrowing through
             // the list does not make the pane swim.
             .id(app.id)

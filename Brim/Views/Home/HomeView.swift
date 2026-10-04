@@ -36,6 +36,9 @@ struct HomeView: View {
         updates = models.updates
     }
 
+    /// The summary cards are too narrow for a row of four.
+    @State private var cardsWrap = false
+
     var body: some View {
         ScrollView {
             // Centred with spacers, not `.frame(maxWidth: .infinity)`, which
@@ -53,12 +56,30 @@ struct HomeView: View {
                         recoveryNote
                     }
                     spaceCard
-                    HStack(alignment: .top, spacing: 16) {
-                        leftoversCard
-                        backgroundCard
-                        developerCard
-                        updatesCard
+                    // Four in a row while each keeps room for its figure,
+                    // two by two in a narrow window.
+                    Group {
+                        if cardsWrap {
+                            Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+                                GridRow(alignment: .top) {
+                                    leftoversCard
+                                    backgroundCard
+                                }
+                                GridRow(alignment: .top) {
+                                    developerCard
+                                    updatesCard
+                                }
+                            }
+                        } else {
+                            HStack(alignment: .top, spacing: 16) {
+                                leftoversCard
+                                backgroundCard
+                                developerCard
+                                updatesCard
+                            }
+                        }
                     }
+                    .onGeometryChange(for: Bool.self, of: { $0.size.width < 680 }, action: { cardsWrap = $0 })
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         let recent = applications.recentlyInstalled(now: context.date)
                         if !recent.isEmpty {
