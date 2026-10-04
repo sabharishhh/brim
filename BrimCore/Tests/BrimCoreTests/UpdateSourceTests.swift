@@ -2,13 +2,10 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// How each application gets its next version, read from the disk.
+/// Which Homebrew cask an application came from, read from the disk.
 ///
-/// The Updates section listed background updater agents and nothing else,
-/// which answers "who is checking in the background" and says nothing
-/// about the application in front of you. The useful question is whether
-/// each application has any route to a new version at all, and the
-/// interesting answer is the applications that do not.
+/// A wrong answer here sends an update to Homebrew for something it did
+/// not install, or leaves Homebrew believing a removed app is still there.
 final class UpdateSourceTests: XCTestCase {
 
     private var directory: URL!
@@ -53,86 +50,18 @@ final class UpdateSourceTests: XCTestCase {
         )
     }
 
-    // MARK: - Reading the sources
-
-    func testASparkleFeedIsFound() throws {
-        // Real shape, from IINA on this Mac.
-        let app = try makeApp(
-            "IINA", info: ["SUFeedURL": "https://www.iina.io/appcast.xml"]
-        )
-        let sources = UpdateSourceScanner().sources(for: app, casks: [])
-
-        XCTAssertEqual(sources, [.sparkle(feed: "https://www.iina.io/appcast.xml")])
-        XCTAssertTrue(
-            sources[0].sentence.contains("www.iina.io"),
-            "The host is the part that says who is being trusted: \(sources[0].sentence)"
-        )
-        XCTAssertFalse(
-            sources[0].sentence.contains("appcast.xml"),
-            "A whole feed URL in a row is noise"
-        )
-    }
-
-    func testAnAppStoreReceiptIsFound() throws {
-        let app = try makeApp("Store App", appStoreReceipt: true)
-        XCTAssertEqual(UpdateSourceScanner().sources(for: app, casks: []), [.appStore])
-    }
-
-    func testAnApplicationCanHaveSeveralRoutes() throws {
-        let app = try makeApp(
-            "Both", info: ["SUFeedURL": "https://example.com/feed.xml"], appStoreReceipt: true
-        )
-        let sources = UpdateSourceScanner().sources(for: app, casks: [])
-
-        XCTAssertEqual(sources.count, 2)
-        XCTAssertTrue(sources.contains(.appStore))
-    }
-
-    func testAnApplicationWithNoRouteIsTheFinding() throws {
-        let app = try makeApp("Stranded")
-        let coverage = UpdateCoverage(
-            application: app, sources: UpdateSourceScanner().sources(for: app, casks: [])
-        )
-
-        XCTAssertTrue(coverage.hasNoWayToUpdate)
-        XCTAssertTrue(
-            coverage.sentence.contains("Nothing updates this"),
-            "The row has to say the consequence: \(coverage.sentence)"
-        )
-    }
-
-    func testMacOSUpdatesItsOwnApplications() {
-        // A protected application is not a finding. Saying "nothing
-        // updates Safari" would be both wrong and unactionable.
-        let safari = InstalledApplication(
-            identity: Identity(bundleID: "com.apple.Safari", name: "Safari"),
-            url: URL(fileURLWithPath: "/Applications/Safari.app"),
-            bundleSizeBytes: 1, isSystemProtected: true
-        )
-        let coverage = UpdateCoverage(application: safari, sources: [])
-        XCTAssertFalse(coverage.hasNoWayToUpdate)
-        XCTAssertTrue(coverage.sentence.contains("macOS updates this"))
-    }
-
     // MARK: - Homebrew
 
-    func testACaskIsMatchedAcrossNamingStyles() throws {
-        // Homebrew names a cask after the software, not the bundle:
-        // boringNotch.app comes from boring-notch. Both real, from this
-        // Mac's Caskroom.
+    func testNamesAloneDoNotEstablishInstallationOwnership() throws {
         let app = try makeApp("boringNotch", bundleID: "com.theboredteam.boringnotch")
-        let sources = UpdateSourceScanner().sources(for: app, casks: ["boring-notch", "warp"])
-
-        XCTAssertEqual(sources, [.homebrewCask(name: "boring-notch")])
+        XCTAssertNil(UpdateSourceScanner.matchingCask(for: app, among: ["boring-notch", "warp"]))
     }
 
     func testASimilarNameIsNotACask() throws {
         // A loose match would tell somebody to run brew uninstall on a
         // cask that installed something else.
         let app = try makeApp("Notch", bundleID: "com.example.notch")
-        XCTAssertTrue(
-            UpdateSourceScanner().sources(for: app, casks: ["boring-notch"]).isEmpty
-        )
+        XCTAssertNil(UpdateSourceScanner.matchingCask(for: app, among: ["boring-notch"]))
     }
 
     func testNormalisationIgnoresPunctuationAndCase() {
@@ -147,18 +76,6 @@ final class UpdateSourceTests: XCTestCase {
         XCTAssertNotEqual(
             UpdateSourceScanner.normalise("notch"),
             UpdateSourceScanner.normalise("boring-notch")
-        )
-    }
-
-    func testHomebrewManagedSoftwareIsNamedForDelegation() throws {
-        let app = try makeApp("Warp", bundleID: "dev.warp.Warp-Stable")
-        let coverage = UpdateCoverage(
-            application: app,
-            sources: UpdateSourceScanner().sources(for: app, casks: ["warp"])
-        )
-        XCTAssertEqual(
-            coverage.homebrewCask, "warp",
-            "Deleting the files underneath leaves Homebrew believing it is still installed"
         )
     }
 
@@ -186,40 +103,6 @@ final class UpdateSourceTests: XCTestCase {
                 + "it cannot be audited."
             )
         }
-    }
-
-    func testTheReportRendersTheSameWithNoNetwork() throws {
-        // There is nothing to switch off: the scan is files. This asserts
-        // the shape of that claim, which is that a report built from
-        // local reads alone is complete rather than degraded.
-        let stranded = try makeApp("Stranded")
-        let sparkle = try makeApp(
-            "Feeder", bundleID: "com.example.feeder",
-            info: ["SUFeedURL": "https://example.com/appcast.xml"]
-        )
-        let scanner = UpdateSourceScanner()
-        let report = UpdateReport(
-            coverage: [
-                UpdateCoverage(application: stranded, sources: scanner.sources(for: stranded, casks: [])),
-                UpdateCoverage(application: sparkle, sources: scanner.sources(for: sparkle, casks: [])),
-            ],
-            agents: [], homebrewPresent: false
-        )
-
-        XCTAssertEqual(report.withoutAnyUpdateSource.count, 1)
-
-        // Counts, not complaints. "1 application has no way to update
-        // itself" states a dead end on the opening screen and hands the
-        // reader nothing to do with it; the same fact split into what
-        // updates itself and what they update is a short list to keep an
-        // eye on.
-        XCTAssertEqual(report.summary, "1 update themselves · 1 you update yourself")
-        XCTAssertFalse(report.summary.contains("no way"))
-    }
-
-    func testTheSummarySaysNothingWhenThereIsNothingToSay() {
-        let report = UpdateReport(coverage: [], agents: [], homebrewPresent: true)
-        XCTAssertEqual(report.summary, "Nothing installed to check.")
     }
 
     private static func repositoryRoot() -> URL {

@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Storage section.
 ///
@@ -11,7 +11,6 @@ import BrimProtocol
 /// a single "you could free 12 GB" number made of both would be neither.
 @MainActor
 public final class StorageModel: ObservableObject {
-
     @Published public private(set) var volumes: [VolumeAccount] = []
     @Published public private(set) var isLoading = false
 
@@ -21,11 +20,23 @@ public final class StorageModel: ObservableObject {
     @Published public private(set) var brimCanClearCount = 0
 
     @Published public private(set) var estimateUnavailable = false
+    /// The first volume result can arrive before the leftovers estimate.
+    /// A pending estimate must not be presented as an empty scan.
+    @Published public private(set) var hasEstimate = false
 
     public init() {}
 
     public var startupVolume: VolumeAccount? {
         volumes.first { $0.url.path == "/" } ?? volumes.first
+    }
+
+    /// Failed and incomplete measurements have no exact size to display.
+    public var brimCanClearFigure: String {
+        guard hasEstimate else { return "…" }
+        if estimateUnavailable {
+            return brimCanClear > 0 ? "At least " + ByteText.short(brimCanClear) : "Size unavailable"
+        }
+        return ByteText.short(brimCanClear)
     }
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
@@ -54,11 +65,18 @@ public final class StorageModel: ObservableObject {
         defer { isLoading = false }
         async let accounts = service.volumes()
         async let found = try? service.leftovers()
-        let (newVolumes, leftovers) = await (accounts, found)
+        let newVolumes = await accounts
         guard !Task.isCancelled else { return }
         volumes = newVolumes
-        estimateUnavailable = leftovers == nil
-        brimCanClear = leftovers?.reduce(0) { $0 + $1.size } ?? 0
-        brimCanClearCount = leftovers?.count ?? 0
+        let leftovers = await found
+        guard !Task.isCancelled else { return }
+        // Only what a record ties to a removed app counts, in apps, the
+        // same way Home and Leftovers count. Something nobody can be
+        // named for is shown in the list and never added to a figure.
+        let orphaned = (leftovers ?? []).filter { $0.category == .orphaned }
+        estimateUnavailable = leftovers == nil || orphaned.contains { $0.sizeIsKnown == false }
+        brimCanClear = orphaned.reduce(0) { $0 + $1.size }
+        brimCanClearCount = orphaned.groupedByOwner().count
+        hasEstimate = true
     }
 }

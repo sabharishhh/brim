@@ -1,6 +1,7 @@
-import Foundation
 import BrimCore
+import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// Background Task Management: login items and background services.
 ///
 /// This is the surface that motivated the product. When an app is removed
@@ -22,12 +23,12 @@ import BrimCore
 /// The records are injectable so the mapping can be tested against fixtures
 /// without a machine that happens to have the right software on it.
 public struct BackgroundItemSurface: RegistrationSurface {
-
     public let kind: Registration.Kind = .backgroundItem
 
     /// Produces the records. Nil means the store could not be read, which
     /// `coverage` reports as such rather than as an empty list.
-    private let read: @Sendable () -> [BTMRecord]?
+    private let readsSystemStore: Bool
+    private let read: @Sendable () -> BTMStore.Read
     /// Maps a numeric UID to that account's home directory. Injectable so
     /// the path normalisation can be tested without real accounts.
     private let homeDirectory: @Sendable (uid_t) -> String?
@@ -36,108 +37,94 @@ public struct BackgroundItemSurface: RegistrationSurface {
         read: (@Sendable () -> [BTMRecord]?)? = nil,
         homeDirectory: (@Sendable (uid_t) -> String?)? = nil
     ) {
-        self.read = read ?? { BTMStore().records() }
+        readsSystemStore = read == nil
+        if let read {
+            self.read = {
+                let records = read()
+                return BTMStore.Read(records: records ?? [], coverage: records == nil
+                    ? .unavailable(.backgroundItem, "Login items and background services could not be read.")
+                    : .available(.backgroundItem))
+            }
+        } else {
+            self.read = { BTMStore().snapshot() }
+        }
         self.homeDirectory = homeDirectory ?? { Self.systemHomeDirectory(for: $0) }
     }
 
     public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
-        guard read() != nil else {
-            return .unavailable(
-                kind,
-                "Login items and background services could not be read. Brim needs Full Disk "
-                + "Access to see the list macOS keeps."
-            )
-        }
-        return .available(kind)
+        await snapshot(in: root).coverage
     }
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
-        // Reporting nothing found would be a lie. `coverage` says it could
-        // not be read, which is a different thing and the reason that
-        // method exists.
-        guard let records = read() else { return [] }
+        await snapshot(in: root).registrations
+    }
 
-        let fm = FileManager.default
-
-        // An embedded item records a path relative to the app that ships
-        // it, and names that app as its parent. Index the absolute ones so
-        // a child can be resolved against its parent rather than against
-        // the working directory.
-        var absoluteByIdentifier: [String: URL] = [:]
-        for record in records {
-            if let identifier = record.identifier, let url = record.url {
-                absoluteByIdentifier[identifier] = url
-            }
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        if readsSystemStore, root.rootURL.standardizedFileURL.path != "/" {
+            return RegistrationSnapshot(registrations: [], coverage: .withheld(
+                .backgroundItem, "The system background store is outside this filesystem."
+            ))
         }
-        let recordsByIdentifier = Dictionary(
-            records.compactMap { record -> (String, BTMRecord)? in
-                guard let identifier = record.identifier else { return nil }
-                return (identifier, record)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        return records.compactMap { record -> Registration? in
-            let resolved = resolve(record, parents: absoluteByIdentifier)
-
-            // Nothing to attribute or act on: no identity, no location.
+        let observation = read()
+        let records = observation.records
+        // IDs repeat between copies and accounts. Only an unambiguous parent
+        // in this record's namespace may resolve a relative location.
+        let byNamespace = Dictionary(grouping: records) { $0.namespace ?? "fixture" }
+        let mapped = records.compactMap { record -> Registration? in
+            let candidates = byNamespace[record.namespace ?? "fixture"] ?? []
+            let grouped = Dictionary(grouping: candidates.filter { $0.identifier != nil }) {
+                $0.identifier!
+            }
+            let parents = grouped.compactMapValues { values in
+                values.count == 1 ? values.first : nil
+            }
+            let resolved = resolve(record, parents: parents, seen: [])
             guard record.bundleIdentifier != nil || resolved != nil || record.parentIdentifier != nil else {
                 return nil
             }
-
-            // Only claim staleness from a path we could actually resolve.
-            // An item with no URL at all, a background-tasks record for
-            // instance, says nothing about whether its owner is present, so
-            // it is judged by its parent instead.
-            let targetExists: Bool
-            if let resolved {
-                targetExists = fm.fileExists(atPath: resolved.path)
-            } else if let parentIdentifier = record.parentIdentifier,
-                      let parentURL = absoluteByIdentifier[parentIdentifier] {
-                targetExists = fm.fileExists(atPath: parentURL.path)
-            } else {
-                targetExists = true
-            }
-
-            // A helper belongs to the app that ships it, so uninstalling
-            // the app clears its login item too. The owner is the top of
-            // the chain rather than the item's own identifier: ChatGPT's
-            // dock tile plugin has a bundle id of its own, and attributing
-            // it to itself split one application into two entries that
-            // nothing connected.
-            let owningBundleID = Self.rootOwner(
-                of: record, parents: recordsByIdentifier
-            ) ?? record.bundleIdentifier
-
+            let presence = PathObservation.observe(resolved?.path, followingLinks: true)
+            let owner = Self.rootOwner(of: record, parents: parents)
             let isSystemOwned = Self.isSystemOwned(record, resolved: resolved)
-
-            let label = record.name
-                ?? record.bundleIdentifier
-                ?? resolved?.lastPathComponent
-                ?? record.uuid
-
             return Registration(
                 kind: .backgroundItem,
                 identifier: record.bundleIdentifier ?? record.identifier ?? record.uuid,
-                label: label,
-                owningBundleID: owningBundleID,
+                label: record.name ?? record.bundleIdentifier ?? resolved?.lastPathComponent ?? record.uuid,
+                owningBundleID: owner,
                 programPath: resolved?.path,
-                targetExists: targetExists,
-                recordPath: nil,
-                evidence: targetExists
-                    ? "Registered as a background item with macOS"
-                        + (record.developerName.map { " by \($0)." } ?? ".")
-                    : "The application is gone and macOS has not tidied its list yet. It drops "
-                        + "these by itself the next time anything asks it for the list.",
+                targetExists: presence.isPresent,
+                recordPath: record.storePath,
+                evidence: presence.isAbsent
+                    ? "The background record remains listed, but its target is missing."
+                    : "Registered as a background item with macOS"
+                    + (record.developerName.map { " by \($0)." } ?? "."),
                 isSystemOwned: isSystemOwned,
-                // Apple's own items are not examined. Their signatures are
-                // never the question, and validating something the size of
-                // Xcode on every scan would make the section feel broken.
-                signing: (isSystemOwned || !targetExists) ? nil : resolved.map {
+                signing: (isSystemOwned || !presence.isPresent) ? nil : resolved.map {
                     CodeSignature.state(of: $0, recordedTeam: record.teamIdentifier)
-                }
+                },
+                atLogin: record.type?.contains("login item") == true,
+                targetPresence: presence, recordIdentity: record.uuid,
+                namespace: record.namespace, runtimeState: record.disposition, rawTargetPath: record.rawURLPath
             )
         }
+        return RegistrationSnapshot(registrations: mapped, coverage: observation.coverage, readerVersion: 2)
+    }
+
+    private func resolve(_ record: BTMRecord, parents: [String: BTMRecord], seen: Set<String>) -> URL? {
+        guard !seen.contains(record.uuid) else { return nil }
+        if let absolute = record.url {
+            let components = absolute.pathComponents
+            if components.count > 2, components[1] == "Users",
+               let uid = uid_t(components[2]), homeDirectory(uid) == nil {
+                return nil
+            }
+            return Self.normalizingUserPlaceholder(absolute, homeDirectory: homeDirectory)
+        }
+        guard let parentID = record.parentIdentifier, let parent = parents[parentID],
+              let base = resolve(parent, parents: parents, seen: seen.union([record.uuid])) else { return nil }
+        guard let relative = record.rawURLPath else { return base }
+        let result = base.appendingPathComponent(relative).standardizedFileURL
+        guard result.path.hasPrefix(base.standardizedFileURL.path + "/") else { return nil }
+        return result
     }
 
     /// An absolute URL for a record, resolving an embedded item's relative
@@ -163,11 +150,10 @@ public struct BackgroundItemSurface: RegistrationSurface {
     /// worth hanging on.
     static func rootOwner(of record: BTMRecord, parents: [String: BTMRecord]) -> String? {
         var current = record
-        var seen: Set<String> = []
-        while let parentIdentifier = current.parentIdentifier,
-              !seen.contains(parentIdentifier),
-              let parent = parents[parentIdentifier] {
-            seen.insert(parentIdentifier)
+        var seen: Set<String> = [record.uuid]
+        while let parentIdentifier = current.parentIdentifier {
+            guard let parent = parents[parentIdentifier], !seen.contains(parent.uuid) else { return nil }
+            seen.insert(parent.uuid)
             current = parent
         }
         return current.bundleIdentifier
@@ -226,7 +212,7 @@ public struct BackgroundItemSurface: RegistrationSurface {
     static func bundleIdentifier(in identifier: String) -> String {
         guard let dot = identifier.firstIndex(of: "."),
               dot != identifier.startIndex,
-              identifier[identifier.startIndex..<dot].allSatisfy(\.isNumber)
+              identifier[identifier.startIndex ..< dot].allSatisfy(\.isNumber)
         else { return identifier }
         return String(identifier[identifier.index(after: dot)...])
     }

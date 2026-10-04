@@ -1,5 +1,7 @@
-import Foundation
 import BrimCore
+import CoreServices
+import Foundation
+import Security
 
 /// Lists the applications installed on a machine.
 ///
@@ -29,25 +31,29 @@ public actor ApplicationInventory {
     public func installedApplications() async -> [InstalledApplication] {
         var seen = Set<String>()
         var results: [InstalledApplication] = []
+        let casks = UpdateSourceScanner().installedCaskInventory()
+        var developers = DeveloperNames()
 
-        for domain in searchDomains {
-            for bundleURL in bundles(in: domain.url) {
-                // A bundle reachable from two domains is one application.
-                guard seen.insert(bundleURL.standardizedFileURL.path).inserted else { continue }
+        for candidate in candidates() {
+            let (bundleURL, protected, host) = (candidate.url, candidate.protected, candidate.host)
+            // A bundle reachable from two domains is one application.
+            guard seen.insert(bundleURL.standardizedFileURL.path).inserted else { continue }
 
-                let identity = await resolver.resolve(bundleURL: bundleURL)
-                // Judge protection and size by where the bundle actually is,
-                // not by where it is listed: /Applications/Safari.app is a
-                // symlink into a Cryptex, so a check on the listed path alone
-                // would offer Safari for removal and measure it as 0 bytes.
-                let resolved = bundleURL.resolvingSymlinksInPath()
-                results.append(InstalledApplication(
-                    identity: identity,
-                    url: bundleURL,
-                    bundleSizeBytes: Self.size(of: resolved),
-                    isSystemProtected: domain.protected || Self.isOSOwned(resolved)
-                ))
-            }
+            let identity = await resolver.resolve(bundleURL: bundleURL)
+            // Judge protection and size by where the bundle actually is,
+            // not by where it is listed: /Applications/Safari.app is a
+            // symlink into a Cryptex, so a check on the listed path alone
+            // would offer Safari for removal and measure it as 0 bytes.
+            let resolved = bundleURL.resolvingSymlinksInPath()
+            var application = InstalledApplication(
+                identity: identity,
+                url: bundleURL,
+                bundleSizeBytes: Self.size(of: resolved),
+                isSystemProtected: protected || Self.isOSOwned(resolved)
+            )
+            application.enclosingApp = host
+            describe(&application, resolved: resolved, casks: casks, developers: &developers)
+            results.append(application)
         }
 
         return results.sorted {
@@ -55,9 +61,146 @@ public actor ApplicationInventory {
         }
     }
 
-    /// Top-level `.app` bundles only. Applications nested inside another app's
-    /// bundle belong to that app's footprint, not to this inventory, and
-    /// `/Applications/Utilities` is one level down so it is included.
+    /// Category, source, developer and use, for grouping. Every value is
+    /// read from a file or Spotlight; none of it is worked out by guessing.
+    private func describe(
+        _ application: inout InstalledApplication, resolved: URL, casks: HomebrewCaskInventory,
+        developers: inout DeveloperNames
+    ) {
+        let bundleID = application.identity.bundleID
+        application.category = Self.infoValue("LSApplicationCategoryType", in: resolved)
+        application.source = ApplicationFacts.source(
+            bundleID: bundleID, path: resolved.path,
+            hasAppStoreReceipt: FileManager.default.fileExists(
+                atPath: resolved.appendingPathComponent("Contents/_MASReceipt/receipt").path
+            ),
+            isHomebrewCask: UpdateSourceScanner.matchingCask(for: application, among: casks) != nil
+        )
+        application.developer = ApplicationFacts.isApple(bundleID: bundleID)
+            ? "Apple"
+            : developers.name(team: application.identity.teamID, bundle: resolved)
+            ?? ApplicationFacts.vendor(fromBundleID: bundleID)
+        if let item = MDItemCreateWithURL(kCFAllocatorDefault, resolved as CFURL) {
+            application.lastOpened = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date
+            application.addedAt = MDItemCopyAttribute(item, kMDItemDateAdded) as? Date
+        }
+    }
+
+    private static func infoValue(_ key: String, in bundle: URL) -> String? {
+        let plist = bundle.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return nil }
+        return values[key] as? String
+    }
+
+    /// An application to describe, with whether it can be removed on its
+    /// own and the app it ships inside, if any.
+    struct Candidate {
+        let url: URL
+        let protected: Bool
+        let host: String?
+    }
+
+    /// Every application to describe, with whether it can be removed on its
+    /// own and the app it ships inside, if any.
+    ///
+    /// The folders are walked first, as before. Then two additions, because
+    /// the walk alone missed applications people use: an app's own
+    /// `Contents/Applications` (Icon Composer, Instruments, FileMerge and
+    /// Simulator all live inside Xcode), and whatever Spotlight has indexed
+    /// as an application anywhere under the same folders, which catches an
+    /// app more than one folder deep. Spotlight adds; it never removes, so
+    /// a Mac with indexing off still gets the full walk.
+    private func candidates() -> [Candidate] {
+        var found: [Candidate] = []
+        for domain in searchDomains {
+            for bundle in bundles(in: domain.url) {
+                found.append(Candidate(url: bundle, protected: domain.protected, host: nil))
+                let host = Self.name(of: bundle)
+                // It stands where its host stands: removable when the host
+                // is yours, protected when the host belongs to macOS.
+                let hostProtected = domain.protected || Self.isOSOwned(bundle.resolvingSymlinksInPath())
+                found.append(contentsOf: Self.embeddedApplications(in: bundle).map {
+                    Candidate(url: $0, protected: hostProtected, host: host)
+                })
+            }
+        }
+        // Spotlight answers only about the real disk, not a test fixture.
+        if root.rootURL.path == "/" {
+            let known = Set(found.map { $0.url.standardizedFileURL.path })
+            for url in Self.indexedApplications(in: searchDomains.map(\.url))
+            where !known.contains(url.standardizedFileURL.path) {
+                guard let placement = Self.placement(of: url) else { continue }
+                let host: String? = placement
+                let protected = searchDomains.contains { $0.protected && url.path.hasPrefix($0.url.path + "/") }
+                found.append(
+                    Candidate(url: url, protected: protected, host: host)
+                )
+            }
+        }
+        found += packagedElsewhere().map { Candidate(url: $0, protected: false, host: nil) }
+        return found
+    }
+
+    /// Applications an installer package put outside the Applications
+    /// folders, straight into its own folder in `/Library`.
+    ///
+    /// Microsoft AutoUpdate arrives with Teams in
+    /// `/Library/Application Support/Microsoft/MAU2.0`. It runs, it launches
+    /// itself at login, and it outlived Teams on this Mac, yet no list in
+    /// Brim showed it, so there was nothing to remove it from. The rule is
+    /// the helper's (`HelperScope.installFolder`), so whatever is listed
+    /// here is something Brim can also take away.
+    private func packagedElsewhere() -> [URL] {
+        InstalledBundleInventory.packageInstallFolders(in: root).flatMap { directory in
+            Self.entries(of: directory).filter { ($0 as NSString).pathExtension == "app" }
+                .map { directory.appendingPathComponent($0) }
+        }
+    }
+
+    /// Apps an application carries for people to open, in the one place
+    /// macOS looks for them: `Contents/Applications`. Helpers buried in
+    /// `Frameworks` or `Library` are machinery, not apps anyone launches.
+    static func embeddedApplications(in bundle: URL) -> [URL] {
+        let folder = bundle.appendingPathComponent("Contents/Applications")
+        return entries(of: folder).filter { ($0 as NSString).pathExtension == "app" }
+            .map { folder.appendingPathComponent($0) }
+    }
+
+    /// Where Spotlight's answer sits. Nil for an app inside another bundle
+    /// anywhere but its `Contents/Applications`, which is a helper. The
+    /// outer optional is whether to list it at all, the inner the host.
+    static func placement(of url: URL) -> String?? {
+        let components = url.deletingLastPathComponent().pathComponents
+        guard let hostIndex = components.lastIndex(where: { $0.hasSuffix(".app") }) else {
+            return .some(nil)
+        }
+        let rest = Array(components[(hostIndex + 1)...])
+        guard rest == ["Contents", "Applications"] else { return nil }
+        return .some((components[hostIndex] as NSString).deletingPathExtension)
+    }
+
+    /// Every application bundle Spotlight knows of under these folders,
+    /// through the public Metadata API. Empty when indexing is off.
+    static func indexedApplications(in scopes: [URL]) -> [URL] {
+        let predicate = "kMDItemContentType == 'com.apple.application-bundle'" as CFString
+        guard let query = MDQueryCreate(kCFAllocatorDefault, predicate, nil, nil) else { return [] }
+        MDQuerySetSearchScope(query, scopes.map(\.path) as CFArray, 0)
+        guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else { return [] }
+        return (0 ..< MDQueryGetResultCount(query)).compactMap { index in
+            guard let raw = MDQueryGetResultAtIndex(query, index) else { return nil }
+            let item = Unmanaged<MDItem>.fromOpaque(raw).takeUnretainedValue()
+            return (MDItemCopyAttribute(item, kMDItemPath) as? String).map { URL(fileURLWithPath: $0) }
+        }
+    }
+
+    private static func name(of bundle: URL) -> String {
+        bundle.deletingPathExtension().lastPathComponent
+    }
+
+    /// Top-level `.app` bundles, and one folder down so
+    /// `/Applications/Utilities` is included.
     private func bundles(in directory: URL) -> [URL] {
         var found: [URL] = []
         for name in Self.entries(of: directory) {
@@ -110,5 +253,38 @@ public actor ApplicationInventory {
             total += Int64((try? fileURL.resourceValues(forKeys: Set(keys)))?.fileSize ?? 0)
         }
         return total
+    }
+}
+
+/// Organisation names by signing team, read from the certificate once per
+/// team rather than once per app: Adobe's five apps cost one read.
+struct DeveloperNames {
+    private var byTeam: [String: String] = [:]
+
+    mutating func name(team: String?, bundle: URL) -> String? {
+        guard let team else { return nil }
+        if let known = byTeam[team] {
+            return known
+        }
+        // Not remembered when nothing is found: an App Store app is
+        // re-signed by Apple and names nobody, and another app from the
+        // same team may still say who it is.
+        guard let found = Self.certificateOrganisation(of: bundle) else { return nil }
+        byTeam[team] = found
+        return found
+    }
+
+    private static func certificateOrganisation(of bundle: URL) -> String? {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
+            == errSecSuccess,
+            let values = information as? [String: Any],
+            let certificates = values[kSecCodeInfoCertificates as String] as? [SecCertificate],
+            let leaf = certificates.first,
+            let summary = SecCertificateCopySubjectSummary(leaf) as String?
+        else { return nil }
+        return ApplicationFacts.organisation(fromCertificateSummary: summary)
     }
 }

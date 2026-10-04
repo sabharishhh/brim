@@ -28,6 +28,12 @@ public struct LaunchdSource: EvidenceSource {
         // Other installed applications from the same developer, looked up
         // once and only if a job turns out to be matched on the team alone.
         var siblings: [Identity]?
+        // Worked out once: `Identity` derives these on every read, and there
+        // are several hundred job files to test against them.
+        let embeddedIDs = identity.searchBundleIdentifiers.filter { $0 != targetBundleID }
+        let declaredLabels = Set(identity.capabilitySurface?.declarations
+            .filter { $0.capability == .launchdJob }
+            .map(\.value) ?? [])
 
         for searchDir in paths {
             let contents: [URL]
@@ -77,10 +83,6 @@ public struct LaunchdSource: EvidenceSource {
                 var proven = plistIdentity.launchdLabel.map { label in
                     label == targetBundleID || label.hasPrefix(targetBundleID + ".")
                 } ?? false
-                let embeddedIDs = identity.searchBundleIdentifiers.filter { $0 != targetBundleID }
-                let declaredLabels = Set(identity.capabilitySurface?.declarations
-                    .filter { $0.capability == .launchdJob }
-                    .map(\.value) ?? [])
                 let label = plistIdentity.launchdLabel
                 let embeddedMatch = label.map { label in
                     embeddedIDs.contains { label == $0 || label.hasPrefix($0 + ".") }

@@ -14,6 +14,9 @@ public protocol BrimServiceProtocol: Sendable {
     func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt
     func apply(planId: UUID, token: ApprovalToken) async throws
     func verify(planId: UUID) async throws -> VerificationResult
+    /// Re-observe a bounded set of unfinished removals once when the app opens.
+    /// This never repeats an execution or obtains approval.
+    func recheckPendingRemovals() async
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
     /// Applications installed on this machine, for the Applications view.
@@ -46,9 +49,14 @@ public protocol BrimServiceProtocol: Sendable {
     func sampleEnergy() async -> EnergySampleResult
     /// Build caches this Mac has accumulated, with what clearing each costs.
     func developerCaches() async -> [DeveloperCache]
+    /// Snapshots from an on-demand scan. Rows keep their path identity while
+    /// their measurements finish. Dropping the stream cancels its producer.
+    func developerCacheUpdates(excluding folders: [URL]) async -> AsyncStream<[DeveloperCache]>
     /// Plans a tool's own cleanup, named rather than described. The command
     /// is resolved inside the service from a fixed table.
     func planToolCleanup(id: String, displayed: String) async throws -> Plan
+    func planToolCleanup(id: String, cachePath: URL) async throws -> Plan
+    func planHomebrewDownloads(cachePath: URL, excluding folders: [URL]) async throws -> Plan
     /// Hands the service a way to remove something in a folder that
     /// belongs to root, once Brim's privileged daemon is set up.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
@@ -56,25 +64,25 @@ public protocol BrimServiceProtocol: Sendable {
     /// live in a folder that belongs to root, so without the daemon the
     /// step records that the record remains rather than half succeeding.
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
+    /// Starts protected work after approval and stops it on every exit path.
+    func usePrivilegedBatch(begin: (@Sendable () async -> String?)?,
+                            end: (@Sendable () async -> Void)?) async
+    func useRecoveryVerifier(_ reader: (@Sendable () async throws -> [RecoveryCopy])?) async
+    func useRecoveryCopies(reader: (@Sendable () async throws -> [RecoveryCopy])?,
+                           remover: (@Sendable (String, TargetFingerprint) async -> String?)?) async
     /// What has been installed, removed or updated since Brim last
     /// looked, worked out by subtracting one snapshot from the one
     /// before it. Nothing watches, and nothing runs at login.
     func whatChanged() async -> InstallHistory
-    /// How each application gets its next version, read from the disk
-    /// with no network request of any kind.
-    func updateReport() async -> UpdateReport
-    /// Energy per application, accumulated across restarts.
-    /// Checks for newer versions. Reaches the network, so only ever on a
-    /// press.
-    func checkForUpdates() async -> [AvailableUpdate]
-    /// Installs one update by delegation.
-    func installUpdate(_ update: AvailableUpdate) async -> String?
-    /// Casks Homebrew still tracks whose application is gone.
-    func orphanedCasks() async -> [OrphanedCask]
-    func forgetCask(_ name: String) async -> String?
+    /// Checks every application for a newer version. Reaches the network.
+    func checkForUpdates() async -> UpdateCheck
+    /// Puts one update in place, reporting download progress from 0 to 1.
+    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome
 }
 
 public extension BrimServiceProtocol {
+    func recheckPendingRemovals() async {}
+
     /// Ask, wait for the answer, then act on it.
     ///
     /// The one route from a plan to a removal, so there is one place where
@@ -107,24 +115,51 @@ public extension BrimServiceProtocol {
         EnergySampleResult(samples: [], coverageGaps: 0)
     }
     func developerCaches() async -> [DeveloperCache] { [] }
+    func developerCacheUpdates(excluding folders: [URL]) async -> AsyncStream<[DeveloperCache]> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task {
+                let caches = await developerCaches()
+                if !Task.isCancelled {
+                    continuation.yield(caches.filter { cache in
+                        !folders.contains { ArtifactSizer.rootsOverlap(cache.url, $0) }
+                    })
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
     func planToolCleanup(id: String, displayed: String) async throws -> Plan {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
     }
+
+    func planToolCleanup(id _: String, cachePath _: URL) async throws -> Plan {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Scoped tool cleanup is not supported here."])
+    }
+
+    func planHomebrewDownloads(cachePath _: URL, excluding _: [URL]) async throws -> Plan {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Download cleanup is not supported here."])
+    }
+
     /// A service with no executor of its own has nothing to hand it to.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
+    func usePrivilegedBatch(begin _: (@Sendable () async -> String?)?,
+                            end _: (@Sendable () async -> Void)?) async {}
+    func useRecoveryVerifier(_: (@Sendable () async throws -> [RecoveryCopy])?) async {}
+    func useRecoveryCopies(reader _: (@Sendable () async throws -> [RecoveryCopy])?,
+                           remover _: (@Sendable (String, TargetFingerprint) async -> String?)?) async {}
     /// A service with no history has seen nothing change.
     func whatChanged() async -> InstallHistory {
         InstallHistory(changes: [], snapshots: 0)
     }
-    func updateReport() async -> UpdateReport {
-        UpdateReport(coverage: [], agents: [], homebrewPresent: false)
+    func checkForUpdates() async -> UpdateCheck {
+        UpdateCheck(updates: [], checked: 0, unchecked: [], checkedAt: Date())
     }
-    func checkForUpdates() async -> [AvailableUpdate] { [] }
-    func installUpdate(_ update: AvailableUpdate) async -> String? {
-        "Not supported here."
+    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
+        .failed("Not supported here.")
     }
-    func orphanedCasks() async -> [OrphanedCask] { [] }
-    func forgetCask(_ name: String) async -> String? { "Not supported here." }
 }

@@ -1,5 +1,6 @@
-import Foundation
+import BrimCore
 import BrimScanShim
+import Foundation
 
 /// Reads Background Task Management straight out of its own database.
 ///
@@ -20,7 +21,6 @@ import BrimScanShim
 /// references and rebuild the `NSURL`s and `NSUUID`s; hand-resolving `CF$UID`
 /// markers would be a second implementation of that, and a worse one.
 public struct BTMStore: Sendable {
-
     /// Where macOS keeps it.
     public static let systemDirectory = URL(
         fileURLWithPath: "/var/db/com.apple.backgroundtaskmanagement"
@@ -42,22 +42,66 @@ public struct BTMStore: Sendable {
     /// Nil means the store could not be read, which is a different answer
     /// from an empty list and is reported as such. The usual cause is Full
     /// Disk Access being off.
-    public func records() -> [BTMRecord]? {
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil
-        ) else { return nil }
-
-        let stores = Self.storesToRead(in: files, belongingTo: currentUser())
-        guard !stores.isEmpty else { return nil }
-
-        var records: [BTMRecord] = []
-        var readAnything = false
-        for store in stores {
-            guard let decoded = Self.decode(store) else { continue }
-            readAnything = true
-            records.append(contentsOf: decoded)
+    public struct Read: Sendable {
+        public let records: [BTMRecord]
+        public let coverage: RegistrationCoverage
+        public init(records: [BTMRecord], coverage: RegistrationCoverage) {
+            self.records = records
+            self.coverage = coverage
         }
-        return readAnything ? records : nil
+    }
+
+    public func records() -> [BTMRecord]? {
+        let read = snapshot()
+        return read.coverage.scopes?.contains(where: \.available) == true ? read.records : nil
+    }
+
+    /// Read records and coverage together. A successful user store cannot
+    /// hide a denied or unsupported machine store.
+    public func snapshot() -> Read {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil
+            )
+        } catch {
+            return Read(records: [], coverage: .unavailable(
+                .backgroundItem, "Login items and background services could not be read.",
+                absence: .needsPermission
+            ))
+        }
+        let user = currentUser()
+        let stores = Self.storesToRead(in: files, belongingTo: user)
+        var records: [BTMRecord] = []
+        var scopes: [RegistrationCoverage.Scope] = []
+        if user == nil || !stores.contains(where: {
+            Self.parseName($0.lastPathComponent)?.owner == user?.uuidString
+        }) {
+            scopes.append(.init(namespace: user?.uuidString ?? "current-user",
+                                available: false, limitation: "The account store could not be identified."))
+        }
+        if !stores.contains(where: {
+            Self.parseName($0.lastPathComponent)?.owner?.hasPrefix(Self.pseudoAccountPrefix) == true
+        }) {
+            scopes.append(.init(namespace: "machine", available: false,
+                                limitation: "The machine store could not be identified."))
+        }
+        for store in stores {
+            let namespace = Self.parseName(store.lastPathComponent)?.owner ?? store.lastPathComponent
+            guard let decoded = Self.decode(store) else {
+                scopes.append(.init(namespace: namespace, available: false,
+                                    limitation: "The background store could not be decoded."))
+                continue
+            }
+            scopes.append(.init(namespace: namespace, available: true))
+            records.append(contentsOf: decoded.map { $0.inStore(store.path, namespace: namespace) })
+        }
+        let complete = !scopes.isEmpty && scopes.allSatisfy(\.available)
+        return Read(records: records, coverage: RegistrationCoverage(
+            kind: .backgroundItem, available: complete,
+            limitation: complete ? nil : "Part of the background item list could not be checked.",
+            scopes: scopes
+        ))
     }
 
     // MARK: - Choosing files
@@ -90,7 +134,9 @@ public struct BTMStore: Sendable {
                     // which accounts have stores. It holds no items.
                     return false
                 }
-                if owner.hasPrefix(Self.pseudoAccountPrefix) { return true }
+                if owner.hasPrefix(Self.pseudoAccountPrefix) {
+                    return true
+                }
                 return owner == user?.uuidString
             }
             .map(\.url)
@@ -106,7 +152,7 @@ public struct BTMStore: Sendable {
         guard let separator = body.firstIndex(of: "-") else {
             return Int(body).map { ($0, nil) }
         }
-        guard let version = Int(body[body.startIndex..<separator]) else { return nil }
+        guard let version = Int(body[body.startIndex ..< separator]) else { return nil }
         return (version, String(body[body.index(after: separator)...]).uppercased())
     }
 
@@ -137,7 +183,7 @@ public struct BTMStore: Sendable {
 
         let store = unarchiver.decodeObject(of: ArchivedUserStore.self, forKey: "userStore")
         unarchiver.finishDecoding()
-        guard let store else { return nil }
+        guard let store, unarchiver.error == nil, store.valid else { return nil }
         return store.items.map(\.record)
     }
 }
@@ -148,37 +194,48 @@ public struct BTMStore: Sendable {
 /// records; everything else in the archive is settings Brim does not read.
 @objc(BrimArchivedUserStore)
 final class ArchivedUserStore: NSObject, NSSecureCoding {
-    static var supportsSecureCoding: Bool { true }
+    static var supportsSecureCoding: Bool {
+        true
+    }
 
     let items: [ArchivedItem]
+    let valid: Bool
 
     init?(coder: NSCoder) {
         let classes: [AnyClass] = [NSArray.self, NSMutableArray.self, ArchivedItem.self]
         let decoded = coder.decodeObject(of: classes, forKey: "records") as? [Any]
         items = decoded?.compactMap { $0 as? ArchivedItem } ?? []
+        valid = coder.containsValue(forKey: "records") && decoded != nil
+            && items.count == decoded?.count
     }
 
-    func encode(with coder: NSCoder) {}
+    func encode(with _: NSCoder) {}
 }
 
 /// Unread, but named so the decoder does not have to guess at it.
 @objc(BrimArchivedSettings)
 final class ArchivedSettings: NSObject, NSSecureCoding {
-    static var supportsSecureCoding: Bool { true }
-    init?(coder: NSCoder) {}
-    func encode(with coder: NSCoder) {}
+    static var supportsSecureCoding: Bool {
+        true
+    }
+
+    init?(coder _: NSCoder) {}
+    func encode(with _: NSCoder) {}
 }
 
 /// One `ItemRecord`, which is a login item, a helper, an extension or a
 /// background task that some application registered.
 @objc(BrimArchivedItem)
 final class ArchivedItem: NSObject, NSSecureCoding {
-    static var supportsSecureCoding: Bool { true }
+    static var supportsSecureCoding: Bool {
+        true
+    }
 
     let record: BTMRecord
 
     init?(coder: NSCoder) {
         func string(_ key: String) -> String? {
+            guard coder.containsValue(forKey: key) else { return nil }
             let value = coder.decodeObject(of: NSString.self, forKey: key) as String?
             return (value?.isEmpty ?? true) ? nil : value
         }
@@ -186,8 +243,9 @@ final class ArchivedItem: NSObject, NSSecureCoding {
         let url = coder.decodeObject(of: NSURL.self, forKey: "url") as URL?
         let uuid = coder.decodeObject(of: NSUUID.self, forKey: "uuid") as UUID?
 
+        guard let uuid else { return nil }
         record = BTMRecord(
-            uuid: uuid?.uuidString ?? UUID().uuidString,
+            uuid: uuid.uuidString,
             name: string("name"),
             developerName: string("developerName"),
             type: BTMDisposition.typeDescription(coder.decodeInteger(forKey: "type")),
@@ -199,11 +257,13 @@ final class ArchivedItem: NSObject, NSSecureCoding {
             // relative to and what attributes a helper to its application.
             parentIdentifier: string("container"),
             bundleIdentifier: string("bundleIdentifier"),
-            teamIdentifier: string("teamIdentifier")
+            teamIdentifier: string("teamIdentifier"),
+            rawType: coder.decodeInteger(forKey: "type"),
+            rawDisposition: coder.decodeInteger(forKey: "disposition")
         )
     }
 
-    func encode(with coder: NSCoder) {}
+    func encode(with _: NSCoder) {}
 
     /// An absolute path for a top-level item, a bundle-relative one for an
     /// embedded item, matching what `BTMRecord` has always expected.
@@ -230,7 +290,6 @@ final class ArchivedItem: NSObject, NSSecureCoding {
 /// as its number rather than guessed at, because a wrong label here would
 /// be read as a fact about the user's Mac.
 enum BTMDisposition {
-
     static func typeDescription(_ raw: Int) -> String? {
         guard raw != 0 else { return nil }
         let known: [(Int, String)] = [
@@ -247,8 +306,12 @@ enum BTMDisposition {
         let accounted = known.filter { raw & $0.0 != 0 }.reduce(0) { $0 | $1.0 }
         let leftover = raw & ~accounted
 
-        if matched.isEmpty { return String(format: "type 0x%x", raw) }
-        if leftover != 0 { return matched.joined(separator: ", ") + String(format: " (0x%x)", raw) }
+        if matched.isEmpty {
+            return String(format: "type 0x%x", raw)
+        }
+        if leftover != 0 {
+            return matched.joined(separator: ", ") + String(format: " (0x%x)", raw)
+        }
         return matched.joined(separator: ", ")
     }
 
@@ -265,5 +328,7 @@ enum BTMDisposition {
     }
 
     /// Whether macOS will actually run it. Bit zero of the disposition.
-    static func isEnabled(_ raw: Int) -> Bool { raw & 0x1 != 0 }
+    static func isEnabled(_ raw: Int) -> Bool {
+        raw & 0x1 != 0
+    }
 }

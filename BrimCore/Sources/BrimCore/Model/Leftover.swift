@@ -11,6 +11,7 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
 
     public let url: URL
     public let size: Int64
+    public let sizeIsKnown: Bool?
     public let category: Category
     public let potentialOwner: Identity?
 
@@ -33,6 +34,14 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// only that nothing has looked at this lately.
     public let lastAccessed: Date?
 
+    /// When Brim last saw the app this belongs to installed, where its
+    /// snapshots recorded it.
+    public var removedAt: Date?
+
+    /// The installed app that took the removed app's place, when that is
+    /// proven. See `Replacement`. Information only: it selects nothing.
+    public var replacedBy: Replacement?
+
     public var id: String { url.path }
 
     /// Whether Brim can take this away, itself or through its helper.
@@ -42,7 +51,8 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// exists for exactly that kind of leftover. The helper's own reading
     /// of what it will take decides, so nothing is ticked that it refuses.
     public var canBeRemovedByBrim: Bool {
-        capability == .ok || (capability == .needsHelper && HelperScope.covers(url.path))
+        capability == .ok || (capability == .needsHelper
+            && (RecoveryCopy.identifier(for: url.path) != nil || HelperScope.covers(url.path)))
     }
 
     public init(
@@ -52,14 +62,18 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
         potentialOwner: Identity? = nil,
         evidence: String = "",
         capability: Capability = .ok,
-        lastAccessed: Date? = nil
+        lastAccessed: Date? = nil,
+        removedAt: Date? = nil,
+        sizeIsKnown: Bool = true
     ) {
         self.url = url
         self.size = size
+        self.sizeIsKnown = sizeIsKnown
         self.category = category
         self.potentialOwner = potentialOwner
         self.evidence = evidence
         self.capability = capability
         self.lastAccessed = lastAccessed
+        self.removedAt = removedAt
     }
 }

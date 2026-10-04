@@ -54,3 +54,43 @@ final class ApplicationInventoryTests: XCTestCase {
         )
     }
 }
+
+/// Apps shipped inside another app are listed, and stand where their host
+/// stands: removable when it is, by removing it.
+///
+/// Icon Composer, Instruments and FileMerge live in Xcode's
+/// `Contents/Applications`. The inventory listed top-level bundles only, so
+/// none of them appeared in Apps and searching for them found nothing.
+final class EmbeddedApplicationTests: XCTestCase {
+    func testAnAppInContentsApplicationsBelongsToItsHost() {
+        let url = URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Applications/Icon Composer.app")
+        XCTAssertEqual(ApplicationInventory.placement(of: url), .some("Xcode"))
+    }
+
+    func testAHelperBuriedElsewhereInABundleIsNotAnApp() {
+        let url = URL(fileURLWithPath: "/Applications/Chrome.app/Contents/Frameworks/Helper.app")
+        XCTAssertTrue(ApplicationInventory.placement(of: url) == nil)
+    }
+
+    func testAnAppDeepInOrdinaryFoldersStandsAlone() {
+        let url = URL(fileURLWithPath: "/Applications/Adobe/Tools/Bridge.app")
+        XCTAssertEqual(ApplicationInventory.placement(of: url), .some(nil))
+    }
+
+    func testXcodesToolsAreListedWithTheirHost() async throws {
+        try RealEnvironmentFixture.requireEnabled(self)
+        let xcode = URL(fileURLWithPath: "/Applications/Xcode.app")
+        let embedded = ApplicationInventory.embeddedApplications(in: xcode)
+        try XCTSkipIf(embedded.isEmpty, "No Xcode with embedded apps on this Mac")
+        let apps = await ApplicationInventory(root: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")))
+            .installedApplications()
+        for url in embedded {
+            let listed = apps.first { $0.url.path == url.path }
+            XCTAssertNotNil(listed, "\(url.lastPathComponent) is missing from Apps")
+            XCTAssertEqual(listed?.enclosingApp, "Xcode")
+            // Xcode is the person's own, so what it carries is too.
+            XCTAssertFalse(listed?.isSystemProtected ?? true)
+            XCTAssertEqual(listed?.hostURL?.path, xcode.path)
+        }
+    }
+}

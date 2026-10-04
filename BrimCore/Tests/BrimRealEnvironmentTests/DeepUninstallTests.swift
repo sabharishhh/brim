@@ -1,8 +1,8 @@
-import XCTest
 import BrimCore
-import BrimProtocol
 import BrimOps
+import BrimProtocol
 @testable import BrimService
+import XCTest
 
 /// The product promise, measured: uninstalling by identity alone must find
 /// and remove the whole footprint, leaving nothing for a later scan to find.
@@ -12,7 +12,6 @@ import BrimOps
 /// so a source that stops working shows up as a named gap rather than as a
 /// quietly shallower uninstall.
 final class DeepUninstallTests: XCTestCase {
-
     private var fixture = RealEnvironmentFixture()
     private var supportDirectory: URL!
 
@@ -117,7 +116,7 @@ final class DeepUninstallTests: XCTestCase {
         XCTAssertTrue(
             residual.items.isEmpty,
             "A re-scan still attributes \(residual.items.count) items to an app Brim just uninstalled: "
-            + residual.items.map { $0.evidence.url.lastPathComponent }.joined(separator: ", ")
+                + residual.items.map(\.evidence.url.lastPathComponent).joined(separator: ", ")
         )
     }
 
@@ -201,13 +200,15 @@ final class DeepUninstallTests: XCTestCase {
         // it, then delete it the naive way — leaving the record behind.
         let bundle = try fixture.makeRegisteredAppBundle()
         guard !LaunchServicesRegistration
-            .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty else {
+            .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty
+        else {
             throw XCTSkip("Launch Services did not register the replanted bundle")
         }
         try FileManager.default.removeItem(at: bundle)
         guard LaunchServicesRegistration
             .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
-            .contains(where: { $0.standardizedFileURL.path == bundle.standardizedFileURL.path }) else {
+            .contains(where: { $0.standardizedFileURL.path == bundle.standardizedFileURL.path })
+        else {
             throw XCTSkip("Launch Services dropped the record on its own; nothing stale to detect")
         }
 
@@ -228,7 +229,7 @@ final class DeepUninstallTests: XCTestCase {
         XCTAssertEqual(verification.reason?.contains("still has this app registered"), true,
                        "The reason should name what survived, got: \(verification.reason ?? "nil")")
 
-        try? LaunchServicesRegistration.unregister(bundlePath: bundle.path)
+        try? await LaunchServicesRegistration.unregister(bundlePath: bundle.path)
     }
 
     /// A second copy of the same application, somewhere Brim did not touch,
@@ -251,7 +252,8 @@ final class DeepUninstallTests: XCTestCase {
 
         let other = try fixture.makeRegisteredAppBundle(suffix: "-othercopy")
         guard !LaunchServicesRegistration
-            .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty else {
+            .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty
+        else {
             throw XCTSkip("Launch Services did not register the second copy")
         }
 
@@ -259,7 +261,7 @@ final class DeepUninstallTests: XCTestCase {
         XCTAssertTrue(
             verification.success,
             "A copy at \(other.path) that Brim never removed is not this uninstall's leftover: "
-            + (verification.reason ?? "")
+                + (verification.reason ?? "")
         )
     }
 
@@ -379,7 +381,8 @@ final class DeepUninstallTests: XCTestCase {
 
         // Nothing to reconcile while the bundle is still there: the record
         // is accurate, exactly as it is for an app sitting in the Trash.
-        await service.reconcileRegistrations()
+        let serviceInterface: any BrimServiceProtocol = service
+        await serviceInterface.reconcileRegistrations()
         XCTAssertTrue(
             LaunchServicesRegistration
                 .registeredApplicationURLs(forBundleID: fixture.harnessBundleID)
@@ -389,7 +392,7 @@ final class DeepUninstallTests: XCTestCase {
 
         // Now it goes, the way emptying the Trash removes it.
         try FileManager.default.removeItem(at: standIn)
-        await service.reconcileRegistrations()
+        await serviceInterface.reconcileRegistrations()
 
         XCTAssertFalse(
             LaunchServicesRegistration

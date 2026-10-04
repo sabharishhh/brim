@@ -1,52 +1,61 @@
 import SwiftUI
+import BrimUI
 
-enum NavigationItem: String, Hashable, CaseIterable {
-    case review = "Review"
-    case applications = "Applications"
-    case leftovers = "Leftovers"
+/// Where the window can be: two short groups, plus the Journal on its own,
+/// few enough that the sidebar is read at a glance.
+///
+/// Updates is a lens on Apps (`AppsLens`), because it is a question about
+/// applications. Energy is a place under Your Mac, because it is about
+/// what the Mac is doing now.
+enum Destination: String, Hashable, CaseIterable {
+    case home = "Home"
+    case apps = "Apps"
+    case leftovers = "Remnants"
     case background = "Background"
-    case storage = "Storage"
-    case energy = "Energy"
-    
-    // Developer & System
+    case space = "Space"
     case developer = "Developer"
-    case updates = "Updates"
-    case history = "History"
+    case energy = "Energy"
+    case journal = "Journal"
+
+    static let brim: [Destination] = [.home, .apps, .leftovers]
+    static let yourMac: [Destination] = [.background, .energy, .space, .developer]
 
     /// The order the person sees, and the only order anything may use.
     ///
-    /// The sidebar listed these in one order and the View menu numbered
-    /// them from `allCases`, which is a different one, so the shortcuts
-    /// opened the wrong rows and the last section had none at all. Both
-    /// read from this now, so there is one order rather than two that have
-    /// to be kept in step.
-    static let primary: [NavigationItem] = [
-        .review, .applications, .leftovers, .background, .storage, .energy,
-    ]
-    static let system: [NavigationItem] = [.developer, .updates, .history]
-    static let displayOrder: [NavigationItem] = primary + system
+    /// The sidebar once listed these in one order and the menu numbered
+    /// them from `allCases`, which was a different one, so the shortcuts
+    /// opened the wrong rows. Both read from this. It is also the vertical
+    /// space page changes move through (`AnyTransition.brimPage`).
+    static let displayOrder: [Destination] = brim + yourMac + [.journal]
 
-    /// The number a person types with Command to get here, when there is
-    /// one. Ten sections and nine digits, so the last one has none rather
-    /// than a shortcut nobody would guess.
+    /// The number a person types with Command to get here.
     var keyboardDigit: Character? {
         guard let index = Self.displayOrder.firstIndex(of: self), index < 9 else { return nil }
         return Character("\(index + 1)")
     }
 
+    var position: Int {
+        Self.displayOrder.firstIndex(of: self) ?? 0
+    }
+
     var icon: String {
         switch self {
-        case .review: return "checkmark.circle"
-        case .applications: return "app.badge"
-        case .leftovers: return "trash"
-        case .background: return "gearshape.2"
-        case .storage: return "internaldrive"
-        case .energy: return "bolt.fill"
-        case .developer: return "hammer"
-        case .updates: return "arrow.triangle.2.circlepath"
-        case .history: return "clock"
+        case .home: "house"
+        case .apps: "square.grid.2x2"
+        case .leftovers: "app.dashed"
+        case .background: "gearshape.2"
+        case .space: "internaldrive"
+        case .developer: "hammer"
+        case .energy: "bolt"
+        case .journal: "book.closed"
         }
     }
+}
+
+/// The views of Apps that used to be sections of their own.
+enum AppsLens: String, Hashable, CaseIterable {
+    case all = "Apps"
+    case updates = "Updates"
 }
 
 /// A command a view offers to the menu bar, equal to any other with the
@@ -87,45 +96,111 @@ extension FocusedValues {
     }
 }
 
-/// Lets the View menu drive sidebar selection, so every section is
-/// reachable from the keyboard as a Mac app is expected to be.
-struct NavigateActionKey: FocusedValueKey {
-    typealias Value = FocusedAction<NavigationItem>
-}
-
-extension FocusedValues {
-    var navigateAction: FocusedAction<NavigationItem>? {
-        get { self[NavigateActionKey.self] }
-        set { self[NavigateActionKey.self] = newValue }
-    }
-}
-
 struct MainSidebar: View {
-    @Binding var selection: NavigationItem?
+    @Binding var selection: Destination?
+    /// Which places are still scanning, shown as a spinner on their row.
+    @ObservedObject var activity: ScanActivity
+    @EnvironmentObject private var release: BrimReleaseCheck
 
     var body: some View {
         // `.tag` rather than `NavigationLink(value:)`. The link form belongs
         // to a NavigationStack path; inside a List driven by a selection
         // binding it produces rows that expose as AXUnknown and ignore an
-        // accessibility press — so the sidebar looked operable to VoiceOver
+        // accessibility press, so the sidebar looked operable to VoiceOver
         // and to automation while doing nothing.
         List(selection: $selection) {
-            Section("Primary") {
-                ForEach(NavigationItem.primary, id: \.self) { item in
-                    Label(item.rawValue, systemImage: item.icon)
-                        .tag(item)
-                }
+            Section("Brim") {
+                rows(Destination.brim)
             }
-
-            Section("System") {
-                ForEach(NavigationItem.system, id: \.self) { item in
-                    Label(item.rawValue, systemImage: item.icon)
-                        .tag(item)
-                }
+            Section("Your Mac") {
+                rows(Destination.yourMac)
+            }
+            Section {
+                rows([.journal])
             }
         }
         .listStyle(.sidebar)
-        // Monochromatic accent constraint
-        .accentColor(.primary)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 8) {
+                if let found = release.available {
+                    NewReleaseNotice(release: found)
+                        .padding(10)
+                        .transition(.opacity)
+                }
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
+                .padding(10)
+            }
+        }
+    }
+
+    private func rows(_ destinations: [Destination]) -> some View {
+        ForEach(destinations, id: \.self) { destination in
+            HStack {
+                SidebarLabel(destination: destination, isSelected: selection == destination)
+                Spacer()
+                if activity.busy.contains(destination) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .transition(.opacity)
+                        .accessibilityLabel("Checking")
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: activity.busy.contains(destination))
+            .tag(destination)
+        }
+    }
+}
+
+/// A sidebar row's label. Its symbol gives one small bounce when the row
+/// becomes selected, so a click is answered by the thing clicked rather
+/// than only by the highlight moving. Never on the row being left, and
+/// never under Reduce Motion.
+private struct SidebarLabel: View {
+    let destination: Destination
+    let isSelected: Bool
+    @State private var arrivals = 0
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Label {
+            Text(destination.rawValue)
+        } icon: {
+            Image(systemName: destination.icon)
+                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+        }
+        .onChange(of: isSelected) { _, selected in
+            if selected, !reduceMotion {
+                arrivals += 1
+            }
+        }
+    }
+}
+
+/// A newer Brim is on GitHub. Brim does not replace itself, so this says
+/// so and opens the release page.
+private struct NewReleaseNotice: View {
+    let release: BrimReleaseCheck.Release
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.tint)
+            Text("Brim \(release.version) is out")
+                .font(.callout)
+            Spacer(minLength: 4)
+            Button("Download") { NSWorkspace.shared.open(release.page) }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
     }
 }

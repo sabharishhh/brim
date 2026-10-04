@@ -1,5 +1,6 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// An entry an application leaves in one of macOS's own databases, rather
 /// than on the filesystem.
 ///
@@ -8,7 +9,6 @@ import Foundation
 /// gone, the login item pointing at nothing. Deleting the bundle does not
 /// remove them, because they do not live in the bundle.
 public struct Registration: Codable, Equatable, Sendable, Identifiable {
-
     /// Which macOS mechanism holds the entry. Each maps to a supported way
     /// of removing it; Brim never edits these databases directly.
     public enum Kind: String, Codable, Equatable, Sendable, CaseIterable {
@@ -19,6 +19,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         /// A TCC privacy grant: accessibility, screen recording, and so on.
         case privacyGrant
         /// Launch Services registration — "Open With", URL schemes.
+        case firewallEntry
+        case configurationProfile
         case launchServices
         /// A PluginKit extension: Finder Sync, Share, Widgets, Quick Look.
         case appExtension
@@ -48,18 +50,20 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
 
         public var displayName: String {
             switch self {
-            case .backgroundItem: return "Background item"
-            case .launchdJob: return "Background job"
-            case .privacyGrant: return "Privacy grant"
-            case .launchServices: return "Open With registration"
-            case .appExtension: return "App extension"
-            case .systemExtension: return "System extension"
-            case .installerReceipt: return "Installer receipt"
-            case .privilegedHelper: return "Privileged helper"
-            case .bundlePlugin: return "Plug-in"
-            case .legacyLoginItem: return "Login item"
-            case .shellProfileLine: return "Shell profile line"
-            case .keychainItem: return "Keychain item"
+            case .backgroundItem: "Background item"
+            case .launchdJob: "Background job"
+            case .privacyGrant: "Privacy grant"
+            case .firewallEntry: "Firewall entry"
+            case .configurationProfile: "Management profile"
+            case .launchServices: "Open With registration"
+            case .appExtension: "App extension"
+            case .systemExtension: "System extension"
+            case .installerReceipt: "Installer receipt"
+            case .privilegedHelper: "Privileged helper"
+            case .bundlePlugin: "Plug-in"
+            case .legacyLoginItem: "Login item"
+            case .shellProfileLine: "Shell profile line"
+            case .keychainItem: "Keychain item"
             }
         }
     }
@@ -78,6 +82,17 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// False when the registration points at something no longer on disk:
     /// the entry is stale and is exactly what a sweep should surface.
     public let targetExists: Bool
+    /// Nil only in records saved before reliable target observations existed.
+    public let observedTarget: PathObservation?
+    /// Database record identity and namespace are independent of the bundle ID.
+    public let recordIdentity: String?
+    public let namespace: String?
+    public let runtimeState: String?
+    public let rawTargetPath: String?
+    public var targetPresence: PathObservation {
+        observedTarget ?? .unknown("This saved record has no target observation.")
+    }
+
     /// Where the entry itself is recorded, when it is a file (a launchd
     /// plist). Nil for entries held only in a system database.
     public let recordPath: String?
@@ -95,28 +110,41 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// a file. Offering a removal without asking this is what produced an
     /// authorization followed by "2 targets still remain".
     public let capability: Capability
-
-    // The record's own location is part of the identity. Google Keystone
-    // installs the same job twice, once for the user and once for the
-    // machine, and without the path both copies claimed the same id: one
-    // row in a SwiftUI list, and no way to tell which file was which.
-    public var id: String { "\(kind.rawValue):\(identifier):\(recordPath ?? "")" }
-
-    /// Whether macOS removes this entry by itself once what it points at is
-    /// gone.
+    /// Whether macOS launches this when the person signs in, as its own
+    /// record says. Optional so a registration saved before it existed
+    /// still decodes.
     ///
-    /// Background Task Management does. `backgroundtaskmanagementd` runs a
-    /// garbage collection pass whenever a client asks it for the list, and
-    /// drops every record whose application has been deleted. Watched in
-    /// its own log: two AppCleaner records removed seconds after System
-    /// Settings was opened, and the store written out three seconds later.
-    /// So a background item pointing at nothing is a list macOS has not
-    /// tidied yet, not something the user has to deal with.
-    ///
-    /// A launchd job is a file. Nothing collects it, which is why an
-    /// uninstall that misses one leaves it forever.
+    /// Background Task Management keeps a record for every application
+    /// that has helpers, pointing at the application's bundle, whether or
+    /// not the application itself opens at login. Reading "points at an
+    /// app" as "opens at login" put Brim, ChatGPT and seven more under
+    /// that heading on a Mac where none of them did.
+    public let atLogin: Bool?
+
+    /// A login item, by its record's own type or by the older mechanism.
+    public var launchesAtLogin: Bool {
+        atLogin == true || kind == .legacyLoginItem
+    }
+
+    /// The BTM type alone does not establish whether Settings offers a
+    /// foreground Remove control. Route to that list conditionally, without
+    /// treating a background switch as an erasure operation.
+    public var loginItemsFollowUp: RemovalFollowUp? {
+        guard !isSystemOwned, kind == .backgroundItem || kind == .legacyLoginItem else { return nil }
+        return .loginItemsSettings
+    }
+
+    /// The record's own location is part of the identity. Google Keystone
+    /// installs the same job twice, once for the user and once for the
+    /// machine, and without the path both copies claimed the same id: one
+    /// row in a SwiftUI list, and no way to tell which file was which.
+    public var id: String {
+        "\(kind.rawValue):\(namespace ?? ""):\(recordIdentity ?? identifier):\(recordPath ?? programPath ?? "")"
+    }
+
+    /// No supported observation guarantees that a stale record will be collected.
     public var isClearedByMacOS: Bool {
-        removalTier(ownerPresent: targetExists) == .destructiveOnly
+        false
     }
 
     /// A system-wide reset is possible for background items, but Brim never
@@ -135,21 +163,30 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// tool gets to do. Both are shown with their location so the person
     /// can act, which is the whole of Brim's job here.
     public var isReportOnly: Bool {
-        kind == .keychainItem || kind == .shellProfileLine
+        kind == .keychainItem || kind == .shellProfileLine || kind == .backgroundItem
+            || kind == .firewallEntry || kind == .systemExtension || kind == .legacyLoginItem
+            || kind == .appExtension
+            || kind == .configurationProfile
     }
 
     /// A report-only entry is never a thing to sweep, however stale it
     /// looks. Offering an action that does not exist is worse than not
     /// mentioning it.
-    public var isActionable: Bool { !isReportOnly && !isSystemOwned }
+    public var isActionable: Bool {
+        !isReportOnly && !isSystemOwned
+    }
 
     /// A registration pointing at something no longer on disk.
-    public var isStale: Bool { !targetExists }
+    public var isStale: Bool {
+        targetPresence.isAbsent
+    }
 
     /// Stale *and* something the user could actually act on. The sweep shows
     /// these; a stale system entry is noise the user cannot do anything
     /// about, and presenting it as actionable would be a lie.
-    public var isActionableStale: Bool { isStale && isActionable }
+    public var isActionableStale: Bool {
+        isStale && isActionable
+    }
 
     public init(
         kind: Kind,
@@ -162,23 +199,34 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         evidence: String,
         isSystemOwned: Bool = false,
         signing: SigningState? = nil,
-        capability: Capability = .ok
+        capability: Capability = .ok,
+        atLogin: Bool? = nil,
+        targetPresence: PathObservation? = nil,
+        recordIdentity: String? = nil,
+        namespace: String? = nil,
+        runtimeState: String? = nil, rawTargetPath: String? = nil
     ) {
         self.kind = kind
         self.identifier = identifier
         self.label = label
         self.owningBundleID = owningBundleID
         self.programPath = programPath
-        self.targetExists = targetExists
+        observedTarget = targetPresence ?? (targetExists ? .present : .absent)
+        self.targetExists = observedTarget != .absent
+        self.recordIdentity = recordIdentity
+        self.namespace = namespace
+        self.runtimeState = runtimeState
+        self.rawTargetPath = rawTargetPath
         self.recordPath = recordPath
         self.evidence = evidence
         self.isSystemOwned = isSystemOwned
         self.signing = signing
         self.capability = capability
+        self.atLogin = atLogin
     }
 }
 
-extension Registration {
+public extension Registration {
     /// What a screen reader should say for this row.
     ///
     /// The view builds a row out of seven separate pieces of text, and
@@ -191,19 +239,25 @@ extension Registration {
     /// Reading a full filesystem path aloud in the middle of every entry
     /// buries the part that matters, and a reader can ask for the value
     /// when they want it.
-    public var spokenDescription: String {
+    var spokenDescription: String {
         var parts: [String] = [label, kind.displayName]
-        if isSystemOwned { parts.append("belongs to macOS") }
-        if isActionableStale {
-            parts.append(isClearedByMacOS ? "macOS will drop this" : "points at nothing")
+        if isSystemOwned {
+            parts.append("belongs to macOS")
+        }
+        if isStale {
+            parts.append("The target is missing")
         }
         parts.append(evidence)
-        if let signing, signing.isTrouble { parts.append(signing.sentence) }
+        if let signing, signing.isTrouble {
+            parts.append(signing.sentence)
+        }
         return SpokenText.sentences(parts)
     }
 
     /// The location, for the accessibility value.
-    public var spokenLocation: String? { programPath ?? recordPath }
+    var spokenLocation: String? {
+        programPath ?? recordPath
+    }
 
     /// Whether this entry belongs to the given application.
     ///
@@ -211,7 +265,21 @@ extension Registration {
     /// inside the app's bundle. Deliberately not a name-substring match: a
     /// registration is removed on evidence of ownership, never on a guess,
     /// which is the same rule the evidence engine follows for files.
-    public func belongs(to identity: Identity, bundleURL: URL?) -> Bool {
+    func belongs(to identity: Identity, bundleURL: URL?) -> Bool {
+        // Launch Services unregisters one path. Its identifier can also
+        // belong to another installed copy, which must keep its own record.
+        if [.launchServices, .appExtension, .legacyLoginItem, .firewallEntry].contains(kind),
+           let bundleURL, let programPath {
+            let target = URL(fileURLWithPath: programPath).resolvingSymlinksInPath().path
+            let host = bundleURL.resolvingSymlinksInPath().path
+            return target == host || target.hasPrefix(host + "/")
+        }
+        if kind == .backgroundItem, let bundleURL, let programPath,
+           programPath.contains(".app/") || programPath.hasSuffix(".app") {
+            let target = URL(fileURLWithPath: programPath).resolvingSymlinksInPath().path
+            let host = bundleURL.resolvingSymlinksInPath().path
+            return target == host || target.hasPrefix(host + "/")
+        }
         if let bundleID = identity.bundleID, let owning = owningBundleID, owning == bundleID {
             return true
         }
@@ -232,7 +300,6 @@ extension Registration {
 /// from "could not look" — Milestone 5's gate requires every feature to
 /// report its own gaps.
 public struct RegistrationCoverage: Equatable, Sendable, Codable {
-
     /// Why a surface is not in the list, which decides what the person is
     /// offered about it.
     ///
@@ -259,22 +326,39 @@ public struct RegistrationCoverage: Equatable, Sendable, Codable {
     /// Why the surface is unavailable, in the user's terms.
     public let limitation: String?
     public let absence: Absence?
+    /// Each namespace is observed independently. Useful records may survive a partial read.
+    public let scopes: [Scope]?
+    public struct Scope: Codable, Equatable, Sendable {
+        public let namespace: String
+        public let available: Bool
+        public let limitation: String?
+        public init(namespace: String, available: Bool, limitation: String? = nil) {
+            self.namespace = namespace
+            self.available = available
+            self.limitation = limitation
+        }
+    }
 
     public init(
         kind: Registration.Kind, available: Bool,
-        limitation: String? = nil, absence: Absence? = nil
+        limitation: String? = nil, absence: Absence? = nil, scopes: [Scope]? = nil
     ) {
         self.kind = kind
         self.available = available
         self.limitation = limitation
+        self.scopes = scopes
         self.absence = available ? nil : (absence ?? .couldNotRead)
     }
 
     /// Whether this is something the person can do something about.
-    public var isFixableByTheUser: Bool { absence == .needsPermission }
+    public var isFixableByTheUser: Bool {
+        absence == .needsPermission
+    }
 
     /// Whether this is a fault at all. A deliberate boundary is not.
-    public var isAFault: Bool { !available && absence != .byDesign }
+    public var isAFault: Bool {
+        !available && absence != .byDesign
+    }
 
     public static func available(_ kind: Registration.Kind) -> RegistrationCoverage {
         RegistrationCoverage(kind: kind, available: true)
@@ -299,4 +383,4 @@ public struct RegistrationCoverage: Equatable, Sendable, Codable {
     }
 }
 
-/// Aggregates the surfaces, the way `EvidenceEngine` aggregates evidence.
+// Aggregates the surfaces, the way `EvidenceEngine` aggregates evidence.

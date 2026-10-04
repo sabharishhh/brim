@@ -1,150 +1,256 @@
-import Foundation
 import BrimCore
 import BrimOps
+import Foundation
 
 public struct DeveloperCacheScanner: Sendable {
+    private let home: URL
+    private let darwinCache: URL
+    private let projects: ProjectBuildScanner?
+    private let updateDownloads: UpdateDownloadScanner?
+    private let oldVersions: OldVersionsScanner?
+    private let environment: [String: String]
+    private let excludedFolders: [URL]
+    private let measure: Measure
 
-    /// The catalogue. Each one is here because somebody looked it up, not
-    /// because its path contains "cache".
-    private struct Known {
-        let name: String
-        let tool: String
-        let relativePath: String
-        let cost: DeveloperCache.Cost
-        let explanation: String
-        /// The tool's own cleanup, for the delegated class.
-        var cleanupID: String? = nil
+    typealias Measure = @Sendable (URL, ScanBudget) async -> ArtifactSize
+
+    public init(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
+        projects: ProjectBuildScanner? = ProjectBuildScanner(),
+        updates: UpdateDownloadScanner? = UpdateDownloadScanner(),
+        oldVersions: OldVersionsScanner? = OldVersionsScanner(),
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        excludedFolders: [URL] = []
+    ) {
+        self.home = home
+        self.darwinCache = darwinCache
+        self.projects = projects
+        updateDownloads = updates
+        self.oldVersions = oldVersions
+        self.environment = environment
+        self.excludedFolders = excludedFolders
+        measure = Self.measureArtifact
     }
 
-    private static let catalogue: [Known] = [
-        Known(name: "Derived data", tool: "Xcode",
-              relativePath: "Library/Developer/Xcode/DerivedData",
-              cost: .rebuilt,
-              explanation: "Build products, indexes and module caches for every project you "
-                         + "have opened. Xcode rebuilds it. The next build after clearing it "
-                         + "is a slow one."),
-        Known(name: "Archives", tool: "Xcode",
-              relativePath: "Library/Developer/Xcode/Archives",
-              cost: .configured,
-              explanation: "Builds you archived for distribution, with the symbols needed to "
-                         + "read crash reports from them. Nothing recreates these. Keep any "
-                         + "that match something you have shipped."),
-        Known(name: "Device support", tool: "Xcode",
-              relativePath: "Library/Developer/Xcode/iOS DeviceSupport",
-              cost: .refetched,
-              explanation: "Symbols copied off each iPhone and iPad you have plugged in, one "
-                         + "folder per OS version. Xcode fetches them again from the device, "
-                         + "which takes a few minutes the first time you reconnect."),
-        Known(name: "Simulator devices", tool: "Xcode",
-              relativePath: "Library/Developer/CoreSimulator/Devices",
-              cost: .configured,
-              explanation: "The simulators themselves, with whatever is installed and set up "
-                         + "inside them. Clearing this is not a cache clear: you lose the "
-                         + "devices and their contents."),
-        Known(name: "Simulator caches", tool: "Xcode",
-              relativePath: "Library/Developer/CoreSimulator/Caches",
-              cost: .rebuilt,
-              explanation: "Runtime images and caches the simulator rebuilds on demand."),
-        Known(name: "Module cache", tool: "Swift",
-              relativePath: "Library/Caches/org.swift.swiftpm",
-              cost: .refetched,
-              explanation: "Package checkouts and binary artefacts Swift Package Manager has "
-                         + "downloaded. Fetched again on the next resolve."),
-        Known(name: "Package cache", tool: "npm",
-              relativePath: ".npm/_cacache",
-              cost: .refetched,
-              explanation: "Every package tarball npm has downloaded. Re-downloaded when "
-                         + "something needs them.",
-              cleanupID: "npm.cache"),
-        Known(name: "Store", tool: "pnpm",
-              relativePath: "Library/pnpm/store",
-              cost: .refetched,
-              explanation: "pnpm's shared package store. Projects on this Mac link into it, "
-                         + "so clearing it means the next install re-downloads everything.",
-              cleanupID: "pnpm.store"),
-        Known(name: "Wheel cache", tool: "pip",
-              relativePath: "Library/Caches/pip",
-              cost: .refetched,
-              explanation: "Built wheels and downloaded packages. pip fetches or rebuilds "
-                         + "them as needed.",
-              cleanupID: "pip.cache"),
-        Known(name: "Registry and builds", tool: "Cargo",
-              relativePath: ".cargo/registry",
-              cost: .refetched,
-              explanation: "Crates Cargo has downloaded and the index it resolves against. "
-                         + "Restored on the next build.",
-              cleanupID: "cargo.cache"),
-        Known(name: "Module cache", tool: "Go",
-              relativePath: "go/pkg/mod",
-              cost: .refetched,
-              explanation: "Every module version Go has downloaded. Re-fetched on demand, and "
-                         + "`go clean -modcache` is the tool's own way to do this.",
-              cleanupID: "go.modcache"),
-        Known(name: "Downloads", tool: "Homebrew",
-              relativePath: "Library/Caches/Homebrew",
-              cost: .refetched,
-              explanation: "Bottles and source archives Homebrew has downloaded. It keeps "
-                         + "these after installing and never needs them again unless you "
-                         + "reinstall the same version.",
-              cleanupID: "homebrew.cleanup"),
-        Known(name: "Build cache", tool: "Gradle",
-              relativePath: ".gradle/caches",
-              cost: .refetched,
-              explanation: "Dependencies and build outputs Gradle has cached. Rebuilt and "
-                         + "re-downloaded on the next build.",
-              cleanupID: "gradle.cache"),
-        Known(name: "Local repository", tool: "Maven",
-              relativePath: ".m2/repository",
-              cost: .refetched,
-              explanation: "Every artefact Maven has downloaded. Restored from the remote "
-                         + "repositories when a build needs them."),
-        Known(name: "Build cache", tool: "Docker",
-              relativePath: "Library/Containers/com.docker.docker/Data/vms",
-              cost: .configured,
-              explanation: "Docker's virtual machine disk, holding your images, containers "
-                         + "and volumes. This is data, not a cache. Use Docker's own tools "
-                         + "to prune it.")
-    ]
-
-    private let home: URL
-
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    /// Controlled measurement for scanner regression tests. No mutation path
+    /// or tool command is injectable through this read-only seam.
+    init(home: URL, darwinCache: URL, measure: @escaping Measure) {
         self.home = home
+        self.darwinCache = darwinCache
+        projects = nil
+        updateDownloads = nil
+        oldVersions = nil
+        environment = [:]
+        excludedFolders = []
+        self.measure = measure
+    }
+
+    /// Every path this catalogue accounts for, so Leftovers leaves them to
+    /// Developer instead of counting them a second time.
+    public static func claimedPaths(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Set<String> {
+        Set(catalogue.flatMap {
+            urls(of: $0, home: home, darwinCache: darwinCache, environment: environment)
+                .map(\.standardizedFileURL.path)
+        })
+    }
+
+    private static func url(of known: Known, home: URL, darwinCache: URL) -> URL {
+        (known.inDarwinCache ? darwinCache : home).appendingPathComponent(known.relativePath)
+    }
+
+    /// Re-derive the disposal rule independently of the selected UI row.
+    /// Positive cache rules require an exact root. Tool-managed and stateful
+    /// stores protect their children as well, so a direct child target cannot
+    /// bypass the store's disposal rule.
+    public static func classification(
+        at target: URL, home: URL, darwinCache: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ArtifactClassification? {
+        let path = target.standardizedFileURL.path
+        var overlapsToolStore = false
+        for known in catalogue where known.cost == .refetched || known.cost == .configured {
+            let roots = urls(of: known, home: home, darwinCache: darwinCache, environment: environment)
+            for root in roots where PathExistence.exists(at: root) {
+                if ArtifactSizer.rootsOverlap(target, root) {
+                    if known.cost == .configured {
+                        return .stateful
+                    }
+                    overlapsToolStore = true
+                }
+            }
+        }
+        if overlapsToolStore {
+            return .toolManaged
+        }
+        guard ProjectBuildScanner.isRealFolder(target) else { return nil }
+        guard let known = catalogue.first(where: {
+            urls(of: $0, home: home, darwinCache: darwinCache, environment: environment)
+                .contains { $0.standardizedFileURL.path == path }
+        }) else { return nil }
+        guard !known.cost.isBrimRemovable || hasPositiveScope(
+            target,
+            known: known,
+            home: home,
+            darwinCache: darwinCache
+        )
+        else { return nil }
+        return classification(of: known)
+    }
+
+    private static func classification(of known: Known) -> ArtifactClassification {
+        switch known.cost {
+        case .rebuilt: .rebuildableCache
+        case .refetched: .toolManaged
+        case .restored: .dependencyStore
+        case .configured: .stateful
+        }
+    }
+
+    private static func urls(
+        of known: Known, home: URL, darwinCache: URL, environment: [String: String]
+    ) -> [URL] {
+        var locations = [url(of: known, home: home, darwinCache: darwinCache)]
+        let configured = known.environmentVariable.flatMap { environment[$0] }
+            .flatMap { configuredURL($0, home: home) }
+        if let configured {
+            locations.append(known.configuredSuffix.map { configured.appendingPathComponent($0) } ?? configured)
+        }
+        // Yarn 1 also observes XDG_CACHE_HOME on macOS.
+        let yarnCache = environment["XDG_CACHE_HOME"].flatMap { configuredURL($0, home: home) }
+        if known.tool == "Yarn Classic", let yarnCache {
+            locations.append(yarnCache.appendingPathComponent("yarn"))
+        }
+        return locations
+    }
+
+    private static func configuredURL(_ value: String, home: URL) -> URL? {
+        let path = value.hasPrefix("~/") ? home.appendingPathComponent(String(value.dropFirst(2))).path : value
+        guard path.hasPrefix("/"), !path.contains("\u{0}") else { return nil }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let homePath = home.standardizedFileURL.path
+        // A broad environment setting must not turn a whole home or Library
+        // into a tool-store row, or hide it from Remnants.
+        let broad = [homePath, homePath + "/Library", homePath + "/Library/Caches",
+                     homePath + "/.cache", homePath + "/.config"]
+        guard url.path.hasPrefix(homePath + "/"), !broad.contains(url.path) else { return nil }
+        return url
     }
 
     public func scan() async -> [DeveloperCache] {
-        let fm = FileManager.default
-        return Self.catalogue.compactMap { known -> DeveloperCache? in
-            let url = home.appendingPathComponent(known.relativePath)
-            var isDirectory: ObjCBool = false
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue else { return nil }
-
-            let size = Self.size(of: url)
-            guard size > 0 else { return nil }
-
-            return DeveloperCache(
-                name: known.name, tool: known.tool, url: url,
-                sizeBytes: size, cost: known.cost, explanation: known.explanation,
-                cleanupID: known.cleanupID,
-                cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed }
-            )
+        var latest: [DeveloperCache] = []
+        for await caches in await updates() {
+            latest = caches
         }
-        .sorted { $0.sizeBytes > $1.sizeBytes }
+        return latest
     }
 
-    static func size(of url: URL) -> Int64 {
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: url, includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            let values = try? fileURL.resourceValues(forKeys: keys)
-            total += Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
+    /// A bounded producer, cancelled when the consumer leaves. The first
+    /// snapshot contains discovered rows before any recursive measurement.
+    public func updates() async -> AsyncStream<[DeveloperCache]> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task {
+                await scan(into: continuation)
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
-        return total
+    }
+
+    @concurrent
+    private func scan(into continuation: AsyncStream<[DeveloperCache]>.Continuation) async {
+        guard !Task.isCancelled else { return }
+        var rows = discoverKnown()
+        continuation.yield(rows)
+        await measureRows(&rows, into: continuation)
+        guard !Task.isCancelled else { return }
+
+        // Project discovery is separate from recursive sizing. Legacy update
+        // and version readers remain bounded by the shared measurement helper.
+        let discovered = projects?.discover(home: home, excluding: excludedFolders) ?? []
+        rows += discovered.filter { !isExcluded($0.url) }
+        continuation.yield(rows)
+        await measureRows(&rows, into: continuation)
+        guard !Task.isCancelled else { return }
+        rows += (updateDownloads?.scan(home: home) ?? []).filter { !isExcluded($0.url) }
+        continuation.yield(rows)
+        guard !Task.isCancelled else { return }
+        rows += (oldVersions?.scan(home: home) ?? []).filter { !isExcluded($0.url) }
+        continuation.yield(rows)
+    }
+
+    private func discoverKnown() -> [DeveloperCache] {
+        var seen = Set<String>()
+        return Self.catalogue.flatMap { known in
+            Self.urls(of: known, home: home, darwinCache: darwinCache, environment: environment)
+                .compactMap { url -> DeveloperCache? in
+                    guard !Task.isCancelled, !isExcluded(url), seen.insert(url.standardizedFileURL.path).inserted,
+                          ProjectBuildScanner.isRealFolder(url),
+                          !known.cost.isBrimRemovable || Self.hasPositiveScope(
+                              url, known: known, home: home, darwinCache: darwinCache
+                          ) else { return nil }
+                    return DeveloperCache(
+                        name: known.name, tool: known.tool, url: url, sizeBytes: 0,
+                        cost: known.cost, explanation: known.explanation,
+                        cleanupID: known.cleanupID,
+                        cleanupCommand: known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.displayed }
+                            ?? known.manualCommand,
+                        manualCleanupReason: known.manualReason
+                            ?? known.cleanupID.flatMap { ToolCleanup.command(id: $0)?.manualReason },
+                        sizeMeasurement: .pending, artifactClassification: Self.classification(of: known)
+                    )
+                }
+        }
+    }
+
+    private func isExcluded(_ url: URL) -> Bool {
+        excludedFolders.contains { ArtifactSizer.rootsOverlap(url, $0) }
+    }
+
+    private func measureRows(
+        _ rows: inout [DeveloperCache], into continuation: AsyncStream<[DeveloperCache]>.Continuation
+    ) async {
+        let pending = rows.filter { $0.sizeMeasurement?.state == .pending }
+        let budget = ScanBudget(total: 60)
+        await withTaskGroup(of: DeveloperCache.self) { group in
+            var next = 0
+            for _ in 0 ..< min(4, pending.count) {
+                let row = pending[next]
+                next += 1
+                group.addTask { await row.measured(using: measure(row.url, budget)) }
+            }
+            while let measured = await group.next() {
+                if Task.isCancelled {
+                    group.cancelAll(); return
+                }
+                if let index = rows.firstIndex(where: { $0.id == measured.id }) {
+                    if measured.sizeMeasurement?.isEmpty == true {
+                        rows.remove(at: index)
+                    } else {
+                        rows[index] = measured
+                    }
+                }
+                continuation.yield(rows)
+                if next < pending.count {
+                    let row = pending[next]
+                    next += 1
+                    group.addTask { await row.measured(using: measure(row.url, budget)) }
+                }
+            }
+        }
+    }
+
+    @concurrent
+    private static func measureArtifact(_ url: URL, _ budget: ScanBudget) async -> ArtifactSize {
+        ArtifactSizer.measure(at: url, budget: budget)
+    }
+
+    /// Compatibility for readers still migrating to explicit measurement status.
+    static func size(of url: URL) -> Int64 {
+        ArtifactSizer.measure(at: url).allocatedBytes
     }
 }

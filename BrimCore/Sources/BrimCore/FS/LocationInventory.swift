@@ -30,6 +30,19 @@ public struct LocationInventory: Sendable {
         /// A suffix separated from the identifier, such as
         /// `com.example.editor-helper`. Name-derived and therefore Tier C.
         case bundleIdentifierDelimitedPrefix(String)
+        /// Anything named inside the bundle identifier in the per-user
+        /// folders: `<identifier>.<anything>`, or `.<identifier>.<anything>`,
+        /// which is how `mkdtemp` and Chromium name scratch folders that are
+        /// often never removed. ChatGPT had 682 of them, 47 MB, and Teams'
+        /// installer left `com.microsoft.teams2.installer_telemetry`; no
+        /// rule matched either.
+        case temporaryDirectory
+        /// A folder a system service keeps on the application's behalf,
+        /// named `<service>+<identifier>`. WebKit's helper processes make
+        /// three for every application that shows a web view
+        /// (`com.apple.WebKit.GPU+com.meta.endo` and its Networking and
+        /// WebContent siblings), and they outlived Muse's uninstall.
+        case clientOfService
         /// A group explicitly declared by the bundle, or an unverified
         /// `group.<bundle id>` name when no declaration could be read.
         case groupContainer
@@ -51,6 +64,16 @@ public struct LocationInventory: Sendable {
         /// identifier. The only way to attribute an audio plug-in, whose
         /// file name says nothing at all.
         case identifierInsideBundle
+        /// A dot folder in the home folder: one the bundle declares as its
+        /// own, or `.<name>` and `.<name>-<anything>` in lower case, which
+        /// is how Electron editors name theirs (`.antigravity-ide`).
+        case homeDotFolder
+        /// A crash or resource report named for one of the application's
+        /// processes and stamped with a date: `Purge-2026-09-29-090414.ips`
+        /// or `Purge_2026-09-29-090414_host.cpu_resource.diag`. The name
+        /// is never the application's alone, so the exact-name rule these
+        /// folders had matched nothing at all.
+        case diagnosticReport
     }
 
     public struct Location: Sendable, Equatable {
@@ -89,102 +112,142 @@ public struct LocationInventory: Sendable {
                 return .B
             case .bundleIdentifierDelimitedPrefix:
                 return .C
+            case .temporaryDirectory, .clientOfService:
+                return .B
             case .groupContainer:
                 return .A
             case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix:
+                 .applicationNameDelimitedPrefix, .homeDotFolder, .diagnosticReport:
                 return .C
             }
         }
 
         /// Names the forward search can test without reading a bundle.
         public func candidates(for identity: Identity) -> [String] {
+            candidates(for: Subject(identity))
+        }
+
+        public func candidates(for subject: Subject) -> [String] {
             switch rule {
             case .bundleIdentifier:
-                return identity.searchBundleIdentifiers
+                return subject.identifiers
             case let .bundleIdentifierFile(ext):
-                return identity.searchBundleIdentifiers.map { "\($0).\(ext)" }
+                return subject.identifiers.map { "\($0).\(ext)" }
             case .bundleIdentifierPrefix:
-                return identity.searchBundleIdentifiers.flatMap { ["\($0).plist", $0] }
-            case .bundleIdentifierDelimitedPrefix:
+                return subject.identifiers.flatMap { ["\($0).plist", $0] }
+            case .bundleIdentifierDelimitedPrefix, .temporaryDirectory, .clientOfService:
                 return []
             case .groupContainer:
-                if !identity.searchGroupContainers.isEmpty {
-                    return identity.searchGroupContainers
+                if !subject.groups.isEmpty {
+                    return subject.groups
                 }
-                return identity.searchBundleIdentifiers.map { "group.\($0)" }
+                return subject.identifiers.map { "group.\($0)" }
             case .applicationName:
-                return identity.searchNames
+                return subject.names
             case .applicationNameLowercased:
-                var seen = Set<String>()
-                return identity.searchNames.map { $0.lowercased() }
-                    .filter { seen.insert($0).inserted }
+                return subject.lowercasedNames
             case .applicationNameDelimitedPrefix:
                 return []
-            case .identifierInsideBundle:
+            case .identifierInsideBundle, .diagnosticReport:
                 return []
+            case .homeDotFolder:
+                return subject.homeFolders + subject.lowercasedNames.map { "." + $0 }
             }
         }
 
         /// The same ownership rule is used when searching from an app and
         /// when checking whether a swept path still belongs to one.
         public func matchTier(name: String, identity: Identity, declaredIdentifier: String? = nil) -> EvidenceTier? {
-            switch rule {
-            case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix:
-                nameTier(name: name, identity: identity)
-            case .groupContainer:
-                groupTier(name: name, identity: identity)
-            default:
-                identifierTier(
-                    name: name, identity: identity,
-                    declaredIdentifier: declaredIdentifier
-                )
-            }
+            matchTier(name: name, subject: Subject(identity), declaredIdentifier: declaredIdentifier)
         }
 
-        private func nameTier(name: String, identity: Identity) -> EvidenceTier? {
+        public func matchTier(name: String, subject: Subject, declaredIdentifier: String? = nil) -> EvidenceTier? {
             switch rule {
-            case .applicationName, .applicationNameLowercased:
-                candidates(for: identity).contains(name) ? tier : nil
+            case .applicationName:
+                subject.nameSet.contains(name) ? tier : nil
+            case .applicationNameLowercased:
+                subject.lowercasedNameSet.contains(name) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
-                delimitedPrefixTier(
-                    name: name, prefixes: identity.searchNames, separator: separator
-                )
+                delimitedPrefixTier(name: name, prefixes: subject.names, separator: separator)
+            case .groupContainer:
+                groupTier(name: name, subject: subject)
+            case .homeDotFolder:
+                homeFolderTier(name: name, subject: subject)
+            case .diagnosticReport:
+                subject.names.contains { Self.isReport(name, of: $0) } ? tier : nil
             default:
-                nil
+                identifierTier(name: name, subject: subject, declaredIdentifier: declaredIdentifier)
             }
         }
 
         private func identifierTier(
-            name: String, identity: Identity, declaredIdentifier: String?
+            name: String, subject: Subject, declaredIdentifier: String?
         ) -> EvidenceTier? {
             switch rule {
             case .bundleIdentifier:
-                guard identity.searchBundleIdentifiers.contains(name) else { return nil }
-                return name == identity.bundleID ? tier : .C
+                guard subject.identifierSet.contains(name) else { return nil }
+                return subject.owns(name) ? tier : .C
             case let .bundleIdentifierFile(ext):
-                guard let matched = identity.searchBundleIdentifiers.first(where: {
-                    name == "\($0).\(ext)"
-                }) else { return nil }
-                return matched == identity.bundleID ? tier : .C
+                guard name.hasSuffix("." + ext) else { return nil }
+                let stem = String(name.dropLast(ext.count + 1))
+                guard subject.identifierSet.contains(stem) else { return nil }
+                return subject.owns(stem) ? tier : .C
             case .bundleIdentifierPrefix:
-                guard let matched = identity.searchBundleIdentifiers
-                    .filter({ name == $0 || name.hasPrefix($0 + ".") })
-                    .max(by: { $0.count < $1.count }) else { return nil }
-                return matched == identity.bundleID ? tier : .C
+                guard let matched = subject.longestIdentifier(prefixing: name) else { return nil }
+                return subject.owns(matched) ? tier : .C
             case let .bundleIdentifierDelimitedPrefix(separator):
                 return delimitedPrefixTier(
-                    name: name, prefixes: identity.searchBundleIdentifiers, separator: separator
+                    name: name, prefixes: subject.identifiers, separator: separator
                 )
+            case .temporaryDirectory:
+                guard let matched = subject.identifiers.first(where: {
+                    Self.isTemporary(name: name, of: $0)
+                }) else { return nil }
+                return subject.owns(matched) ? tier : .C
+            case .clientOfService:
+                guard let plus = name.lastIndex(of: "+"), plus != name.startIndex else { return nil }
+                let client = String(name[name.index(after: plus)...])
+                guard subject.identifierSet.contains(client) else { return nil }
+                return subject.owns(client) ? tier : .C
             case .identifierInsideBundle:
+                // A plug-in is often named inside a component's identifier,
+                // `com.openai.sky.CUAService.AuthorizationPlugin` for one.
                 guard let declaredIdentifier,
-                      identity.searchBundleIdentifiers.contains(declaredIdentifier) else { return nil }
-                return declaredIdentifier == identity.bundleID ? tier : .C
+                      subject.longestIdentifier(prefixing: declaredIdentifier) != nil else { return nil }
+                return subject.owns(declaredIdentifier) ? tier : .C
             case .applicationName, .applicationNameLowercased,
-                 .applicationNameDelimitedPrefix, .groupContainer:
+                 .applicationNameDelimitedPrefix, .groupContainer, .homeDotFolder, .diagnosticReport:
                 return nil
             }
+        }
+
+        /// The bundle's own declaration is a record and outranks the home
+        /// folder's name-only floor; a folder sharing the name is a guess.
+        private func homeFolderTier(name: String, subject: Subject) -> EvidenceTier? {
+            if subject.homeFolderSet.contains(name) { return .B }
+            guard name.hasPrefix(".") else { return nil }
+            let bare = String(name.dropFirst())
+            return subject.lowercasedNames.contains(where: { lower in
+                bare == lower || (bare.hasPrefix(lower + "-") && bare.count > lower.count + 1)
+            }) ? .C : nil
+        }
+
+        /// `<process>-<date>` or `<process>_<date>`, the date's first digit
+        /// right after the separator.
+        static func isReport(_ file: String, of process: String) -> Bool {
+            for separator in ["-", "_"] where file.hasPrefix(process + separator) {
+                let rest = file.dropFirst(process.count + 1)
+                if rest.prefix(4).allSatisfy(\.isNumber), rest.count > 4 { return true }
+            }
+            return false
+        }
+
+        /// Inside the identifier's namespace, hidden or not. Another
+        /// installed application whose identifier is longer is vetoed in
+        /// `TierSVetoEngine.namedFor`.
+        static func isTemporary(name: String, of identifier: String) -> Bool {
+            let visible = name.hasPrefix(".") ? String(name.dropFirst()) : name
+            return visible.hasPrefix(identifier + ".") && visible.count > identifier.count + 1
         }
 
         private func delimitedPrefixTier(
@@ -195,14 +258,69 @@ public struct LocationInventory: Sendable {
             }) ? .C : nil
         }
 
-        private func groupTier(name: String, identity: Identity) -> EvidenceTier? {
-            if identity.searchGroupContainers.contains(name) {
+        private func groupTier(name: String, subject: Subject) -> EvidenceTier? {
+            if subject.groupSet.contains(name) {
                 return .A
             }
-            guard identity.searchGroupContainers.isEmpty,
-                  identity.searchBundleIdentifiers.contains(where: { name == "group.\($0)" })
+            guard subject.groups.isEmpty, name.hasPrefix("group."),
+                  subject.identifierSet.contains(String(name.dropFirst(6)))
             else { return nil }
             return .C
+        }
+    }
+
+    /// What one identity answers to, worked out once.
+    ///
+    /// `Identity` derives its identifiers and names every time it is asked,
+    /// and matching asked once per file per location. Xcode carries 135
+    /// identifiers, so finding what it keeps took six seconds, nearly all
+    /// of it rebuilding the same sorted list.
+    public struct Subject: Sendable {
+        public let identifiers: [String]
+        let identifierSet: Set<String>
+        let names: [String]
+        let nameSet: Set<String>
+        let lowercasedNames: [String]
+        let lowercasedNameSet: Set<String>
+        let groups: [String]
+        let groupSet: Set<String>
+        let homeFolders: [String]
+        let homeFolderSet: Set<String>
+        private let own: String?
+
+        public init(_ identity: Identity) {
+            identifiers = identity.searchBundleIdentifiers
+            identifierSet = Set(identifiers)
+            names = identity.searchNames
+            nameSet = Set(names)
+            var seen = Set<String>()
+            lowercasedNames = names.map { $0.lowercased() }.filter { seen.insert($0).inserted }
+            lowercasedNameSet = seen
+            groups = identity.searchGroupContainers
+            groupSet = Set(groups)
+            homeFolders = identity.searchHomeFolders
+            homeFolderSet = Set(homeFolders)
+            own = identity.bundleID.flatMap { $0.isEmpty ? nil : $0.lowercased() }
+        }
+
+        /// The same answer as `Identity.ownsIdentifier`.
+        func owns(_ identifier: String) -> Bool {
+            guard let own else { return false }
+            let other = identifier.lowercased()
+            return other == own || other.hasPrefix(own + ".")
+        }
+
+        /// The longest identifier that is the name or a dotted prefix of
+        /// it, found by walking the name's own prefixes.
+        public func longestIdentifier(prefixing name: String) -> String? {
+            if identifierSet.contains(name) { return name }
+            var end = name.endIndex
+            while let dot = name[..<end].lastIndex(of: ".") {
+                let prefix = String(name[..<dot])
+                if identifierSet.contains(prefix) { return prefix }
+                end = dot
+            }
+            return nil
         }
     }
 
@@ -228,14 +346,13 @@ public struct LocationInventory: Sendable {
     }
 
     static let notWorthSweeping: Set<FileSystemRoot.Domain> = [
+        // Nothing there can be removed by Brim, so a sweep would only offer
+        // rows that refuse.
+        .systemSecurityAgentPlugins,
         .applications, .userApplications, .volumes, .users, .tempDirs,
         // Fonts have no owning application, and a sweep of them is a list
         // of every typeface somebody has ever installed.
         .userFonts, .systemFonts,
-        // Crash reports remain in the uninstall footprint, where an app
-        // name can identify them. A sweep cannot infer an owner reliably
-        // from a diagnostic report's file name.
-        .userDiagnosticReports, .systemDiagnosticReports,
         // Per-boot scratch space. Every running process writes here and
         // macOS empties it, so a sweep of it is a thousand rows of
         // transient files that will be gone by morning. It stays in the
@@ -350,6 +467,14 @@ public struct LocationInventory: Sendable {
         Location(domain: .userHTTPStorages, rule: .bundleIdentifierPrefix,
                  describes: "stored web data",
                  sentence: "Cookies and web storage macOS keeps for this application."),
+        // A process with no bundle of its own gets its web storage under its
+        // executable's name. ChatGPT's helper left `ChatGPTHelper.binarycookies`.
+        Location(domain: .userHTTPStorages, rule: .applicationName,
+                 describes: "stored web data",
+                 sentence: "Web storage named after one of this application's processes."),
+        Location(domain: .userHTTPStorages, rule: .applicationNameDelimitedPrefix("."),
+                 describes: "cookies",
+                 sentence: "Cookies named after one of this application's processes."),
         Location(domain: .userCookies, rule: .bundleIdentifierPrefix,
                  describes: "cookies",
                  sentence: "Cookies keyed to the bundle identifier."),
@@ -359,6 +484,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .userApplicationScripts, rule: .groupContainer,
                  describes: "shared automation scripts",
                  sentence: "Automation scripts for a declared app group, or matched by name only."),
+        Location(domain: .systemApplicationScripts, rule: .bundleIdentifier,
+                 describes: "automation scripts for every user",
+                 sentence: "Application scripts keyed to the bundle identifier."),
+        Location(domain: .systemApplicationScripts, rule: .groupContainer,
+                 describes: "shared automation scripts for every user",
+                 sentence: "Application scripts for a declared group, or matched by name only."),
         Location(domain: .userAutosaveInformation, rule: .bundleIdentifierPrefix,
                  describes: "autosaved documents",
                  sentence: "Documents this application autosaved but never closed."),
@@ -368,11 +499,11 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemLogs, rule: .bundleIdentifier,
                  describes: "logs for every user",
                  sentence: "A log folder for every user, keyed to the bundle identifier."),
-        Location(domain: .userDiagnosticReports, rule: .applicationName,
+        Location(domain: .userDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application. These accumulate for "
                          + "years and nothing removes them."),
-        Location(domain: .systemDiagnosticReports, rule: .applicationName,
+        Location(domain: .systemDiagnosticReports, rule: .diagnosticReport,
                  describes: "crash reports",
                  sentence: "Crash reports named after this application."),
 
@@ -380,6 +511,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .userInternetPlugIns, rule: .identifierInsideBundle,
                  describes: "an Internet plug-in",
                  sentence: "An Internet plug-in whose own Info.plist declares this identifier."),
+        Location(domain: .userDictionaries, rule: .identifierInsideBundle,
+                 describes: "a dictionary",
+                 sentence: "A dictionary whose own Info.plist declares this identifier."),
+        Location(domain: .systemDictionaries, rule: .identifierInsideBundle,
+                 describes: "a dictionary for every user",
+                 sentence: "A dictionary whose own Info.plist declares this identifier."),
         Location(domain: .systemInternetPlugIns, rule: .identifierInsideBundle,
                  describes: "an Internet plug-in",
                  sentence: "An Internet plug-in whose own Info.plist declares this identifier."),
@@ -450,6 +587,12 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemAudioHAL, rule: .identifierInsideBundle,
                  describes: "an audio device plug-in",
                  sentence: "An audio device plug-in whose own Info.plist declares this identifier."),
+        // How the Mac signs in and unlocks. Found so the review can say it
+        // stays and why; never removed (`HelperScope.signInFolders`).
+        Location(domain: .systemSecurityAgentPlugins, rule: .identifierInsideBundle,
+                 describes: "a sign-in plug-in",
+                 sentence: "A plug-in in how this Mac signs in or unlocks, whose own Info.plist "
+                         + "declares this identifier."),
         Location(domain: .systemAudioMAS, rule: .identifierInsideBundle,
                  describes: "an audio plug-in",
                  sentence: "An audio plug-in whose own Info.plist declares this identifier."),
@@ -533,8 +676,21 @@ public struct LocationInventory: Sendable {
                  describes: "command line tools",
                  sentence: "A command installed outside the Library folder. Matched on the "
                          + "name alone."),
+        Location(domain: .userHomeDotFolders, rule: .homeDotFolder,
+                 describes: "data in your home folder",
+                 sentence: "A hidden folder in your home folder. Either the application names "
+                         + "it as its own, or it carries the application's name."),
         Location(domain: .darwinUserTemp, rule: .bundleIdentifier,
                  describes: "per-boot temporary files",
                  sentence: "Temporary files in the per-user folder macOS makes fresh each boot."),
+        Location(domain: .darwinUserTemp, rule: .temporaryDirectory,
+                 describes: "scratch folders",
+                 sentence: "Named inside the application's identifier, in the per-user folder."),
+        Location(domain: .darwinUserCache, rule: .clientOfService,
+                 describes: "web view caches",
+                 sentence: "Kept by a macOS service on the application's behalf, and named for it."),
+        Location(domain: .darwinUserCache, rule: .temporaryDirectory,
+                 describes: "scratch folders",
+                 sentence: "Named inside the application's identifier, in the per-user folder."),
     ])
 }
