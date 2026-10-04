@@ -629,7 +629,7 @@ dropped with it.
 - **Acceptance** 100k rows: constant memory, 60fps scroll, full keyboard traversal.
 
 ### T-6.2 · Home · changed
-- **As built** Home shows installation changes observed over seven days, current apps installed in the last five days, current Trash recoverability and a card per page. Reinstallation begins a new observed presence period. Remnants measures removed-app data independently of unknown storage and identifies incomplete reads. No score, percentage or resident installation watcher.
+- **As built** Home shows current apps installed in the last five days, current Trash recoverability and a card per page. Space and status cards precede a full-width recent-app row and drop area; the Changes panel is removed. Reinstallation begins a new observed presence period. Remnants measures removed-app data independently of unknown storage and identifies incomplete reads. No score, percentage or resident installation watcher.
 
 ### T-6.3 · Explanations
 - **Objective** Deterministic prose from the evidence model.

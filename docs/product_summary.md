@@ -83,12 +83,13 @@ See [the measurements and limits](performance.md).
 
 ## Home summaries, 4 October 2026
 
-Changes shows observed installations, removals and version updates over seven
-days, newest first. Each row gives the check date and time, rather than claiming
-an exact installation time. Recently installed shows current independent apps from the last five days,
+Home groups Space and the four status cards together, followed by a full-width
+Recently installed card and the app drop area. The Changes panel has been removed.
+Recently installed shows current independent apps from the last five days,
 including observed reinstalls. An update does not renew the installation date.
-The cards expire entries while Home is open and refresh from current inventory
-when asked. No installation watcher or resident service was added.
+Entries expire while Home is open and refresh from current inventory when asked.
+No installation watcher or resident service was added. App refresh no longer
+loads the change history for a panel that does not exist.
 
 Home checks recoverability on manual refresh as well as existing Trash and
 activation events. A completed registration step counts as recoverable only
@@ -102,6 +103,6 @@ Saved installation history retains valid removal and reinstall cycles.
 
 Verification: the final package suite passed with one existing skip. The signed
 Release build and lint comparison passed. On the local machine, Home showed
-five recent apps, dated weekly changes and no stale restore banner after refresh.
+a full-width recent-app row, no Changes panel and no stale restore banner after refresh.
 Its ten unknown items matched the Remnants list. No new install or removal was
 performed in the real account for this follow-up.

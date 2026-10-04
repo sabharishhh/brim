@@ -198,16 +198,7 @@ public final class ApplicationsModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-
-        // After the enumeration, because enumerating is what writes this
-        // run's snapshot. Asking first would compare the machine against
-        // itself.
-        history = await service.whatChanged()
     }
-
-    /// What has changed since Brim last looked, and what came across from
-    /// another Mac and never ran here.
-    @Published public private(set) var history = InstallHistory(changes: [], snapshots: 0)
 
     /// Drops an application the UI already knows is gone, without waiting
     /// for a full re-enumeration.
