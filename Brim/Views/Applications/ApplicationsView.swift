@@ -202,7 +202,7 @@ struct ApplicationsView: View {
                 onClose: { self.review = nil }
             )
             .id(review.id)
-            .transition(.opacity)
+            .transition(.replacement)
         } else if let batch {
             BatchRemovalPanel(
                 apps: batch, service: service,
@@ -219,7 +219,7 @@ struct ApplicationsView: View {
                 onClose: { self.batch = nil }
             )
             .id(batch.map(\.id).joined(separator: ","))
-            .transition(.opacity)
+            .transition(.replacement)
         } else if model.marked.count >= 2 || model.isChoosing {
             MarkedApps(apps: model.marked) {
                 if model.marked.count == 1, let app = model.marked.first {
@@ -229,7 +229,7 @@ struct ApplicationsView: View {
                     batch = model.marked.map(removalTarget)
                 }
             }
-            .transition(.opacity)
+            .transition(.replacement)
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
@@ -239,7 +239,7 @@ struct ApplicationsView: View {
             // Keyed on the app and a crossfade only, so arrowing through
             // the list does not make the pane swim.
             .id(app.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.inspector, value: app.id)
         } else {
             PanePlaceholder(symbol: "square.grid.2x2", title: "Select an app")
