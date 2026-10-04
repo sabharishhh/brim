@@ -61,9 +61,9 @@ button's indicator moves. The planned 220 ms reveal was built and dropped
 after watching it: the list drew the outgoing and incoming groups on top of
 each other, and then, with a fade alone, scrolled the incoming rows up under
 the group buttons for a moment before settling. A location's Details still
-opens with a short spring, and Reduce Motion reduces it. A narrow-window inspection sheet was not added: at the 1100 pt minimum
-window the list and inspector both fit, so it could not be reached. It
-belongs with the adaptive layout work, before the minimum is lowered.
+opens with a short spring, and Reduce Motion reduces it. The inspector
+remembers which group was open, so checking Data for one app opens Data for
+the next app that has any.
 
 ## Colour, 4 October 2026
 
@@ -86,6 +86,85 @@ lifted 6% to reach 4.5:1 as text on a card, and vermilion, at 3.7:1, marks
 icons only, with the word beside it carrying the meaning. Monograms use
 system colours kept clear of the status hues. The eight hand-picked pastels
 are gone.
+
+## Review to result, 4 October 2026
+
+The review and the result use the inspector's groups in the inspector's
+order. Each review group lists what moves, what the person may include and
+what stays with its reason, so the separate "You can also include" and
+"Needs you" lists are gone from the app review. Installer receipts form a
+Records group, and bookkeeping steps such as the privacy reset never appear
+as file rows. The result's By group section reports each group's outcome
+in the same order: gone, still here, not checked, left unticked or kept,
+each counted once.
+
+A verified success settles its mark once in place over 240 ms, opacity only
+under Reduce Motion. A success with locations that could not be read is not
+treated as verified and keeps a static caution mark. Stopped and unchecked
+removals say what happened and what to do next, and Review Again builds a new
+plan from the disk with its own approval; ticks from the earlier attempt are
+not carried over. Closing the panel after a removal refreshes Apps even when
+the last thing on screen was a Review Again.
+
+The Journal keeps each record's last Put Back outcome beside it: progress,
+then "Put back" or "Could not put back" with the reason behind a button.
+The banner that used to report a failure above the list is gone. The control
+area has a reserved width so the time beside it never moves.
+
+## Interaction timing, 4 October 2026
+
+A page chosen with the pointer fades in 180 ms; one chosen from the keyboard
+(sidebar arrows, Command-digits, Back and Forward from the menu) appears at
+once, detected from the event that caused the change. The earlier 280 ms
+blur, scale and drift is gone. Arrowing through a list selects without a
+crossfade. Toasts arrive in 180 ms and the tray in 220 ms from 4 points
+below, both leaving in 120 ms. Disclosures use the 220 ms evidence token and
+change immediately under Reduce Motion. Loading placeholders appear only
+after a 150 ms wait. Refreshed content recovers in 180 ms instead of 600.
+Check Again's turn and Reveal's bounce stop under Reduce Motion. Closing the
+command bar returns focus to the control that had it, when it is still in
+the window.
+
+## Character, drop and onboarding, 4 October 2026
+
+Welcome shows the character beside its greeting and About is a small window
+with it. In both it leans toward the pointer, at most 3 degrees and 2 points
+within a region no larger than 160 points, with text and buttons outside the
+transform, no idle motion, and no tracking under Reduce Motion or in an
+inactive window. Onboarding steps replace each other with a 220 ms fade and
+4 points of travel, immediately under Reduce Motion.
+
+The Home drop well shows one response to a drag, a defined inset edge,
+instead of a tint, glass and a bouncing symbol together. A drop that is not
+an app is refused the native way and the well says why.
+
+## Narrow windows and refresh, 4 October 2026
+
+The window minimum is 900 points instead of 1100. Apps, Background and
+Developer lay out a list and its pane side by side when there is room for
+both (the list's 440 plus the pane); narrower than that, the list takes the
+width and the pane floats over its trailing edge while it has something to
+show, with Close and Escape. The list keeps its scroll position and
+selection across the threshold; the pane is rebuilt when it moves. Home's
+four summary cards wrap two by two below 680 points. The 720 point
+checkpoint from the plan was not adopted as a minimum: at that width Home,
+Space and Energy would need their own redesign.
+
+Apps stays browsable while it refreshes: scrolling, searching, selecting and
+inspecting continue over the previous list, lightly dimmed. This is limited
+to Apps because no action there trusts the old rows; removal always plans
+afresh with its own approval and inspections check that their answer still
+belongs to the selection. Remnants and the other pages still lock while
+scanning, because their actions act on listed paths.
+
+## Updates and feedback, 4 October 2026
+
+A failed update shows a Details button with the reason beside Retry; the
+reason used to be hover help only. Opening Installer is shown as the next
+step, not with the finished checkmark, and the row's control has a reserved
+place so Update, progress, result and Retry never move the text beside them.
+Feedback's Copy report keeps its width when it says Copied, and why Send is
+unavailable is said under the buttons, not only in hover help.
 
 ## Verification
 
@@ -129,9 +208,27 @@ selection of a group, a Shared location and VoiceOver reading of the groups
 were not checked on the real Mac; the Shared and partial cases are covered by
 unit tests only.
 
+The second slice was built with the screen locked for most of the session,
+so its new presentations were verified by build, tests and code reading, not
+on screen: the review and result groups, the resolve mark, Review Again, the
+Journal outcomes, page fades, toast and tray timing, Welcome and About
+artwork and tilt, the drop well, the narrow layouts and Apps browsing during
+refresh still need a look on the real Mac. The full package suite passed
+after each chunk (486 XCTest cases in the last run, one existing skip) and
+the changed-file lint added no violations. Launch measurements are in
+`docs/performance.md`.
+
 ## Remaining design work
 
-Review-to-result continuity, the adaptive inspector, read-only browsing
-during refresh, artwork depth, and the broader interaction matrix remain
-planned. The footprint groups are not yet carried into the review and the
-result, which is the next step of the footprint-to-result direction.
+Needs a person or hardware this session did not have: the real-device
+walkthroughs with Reduce Motion, Reduce Transparency, Increase Contrast and
+VoiceOver (macOS offers no per-app override, and system settings were not
+changed); 120 Hz frame captures of pointer tracking and scrolling; frontmost
+idle CPU with the screen unlocked; the formative usability study; and
+Developer ID notarisation, which needs the paid programme.
+
+Deferred deliberately: a toolbar search field (the existing field is
+already visible and keyboard reachable, and no improvement was shown); a
+native inspector container (the adaptive panes cover narrow windows without
+changing the evidence pane); showing the Apps list before sizes arrive,
+which would make every size optional and touch sorting and grouping.
