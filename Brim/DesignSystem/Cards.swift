@@ -3,7 +3,7 @@ import BrimUI
 import SwiftUI
 
 /// A dot for a card's state. The only colour on Home that is not an app
-/// icon: the accent when all is well, orange when something wants a look.
+/// icon: green when all is well, orange when something wants a look.
 struct StatusDot: View {
     let status: CardStatus
 
@@ -12,7 +12,7 @@ struct StatusDot: View {
         case .checking:
             ProgressView().controlSize(.mini)
         case .clear:
-            dot(AnyShapeStyle(.tint))
+            dot(AnyShapeStyle(Palette.success))
         case .attention, .partial:
             dot(AnyShapeStyle(Palette.caution))
         case .neutral:

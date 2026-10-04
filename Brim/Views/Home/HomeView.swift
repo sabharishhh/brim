@@ -150,10 +150,10 @@ struct HomeView: View {
                 // Three facts, never added into one: what is used, what
                 // macOS will release when it needs to, and what is free.
                 MeterBar(segments: [
-                    MeterSegment(label: "Used", value: volume.used, color: Palette.hue(1)),
+                    MeterSegment(label: "Used", value: volume.used, color: Color.accentColor),
                     MeterSegment(
                         label: "Held by macOS", value: volume.reclaimableByTheSystem,
-                        color: Palette.hue(1).opacity(0.4)
+                        color: Color.accentColor.opacity(0.4)
                     ),
                     MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
                 ])
@@ -183,8 +183,8 @@ struct HomeView: View {
         ) {
             if checked, size.isComplete, rebuilds + data > 0 {
                 MeterBar(segments: [
-                    MeterSegment(label: "Data", value: data, color: Palette.hue(5)),
-                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.hue(0))
+                    MeterSegment(label: "Data", value: data, color: Color.accentColor),
+                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Color.accentColor.opacity(0.4))
                 ])
             }
         } action: { shell.go(to: .leftovers) }

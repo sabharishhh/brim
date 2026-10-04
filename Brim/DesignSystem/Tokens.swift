@@ -3,20 +3,22 @@ import SwiftUI
 
 /// Brim's colours.
 ///
-/// Surfaces come from the asset catalog (`Canvas`, `Surface`), each with
-/// dark and increased contrast variants, and text and fills are the
-/// system's own semantic colours, so Increase Contrast, Reduce
-/// Transparency and desktop tinting all reach them the way they reach any
-/// Mac app. The colour on screen comes from the person's app icons and one
-/// accent, the `AccentColor` asset, which follows their System Settings
-/// choice.
+/// Brim is dark only (`AppDelegate` sets the appearance at launch). The
+/// canvas is the system's own dark window background, and cards sit one
+/// step up from it the way grouped rows do in System Settings, so Brim
+/// looks like the Mac it runs on. It used to draw its own near-black canvas,
+/// `#0F0F11` against the system's `#1E1E1E`, which made every page darker
+/// than any app beside it. Text, fills and the group colours are the
+/// system's semantic colours, so Increase Contrast and dark mode reach them
+/// the way they reach any Mac app. The colour on screen comes from the
+/// person's app icons and one accent.
 ///
 /// Regions are told apart by shade, never by a line: the canvas, cards one
 /// step up from it, and the system sidebar.
 enum Palette {
     /// The window's one background, under the toolbar, every page and
     /// every side pane alike.
-    static let canvas = Color("Canvas")
+    static let canvas = Color(nsColor: .windowBackgroundColor)
     /// Cards and floating panels, one step up from the canvas.
     static let surface = Color("Surface")
     static let ink = Color(nsColor: .labelColor)
@@ -35,23 +37,43 @@ enum Palette {
 
     /// The light that sweeps across loading placeholders.
     static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.06)
-    /// Staying, needs a look.
-    static let caution = Color.orange
-    /// Permanent deletion, and nothing else.
-    static let destructive = Color.red
+    // Status colours: the Okabe–Ito palette (Okabe and Ito, Color Universal
+    // Design; Wong, "Points of view: Color blindness", Nature Methods 2011),
+    // chosen because its hues stay apart under protanopia, deuteranopia and
+    // tritanopia, where the usual green and red collapse into one. They
+    // differ in lightness too, so they survive greyscale. Each is checked
+    // against the dark canvas (#1E1E1E) and cards (#2A2A2C): 4.5:1 or more
+    // wherever it can colour text, 3:1 or more for marks. Colour is never
+    // the only signal; every status also has a word or a symbol.
+    //
+    // Accent, selection and progress use the person's own system accent
+    // (`Color.accentColor`), never one of these.
 
-    /// Eight muted hues for monograms and symbol tiles, in the order
-    /// `Monogram.hue` indexes them. Spaced around the wheel and kept away
-    /// from red, which in this product means something.
+    /// Done and checked. Okabe–Ito bluish green #009E73, lifted 6% toward
+    /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
+    static let success = Color(light: 0x0FA47B, dark: 0x0FA47B)
+    /// Staying, needs a look. Okabe–Ito orange #E69F00 (6.4:1 on a card).
+    static let caution = Color(light: 0xE69F00, dark: 0xE69F00)
+    /// Permanent deletion, stopped work and errors, as a mark only.
+    /// Okabe–Ito vermilion #D55E00 (3.7:1 on a card), so never body text:
+    /// the words beside it carry the meaning.
+    static let destructive = Color(light: 0xD55E00, dark: 0xD55E00)
+    /// Neutral information. Okabe–Ito sky blue #56B4E9 (6.2:1 on a card).
+    static let info = Color(light: 0x56B4E9, dark: 0x56B4E9)
+
+    /// Eight system colours for monograms and symbol tiles, in the
+    /// order `Monogram.hue` indexes them. The system's own, as in System
+    /// Settings, so they adapt to Increase Contrast. Kept away from red,
+    /// orange and green, which here are status. Meters use the accent.
     static let hues: [Color] = [
-        Color(light: 0x6F9A8B, dark: 0x86B3A3), // sage
-        Color(light: 0x5E8FA8, dark: 0x78A9C2), // steel
-        Color(light: 0x7C83B8, dark: 0x979DD0), // periwinkle
-        Color(light: 0x9A7BB0, dark: 0xB396C8), // lavender
-        Color(light: 0xB07A93, dark: 0xC894AC), // mauve
-        Color(light: 0xC08A64, dark: 0xD6A17D), // clay
-        Color(light: 0xB59A55, dark: 0xCBB16E), // ochre
-        Color(light: 0x8C9A5B, dark: 0xA4B274) // olive
+        Color(nsColor: .systemTeal),
+        Color(nsColor: .systemBlue),
+        Color(nsColor: .systemIndigo),
+        Color(nsColor: .systemPurple),
+        Color(nsColor: .systemPink),
+        Color(nsColor: .systemBrown),
+        Color(nsColor: .systemCyan),
+        Color(nsColor: .systemGray)
     ]
 
     static func hue(_ index: Int) -> Color {

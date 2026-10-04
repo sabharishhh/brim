@@ -318,7 +318,14 @@ private extension UninstallPanel {
 
     func message(title: String, detail: String, isError: Bool) -> some View {
         VStack(spacing: 6) {
-            Text(title).font(.headline).foregroundColor(isError ? .red : .primary)
+            // The word carries the meaning; the mark beside it is colour.
+            Label {
+                Text(title).font(.headline).foregroundStyle(Palette.ink)
+            } icon: {
+                if isError {
+                    Image(systemName: "xmark.octagon.fill").foregroundStyle(Palette.destructive)
+                }
+            }
             Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
         .padding()

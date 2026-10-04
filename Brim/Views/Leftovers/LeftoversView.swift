@@ -273,7 +273,7 @@ private extension LeftoversView {
     private var nothingLeft: some View {
         HStack(spacing: 10) {
             Image(systemName: model.hasUnreadRecoveryCopies ? "questionmark.circle" : "checkmark.circle.fill")
-                .foregroundStyle(model.hasUnreadRecoveryCopies ? Palette.inkSecondary : .green)
+                .foregroundStyle(model.hasUnreadRecoveryCopies ? Palette.inkSecondary : Palette.success)
             Text(model.hasUnreadRecoveryCopies
                 ? "No remnants found in checked locations" : "No removed app has left anything")
                 .font(.brimFacts)
