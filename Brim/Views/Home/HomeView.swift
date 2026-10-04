@@ -6,7 +6,7 @@ import SystemConfiguration
 /// The first page: this Mac at a glance, then in depth one click away.
 ///
 /// The Mac's name, cards for Space, Leftovers, Background and Developer,
-/// what changed, and a place to drop an app. Short phrases only, and no
+/// recently installed apps, and a place to drop an app. Short phrases only, and no
 /// number that was not measured: every figure waits for its scan.
 struct HomeView: View {
     // Each model observed directly. Nested `ObservableObject`s do not
@@ -23,7 +23,6 @@ struct HomeView: View {
 
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
-    @SwiftUI.Environment(AppSession.self) private var session
 
     init(models: SectionModels) {
         self.models = models
@@ -49,7 +48,7 @@ struct HomeView: View {
                     if !fullDiskAccess.isGranted {
                         accessNote
                     }
-                    if !recovery.isEmpty {
+                    if recovery.isAvailable, !recovery.isEmpty {
                         recoveryNote
                     }
                     spaceCard
@@ -59,13 +58,10 @@ struct HomeView: View {
                         developerCard
                         updatesCard
                     }
-                    HStack(alignment: .top, spacing: 16) {
-                        SinceLastLook(
-                            history: applications.history, applications: applications.applications,
-                            newLeftovers: newLeftoverOwners
-                        ) { shell.go(to: .leftovers) }
-                        if !recentlyInstalled.isEmpty {
-                            recentCard
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        let recent = applications.recentlyInstalled(now: context.date)
+                        if !recent.isEmpty {
+                            recentCard(recent)
                         }
                     }
                     DropWell { models.openApplication(from: $0, shell: shell) }
@@ -117,15 +113,6 @@ struct HomeView: View {
         return .notChecked
     }
 
-    /// Owners with something the Leftovers list did not show last time it
-    /// was looked at (`VisitMemory`). Zero until it has been looked at once.
-    private var newLeftoverOwners: Int {
-        let new = session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id)))
-        guard !new.isEmpty else { return 0 }
-        return leftovers.orphanedGroups
-            .filter { $0.items.contains { new.contains($0.id) } }.count
-    }
-
     // MARK: - Notes
 
     private var accessNote: some View {
@@ -142,7 +129,8 @@ struct HomeView: View {
         return HomeNote(
             symbol: "arrow.uturn.backward", tint: .accentColor,
             title: count == 1 ? "1 removal can be put back" : "\(count) removals can be put back",
-            detail: "\(ByteText.short(recovery.totalBytes)) in the Trash",
+            detail: recovery.totalBytes > 0 ? "\(ByteText.short(recovery.totalBytes)) in the Trash"
+                : "Ready to put back",
             actionTitle: "Open Journal"
         ) { shell.go(to: .journal) }
     }
@@ -176,22 +164,24 @@ struct HomeView: View {
     private var leftoversCard: some View {
         let groups = leftovers.orphanedGroups
         let checked = leftovers.checkedAt != nil
-        let sizeIsKnown = !leftovers.hasUnreadRecoveryCopies
-            && !groups.flatMap(\.items).contains { $0.sizeIsKnown == false }
+        let failed = leftovers.errorMessage != nil
+        let unclaimed = leftovers.unclaimedGroupsForReview.count
+        let size = HomeRemnantsSize(groups: groups, unclaimed: unclaimed)
         let summary = HomeStatus.leftovers(.init(
-            removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedGroups.count,
+            removedApps: leftovers.orphanedGroups.count, unclaimed: unclaimed,
             hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
         ))
         let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
         let data = groups.reduce(0) { $0 + $1.meaningfulBytes }
         return StatCard(
             title: "Remnants", symbol: "app.dashed",
-            figure: checked ? (sizeIsKnown ? ByteText.short(rebuilds + data) : "Not fully measured") : "…",
-            status: leftovers.hasUnreadRecoveryCopies ? .partial : summary.status,
-            phrase: leftovers.hasUnreadRecoveryCopies ? "Recovery copies not checked" : summary.phrase,
+            figure: failed ? "Unavailable" : (checked ? size.figure : "…"),
+            status: failed || !size.isComplete ? .partial : summary.status,
+            phrase: failed ? "Could not check remnants"
+                : (size.isComplete ? summary.phrase : "Some locations could not be measured"),
             isRefreshing: leftovers.isScanning && checked
         ) {
-            if checked, sizeIsKnown, rebuilds + data > 0 {
+            if checked, size.isComplete, rebuilds + data > 0 {
                 MeterBar(segments: [
                     MeterSegment(label: "Data", value: data, color: Palette.hue(5)),
                     MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.hue(0))
@@ -238,19 +228,18 @@ struct HomeView: View {
 
     // MARK: - Recently installed
 
-    private var recentlyInstalled: [InstalledApplication] {
-        let grouper = AppGrouper()
-        return applications.applications.filter(grouper.isRecentlyInstalled)
-            .sorted { ($0.installedAt ?? .distantPast) > ($1.installedAt ?? .distantPast) }
-    }
-
-    private var recentCard: some View {
+    private func recentCard(_ recent: [InstalledApplication]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently installed")
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(recentlyInstalled.prefix(4)) { app in
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Recently installed")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.ink)
+                Text("Last 5 days")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 104))], spacing: 14) {
+                ForEach(recent) { app in
                     Button {
                         shell.go(to: .apps, lens: .all)
                         applications.select(app)
@@ -261,7 +250,7 @@ struct HomeView: View {
                                 .font(.caption)
                                 .foregroundStyle(Palette.inkSecondary)
                                 .lineLimit(1)
-                                .frame(width: 64)
+                                .frame(width: 84)
                         }
                     }
                     .buttonStyle(.press)
@@ -270,7 +259,7 @@ struct HomeView: View {
             }
         }
         .padding(18)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .card()
     }
 }

@@ -30,10 +30,6 @@ struct LeftoversView: View {
     @State private var recoveryReadError: String?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Under a megabyte, a trace nobody can be named for is not worth a row.
-    /// Selection and grouping helpers are kept outside the view body.
-    private static let smallestUnknown: Int64 = 1_000_000
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -138,10 +134,7 @@ private extension LeftoversView {
     // MARK: - List
 
     private var unknowns: [LeftoverGroup] {
-        model.unclaimedGroups.filter {
-            $0.totalBytes >= Self.smallestUnknown || $0.items.contains { $0.capability != .ok }
-        }
-        .sorted { $0.totalBytes > $1.totalBytes }
+        model.unclaimedGroupsForReview.sorted { $0.totalBytes > $1.totalBytes }
     }
 
     private var apps: [LeftoverGroup] {
