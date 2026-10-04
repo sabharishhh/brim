@@ -15,42 +15,53 @@ import Foundation
 public struct AppExtensionSurface: RegistrationSurface {
     public let kind: Registration.Kind = .appExtension
 
+    private let usesSystemTool: Bool
     private let read: @Sendable () -> String?
 
-    public init(
-        read: @escaping @Sendable () -> String? = {
-            ToolOutput.read("/usr/bin/pluginkit", ["-m", "-v"])
+    public init(read: (@Sendable () -> String?)? = nil) {
+        usesSystemTool = read == nil
+        self.read = read ?? { ToolOutput.read("/usr/bin/pluginkit", ["-m", "-A", "-D", "-v"]) }
+    }
+
+    public func coverage(in root: FileSystemRoot) async -> RegistrationCoverage {
+        await snapshot(in: root).coverage
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationSnapshot {
+        if usesSystemTool, root.rootURL.standardizedFileURL.path != "/" {
+            return RegistrationSnapshot(registrations: [], coverage: .withheld(
+                kind, "The system registration tool is outside this filesystem."
+            ))
         }
-    ) {
-        self.read = read
-    }
-
-    public func coverage(in _: FileSystemRoot) async -> RegistrationCoverage {
-        read() == nil
-            ? .unavailable(kind, "pluginkit did not answer, so app extensions were not read.")
-            : .available(kind)
-    }
-
-    public func snapshot(in _: FileSystemRoot) async -> RegistrationSnapshot {
         guard let output = read() else {
             return RegistrationSnapshot(registrations: [],
                                         coverage: .unavailable(kind, "App extensions could not be read."))
         }
-        return RegistrationSnapshot(registrations: Self.registrations(from: output), coverage: .available(kind))
+        let registrations = Self.registrations(from: output)
+        let lines = output.split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let count = lines.last.flatMap(Self.listingCount)
+        // A count footer does not make an error or an unrecognized row a
+        // successful observation. Preserve parsed records, but keep the gap.
+        let complete = count == registrations.count
+            && count != nil
+            && lines.dropLast().allSatisfy { Self.parse($0) != nil }
+        return RegistrationSnapshot(registrations: registrations, coverage: RegistrationCoverage(
+            kind: kind, available: complete,
+            limitation: complete ? nil : "The extension listing could not be fully checked."
+        ), readerVersion: 3)
     }
 
-    public func registrations(in _: FileSystemRoot) async -> [Registration] {
-        guard let output = read() else { return [] }
-        return Self.registrations(from: output)
+    public func registrations(in root: FileSystemRoot) async -> [Registration] {
+        await snapshot(in: root).registrations
     }
 
     private static func registrations(from output: String) -> [Registration] {
-        let fm = FileManager.default
-
-        return output.split(separator: "\n").compactMap { line -> Registration? in
+        output.split(separator: "\n").compactMap { line -> Registration? in
             guard let entry = Self.parse(String(line)) else { return nil }
 
-            let exists = fm.fileExists(atPath: entry.path)
+            let presence = PathObservation.observe(entry.path, followingLinks: true)
+            let exists = presence.isPresent
             // Apple's own extensions live under /System and are managed by
             // macOS. Several are conditionally installed, so an absent one
             // is not a leftover and cannot be removed.
@@ -61,20 +72,25 @@ public struct AppExtensionSurface: RegistrationSurface {
                 kind: .appExtension,
                 identifier: entry.identifier,
                 label: entry.displayName,
-                owningBundleID: Self.owningBundle(of: entry.identifier),
+                // Identifier suffixes do not establish a containing app.
+                // The recorded extension path supplies the association.
+                owningBundleID: nil,
                 programPath: entry.path,
                 targetExists: exists,
                 recordPath: nil,
-                evidence: exists
+                evidence: !presence.isAbsent
                     ? "Registered with PluginKit."
                     : "Registered with PluginKit, but the extension is gone.",
                 isSystemOwned: isApple,
-                capability: .ok
+                capability: .ok,
+                targetPresence: presence, recordIdentity: entry.uuid,
+                namespace: "user/\(getuid())", runtimeState: entry.isEnabled ? "enabled" : "listed"
             )
         }
     }
 
     struct Entry: Equatable {
+        let uuid: String
         let identifier: String
         let version: String?
         let path: String
@@ -126,7 +142,10 @@ public struct AppExtensionSurface: RegistrationSurface {
         }
         guard !identifier.isEmpty else { return nil }
 
+        let uuid = fields[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uuid.isEmpty else { return nil }
         return Entry(
+            uuid: uuid,
             identifier: identifier,
             version: version,
             path: path,
@@ -158,16 +177,11 @@ public struct AppExtensionSurface: RegistrationSurface {
         return nil
     }
 
-    /// The application an extension belongs to.
-    ///
-    /// An extension identifier is conventionally the host's with a suffix,
-    /// `net.whatsapp.WhatsApp.Intents` for `net.whatsapp.WhatsApp`. That
-    /// is a convention rather than a rule, so it is used only to group
-    /// rows; ownership for a removal is decided on the path being inside
-    /// the bundle, which `Registration.belongs(to:bundleURL:)` checks.
-    static func owningBundle(of identifier: String) -> String? {
-        let parts = identifier.split(separator: ".")
-        guard parts.count > 3 else { return nil }
-        return parts.dropLast().joined(separator: ".")
+    private static func listingCount(_ line: String) -> Int? {
+        let text = line.trimmingCharacters(in: .whitespaces)
+        guard text.hasPrefix("("), text.hasSuffix(" plug-ins)") else { return nil }
+        let number = text.dropFirst().dropLast(" plug-ins)".count)
+        guard !number.isEmpty, number.allSatisfy(\.isNumber) else { return nil }
+        return Int(number)
     }
 }

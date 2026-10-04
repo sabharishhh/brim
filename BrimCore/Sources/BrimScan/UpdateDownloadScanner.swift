@@ -35,6 +35,9 @@ public struct UpdateDownloadScanner: Sendable {
         for cacheRoot in [home.appendingPathComponent("Library/Caches"),
                           home.appendingPathComponent("Library/Application Support/Caches")] {
             for folder in Self.children(of: cacheRoot) {
+                if Task.isCancelled {
+                    return found
+                }
                 let name = folder.lastPathComponent
                 if name.hasSuffix(".ShipIt") {
                     guard let app = resolve(String(name.dropLast(".ShipIt".count))) else { continue }
@@ -93,8 +96,8 @@ public struct UpdateDownloadScanner: Sendable {
     }
 
     private func item(_ url: URL, app: URL, state: State) -> DeveloperCache? {
-        let size = DeveloperCacheScanner.size(of: url)
-        guard size > 0 else { return nil }
+        let size = ArtifactSizer.measure(at: url)
+        guard !size.isEmpty else { return nil }
         let name = app.deletingPathExtension().lastPathComponent
         let title: String, explanation: String
         let cost: DeveloperCache.Cost
@@ -112,8 +115,9 @@ public struct UpdateDownloadScanner: Sendable {
             explanation = "\(name) installs this the next time it restarts. Left for \(name) to use."
             cost = .configured
         }
-        return DeveloperCache(name: title, tool: name, url: url, sizeBytes: size, cost: cost,
-                              explanation: explanation, app: app)
+        return DeveloperCache(name: title, tool: name, url: url, sizeBytes: size.allocatedBytes, cost: cost,
+                              explanation: explanation, app: app, sizeMeasurement: size,
+                              artifactClassification: cost == .rebuilt ? .rebuildableCache : .stateful)
     }
 
     // MARK: - Reading the disk
@@ -160,7 +164,9 @@ public struct UpdateDownloadScanner: Sendable {
             if let app = children(of: folder).first(where: {
                 $0.pathExtension == "app"
                     && $0.deletingPathExtension().lastPathComponent.caseInsensitiveCompare(key) == .orderedSame
-            }) { return app }
+            }) {
+                return app
+            }
         }
         return nil
     }

@@ -176,6 +176,8 @@ struct HomeView: View {
     private var leftoversCard: some View {
         let groups = leftovers.orphanedGroups
         let checked = leftovers.checkedAt != nil
+        let sizeIsKnown = !leftovers.hasUnreadRecoveryCopies
+            && !groups.flatMap(\.items).contains { $0.sizeIsKnown == false }
         let summary = HomeStatus.leftovers(.init(
             removedApps: leftovers.orphanedGroups.count, unclaimed: leftovers.unclaimedGroups.count,
             hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
@@ -184,10 +186,12 @@ struct HomeView: View {
         let data = groups.reduce(0) { $0 + $1.meaningfulBytes }
         return StatCard(
             title: "Remnants", symbol: "app.dashed",
-            figure: checked ? ByteText.short(rebuilds + data) : "…",
-            status: summary.status, phrase: summary.phrase, isRefreshing: leftovers.isScanning && checked
+            figure: checked ? (sizeIsKnown ? ByteText.short(rebuilds + data) : "Not fully measured") : "…",
+            status: leftovers.hasUnreadRecoveryCopies ? .partial : summary.status,
+            phrase: leftovers.hasUnreadRecoveryCopies ? "Recovery copies not checked" : summary.phrase,
+            isRefreshing: leftovers.isScanning && checked
         ) {
-            if checked, rebuilds + data > 0 {
+            if checked, sizeIsKnown, rebuilds + data > 0 {
                 MeterBar(segments: [
                     MeterSegment(label: "Data", value: data, color: Palette.hue(5)),
                     MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.hue(0))
@@ -200,10 +204,11 @@ struct HomeView: View {
         // A first load shows placeholders; a reload keeps the last figures,
         // greyed, until the new ones arrive.
         let hasData = !background.isLoading || !background.live.isEmpty || !background.stale.isEmpty
-        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData)
+        let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData,
+                                            hasFaults: !background.faults.isEmpty)
         return StatCard(
             title: "Background", symbol: "gearshape.2",
-            figure: "\(background.live.count) running",
+            figure: "\(background.live.count) listed",
             status: summary.status, phrase: summary.phrase, isRefreshing: background.isLoading && hasData
         ) { shell.go(to: .background) }
     }

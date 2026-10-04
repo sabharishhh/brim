@@ -14,7 +14,7 @@ import Security
     /// The reply carries nil when it worked, or a sentence saying why not.
     func removeDefunctJob(
         domain: String, name: String,
-        withReply reply: @escaping (String?) -> Void
+        withReply reply: @escaping @Sendable (String?) -> Void
     )
 
     /// Sets aside one command link that points at nothing. The daemon
@@ -24,7 +24,7 @@ import Security
     /// The reply carries nil when it worked, or a sentence saying why not.
     func removeBrokenCommand(
         domain: String, name: String,
-        withReply reply: @escaping (String?) -> Void
+        withReply reply: @escaping @Sendable (String?) -> Void
     )
 
     /// Forgets one installer receipt. Deletes no files: the record lives
@@ -33,14 +33,14 @@ import Security
     /// `PrivilegedReceiptRemoval`.
     ///
     /// The reply carries nil when it worked, or a sentence saying why not.
-    func forgetReceipt(packageID: String, withReply reply: @escaping (String?) -> Void)
+    func forgetReceipt(packageID: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
     /// Sets aside an application or plug-in an installer left owned by
     /// root. See `PrivilegedBundleRemoval` for what it will and will not
     /// take. Nil when it worked, otherwise why not.
     func removeInstalledBundle(
         domain: String, name: String,
-        withReply reply: @escaping (String?) -> Void
+        withReply reply: @escaping @Sendable (String?) -> Void
     )
 
     /// Sets aside an application an installer put outside the
@@ -48,21 +48,30 @@ import Security
     /// `PrivilegedPayloadRemoval`. Nil when it worked, otherwise why not.
     func removeInstalledPayload(
         packageID: String, name: String,
-        withReply reply: @escaping (String?) -> Void
+        withReply reply: @escaping @Sendable (String?) -> Void
     )
 
     /// Sets aside one item in `/Library/Caches`. See
     /// `PrivilegedCacheRemoval`. Nil when it worked, otherwise why not.
-    func removeSystemCache(name: String, withReply reply: @escaping (String?) -> Void)
+    func removeSystemCache(name: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
     /// Sets aside one preference file in `/Library/Preferences`. See
     /// `PrivilegedPreferenceRemoval`. Nil when it worked, otherwise why not.
-    func removeSystemPreference(name: String, withReply reply: @escaping (String?) -> Void)
+    func removeSystemPreference(name: String, withReply reply: @escaping @Sendable (String?) -> Void)
+
+    /// Lists only Brim's fixed recovery store. The payload is a JSON array.
+    func recoveryItems(withReply reply: @escaping @Sendable (Data?, String?) -> Void)
+
+    /// Permanently removes one selected recovery copy after checking its identity.
+    func removeRecoveryItem(
+        identifier: String, expectedDevice: Int32, expectedInode: UInt64,
+        withReply reply: @escaping @Sendable (String?) -> Void
+    )
 
     /// So the app can tell whether the installed daemon is the one that
     /// shipped with it, rather than an older copy left by a previous
     /// version.
-    func version(withReply reply: @escaping (String) -> Void)
+    func version(withReply reply: @escaping @Sendable (String) -> Void)
 
     /// Clears up what only root can, on the way out.
     ///
@@ -75,7 +84,7 @@ import Security
     ///
     /// Destroys the set-aside files, so it is only ever called when
     /// somebody has asked for Brim itself to go.
-    func uninstallSelf(withReply reply: @escaping (String?) -> Void)
+    func uninstallSelf(withReply reply: @escaping @Sendable (String?) -> Void)
 }
 
 public enum BrimJobHelper {
@@ -85,7 +94,7 @@ public enum BrimJobHelper {
 
     /// Bumped whenever the daemon's behaviour changes, so the app can
     /// replace a stale copy rather than talk to it.
-    public static let version = "7"
+    public static let version = "12"
 
     public static let teamID = "9LY29YLFG2"
 
@@ -128,8 +137,8 @@ public enum BrimJobHelper {
 
     private static func requirement(identifier: String, teamID: String) -> String {
         "anchor apple generic"
-        + " and identifier \"\(identifier)\""
-        + " and certificate leaf[subject.OU] = \"\(teamID)\""
+            + " and identifier \"\(identifier)\""
+            + " and certificate leaf[subject.OU] = \"\(teamID)\""
     }
 
     /// Where a removed job file is kept, so this is undoable. Root owned,

@@ -16,7 +16,7 @@ let package = Package(
         .library(name: "BrimService", targets: ["BrimService"]),
         .library(name: "BrimPrivileged", targets: ["BrimPrivileged"]),
         .library(name: "BrimUI", targets: ["BrimUI"]),
-        .executable(name: "BrimJobHelper", targets: ["BrimJobHelper"]),
+        .executable(name: "BrimJobHelper", targets: ["BrimJobHelper"])
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
@@ -29,16 +29,17 @@ let package = Package(
             "BrimCore",
             .product(name: "GRDB", package: "GRDB.swift")
         ]),
-        .target(name: "BrimOps", dependencies: ["BrimScanShim", "BrimCore"]),
+        .target(name: "BrimProcess"),
+        .target(name: "BrimOps", dependencies: ["BrimScanShim", "BrimCore", "BrimProcess"]),
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
         .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
-        // Deliberately depends on nothing. A root daemon should be small
-        // enough to read in one sitting.
-        .target(name: "BrimPrivileged"),
+        // Only the bounded process primitive is shared with the root daemon.
+        // No engine, scanner, app or service dependency belongs here.
+        .target(name: "BrimPrivileged", dependencies: ["BrimProcess"]),
         .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService", "BrimPrivileged"]),
-        
+
         .executableTarget(name: "BrimJobHelper", dependencies: ["BrimPrivileged"]),
-        
+
         // Tests
         .target(name: "BrimFixtures", dependencies: ["BrimCore"], path: "Tests/BrimFixtures", resources: [
             .copy("Manifests")
@@ -49,6 +50,9 @@ let package = Package(
         .testTarget(name: "BrimGoldenTests", dependencies: ["BrimCore", "BrimFixtures"]),
         .testTarget(name: "BrimUITests", dependencies: ["BrimUI", "BrimCore", "BrimProtocol"]),
         // Exercises the real machine. Opt-in via BRIM_REAL_ENV=1; skips otherwise.
-        .testTarget(name: "BrimRealEnvironmentTests", dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan", "BrimOps"]),
+        .testTarget(
+            name: "BrimRealEnvironmentTests",
+            dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan", "BrimOps"]
+        )
     ]
 )

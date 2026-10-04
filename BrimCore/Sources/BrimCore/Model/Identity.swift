@@ -115,9 +115,9 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         return copy
     }
 
+    /// Refresh discovered surfaces without losing the selected installation.
     public func withoutDerivedSurfaces() -> Identity {
         var copy = self
-        copy.bundlePath = nil
         copy.identitySurface = nil
         copy.capabilitySurface = nil
         return copy
