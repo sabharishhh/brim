@@ -1,73 +1,8 @@
-import Testing
-import XCTest
 import BrimCore
 import BrimProtocol
 @testable import BrimUI
-
-private actor UninstallStub: BrimServiceProtocol, ApprovalGranting {
-    var planToReturn: Plan?
-    var planError: Error?
-    var approvalError: Error?
-    var applyError: Error?
-    var verifyResult: VerificationResult?
-    var verifyError: Error?
-
-    private(set) var approvals = 0
-    private(set) var applies = 0
-    private(set) var verifies = 0
-
-    init(plan: Plan? = nil, planError: Error? = nil, approvalError: Error? = nil,
-         applyError: Error? = nil, verifyResult: VerificationResult? = nil, verifyError: Error? = nil) {
-        self.planToReturn = plan
-        self.planError = planError
-        self.approvalError = approvalError
-        self.applyError = applyError
-        self.verifyResult = verifyResult
-        self.verifyError = verifyError
-    }
-
-    func plan(intent: PlanIntent) async throws -> Plan {
-        if let planError { throw planError }
-        return planToReturn!
-    }
-
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
-        approvals += 1
-        if let approvalError { throw approvalError }
-        return .stub(planId: planId, requester: requesterIdentity)
-    }
-
-    func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
-        .stub(requester: receipt.requester)
-    }
-
-    func apply(planId: UUID, token: ApprovalToken) async throws {
-        applies += 1
-        if let applyError { throw applyError }
-    }
-
-    func verify(planId: UUID) async throws -> VerificationResult {
-        verifies += 1
-        if let verifyError { throw verifyError }
-        return verifyResult!
-    }
-
-    func counts() -> (approvals: Int, applies: Int, verifies: Int) { (approvals, applies, verifies) }
-
-    func inspect(identity: Identity) async throws -> Footprint { throw Oops.no }
-    func explain(planId: UUID) async throws -> String { throw Oops.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Oops.no }
-    func installedApplications() async throws -> [InstalledApplication] { [] }
-    func leftovers() async throws -> [Leftover] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
-}
-
-private enum Oops: Error, LocalizedError {
-    case no
-    case refused
-    var errorDescription: String? { self == .refused ? "User cancelled authentication." : "no" }
-}
+import Testing
+import XCTest
 
 private func step(_ index: Int, kind: StepKind, target: String) -> Step {
     Step(index: index, kind: kind, target: target, targetFingerprint: nil, tier: .A,
@@ -89,7 +24,6 @@ private let intent = PlanIntent(
 
 @MainActor
 final class UninstallExecutionModelTests: XCTestCase {
-
     func testAPlannedUninstallIsReadyAndNotYetApplied() async {
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
         let stub = UninstallStub(plan: plan)
@@ -131,7 +65,7 @@ final class UninstallExecutionModelTests: XCTestCase {
         await model.prepare(intent: intent, service: stub)
         await model.authorize(requesterIdentity: "tester")
 
-        guard case .verified(let result) = model.phase else {
+        guard case let .verified(result) = model.phase else {
             return XCTFail("Expected a verified phase carrying the failure, got \(model.phase)")
         }
         XCTAssertFalse(result.success)
@@ -163,13 +97,13 @@ final class UninstallExecutionModelTests: XCTestCase {
     /// interface cannot act on, so it has its own case now.
     func testAFailedVerificationIsNotReportedAsAFailedRemoval() async {
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
-        let stub = UninstallStub(plan: plan, verifyError: Oops.no)
+        let stub = UninstallStub(plan: plan, verifyError: Oops.unavailable)
         let model = UninstallExecutionModel()
 
         await model.prepare(intent: intent, service: stub)
         await model.authorize(requesterIdentity: "tester")
 
-        guard case .appliedButUnverified(let reason) = model.phase else {
+        guard case let .appliedButUnverified(reason) = model.phase else {
             return XCTFail("Expected appliedButUnverified, got \(model.phase)")
         }
         XCTAssertEqual(reason, "no", "The underlying reason travels, unwrapped")
@@ -182,7 +116,7 @@ final class UninstallExecutionModelTests: XCTestCase {
         // The other side of the case above: here nothing ran, so this one
         // really is `.failed` and the sheet's red heading is correct.
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
-        let stub = UninstallStub(plan: plan, applyError: Oops.no)
+        let stub = UninstallStub(plan: plan, applyError: Oops.unavailable)
         let model = UninstallExecutionModel()
 
         await model.prepare(intent: intent, service: stub)
@@ -212,7 +146,7 @@ final class UninstallExecutionModelTests: XCTestCase {
     }
 
     func testAFailureToPlanIsSurfacedAndBlocksAuthorization() async {
-        let stub = UninstallStub(planError: Oops.no)
+        let stub = UninstallStub(planError: Oops.unavailable)
         let model = UninstallExecutionModel()
 
         await model.prepare(intent: intent, service: stub)
@@ -240,31 +174,63 @@ private actor BatchStub: BrimServiceProtocol, ApprovalGranting {
     private var plans: [UUID: String] = [:]
 
     func plan(intent: PlanIntent) async throws -> Plan {
-        if intent.subjectIdentity.bundleID == "com.t.bad" { throw Oops.no }
+        if intent.subjectIdentity.bundleID == "com.t.bad" {
+            throw Oops.unavailable
+        }
         let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "t", osVersion: "t", intent: intent,
                         steps: [step(0, kind: .trashPath, target: "/\(intent.subjectIdentity.name)")],
                         excludedItems: [], expectedTotalBytes: 100)
         plans[plan.planId] = intent.subjectIdentity.name
         return plan
     }
+
     func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
         .stub(planId: planId, requester: requesterIdentity)
     }
+
     func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
         .stub(requester: receipt.requester)
     }
-    func apply(planId: UUID, token: ApprovalToken) async throws { applied.append(planId) }
+
+    func apply(planId: UUID, token _: ApprovalToken) async throws {
+        applied.append(planId)
+    }
+
     func verify(planId: UUID) async throws -> VerificationResult {
         VerificationResult(planId: planId, expectedBytes: 100, recoveredBytes: 100, success: true)
     }
-    func appliedNames() -> [String] { applied.compactMap { plans[$0] } }
-    func inspect(identity: Identity) async throws -> Footprint { throw Oops.no }
-    func explain(planId: UUID) async throws -> String { throw Oops.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Oops.no }
-    func installedApplications() async throws -> [InstalledApplication] { [] }
-    func leftovers() async throws -> [Leftover] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
+
+    func appliedNames() -> [String] {
+        applied.compactMap { plans[$0] }
+    }
+
+    func inspect(identity _: Identity) async throws -> Footprint {
+        throw Oops.unavailable
+    }
+
+    func explain(planId _: UUID) async throws -> String {
+        throw Oops.unavailable
+    }
+
+    func history() async throws -> [Plan] {
+        []
+    }
+
+    func undo(planId _: UUID) async throws {
+        throw Oops.unavailable
+    }
+
+    func installedApplications() async throws -> [InstalledApplication] {
+        []
+    }
+
+    func leftovers() async throws -> [Leftover] {
+        []
+    }
+
+    func recoverableItems() async throws -> [RecoverableItem] {
+        []
+    }
 }
 
 @MainActor
@@ -289,7 +255,11 @@ final class BatchRemovalModelTests: XCTestCase {
         XCTAssertEqual(applied, ["Alpha", "Beta"])
         XCTAssertTrue(model.isFinished)
         XCTAssertTrue(model.entries.filter { $0.app.name != "Bad" }.allSatisfy {
-            if case .verified = $0.removal.phase { true } else { false }
+            if case .verified = $0.removal.phase {
+                true
+            } else {
+                false
+            }
         })
     }
 }

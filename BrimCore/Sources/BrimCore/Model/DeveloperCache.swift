@@ -13,7 +13,6 @@ import Foundation
 /// Each entry says what it is, what clearing it costs, and how it comes
 /// back, and anything Brim does not recognise is left alone.
 public struct DeveloperCache: Sendable, Equatable, Identifiable {
-
     /// T-5.7's three classes, which decide what Brim is allowed to do.
     public enum Cost: String, Sendable, Codable {
         /// Regenerable. Brim removes these itself.
@@ -31,7 +30,9 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
         case configured
 
         /// Whether Brim may remove the files directly.
-        public var isBrimRemovable: Bool { self == .rebuilt || self == .restored }
+        public var isBrimRemovable: Bool {
+            self == .rebuilt || self == .restored
+        }
     }
 
     public let name: String
@@ -55,16 +56,26 @@ public struct DeveloperCache: Sendable, Equatable, Identifiable {
     /// For a project's build output, when it was last built. Nil for a
     /// tool's shared cache.
     public let lastBuilt: Date?
-    public var isProject: Bool { lastBuilt != nil }
+    public var isProject: Bool {
+        lastBuilt != nil
+    }
+
     /// For an update an app downloaded, the installed app it is for.
     public let app: URL?
-    public var isUpdateDownload: Bool { app != nil }
+    public var isUpdateDownload: Bool {
+        app != nil
+    }
+
     /// For an old version of a command line tool, the version its command
     /// runs instead.
     public let versionInUse: String?
-    public var isOldVersion: Bool { versionInUse != nil }
+    public var isOldVersion: Bool {
+        versionInUse != nil
+    }
 
-    public var id: String { url.path }
+    public var id: String {
+        url.path
+    }
 
     /// What a screen reader should say for this row, as one sentence
     /// rather than the five fragments the view is built from. The size

@@ -174,7 +174,9 @@ final class NotALeftoverTests: XCTestCase {
         let seen = Date(timeIntervalSince1970: 1_790_000_000)
         let found = try await LeftoversScanner(
             root: root,
-            staleRegistrationOwners: ["com.microsoft.autoupdate2": "Brim saw Microsoft AutoUpdate installed until 28 Sep."],
+            staleRegistrationOwners: [
+                "com.microsoft.autoupdate2": "Brim saw Microsoft AutoUpdate installed until 28 Sep."
+            ],
             removedApplications: ["com.microsoft.autoupdate2": seen],
             hasFullDiskAccess: true
         ).scanLeftovers(knownPastBundleIDs: ["com.microsoft.autoupdate2"],
@@ -238,7 +240,10 @@ final class NotALeftoverTests: XCTestCase {
         _ = try put("Users/tester/.antigravity-ide/argv.json", contents: Data([1]))
         _ = try put("Users/tester/.ssh/config", contents: Data([1]))
         _ = try put("Users/tester/Documents/antigravity/notes.txt", contents: Data([1]))
-        _ = try put("Library/Logs/DiagnosticReports/Purge_2026-09-29-090414_host.cpu_resource.diag", contents: Data([1]))
+        _ = try put(
+            "Library/Logs/DiagnosticReports/Purge_2026-09-29-090414_host.cpu_resource.diag",
+            contents: Data([1])
+        )
         _ = try put("Library/Logs/DiagnosticReports/Other-2026-09-29-090414.ips", contents: Data([1]))
         let found = try await LeftoversScanner(
             root: root,
@@ -246,7 +251,10 @@ final class NotALeftoverTests: XCTestCase {
             hasFullDiskAccess: true
         ).scanLeftovers(knownPastBundleIDs: ["com.google.antigravity", "io.getpurge.app"],
                         knownNames: ["com.google.antigravity": "Antigravity", "io.getpurge.app": "Purge"])
-        let names = Dictionary(found.map { ($0.url.lastPathComponent, $0) }, uniquingKeysWith: { a, _ in a })
+        let names = Dictionary(
+            found.map { ($0.url.lastPathComponent, $0) },
+            uniquingKeysWith: { application, _ in application }
+        )
         XCTAssertEqual(names[".antigravity-ide"]?.potentialOwner?.name, "Antigravity")
         XCTAssertEqual(names["Purge_2026-09-29-090414_host.cpu_resource.diag"]?.category, .orphaned)
         XCTAssertNil(names[".ssh"])

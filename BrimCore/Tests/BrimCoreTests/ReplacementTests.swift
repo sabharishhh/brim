@@ -1,5 +1,5 @@
-import XCTest
 @testable import BrimCore
+import XCTest
 
 /// "Replaced by" is said only on proof: a record of where the old app was,
 /// an installed app with another identifier at exactly that path, and the
@@ -40,7 +40,11 @@ final class ReplacementTests: XCTestCase {
     }
 
     func testTheSameIdentifierAtThePathIsNotAReplacement() {
-        let same = Replacement.Installed(bundleID: "COM.OPENAI.CHAT", name: "ChatGPT", path: "/Applications/ChatGPT.app")
+        let same = Replacement.Installed(
+            bundleID: "COM.OPENAI.CHAT",
+            name: "ChatGPT",
+            path: "/Applications/ChatGPT.app"
+        )
         XCTAssertNil(Replacement.find(removed: "com.openai.chat", formerPaths: ["/Applications/ChatGPT.app"],
                                       installed: [same]))
     }
@@ -75,20 +79,32 @@ final class ReplacementTests: XCTestCase {
     /// A namespace is the developer's, not a shared root: two apps under
     /// `com.github` from different people are not one developer's.
     func testASharedRootNamespaceNeedsTheSameOwner() {
-        let a = Replacement.Installed(bundleID: "com.github.someone.tool", name: "Tool", path: "/Applications/Tool.app")
+        let original = Replacement.Installed(
+            bundleID: "com.github.someone.tool",
+            name: "Tool",
+            path: "/Applications/Tool.app"
+        )
         XCTAssertNil(Replacement.find(removed: "com.github.other.tool", formerPaths: ["/Applications/Tool.app"],
-                                      installed: [a]))
+                                      installed: [original]))
     }
 
     /// A group speaks for its items only when they agree.
     func testAGroupClaimsAReplacementOnlyWhenEveryItemAgrees() {
         let found = Replacement(name: "ChatGPT", path: "/Applications/ChatGPT.app")
-        var a = Leftover(url: URL(fileURLWithPath: "/u/Library/Caches/com.openai.chat"), size: 1, category: .orphaned)
-        var b = Leftover(url: URL(fileURLWithPath: "/u/Library/Preferences/com.openai.chat.plist"), size: 1,
-                         category: .orphaned)
-        a.replacedBy = found
-        XCTAssertNil(LeftoverGroup(displayName: "x", identifier: nil, items: [a, b], groupKey: "k").replacedBy)
-        b.replacedBy = found
-        XCTAssertEqual(LeftoverGroup(displayName: "x", identifier: nil, items: [a, b], groupKey: "k").replacedBy, found)
+        var original = Leftover(
+            url: URL(fileURLWithPath: "/u/Library/Caches/com.openai.chat"),
+            size: 1,
+            category: .orphaned
+        )
+        var replacement = Leftover(url: URL(fileURLWithPath: "/u/Library/Preferences/com.openai.chat.plist"), size: 1,
+                                   category: .orphaned)
+        original.replacedBy = found
+        XCTAssertNil(LeftoverGroup(displayName: "x", identifier: nil, items: [original, replacement], groupKey: "k")
+            .replacedBy)
+        replacement.replacedBy = found
+        XCTAssertEqual(
+            LeftoverGroup(displayName: "x", identifier: nil, items: [original, replacement], groupKey: "k").replacedBy,
+            found
+        )
     }
 }

@@ -20,11 +20,11 @@ public enum PrivilegedPayloadRemoval {
 
         public var explanation: String {
             switch self {
-            case .notAPlainName(let name): return "\(name) is not a plain name."
-            case .belongsToApple(let name): return "\(name) is part of macOS."
-            case .noReceipt(let package): return "There is no installer record for \(package)."
-            case .notAnInstallFolder(let folder): return "\(folder) is not a place an installer owns."
-            case .notAnApplication(let name): return "\(name) is not an application."
+            case let .notAPlainName(name): "\(name) is not a plain name."
+            case let .belongsToApple(name): "\(name) is part of macOS."
+            case let .noReceipt(package): "There is no installer record for \(package)."
+            case let .notAnInstallFolder(folder): "\(folder) is not a place an installer owns."
+            case let .notAnApplication(name): "\(name) is not an application."
             }
         }
     }
@@ -39,7 +39,7 @@ public enum PrivilegedPayloadRemoval {
         guard parts.count >= 3, parts[0] == "Library",
               !parts.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }),
               !["Apple", "Security", "Audio", "LaunchAgents", "LaunchDaemons", "PrivilegedHelperTools"]
-                .contains(parts[1])
+              .contains(parts[1])
         else { return nil }
         return "/" + parts.joined(separator: "/")
     }
@@ -68,10 +68,9 @@ public enum PrivilegedPayloadRemoval {
         else { return nil }
         for file in names where file.hasSuffix(".plist") {
             let packageID = String(file.dropLast(".plist".count))
-            if let target = try? target(packageID: packageID, name: name, receipts: receipts),
-               target.path == folder + "/" + name {
-                return packageID
-            }
+            guard let target = try? target(packageID: packageID, name: name, receipts: receipts),
+                  target.path == folder + "/" + name else { continue }
+            return packageID
         }
         return nil
     }
@@ -97,11 +96,11 @@ public enum PrivilegedCacheRemoval {
 
         public var explanation: String {
             switch self {
-            case .notAPlainName(let name): return "\(name) is not a plain name."
-            case .belongsToApple(let name): return "\(name) belongs to macOS."
-            case .notThere: return "It is not there any more."
-            case .isALink: return "That is a link, not a cache."
-            case .couldNotQuarantine(let why): return "It could not be set aside: \(why)"
+            case let .notAPlainName(name): "\(name) is not a plain name."
+            case let .belongsToApple(name): "\(name) belongs to macOS."
+            case .notThere: "It is not there any more."
+            case .isALink: "That is a link, not a cache."
+            case let .couldNotQuarantine(why): "It could not be set aside: \(why)"
             }
         }
     }
@@ -135,11 +134,11 @@ public enum PrivilegedPreferenceRemoval {
 
         public var explanation: String {
             switch self {
-            case .notAPreferenceFile(let name): return "\(name) is not an app's preference file."
-            case .belongsToApple(let name): return "\(name) belongs to macOS."
-            case .notThere: return "It is not there any more."
-            case .notAFile: return "That is not a file."
-            case .couldNotQuarantine(let why): return "It could not be set aside: \(why)"
+            case let .notAPreferenceFile(name): "\(name) is not an app's preference file."
+            case let .belongsToApple(name): "\(name) belongs to macOS."
+            case .notThere: "It is not there any more."
+            case .notAFile: "That is not a file."
+            case let .couldNotQuarantine(why): "It could not be set aside: \(why)"
             }
         }
     }
@@ -150,7 +149,8 @@ public enum PrivilegedPreferenceRemoval {
         }
         let lowered = name.lowercased()
         guard !lowered.hasPrefix("com.apple"), !lowered.hasPrefix("com.sabharishhh.brim"),
-              !isInSystemFamily(name) else {
+              !isInSystemFamily(name)
+        else {
             throw Refusal.belongsToApple(name)
         }
         return URL(fileURLWithPath: directory).appendingPathComponent(name)
@@ -161,10 +161,14 @@ public enum PrivilegedPreferenceRemoval {
     /// folders. The printer list is `org.cups.printers.plist`.
     static func systemFamilies() -> Set<String> {
         var families = Set<String>()
-        for folder in ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents", "/System/Library/CoreServices"] {
+        let candidates = ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents",
+                          "/System/Library/CoreServices"]
+        for folder in candidates {
             for name in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
                 let labels = name.split(separator: ".")
-                if labels.count >= 3 { families.insert(labels.prefix(2).joined(separator: ".").lowercased()) }
+                if labels.count >= 3 {
+                    families.insert(labels.prefix(2).joined(separator: ".").lowercased())
+                }
             }
         }
         return families

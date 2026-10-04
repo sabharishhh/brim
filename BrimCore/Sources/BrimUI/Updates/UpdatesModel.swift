@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Updates section: which applications have a newer version, and
 /// putting it in place.
@@ -11,7 +11,6 @@ import BrimProtocol
 /// runs in the background.
 @MainActor
 public final class UpdatesModel: ObservableObject {
-
     /// Where one update has got to.
     public enum InstallState: Equatable, Sendable {
         case downloading(Double)
@@ -25,8 +24,8 @@ public final class UpdatesModel: ObservableObject {
 
         public var isBusy: Bool {
             switch self {
-            case .downloading, .installing: return true
-            default: return false
+            case .downloading, .installing: true
+            default: false
             }
         }
     }
@@ -46,7 +45,9 @@ public final class UpdatesModel: ObservableObject {
     }
 
     /// Kept for the window's loading indicator, which watches every section.
-    public var isLoading: Bool { isChecking }
+    public var isLoading: Bool {
+        isChecking
+    }
 
     public init() {}
 
@@ -57,23 +58,29 @@ public final class UpdatesModel: ObservableObject {
     public var pending: [AppUpdate]? {
         check?.updates.filter { update in
             switch states[update.id] {
-            case .updated, .openedInstaller: return false
-            default: return true
+            case .updated, .openedInstaller: false
+            default: true
             }
         }
     }
 
-    public var count: Int? { pending?.count }
+    public var count: Int? {
+        pending?.count
+    }
 
     /// Updates Brim can put in place without anybody else's window.
     public var installableHere: [AppUpdate] {
         (pending ?? []).filter { $0.route == .replace || $0.route == .homebrew }
     }
 
-    public var isInstalling: Bool { states.values.contains(where: \.isBusy) }
+    public var isInstalling: Bool {
+        states.values.contains(where: \.isBusy)
+    }
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
-        if let check, Date().timeIntervalSince(check.checkedAt) < Self.staleAfter { return }
+        if let check, Date().timeIntervalSince(check.checkedAt) < Self.staleAfter {
+            return
+        }
         await load(service: service)
     }
 
@@ -81,7 +88,9 @@ public final class UpdatesModel: ObservableObject {
 
     /// Checks now. Two callers share one check.
     public func load(service: any BrimServiceProtocol) async {
-        if let checkTask { return await checkTask.value }
+        if let checkTask {
+            return await checkTask.value
+        }
         let task = Task {
             isChecking = true
             defer { isChecking = false }
@@ -92,7 +101,9 @@ public final class UpdatesModel: ObservableObject {
             states = states.filter { key, state in state.isBusy && result.updates.contains { $0.id == key } }
             // One an earlier run did not finish is shown as failed, to retry.
             for update in result.updates where states[update.id] == nil {
-                if let why = result.interrupted[update.appURL.path] { states[update.id] = .failed(why) }
+                if let why = result.interrupted[update.appURL.path] {
+                    states[update.id] = .failed(why)
+                }
             }
             finished.removeAll { done in result.recent.contains { $0.id == done.id } }
         }
@@ -108,20 +119,20 @@ public final class UpdatesModel: ObservableObject {
         let outcome = await service.installUpdate(update) { [weak self] fraction in
             Task { @MainActor [weak self] in
                 guard let self, case .downloading = self.states[id] else { return }
-                self.states[id] = fraction >= 1 ? .installing : .downloading(fraction)
+                states[id] = fraction >= 1 ? .installing : .downloading(fraction)
             }
         }
         switch outcome {
-        case .installed(let version):
+        case let .installed(version):
             states[id] = .updated(version)
             finished.removeAll { $0.id == id }
             finished.append(RecentUpdate(name: update.name, appURL: update.appURL, fromVersion: update.installedVersion,
                                          toVersion: version, updatedAt: Date()))
         case .alreadyCurrent: states[id] = .updated(update.installedVersion)
         case .openedInstaller: states[id] = .openedInstaller
-        case .stillOpen(let name): states[id] = .failed("\(name) did not quit.")
+        case let .stillOpen(name): states[id] = .failed("\(name) did not quit.")
         case .notAllowed: states[id] = .notAllowed
-        case .failed(let why): states[id] = .failed(why)
+        case let .failed(why): states[id] = .failed(why)
         }
     }
 
