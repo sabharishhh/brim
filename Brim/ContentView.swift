@@ -1,6 +1,7 @@
 import BrimCore
 import BrimProtocol
 import BrimUI
+import os
 import QuickLook
 import SwiftUI
 
@@ -76,6 +77,7 @@ struct ContentView: View {
         // The window's own background, so the system sidebar is the canvas
         // seen through glass: a shade apart, with no line between them.
         .containerBackground(Palette.canvas, for: .window)
+        .onAppear { LaunchSignpost.shellAppeared() }
         // The page says where you are. A window titled with the app's name
         // tells nobody anything (HIG, Toolbars).
         .toolbar(removing: .title)
@@ -332,5 +334,22 @@ private struct LensTitle: View {
         } else {
             Text(lens.rawValue)
         }
+    }
+}
+
+/// Launch to the first usable window, as one Points of Interest interval:
+/// begun when the app is made and ended when its window first appears.
+@MainActor
+enum LaunchSignpost {
+    private static var interval: OSSignpostIntervalState?
+
+    static func begin() {
+        interval = BrimLog.signposter.beginInterval("Launch to shell")
+    }
+
+    static func shellAppeared() {
+        guard let interval else { return }
+        BrimLog.signposter.endInterval("Launch to shell", interval)
+        Self.interval = nil
     }
 }

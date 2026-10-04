@@ -2,6 +2,7 @@ import BrimCore
 import BrimProtocol
 import Combine
 import Foundation
+import os
 
 /// Backs the Leftovers view.
 ///
@@ -124,16 +125,6 @@ public final class LeftoversModel: ObservableObject {
 
     public func deselectAll(groups: [LeftoverGroup]) {
         selection.subtract(groups.flatMap(\.items).map(\.id))
-        settle()
-    }
-
-    /// Puts a selection back, for undo and for clearing the Tray.
-    ///
-    /// Only what is still here and still Brim's to remove: between a pick
-    /// and its undo, a removal or a rescan can take items away, and undo
-    /// must not put a removed item back into a plan.
-    public func restoreSelection(_ ids: Set<String>) {
-        selection = ids.intersection(all.filter(\.canBeRemovedByBrim).map(\.id))
         settle()
     }
 
@@ -309,7 +300,11 @@ public final class LeftoversModel: ObservableObject {
         guard !isScanning else { return }
         self.service = service
         isScanning = true
-        defer { isScanning = false }
+        let interval = BrimLog.signposter.beginInterval("Remnants scan")
+        defer {
+            isScanning = false
+            BrimLog.signposter.endInterval("Remnants scan", interval)
+        }
 
         do {
             let found = try await service.leftovers()

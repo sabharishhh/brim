@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Combine
 import BrimCore
 import BrimProtocol
@@ -192,7 +193,11 @@ public final class ApplicationsModel: ObservableObject {
         guard !isLoading else { return }
         self.service = service
         isLoading = true
-        defer { isLoading = false }
+        let interval = BrimLog.signposter.beginInterval("Apps listing")
+        defer {
+            isLoading = false
+            BrimLog.signposter.endInterval("Apps listing", interval)
+        }
 
         do {
             let found = try await service.installedApplications()
@@ -336,6 +341,8 @@ public final class ApplicationsModel: ObservableObject {
 
         isInspecting = true
         inspectionTask = Task { [service] in
+            let interval = BrimLog.signposter.beginInterval("Inspection")
+            defer { BrimLog.signposter.endInterval("Inspection", interval) }
             do {
                 let discovered = try await service.inspect(identity: application.identity)
                 guard !Task.isCancelled, self.selected?.id == application.id else { return }

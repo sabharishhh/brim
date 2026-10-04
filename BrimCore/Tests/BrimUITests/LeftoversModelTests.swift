@@ -110,18 +110,6 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
-    func testUndoNeverPutsARemovedItemBackIntoThePlan() async {
-        // Pick, remove, then undo the pick: the removed item is gone from
-        // the disk, and a plan naming it would try to remove it again.
-        let model = LeftoversModel()
-        await model.load(service: LeftoversStub([leftover("Alpha", .orphaned), leftover("Beta", .orphaned)]))
-        let picked = model.selection
-        model.forget(paths: ["/tmp/leftovers/Alpha"])
-        model.restoreSelection(picked)
-        XCTAssertEqual(model.selection, ["/tmp/leftovers/Beta"])
-        XCTAssertEqual(model.selectedItems.map(\.url.lastPathComponent), ["Beta"])
-    }
-
     func testSearchSnapshotUpdatesAfterRemovalWithoutChangingSelection() async {
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([

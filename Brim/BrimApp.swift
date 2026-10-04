@@ -24,6 +24,7 @@ private let log = BrimLog.make("app")
     @AppStorage("rows.compact") private var compactRows = false
 
     init() {
+        LaunchSignpost.begin()
         BrimTips.configure()
     }
 

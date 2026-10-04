@@ -35,4 +35,12 @@ public enum BrimLog {
     public static func make(_ category: String) -> Logger {
         Logger(subsystem: subsystem, category: category)
     }
+
+    /// Intervals for the waits a person feels: launch to a usable window,
+    /// listing apps, inspecting one, planning a review, scanning for
+    /// remnants. They appear in Instruments' Points of Interest lane, so a
+    /// measurement names the work rather than guessing it from a stack, and
+    /// cost nothing unless a trace is recording. Never a substitute for the
+    /// failures logged above.
+    public static let signposter = OSSignposter(subsystem: subsystem, category: .pointsOfInterest)
 }

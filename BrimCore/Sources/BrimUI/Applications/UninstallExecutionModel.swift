@@ -2,6 +2,7 @@ import BrimCore
 import BrimProtocol
 import Combine
 import Foundation
+import os
 
 /// One footprint group in a review: what moves, what is offered for the
 /// person to tick, and what stays and why, under the same group and in the
@@ -215,6 +216,8 @@ public final class UninstallExecutionModel: ObservableObject {
         plan = nil
         reviewGroups = []
         phase = .preparing
+        let interval = BrimLog.signposter.beginInterval("Review plan")
+        defer { BrimLog.signposter.endInterval("Review plan", interval) }
         do {
             let planned = try await service.plan(intent: intent)
             guard asked == generation else { return }
