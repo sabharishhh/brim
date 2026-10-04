@@ -1511,8 +1511,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         updateRecoveryReader = recovery
     }
 
-    /// Each application's install date: the snapshot it first appeared
-    /// in, when the evidence says it arrived then.
+    /// Each application's latest recorded installation. A return after a
+    /// snapshot confirmed its absence starts another installation period.
     ///
     /// First appearing is not the same as arriving. When the inventory
     /// began listing the apps inside Xcode, Icon Composer, FileMerge and
@@ -1531,28 +1531,17 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 return byPath[host.path].flatMap(arrival)
             }
             guard let bundleID = application.identity.bundleID, let window = windows[bundleID] else { return nil }
-            if let added = application.addedAt, added < window.previousLook {
+            if !window.isReinstallation, let added = window.addedAt, added < window.previousLook {
                 return nil
             }
             return window.seen
         }
-        var alreadyHere: Set<String> = []
-        let dated = applications.map { application in
+        return applications.map { application in
             var dated = application
             dated.installedAt = arrival(application)
-            if dated.installedAt == nil, let bundleID = application.identity.bundleID, windows[bundleID] != nil {
-                alreadyHere.insert(bundleID)
-            }
             return dated
         }
-        appearedButAlreadyHere = alreadyHere
-        return dated
     }
-
-    /// Apps that are new to the list but were on the disk before, from the
-    /// latest listing. `whatChanged` is asked after listing, and leaves
-    /// these out of what it calls installed.
-    private var appearedButAlreadyHere: Set<String> = []
 
     private func recordSnapshot(of applications: [InstalledApplication]) async {
         guard let index else { return }
@@ -1679,7 +1668,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         })
     }
 
-    /// What is different since the last time Brim looked.
+    /// Installations, removals and updates observed in the past week.
     ///
     /// Empty on a first run, which is the honest answer: there is
     /// nothing to compare against, and inventing a list of "new"
@@ -1687,10 +1676,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// later list untrustworthy.
     public func whatChanged() async -> InstallHistory {
         guard let index else { return InstallHistory(changes: [], snapshots: 0) }
+        let now = Date()
         return await InstallHistory(
-            changes: ((try? index.changesSinceLastScan()) ?? []).filter {
-                !($0.kind == .appeared && appearedButAlreadyHere.contains($0.bundleID))
-            },
+            changes: (try? index.recentChanges(since: now.addingTimeInterval(-7 * 86400), until: now)) ?? [],
             snapshots: (try? index.snapshotCount()) ?? 0
         )
     }
@@ -1825,11 +1813,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let trashedURLs = (journal.stepTrashedURLs ?? [:]).filter {
                 journal.restoreOutcomes?[$0.key] != "ok"
             }
-            let pendingRegistration = plan.steps.contains { step in
-                guard journal.restoreOutcomes?[step.index] != "ok" else { return false }
-                let outcome = journal.stepOutcomes[step.index] ?? ""
-                return (step.kind == .unloadLaunchdJob && (outcome == "ok" || outcome.hasPrefix("stopped_unverified:")))
-                    || (step.kind == .unregisterLaunchServices && outcome == "ok")
+            let pendingRegistration = plan.steps.contains {
+                Self.registrationCanBeRestored($0, plan: plan, journal: journal)
             }
             guard !trashedURLs.isEmpty || pendingRegistration else { continue }
 
@@ -1851,6 +1836,53 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         return items.sorted { $0.removedAt > $1.removedAt }
+    }
+
+    /// A registration receipt alone cannot put anything back. Its declaration
+    /// or the owned application copy must still support the existing undo route.
+    private static func registrationCanBeRestored(_ step: Step, plan: Plan, journal: JournalEntry) -> Bool {
+        guard journal.restoreOutcomes?[step.index] != "ok" else { return false }
+        let outcome = journal.stepOutcomes[step.index] ?? ""
+        switch step.kind {
+        case .unloadLaunchdJob:
+            guard outcome == "ok" || outcome.hasPrefix("stopped_unverified:") else { return false }
+            if PathExistence.exists(atPath: step.target) {
+                return true
+            }
+            return plan.steps.contains { removal in
+                guard removal.kind == .removeLaunchdPlist, removal.target == step.target,
+                      removal.effectiveDisposition == .trash,
+                      journal.restoreOutcomes?[removal.index] != "ok",
+                      let saved = journal.stepTrashedURLs?[removal.index] else { return false }
+                return PathExistence.exists(at: saved)
+            }
+        case .unregisterLaunchServices:
+            guard outcome == "ok",
+                  let removal = plan.steps.first(where: {
+                      ($0.target == step.target || step.target.hasPrefix($0.target + "/"))
+                          && [.trashPath, .removeLaunchdPlist].contains($0.kind)
+                          && $0.effectiveDisposition == .trash && journal.stepTrashedURLs?[$0.index] != nil
+                  }), let fingerprint = removal.targetFingerprint,
+                  let saved = journal.stepTrashedURLs?[removal.index] else { return false }
+            let restored = journal.restoreOutcomes?[removal.index] == "ok"
+            let bundleRoot = restored ? URL(fileURLWithPath: removal.target) : saved
+            do {
+                try SafeOps.verifyTargetFingerprint(targetPath: bundleRoot.path,
+                                                    expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
+            } catch { return false }
+            let relative = String(step.target.dropFirst(removal.target.count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let bundle = relative.isEmpty ? bundleRoot : bundleRoot.appendingPathComponent(relative)
+            let rootPath = bundleRoot.resolvingSymlinksInPath().path
+            let bundlePath = bundle.resolvingSymlinksInPath().path
+            guard bundlePath == rootPath || bundlePath.hasPrefix(rootPath + "/"),
+                  PathExistence.exists(at: bundle) else { return false }
+            return step.registrationBundleID.map {
+                CapabilitySearchScanner.applicationIdentifier(at: bundle.path) == $0
+            } ?? true
+        default:
+            return false
+        }
     }
 
     /// Clears Launch Services records that went stale since the last look.

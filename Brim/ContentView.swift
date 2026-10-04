@@ -257,7 +257,8 @@ struct ContentView: View {
         case .home:
             async let leftovers: Void = models.leftovers.load(service: service)
             async let applications: Void = models.applications.load(service: service)
-            _ = await (leftovers, applications)
+            async let recovery: Void = models.recovery.refresh(service: service)
+            _ = await (leftovers, applications, recovery)
         case .apps:
             switch shell.appsLens {
             case .all: await models.applications.load(service: service)

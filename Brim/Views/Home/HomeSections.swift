@@ -3,16 +3,11 @@ import BrimUI
 import SwiftUI
 import TipKit
 
-/// The last thing that changed: the latest two snapshots that differ,
-/// subtracted.
-///
-/// "Since Brim last looked" rather than "since your last visit": the
-/// comparison is between enumerations, and saying which is the honest
-/// version of the same promise. One snapshot means nothing to compare,
-/// which is said as that rather than as "nothing changed".
+/// Installation changes observed in the last seven days, derived from snapshots.
 struct SinceLastLook: View {
     let history: InstallHistory
     let applications: [InstalledApplication]
+    var now = Date()
     /// Leftovers that were not there the last time the list was seen.
     var newLeftovers = 0
     var openLeftovers: () -> Void = {}
@@ -28,14 +23,13 @@ struct SinceLastLook: View {
                 Text("Changes")
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)
-                // When Brim saw it, which is not always since the last look:
-                // the last change stands until there is a newer one.
-                if let seen = history.changes.first?.until {
-                    Text("seen " + Self.day(seen))
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                }
+                Text("Last 7 days")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
                 Spacer()
+                Text("Newest first")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
@@ -52,20 +46,20 @@ struct SinceLastLook: View {
             }
             if history.snapshots < 2 {
                 note("Shown from the next check")
-            } else if history.changes.isEmpty, newLeftovers == 0 {
+            } else if changes.isEmpty, newLeftovers == 0 {
                 note("No apps installed, removed or updated")
             } else {
-                ForEach(visible, id: \.bundleID) { change in
-                    line(icon(for: change), change.sentence)
+                ForEach(visible) { change in
+                    line(icon(for: change), change.sentence, observed: change.until)
                         .transition(.brimRow(reduceMotion: reduceMotion))
                 }
-                if history.changes.count > Self.shown {
+                if changes.count > Self.shown {
                     Button {
                         withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
                             showsAll.toggle()
                         }
                     } label: {
-                        Text(showsAll ? "Show fewer" : "and \(history.changes.count - Self.shown) more")
+                        Text(showsAll ? "Show fewer" : "and \(changes.count - Self.shown) more")
                             .font(.brimFacts.weight(.medium))
                             .foregroundStyle(.tint)
                             .padding(.horizontal, 12)
@@ -80,24 +74,36 @@ struct SinceLastLook: View {
         .card()
     }
 
-    private var visible: [InstallChange] {
-        showsAll ? history.changes : Array(history.changes.prefix(Self.shown))
+    private var changes: [InstallChange] {
+        HomeStatus.changes(history, now: now)
     }
 
-    private func line(_ icon: IconSource, _ text: String) -> some View {
-        HStack(spacing: 12) {
+    private var visible: [InstallChange] {
+        showsAll ? changes : Array(changes.prefix(Self.shown))
+    }
+
+    private func line(_ icon: IconSource, _ text: String, observed: Date? = nil) -> some View {
+        let timestamp = observed.map { Self.observationDate.string(from: $0) }
+        return HStack(spacing: 12) {
             BrimIcon(source: icon, size: Metrics.compactRowIcon)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(Palette.ink)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text)
+                    .font(.body)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                if let timestamp {
+                    Text(timestamp)
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+            }
             Spacer()
         }
         .padding(.horizontal, 12)
         .frame(height: Metrics.compactRowHeight)
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text)
+        .accessibilityLabel(timestamp.map { text + " Observed " + $0 } ?? text)
     }
 
     private func note(_ text: String) -> some View {
@@ -120,6 +126,13 @@ struct SinceLastLook: View {
             remembered: { IconMemory.standard.has($0) }
         )
     }
+
+    /// The check time, not an exact installation time. Reused across rows.
+    private static let observationDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("d MMM jm")
+        return formatter
+    }()
 
     /// "today", "Monday" or "3 September". Built once, not per draw.
     private static let weekday: DateFormatter = {
