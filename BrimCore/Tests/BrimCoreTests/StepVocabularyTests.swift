@@ -32,11 +32,10 @@ final class StepVocabularyTests: XCTestCase {
             .appendingPathComponent("BrimCore/Sources/BrimCore/Model/Plan/Planner.swift")
         let text = try String(contentsOf: planner, encoding: .utf8)
 
-        // Three are not this planner's to emit, and they are not equal.
-        //
-        // `archivePath` is driven by the intent and `delegateToolCleanup` is
-        // produced by `BrimService.planToolCleanup`, so both have a producer
-        // and reach the executor in the shipping app.
+        // `delegateToolCleanup` is produced by `BrimService.planToolCleanup`,
+        // so it has a producer and reaches the executor in the shipping app.
+        // `archivePath` was exempted the same way until archive and reset
+        // were removed with nothing in the app offering either.
         //
         // `btmReset` used to be exempted here, with a note saying the
         // exemption would come out when something finally produced one. It
@@ -45,7 +44,7 @@ final class StepVocabularyTests: XCTestCase {
         // `sfltool resetbtm`, which deregisters every login item on the Mac
         // at once, to fix a problem the product already reports as
         // self-clearing, and nothing could produce it.
-        let notThePlanners: Set<StepKind> = [.archivePath, .delegateToolCleanup]
+        let notThePlanners: Set<StepKind> = [.delegateToolCleanup]
 
         for kind in StepKind.allCases where !notThePlanners.contains(kind) {
             XCTAssertTrue(

@@ -1,9 +1,9 @@
-import XCTest
-import Foundation
 @testable import BrimCore
+@testable import BrimFixtures
 @testable import BrimProtocol
 @testable import BrimService
-@testable import BrimFixtures
+import Foundation
+import XCTest
 
 /// The gate that makes Brim safe to give root to.
 ///
@@ -15,7 +15,6 @@ import Foundation
 /// claim is that this cannot happen, so it is tested here rather than
 /// asserted in a document.
 final class ApprovalGateTests: XCTestCase {
-
     /// Counts how many times the gate asked for a fingerprint, without
     /// raising one. The real check puts a system dialog on screen and
     /// waits, which stopped the whole suite the first time these ran.
@@ -23,7 +22,10 @@ final class ApprovalGateTests: XCTestCase {
         private(set) var asks: [String] = []
         private var refusing = false
 
-        func refuse() { refusing = true }
+        func refuse() {
+            refusing = true
+        }
+
         private func record(_ reason: String) throws {
             asks.append(reason)
             if refusing {
@@ -54,7 +56,7 @@ final class ApprovalGateTests: XCTestCase {
             journalStoreDirectory: tempDir.appendingPathComponent("Journals"),
             consent: consent,
             presence: presence ?? PresenceCheck { _ in },
-            automatedConsentAllowed: automatedConsentAllowed
+            automatedConsentAllowed: automatedConsentAllowed, launchdRuntime: .unregisteredFixture
         )
         return (service, gen, rootURL, planDir)
     }
@@ -136,8 +138,8 @@ final class ApprovalGateTests: XCTestCase {
         let plan = try await plan(from: service, in: rootURL)
 
         // Shaped exactly like a real one, and never asked for.
-        let forged = ApprovalRequestReceipt(
-            requestId: UUID(), planId: plan.planId, planHash: try plan.contentHash(),
+        let forged = try ApprovalRequestReceipt(
+            requestId: UUID(), planId: plan.planId, planHash: plan.contentHash(),
             requester: "agent", requestedAt: Date(),
             expiresAt: Date().addingTimeInterval(300),
             summary: "Remove something.", awaitingHuman: true
@@ -183,7 +185,7 @@ final class ApprovalGateTests: XCTestCase {
         }
     }
 
-    func testAnXPCClientHasNoWayToApprove() async throws {
+    func testAnXPCClientHasNoWayToApprove() throws {
         let (service, gen, _, _) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
 
@@ -289,7 +291,7 @@ final class ApprovalGateTests: XCTestCase {
             // The declaration of the channel a human decision travels along.
             "ApprovalToken.swift": ["grantApproval"],
             // Its single implementation.
-            "BrimService.swift": ["grantApproval"],
+            "BrimService.swift": ["grantApproval"]
         ]
 
         var offenders: [String] = []
@@ -308,8 +310,8 @@ final class ApprovalGateTests: XCTestCase {
         XCTAssertEqual(
             offenders, [],
             "Something new returns an ApprovalToken. There is meant to be one mint, reached "
-            + "only after a person has answered. Add it to the allowed list only if that is "
-            + "still true of it."
+                + "only after a person has answered. Add it to the allowed list only if that is "
+                + "still true of it."
         )
     }
 
@@ -339,7 +341,7 @@ final class ApprovalGateTests: XCTestCase {
                 XCTAssertFalse(
                     line.contains("-> ApprovalToken"),
                     "\(name) offers a method that produces a token. Every adapter can reach "
-                    + "this protocol, so nothing on it may."
+                        + "this protocol, so nothing on it may."
                 )
             }
         }
@@ -349,10 +351,10 @@ final class ApprovalGateTests: XCTestCase {
 
     private static func repositoryRoot() -> URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // BrimSecurityTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // BrimCore
-            .deletingLastPathComponent()   // repo
+            .deletingLastPathComponent() // BrimSecurityTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // BrimCore
+            .deletingLastPathComponent() // repo
     }
 
     /// Everything that ships: the package sources and the app target. Tests
@@ -365,7 +367,9 @@ final class ApprovalGateTests: XCTestCase {
             let url = root.appendingPathComponent(directory)
             let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil)
             while let entry = walker?.nextObject() as? URL {
-                if entry.pathExtension == "swift" { files.append(entry) }
+                if entry.pathExtension == "swift" {
+                    files.append(entry)
+                }
             }
         }
         return files

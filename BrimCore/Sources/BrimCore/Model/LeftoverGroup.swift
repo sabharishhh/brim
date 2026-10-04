@@ -79,6 +79,11 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     public let sharedObstacle: Capability?
 
     public let lastAccessed: Date?
+    /// When Brim last saw the app installed, where it knows.
+    public let removedAt: Date?
+    /// The installed app that replaced this one, only when every item in
+    /// the group says the same. A group that disagrees makes no claim.
+    public let replacedBy: Replacement?
 
     /// The domains this software touched, strongest meaning first, for the
     /// one-line summary under the name.
@@ -100,6 +105,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         var actionable = true
         var obstacles: Set<Capability> = []
         var accessed: Date?
+        var removed: Date?
 
         for item in items {
             total += item.size
@@ -123,6 +129,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
             if let date = item.lastAccessed, date > (accessed ?? .distantPast) {
                 accessed = date
             }
+            if let date = item.removedAt, date > (removed ?? .distantPast) {
+                removed = date
+            }
         }
 
         totalBytes = total
@@ -132,6 +141,9 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         evidence = orphaned ?? anyEvidence ?? ""
         isFullyActionable = actionable
         lastAccessed = accessed
+        removedAt = removed
+        let replacements = Set(items.map(\.replacedBy))
+        replacedBy = replacements.count == 1 ? replacements.first ?? nil : nil
         sharedObstacle = {
             guard obstacles.count == 1, let only = obstacles.first, only != .ok else { return nil }
             return only
@@ -317,60 +329,5 @@ public extension [Leftover] {
     /// The single strongest key, kept for callers that want one answer.
     static func groupingKey(for leftover: Leftover) -> String {
         groupingKeys(for: leftover).first ?? leftover.url.lastPathComponent.lowercased()
-    }
-}
-
-public struct LeftoverVendorCluster: Identifiable, Sendable, Equatable {
-    public let vendorKey: String
-    public let groups: [LeftoverGroup]
-    public var id: String {
-        "vendor:" + vendorKey
-    }
-
-    public var title: String {
-        vendorKey.split(separator: ".").last.map { String($0).capitalized } ?? vendorKey
-    }
-}
-
-public enum LeftoverListEntry: Identifiable, Sendable, Equatable {
-    case owner(LeftoverGroup)
-    case vendor(LeftoverVendorCluster)
-
-    public var id: String {
-        switch self {
-        case let .owner(group): "owner:" + group.id
-        case let .vendor(cluster): cluster.id
-        }
-    }
-}
-
-public extension [LeftoverGroup] {
-    /// A shared reverse-DNS vendor gets one collapsible heading while each
-    /// application remains a distinct group and a distinct removal choice.
-    func arrangedByVendor() -> [LeftoverListEntry] {
-        var groupsByVendor: [String: [LeftoverGroup]] = [:]
-        for group in self {
-            let names = [group.identifier].compactMap(\.self)
-                + group.items.map(\.url.lastPathComponent)
-            guard let vendor = names.compactMap(OwnerNamespace.vendorKey(for:)).first else { continue }
-            groupsByVendor[vendor, default: []].append(group)
-        }
-
-        var emitted = Set<String>()
-        var result: [LeftoverListEntry] = []
-        for group in self {
-            let names = [group.identifier].compactMap(\.self)
-                + group.items.map(\.url.lastPathComponent)
-            guard let vendor = names.compactMap(OwnerNamespace.vendorKey(for:)).first,
-                  let related = groupsByVendor[vendor], related.count > 1
-            else {
-                result.append(.owner(group))
-                continue
-            }
-            if emitted.insert(vendor).inserted {
-                result.append(.vendor(LeftoverVendorCluster(vendorKey: vendor, groups: related)))
-            }
-        }
-        return result
     }
 }

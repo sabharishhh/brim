@@ -246,6 +246,24 @@ public final class UninstallExecutionModel: ObservableObject {
         }
     }
 
+    /// Reviews a plan the service has already made and saved, as it is.
+    ///
+    /// A tool's own cleanup is planned by `planToolCleanup`, which names
+    /// the command rather than any paths. Handing its intent back to `plan`
+    /// asked for a footprint of something called "npm cache clean --force"
+    /// with no targets, so the plan reviewed was never the one offered.
+    public func adopt(plan adopted: Plan, service: any BrimServiceProtocol) {
+        self.service = service
+        baseIntent = adopted.intent
+        tickedByHand = []
+        generation += 1
+        isUpdating = false
+        plan = adopted
+        reviewGroups = Self.groupedSteps(adopted.steps)
+        offerGroups = Self.groupedOffers(adopted.excludedItems)
+        phase = .ready
+    }
+
     /// Why the disk did not give back what was deleted.
     ///
     /// Deleting a file whose blocks are still referenced by a local
@@ -254,17 +272,19 @@ public final class UninstallExecutionModel: ObservableObject {
     /// space never moved is how a cleaning tool loses trust, so this says
     /// it plainly instead.
     public var spaceExplanation: String? {
-        guard case let .verified(result) = phase, let plan else { return nil }
+        guard case let .verified(result) = phase, let plan,
+              result.success, result.freeSpaceMeasured == true else { return nil }
         let promised = plan.immediatelyFreedBytes
-        guard promised > 0 else { return nil }
+        // Below this, other activity on the disk moves free space by more
+        // than the removal could, so a shortfall says nothing.
+        guard promised >= 100_000_000 else { return nil }
 
         // A tenth is slack for other activity on the disk during the
         // removal, not a threshold worth tuning.
         guard result.recoveredBytes < promised / 10 else { return nil }
 
-        return "The files are gone, but the disk has not given the space back yet. That "
-            + "happens when a local snapshot still refers to the same blocks. macOS "
-            + "releases them when the snapshot expires or when it needs the room."
+        return "The files are gone, but little free space increased during the check. Shared blocks, "
+            + "local snapshots or other activity on this Mac can explain the difference."
     }
 
     /// Told the moment a removal is proved, with the paths that went.

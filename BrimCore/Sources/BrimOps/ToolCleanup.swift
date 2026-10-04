@@ -11,7 +11,6 @@ import Foundation
 /// vocabulary forbids a caller-supplied command string. A plan names which
 /// cleanup to run. It cannot describe one.
 public enum ToolCleanup {
-
     public struct Command: Sendable, Equatable {
         public let id: String
         /// What the user sees before approving, exactly as it would be
@@ -19,6 +18,18 @@ public enum ToolCleanup {
         public let displayed: String
         let executable: String
         let arguments: [String]
+        public var manualReason: String? {
+            switch id {
+            case "homebrew.cleanup": "Homebrew cleanup also removes old installed versions. "
+                + "Review and run it in Homebrew."
+            case "pnpm.store": "pnpm pruning also clears command and metadata caches, and can remove "
+                + "private runtime copies outside this store. Review these locations in pnpm."
+            case "uv.cache": "Clearing this cache can break environments linked to it. Pruning can "
+                + "also remove centralized environments. Review and manage it in uv."
+            case "xcode.simulators": "Simulator devices hold your setup. Manage them in Xcode."
+            default: nil
+            }
+        }
     }
 
     private static let catalogue: [Command] = [
@@ -30,12 +41,12 @@ public enum ToolCleanup {
                 executable: "/usr/bin/env", arguments: ["pip", "cache", "purge"]),
         Command(id: "homebrew.cleanup", displayed: "brew cleanup --prune=all",
                 executable: "/usr/bin/env", arguments: ["brew", "cleanup", "--prune=all"]),
-        Command(id: "cargo.cache", displayed: "cargo cache --autoclean",
-                executable: "/usr/bin/env", arguments: ["cargo", "cache", "--autoclean"]),
         Command(id: "pnpm.store", displayed: "pnpm store prune",
                 executable: "/usr/bin/env", arguments: ["pnpm", "store", "prune"]),
-        Command(id: "gradle.cache", displayed: "gradle --stop", // stops daemons before pruning
-                executable: "/usr/bin/env", arguments: ["gradle", "--stop"]),
+        Command(id: "uv.cache", displayed: "uv cache clean",
+                executable: "/usr/bin/env", arguments: ["uv", "cache", "clean"]),
+        Command(id: "swiftpm.cache", displayed: "swift package purge-cache",
+                executable: "/usr/bin/env", arguments: ["swift-package", "purge-cache"]),
         Command(id: "xcode.simulators", displayed: "xcrun simctl delete unavailable",
                 executable: "/usr/bin/xcrun", arguments: ["simctl", "delete", "unavailable"])
     ]
@@ -46,18 +57,55 @@ public enum ToolCleanup {
 
     public enum CleanupError: Error, LocalizedError, Equatable {
         case unknownCleanup(String)
+        case manualOnly(String)
+        case configurationUnavailable(String)
+        case scopeChanged(String, actual: String)
+        case bindingChanged
         case toolMissing(String)
         case failed(String, code: Int32)
+        case signalled(String, signal: Int32)
+        case timedOut(String)
+        case cancelled(String)
+        case executionFailed(String, operation: String, code: Int32)
+        case terminationUnconfirmed(String)
+
+        public var outcomeCode: String {
+            switch self {
+            case .unknownCleanup: "cleanup_unknown"
+            case .manualOnly, .configurationUnavailable, .scopeChanged, .bindingChanged: "cleanup_refused"
+            case .toolMissing: "cleanup_missing"
+            case .failed, .signalled: "cleanup_failed"
+            case .timedOut: "cleanup_timed_out"
+            case .cancelled: "cleanup_cancelled"
+            case .executionFailed: "cleanup_execution_failed"
+            case .terminationUnconfirmed: "cleanup_termination_unconfirmed"
+            }
+        }
 
         public var errorDescription: String? {
             switch self {
-            case .unknownCleanup(let id):
-                return "Brim has no cleanup registered under \(id)."
-            case .toolMissing(let displayed):
-                return "Could not run `\(displayed)`. The tool is not on this Mac, or not on "
-                     + "the path Brim can see."
-            case .failed(let displayed, let code):
-                return "`\(displayed)` exited with status \(code)."
+            case let .manualOnly(reason), let .configurationUnavailable(reason): reason
+            case let .scopeChanged(command, actual):
+                "`\(command)` uses \(actual), which differs from this row. Review it in the tool."
+            case .bindingChanged:
+                "The tool or its cleanup scope changed. Review the cleanup again."
+            case let .unknownCleanup(id):
+                "Brim has no cleanup registered under \(id)."
+            case let .toolMissing(displayed):
+                "Could not run `\(displayed)`. The tool is not on this Mac, or not on "
+                    + "the path Brim can see."
+            case let .failed(displayed, code):
+                "`\(displayed)` exited with status \(code). It may have removed some items."
+            case let .signalled(displayed, signal):
+                "`\(displayed)` stopped with signal \(signal). It may have removed some items."
+            case let .timedOut(displayed):
+                "`\(displayed)` exceeded the time limit and was stopped. It may have removed some items."
+            case let .cancelled(displayed):
+                "`\(displayed)` was cancelled. It may have removed some items."
+            case let .executionFailed(displayed, operation, code):
+                "Could not complete `\(displayed)` (\(operation), error \(code))."
+            case let .terminationUnconfirmed(displayed):
+                "Brim could not confirm that `\(displayed)` stopped. Check the tool before trying again."
             }
         }
     }
@@ -66,24 +114,79 @@ public enum ToolCleanup {
     /// boundary, and nothing reaches a shell.
     public static func run(
         id: String,
-        runner: ((String, [String]) throws -> Int32)? = nil
-    ) throws {
+        runner: (@Sendable (String, [String]) async throws -> Int32)? = nil
+    ) async throws {
         guard let command = command(id: id) else { throw CleanupError.unknownCleanup(id) }
+        if let reason = command.manualReason {
+            throw CleanupError.manualOnly(reason)
+        }
+        guard id != "swiftpm.cache" else {
+            throw CleanupError.configurationUnavailable("Swift package cleanup requires a reviewed cache folder.")
+        }
         let invoke = runner ?? Self.execute
-        let status = try invoke(command.executable, command.arguments)
+        let status: Int32
+        do {
+            status = try await invoke(command.executable, command.arguments)
+        } catch let failure as NativeCommandRunner.Failure {
+            throw mapped(failure, displayed: command.displayed)
+        } catch let failure as ExecutionFailure {
+            throw mapped(failure, displayed: command.displayed)
+        }
         // `env` reports 127 when it cannot find what it was asked to run.
-        if status == 127 { throw CleanupError.toolMissing(command.displayed) }
+        if status == 127 {
+            throw CleanupError.toolMissing(command.displayed)
+        }
         guard status == 0 else { throw CleanupError.failed(command.displayed, code: status) }
     }
 
-    static func execute(_ executable: String, _ arguments: [String]) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+    static func mapped(_ failure: NativeCommandRunner.Failure, displayed: String) -> CleanupError {
+        switch failure {
+        case let .systemCall(operation, code):
+            if operation == "spawn", code == ENOENT {
+                return .toolMissing(displayed)
+            }
+            return .executionFailed(displayed, operation: operation, code: code)
+        case .terminationUnconfirmed:
+            return .terminationUnconfirmed(displayed)
+        case .invalidConfiguration:
+            return .executionFailed(displayed, operation: "configuration", code: EINVAL)
+        }
+    }
+
+    private static func mapped(_ failure: ExecutionFailure, displayed: String) -> CleanupError {
+        switch failure {
+        case .timedOut: .timedOut(displayed)
+        case .cancelled: .cancelled(displayed)
+        case let .signalled(signal): .signalled(displayed, signal: signal)
+        }
+    }
+
+    /// An app opened from Finder gets only the system folders on its PATH,
+    /// so `env` could not find npm, pnpm, brew or uv wherever Homebrew or
+    /// the tool's own installer put them, and every cleanup that needed one
+    /// said the tool was not on this Mac.
+    static func environment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extra = ["/opt/homebrew/bin", "/usr/local/bin", "\(home)/.cargo/bin", "\(home)/.local/bin",
+                     "\(home)/go/bin", "/usr/bin", "/bin"]
+        let current = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        environment["PATH"] = (current + extra.filter { !current.contains($0) }).joined(separator: ":")
+        return environment
+    }
+
+    private enum ExecutionFailure: Error {
+        case timedOut, cancelled, signalled(Int32)
+    }
+
+    static func execute(_ executable: String, _ arguments: [String]) async throws -> Int32 {
+        let result = try await NativeCommandRunner.run(executable: executable, arguments: arguments,
+                                                       environment: environment())
+        switch result.termination {
+        case let .exited(code): return code
+        case let .signalled(signal): throw ExecutionFailure.signalled(signal)
+        case .timedOut: throw ExecutionFailure.timedOut
+        case .cancelled: throw ExecutionFailure.cancelled
+        }
     }
 }

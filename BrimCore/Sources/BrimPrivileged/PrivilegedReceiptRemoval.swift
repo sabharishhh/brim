@@ -1,5 +1,6 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// The rules the daemon applies before forgetting an installer receipt.
 ///
 /// Forgetting a receipt deletes no files. It removes the installer's
@@ -22,7 +23,6 @@ import Foundation
 ///    the record cannot be rebuilt. Refused by the daemon by name, rather
 ///    than trusting the caller to have filtered them out.
 public enum PrivilegedReceiptRemoval {
-
     /// Where macOS keeps them, and the only folder this looks in.
     public static let receiptDirectory = "/var/db/receipts"
 
@@ -31,20 +31,40 @@ public enum PrivilegedReceiptRemoval {
         case belongsToApple(String)
         case noSuchReceipt(String)
         case pkgutilFailed(Int32)
+        case payloadNotGone
 
         public var explanation: String {
             switch self {
-            case .notAPackageIdentifier(let id):
-                return "\"\(id)\" is not shaped like a package identifier, so Brim's helper "
-                     + "will not pass it on."
-            case .belongsToApple(let id):
-                return "\(id) belongs to macOS. Forgetting an Apple receipt can confuse a "
-                     + "later system update, and it cannot be put back."
-            case .noSuchReceipt(let id):
-                return "There is no receipt for \(id) on this Mac."
-            case .pkgutilFailed(let code):
-                return "pkgutil would not forget it (exit \(code))."
+            case let .notAPackageIdentifier(id):
+                "\"\(id)\" is not shaped like a package identifier, so Brim's helper "
+                    + "will not pass it on."
+            case let .belongsToApple(id):
+                "\(id) belongs to macOS. Forgetting an Apple receipt can confuse a "
+                    + "later system update, and it cannot be put back."
+            case let .noSuchReceipt(id):
+                "There is no receipt for \(id) on this Mac."
+            case .payloadNotGone:
+                "The package payload remains or could not be checked. Its installer record was kept."
+            case let .pkgutilFailed(code):
+                "pkgutil would not forget it (exit \(code))."
             }
+        }
+    }
+
+    /// The helper independently qualifies the complete file listing, rather
+    /// than trusting the app's earlier read or accepting an arbitrary path.
+    static func checkPayload(listing: String, prefix: String,
+                             exists: (String) throws -> Bool) throws {
+        let files = listing.split(separator: "\n").map(String.init)
+        guard !files.isEmpty, files.count <= 100_000,
+              !prefix.split(separator: "/").contains("..") else { throw Refusal.payloadNotGone }
+        let base = URL(fileURLWithPath: "/").appendingPathComponent(prefix).standardizedFileURL
+        for file in files {
+            guard !file.hasPrefix("/"), !file.contains("\0"),
+                  !file.split(separator: "/").contains("..") else { throw Refusal.payloadNotGone }
+            let path = base.appendingPathComponent(file).standardizedFileURL.path
+            guard path.hasPrefix(base.path == "/" ? "/" : base.path + "/"),
+                  try !exists(path) else { throw Refusal.payloadNotGone }
         }
     }
 

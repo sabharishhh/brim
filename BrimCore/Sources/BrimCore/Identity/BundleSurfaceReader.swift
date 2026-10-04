@@ -86,10 +86,28 @@ public enum BundleSurfaceReader {
         reader.visit(bundle, signature: signature)
         return (
             IdentitySurface(bundlePath: bundle.path, components: reader.components,
-                            helperRequirements: reader.helperRequirements),
+                            helperRequirements: reader.helperRequirements,
+                            homeFolders: declaredHomeFolders(of: bundle)),
             CapabilitySurface(declarations: reader.declarations, signatureGaps: reader.signatureGaps,
                               unreadable: Array(reader.unreadable).sorted(), timedOut: Array(reader.timedOut).sorted())
         )
+    }
+
+    /// The folder in the home folder an Electron editor says it keeps its
+    /// data in. Every editor built from Visual Studio Code carries a
+    /// `product.json` naming it: `.vscode`, `.cursor`, `.antigravity-ide`.
+    /// Nothing about the application's name predicts `.vscode` or the
+    /// `-ide` suffix, and Antigravity's 400 MB of extensions outlived its
+    /// removal because of it. The bundle's own declaration is a record, so
+    /// it is trusted where a name alone is not.
+    static func declaredHomeFolders(of bundle: URL) -> [String] {
+        let product = bundle.appendingPathComponent("Contents/Resources/app/product.json")
+        guard let data = try? Data(contentsOf: product), data.count < 1_000_000,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let folder = json["dataFolderName"] as? String,
+              folder.hasPrefix("."), folder.count > 2, IdentitySurface.isPathComponent(folder)
+        else { return [] }
+        return [folder]
     }
 
     private struct Reader {
@@ -111,7 +129,18 @@ public enum BundleSurfaceReader {
         private static let packagingFolders = [
             "Contents/Frameworks", "Contents/PlugIns", "Contents/Plugins", "Contents/XPCServices",
             "Contents/Helpers", "Contents/Library/LoginItems", "Contents/Library/SystemExtensions",
-            "Contents/Library/LaunchServices", "Helpers", "XPCServices", "PlugIns"
+            "Contents/Library/LaunchServices", "Contents/Library/LaunchAgents",
+            "Contents/Library/LaunchDaemons", "Contents/SharedSupport", "Contents/MacOS",
+            "Helpers", "XPCServices", "PlugIns"
+        ]
+        /// Folders whose helpers can be a bare executable rather than a
+        /// bundle. Teams' background agent is one: a signed, sandboxed
+        /// binary in `Contents/Library/LaunchAgents` with its own identifier
+        /// and its own container, which nothing read, so the container
+        /// outlived every uninstall.
+        private static let rawHelperFolders: Set<String> = [
+            "Contents/Library/LaunchServices", "Contents/Library/LaunchAgents",
+            "Contents/Library/LaunchDaemons"
         ]
 
         // swiftlint:disable:next cyclomatic_complexity function_body_length
@@ -160,10 +189,19 @@ public enum BundleSurfaceReader {
 
             for folder in Self.packagingFolders {
                 for child in entries(url.appendingPathComponent(folder)) {
-                    let isRawHelper = folder.hasSuffix("LaunchServices") && child.pathExtension != "plist"
+                    let isRawHelper = Self.rawHelperFolders.contains(folder) && child.pathExtension != "plist"
                     if Self.codeExtensions.contains(child.pathExtension.lowercased()) || isRawHelper {
                         visit(child, signature: signature)
                     }
+                }
+            }
+            // Applications shipped as resources rather than as helpers.
+            // ChatGPT carries its Computer Use app six folders down inside
+            // a Node module, with its own identifier and its own caches,
+            // preferences and group container; none of them were found.
+            if url.standardizedFileURL.path == bundle.standardizedFileURL.path {
+                for nested in nestedApplications(in: url.appendingPathComponent("Contents/Resources")) {
+                    visit(nested, signature: signature)
                 }
             }
             // Framework helpers may live in a concrete version rather than at the root.
@@ -237,6 +275,32 @@ public enum BundleSurfaceReader {
             return data
         }
 
+        /// Application bundles anywhere under a resources folder, not
+        /// looking inside any bundle, bounded so a folder of Node modules
+        /// cannot take the scan with it.
+        mutating func nestedApplications(in resources: URL) -> [URL] {
+            guard !budget.hasRunOut,
+                  let walk = FileManager.default.enumerator(
+                      at: resources, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                      options: [.skipsPackageDescendants, .skipsHiddenFiles]
+                  ) else { return [] }
+            var found: [URL] = []
+            var seen = 0
+            while let next = walk.nextObject() as? URL {
+                seen += 1
+                guard seen <= 50000, !budget.hasRunOut else { timedOut.insert(resources.path); break }
+                if walk.level >= 8 {
+                    walk.skipDescendants()
+                }
+                guard next.pathExtension.lowercased() == "app" else { continue }
+                let values = try? next.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                if values?.isDirectory == true, values?.isSymbolicLink != true {
+                    found.append(next)
+                }
+            }
+            return found
+        }
+
         mutating func entries(_ url: URL) -> [URL] {
             guard !budget.hasRunOut else { timedOut.insert(url.path); return [] }
             var info = stat()
@@ -272,6 +336,9 @@ public enum BundleSurfaceReader {
             let path = url.path
             let extensionInfo = info["NSExtension"] as? [String: Any]
             let extensionPoint = extensionInfo?["NSExtensionPointIdentifier"] as? String ?? ""
+            if extensionPoint.hasPrefix("com.apple.fileprovider") {
+                add(.fileProvider, key: "NSExtensionPointIdentifier", value: extensionPoint, path: path)
+            }
             let providers = info["NEProviderClasses"] as? [String: Any] ?? [:]
             let networkEntitlement = "com.apple.developer.networking.networkextension"
             let network = !providers.isEmpty || extensionPoint.hasPrefix("com.apple.networkextension")

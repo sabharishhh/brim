@@ -1,3 +1,4 @@
+import Testing
 import XCTest
 import BrimCore
 import BrimProtocol
@@ -228,5 +229,102 @@ final class UninstallExecutionModelTests: XCTestCase {
 
         XCTAssertEqual(model.phase, .ready)
         XCTAssertFalse(model.canAuthorize, "Nothing to remove means nothing to approve")
+    }
+}
+
+/// Several apps in one review are the single removal run once per app,
+/// through the same approval and check, and one app that cannot be planned
+/// does not stop the rest.
+private actor BatchStub: BrimServiceProtocol, ApprovalGranting {
+    private(set) var applied: [UUID] = []
+    private var plans: [UUID: String] = [:]
+
+    func plan(intent: PlanIntent) async throws -> Plan {
+        if intent.subjectIdentity.bundleID == "com.t.bad" { throw Oops.no }
+        let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "t", osVersion: "t", intent: intent,
+                        steps: [step(0, kind: .trashPath, target: "/\(intent.subjectIdentity.name)")],
+                        excludedItems: [], expectedTotalBytes: 100)
+        plans[plan.planId] = intent.subjectIdentity.name
+        return plan
+    }
+    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
+        .stub(planId: planId, requester: requesterIdentity)
+    }
+    func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
+        .stub(requester: receipt.requester)
+    }
+    func apply(planId: UUID, token: ApprovalToken) async throws { applied.append(planId) }
+    func verify(planId: UUID) async throws -> VerificationResult {
+        VerificationResult(planId: planId, expectedBytes: 100, recoveredBytes: 100, success: true)
+    }
+    func appliedNames() -> [String] { applied.compactMap { plans[$0] } }
+    func inspect(identity: Identity) async throws -> Footprint { throw Oops.no }
+    func explain(planId: UUID) async throws -> String { throw Oops.no }
+    func history() async throws -> [Plan] { [] }
+    func undo(planId: UUID) async throws { throw Oops.no }
+    func installedApplications() async throws -> [InstalledApplication] { [] }
+    func leftovers() async throws -> [Leftover] { [] }
+    func recoverableItems() async throws -> [RecoverableItem] { [] }
+}
+
+@MainActor
+final class BatchRemovalModelTests: XCTestCase {
+    private func app(_ name: String, _ id: String, protected: Bool = false) -> InstalledApplication {
+        InstalledApplication(identity: Identity(bundleID: id, name: name),
+                             url: URL(fileURLWithPath: "/Applications/\(name).app"),
+                             bundleSizeBytes: 1, isSystemProtected: protected)
+    }
+
+    func testEachAppIsItsOwnPlanAndAFailureStopsOnlyItself() async {
+        let stub = BatchStub()
+        let model = BatchRemovalModel()
+        let alpha = app("Alpha", "com.t.alpha")
+        await model.prepare([alpha, app("Bad", "com.t.bad"), app("Beta", "com.t.beta"), alpha,
+                             app("Safari", "com.apple.Safari", protected: true)], service: stub)
+        XCTAssertEqual(model.entries.map(\.app.name), ["Alpha", "Bad", "Beta"], "one plan per app, never macOS's")
+        XCTAssertEqual(model.ready.map(\.app.name), ["Alpha", "Beta"])
+
+        await model.removeAll(requesterIdentity: "tester")
+        let applied = await stub.appliedNames()
+        XCTAssertEqual(applied, ["Alpha", "Beta"])
+        XCTAssertTrue(model.isFinished)
+        XCTAssertTrue(model.entries.filter { $0.app.name != "Bad" }.allSatisfy {
+            if case .verified = $0.removal.phase { true } else { false }
+        })
+    }
+}
+
+@Suite("Removal capacity explanations")
+@MainActor
+struct RemovalCapacityExplanationTests {
+    /// A refused capacity read used to become zero and trigger a confident
+    /// snapshot explanation. A failed removal made the same false claim.
+    @Test("Unmeasured or failed removals do not claim delayed recovery",
+          arguments: [(false, Optional(true)), (true, Optional(false)), (true, nil)])
+    func unavailableCapacity(success: Bool, measured: Bool?) async {
+        let model = await completedModel(success: success, measured: measured)
+        #expect(model.spaceExplanation == nil)
+    }
+
+    @Test("A measured shortfall describes possible causes")
+    func measuredShortfall() async {
+        let model = await completedModel(success: true, measured: true)
+        #expect(model.spaceExplanation?.contains("can explain") == true)
+    }
+
+    private func completedModel(success: Bool, measured: Bool?) async -> UninstallExecutionModel {
+        let target = Step(index: 0, kind: .trashPath, target: "/fixture/build",
+                          targetFingerprint: nil, tier: .A, evidence: "Compiled output",
+                          expectedBytes: 200_000_000, capability: .ok, reversible: false,
+                          costOfError: .low, executionPhase: .auxiliary, disposition: .delete)
+        let plan = makePlan([target])
+        let verification = VerificationResult(planId: plan.planId, expectedBytes: 200_000_000,
+                                              recoveredBytes: 0, success: success, reason: nil,
+                                              freeSpaceMeasured: measured)
+        let service = UninstallStub(plan: plan, verifyResult: verification)
+        let model = UninstallExecutionModel()
+        await model.prepare(intent: plan.intent, service: service)
+        await model.authorize(requesterIdentity: "tester")
+        return model
     }
 }

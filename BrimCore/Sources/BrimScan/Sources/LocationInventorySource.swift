@@ -1,4 +1,5 @@
 import BrimCore
+import Darwin
 import Foundation
 
 /// Walks the location inventory, applying each location's own rule.
@@ -44,6 +45,7 @@ public struct LocationInventorySource: EvidenceSource {
         var timedOut: [String] = []
         var unreadable: [String] = []
         var listings: [String: DirectoryEntries] = [:]
+        let subject = LocationInventory.Subject(identity)
 
         func listing(_ directory: URL) -> DirectoryEntries {
             if let cached = listings[directory.path] {
@@ -58,11 +60,18 @@ public struct LocationInventorySource: EvidenceSource {
         // of these is a few milliseconds, so they are never skipped for
         // time and a slow run still gets the certain answers.
         for location in inventory.locations where location.rule != .identifierInsideBundle {
+            // Container names and owner records must agree. The shared
+            // reader owns these domains so a generic name match cannot
+            // strengthen conflicting metadata back to a selected row.
+            if location.domain == .userContainers || location.domain == .systemContainers {
+                continue
+            }
             let directory = root.url(for: location.domain)
-            let candidates = Self.candidates(for: location, identity: identity)
+            let candidates = location.candidates(for: subject)
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
-                 .applicationNameDelimitedPrefix:
+                 .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService,
+                 .homeDotFolder, .diagnosticReport:
                 true
             default:
                 false
@@ -75,7 +84,7 @@ public struct LocationInventorySource: EvidenceSource {
             for candidate in candidates {
                 let url = directory.appendingPathComponent(candidate)
                 guard fm.fileExists(atPath: url.path),
-                      let tier = location.matchTier(name: candidate, identity: identity) else { continue }
+                      let tier = location.matchTier(name: candidate, subject: subject) else { continue }
                 evidence.append(Evidence(
                     url: url,
                     tier: tier,
@@ -90,7 +99,7 @@ public struct LocationInventorySource: EvidenceSource {
                     unreadable.append(directory.path)
                 case let .listed(names):
                     for name in names {
-                        guard let tier = location.matchTier(name: name, identity: identity) else { continue }
+                        guard let tier = location.matchTier(name: name, subject: subject) else { continue }
                         let url = directory.appendingPathComponent(name)
                         guard !evidence.contains(where: { $0.url == url }) else { continue }
                         evidence.append(Evidence(
@@ -108,7 +117,7 @@ public struct LocationInventorySource: EvidenceSource {
         // Expensive last: reading a bundle's Info.plist is the only way
         // to attribute an audio plug-in, whose file name says nothing.
         for location in inventory.locations where location.rule == .identifierInsideBundle {
-            guard !identity.searchBundleIdentifiers.isEmpty else { break }
+            guard !subject.identifiers.isEmpty else { break }
             let directory = root.url(for: location.domain)
 
             guard !runBudget.hasRunOut else {
@@ -123,9 +132,14 @@ public struct LocationInventorySource: EvidenceSource {
             case let .listed(names):
                 for name in names where !name.hasPrefix(".") {
                     let item = directory.appendingPathComponent(name)
-                    guard let foundID = Self.declaredIdentifier(at: item),
+                    guard !runBudget.hasRunOut else { timedOut.append(directory.path); break }
+                    let declared = Self.bundleInfo(at: item)
+                    if declared.refused {
+                        unreadable.append(item.appendingPathComponent("Contents/Info.plist").path)
+                    }
+                    guard let foundID = declared.values?["CFBundleIdentifier"] as? String,
                           let tier = location.matchTier(
-                              name: name, identity: identity, declaredIdentifier: foundID
+                              name: name, subject: subject, declaredIdentifier: foundID
                           ) else { continue }
                     evidence.append(Evidence(
                         url: item, tier: tier,
@@ -154,12 +168,38 @@ public struct LocationInventorySource: EvidenceSource {
     }
 
     static func declaredIdentifier(at bundle: URL) -> String? {
+        bundleInfo(at: bundle).values?["CFBundleIdentifier"] as? String
+    }
+
+    static func bundleInfo(at bundle: URL) -> (values: [String: Any]?, refused: Bool) {
         let plist = bundle.appendingPathComponent("Contents/Info.plist")
-        guard let data = try? Data(contentsOf: plist),
-              let parsed = try? PropertyListSerialization.propertyList(
-                  from: data, options: [], format: nil
-              ) as? [String: Any]
-        else { return nil }
-        return parsed["CFBundleIdentifier"] as? String
+        let descriptor = open(plist.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return (nil, errno != ENOENT && errno != ENOTDIR) }
+        defer { close(descriptor) }
+        var info = stat()
+        let limit = 64 * 1024
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_size > 0, info.st_size <= Int64(limit) else { return (nil, true) }
+        var bytes = [UInt8](repeating: 0, count: Int(info.st_size) + 1)
+        let capacity = bytes.count
+        var offset = 0
+        while offset < capacity {
+            let count = bytes.withUnsafeMutableBytes {
+                Darwin.read(descriptor, $0.baseAddress!.advanced(by: offset), capacity - offset)
+            }
+            if count < 0 {
+                if errno == EINTR {
+                    continue
+                }; return (nil, true)
+            }
+            if count == 0 {
+                break
+            }
+            offset += count
+        }
+        guard offset <= limit,
+              let parsed = try? PropertyListSerialization.propertyList(from: Data(bytes.prefix(offset)), format: nil)
+              as? [String: Any] else { return (nil, true) }
+        return (parsed, false)
     }
 }

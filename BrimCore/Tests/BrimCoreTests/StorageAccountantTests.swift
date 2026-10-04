@@ -34,7 +34,7 @@ final class StorageAccountantTests: XCTestCase {
         
         let result = await accountant.account(for: [item1, item2])
         XCTAssertEqual(result.logical, 3072)
-        XCTAssertEqual(result.reclaimable, 3072)
-        XCTAssertEqual(result.pinned, 0, "Should not fabricate snapshot pinned bytes without verified extent evidence")
+        XCTAssertNil(result.reclaimable)
+        XCTAssertNil(result.pinned, "Snapshot retention is unknown without verified extent evidence")
     }
 }
