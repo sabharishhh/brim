@@ -1,6 +1,6 @@
-import Foundation
-import Combine
 import BrimCore
+import Combine
+import Foundation
 
 /// Whether a newer Brim has been published on GitHub.
 ///
@@ -27,7 +27,9 @@ public final class BrimReleaseCheck: ObservableObject {
     @Published public private(set) var available: Release?
     @Published public private(set) var isChecking = false
 
-    public nonisolated static let latestURL = URL(string: "https://api.github.com/repos/sabharishhh/brim/releases/latest")!
+    public nonisolated static let latestURL = URL(
+        string: "https://api.github.com/repos/sabharishhh/brim/releases/latest"
+    )!
     public nonisolated static let releasesPage = URL(string: "https://github.com/sabharishhh/brim/releases/latest")!
 
     /// The latest release's JSON, or nil when nothing has been published.
@@ -50,8 +52,10 @@ public final class BrimReleaseCheck: ObservableObject {
 
     /// On opening: once a day, and silent when GitHub cannot be reached.
     public func checkIfDue(now: Date = Date()) async {
-        if let last = defaults.object(forKey: Self.lastCheckKey) as? Date,
-           now.timeIntervalSince(last) < 24 * 60 * 60 { return }
+        let last = defaults.object(forKey: Self.lastCheckKey) as? Date
+        if let last, now.timeIntervalSince(last) < 24 * 60 * 60 {
+            return
+        }
         _ = await check(now: now)
     }
 
@@ -78,18 +82,14 @@ public final class BrimReleaseCheck: ObservableObject {
     /// The release GitHub calls latest, which already leaves out drafts and
     /// pre-releases. Tags are `v1.0.1`; the `v` is not part of the version.
     nonisolated static func release(from data: Data) -> Release? {
-        struct Payload: Decodable {
-            let tag_name: String
-            let html_url: URL?
-            let draft: Bool?
-            let prerelease: Bool?
-        }
-        guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
+        guard let payload = try? JSONDecoder().decode(BrimReleasePayload.self, from: data),
               payload.draft != true, payload.prerelease != true else { return nil }
-        var version = payload.tag_name.trimmingCharacters(in: .whitespaces)
-        if version.first == "v" || version.first == "V" { version.removeFirst() }
+        var version = payload.tagName.trimmingCharacters(in: .whitespaces)
+        if version.first == "v" || version.first == "V" {
+            version.removeFirst()
+        }
         guard version.first?.isNumber == true else { return nil }
-        return Release(version: version, page: payload.html_url ?? releasesPage)
+        return Release(version: version, page: payload.htmlURL ?? releasesPage)
     }
 
     public nonisolated static let github: Fetch = { url in
@@ -101,5 +101,19 @@ public final class BrimReleaseCheck: ObservableObject {
         case 404: return nil
         default: throw URLError(.badServerResponse)
         }
+    }
+}
+
+private struct BrimReleasePayload: Decodable {
+    let tagName: String
+    let htmlURL: URL?
+    let draft: Bool?
+    let prerelease: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case htmlURL = "html_url"
+        case draft
+        case prerelease
     }
 }

@@ -86,7 +86,9 @@ final class UninstallCompletenessTests: XCTestCase {
         ])
 
         let found = try await engine.discover(identity: Identity(bundleID: "com.test.app", name: "Test"), in: root)
-        let byName = Dictionary(found.evidence.map { ($0.url.lastPathComponent, $0) }, uniquingKeysWith: { a, _ in a })
+        let byName = Dictionary(
+            found.evidence.map { ($0.url.lastPathComponent, $0) }, uniquingKeysWith: { first, _ in first }
+        )
 
         XCTAssertEqual(byName[updater.lastPathComponent]?.mechanism, "InstallerPayloadSource")
         XCTAssertNotNil(byName["com.vendor.updater.bom"])

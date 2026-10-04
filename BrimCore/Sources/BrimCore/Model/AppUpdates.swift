@@ -18,11 +18,11 @@ public enum UpdateOrigin: Codable, Equatable, Sendable {
     /// Said in a few words, for the details.
     public var title: String {
         switch self {
-        case .appStore: return "App Store"
-        case .sparkle(let feed): return "Update feed at \(Self.host(feed))"
-        case .electron(let feed): return "Update feed at \(Self.host(feed))"
-        case .catalog: return "Homebrew catalogue"
-        case .homebrew: return "Homebrew"
+        case .appStore: "App Store"
+        case let .sparkle(feed): "Update feed at \(Self.host(feed))"
+        case let .electron(feed): "Update feed at \(Self.host(feed))"
+        case .catalog: "Homebrew catalogue"
+        case .homebrew: "Homebrew"
         }
     }
 
@@ -47,12 +47,12 @@ public enum UpdateRoute: String, Codable, Equatable, Sendable {
     public var explanation: String {
         switch self {
         case .replace:
-            return "Brim downloads it, checks it is signed by the same developer, "
+            "Brim downloads it, checks it is signed by the same developer, "
                 + "and replaces the app. The old version goes to the Trash."
-        case .appStore: return "The App Store installs this update."
-        case .installer: return "Brim checks the package's signature, then opens it in Installer."
-        case .homebrew: return "Homebrew installed this app, so Homebrew updates it."
-        case .website: return "The developer offers this version on their website."
+        case .appStore: "The App Store installs this update."
+        case .installer: "Brim checks the package's signature, then opens it in Installer."
+        case .homebrew: "Homebrew installed this app, so Homebrew updates it."
+        case .website: "The developer offers this version on their website."
         }
     }
 }
@@ -106,7 +106,9 @@ public struct AppUpdate: Codable, Equatable, Sendable, Identifiable {
     /// Where a person can get it by hand: the store page, or the site.
     public let pageURL: URL?
 
-    public var id: String { appURL.path }
+    public var id: String {
+        appURL.path
+    }
 
     public init(
         bundleID: String, name: String, appURL: URL, installedVersion: String,
@@ -130,9 +132,9 @@ public struct AppUpdate: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-extension AppUpdate {
+public extension AppUpdate {
     /// The same update, installed another way.
-    public func handled(by route: UpdateRoute, cask: String) -> AppUpdate {
+    func handled(by route: UpdateRoute, cask: String) -> AppUpdate {
         AppUpdate(
             bundleID: bundleID, name: name, appURL: appURL, installedVersion: installedVersion,
             latestVersion: latestVersion, latestBuild: latestBuild,
@@ -149,7 +151,9 @@ public struct UncheckedApp: Codable, Equatable, Sendable, Identifiable {
     public let appURL: URL
     public let reason: String
 
-    public var id: String { appURL.path }
+    public var id: String {
+        appURL.path
+    }
 
     public init(name: String, appURL: URL, reason: String) {
         self.name = name
@@ -194,7 +198,9 @@ public struct RecentUpdate: Codable, Equatable, Sendable, Identifiable {
     public let toVersion: String
     public let updatedAt: Date
 
-    public var id: String { appURL.path }
+    public var id: String {
+        appURL.path
+    }
 
     public init(name: String, appURL: URL, fromVersion: String?, toVersion: String, updatedAt: Date) {
         self.name = name
@@ -226,18 +232,22 @@ public enum UpdateOutcome: Codable, Equatable, Sendable {
 /// precedes, and separators are ignored.
 public enum VersionOrder {
     public static func compare(_ left: String, _ right: String) -> ComparisonResult {
-        let a = tokens(left), b = tokens(right)
-        for index in 0..<max(a.count, b.count) {
-            guard index < a.count else { return remainder(b[index...]).inverted }
-            guard index < b.count else { return remainder(a[index...]) }
-            let x = a[index], y = b[index]
-            switch (x.isNumber, y.isNumber) {
+        let leftTokens = tokens(left), rightTokens = tokens(right)
+        for index in 0 ..< max(leftTokens.count, rightTokens.count) {
+            guard index < leftTokens.count else { return remainder(rightTokens[index...]).inverted }
+            guard index < rightTokens.count else { return remainder(leftTokens[index...]) }
+            let leftToken = leftTokens[index], rightToken = rightTokens[index]
+            switch (leftToken.isNumber, rightToken.isNumber) {
             case (true, true):
-                let order = x.text.compare(y.text, options: .numeric)
-                if order != .orderedSame { return order }
+                let order = leftToken.text.compare(rightToken.text, options: .numeric)
+                if order != .orderedSame {
+                    return order
+                }
             case (false, false):
-                let order = x.text.caseInsensitiveCompare(y.text)
-                if order != .orderedSame { return order }
+                let order = leftToken.text.caseInsensitiveCompare(rightToken.text)
+                if order != .orderedSame {
+                    return order
+                }
             case (true, false): return .orderedDescending
             case (false, true): return .orderedAscending
             }
@@ -256,7 +266,9 @@ public enum VersionOrder {
     private static func remainder(_ rest: ArraySlice<Token>) -> ComparisonResult {
         for token in rest {
             if token.isNumber {
-                if Int(token.text) == 0 || token.text.allSatisfy({ $0 == "0" }) { continue }
+                if Int(token.text) == 0 || token.text.allSatisfy({ $0 == "0" }) {
+                    continue
+                }
                 return .orderedDescending
             }
             return .orderedAscending
@@ -268,7 +280,9 @@ public enum VersionOrder {
 
     private static func tokens(_ version: String) -> [Token] {
         var trimmed = Substring(version.trimmingCharacters(in: .whitespaces))
-        if trimmed.first == "v" || trimmed.first == "V" { trimmed = trimmed.dropFirst() }
+        if trimmed.first == "v" || trimmed.first == "V" {
+            trimmed = trimmed.dropFirst()
+        }
         var result: [Token] = []
         var current = ""
         var currentIsNumber = false
@@ -276,7 +290,9 @@ public enum VersionOrder {
             let isDigit = character.isASCII && character.isNumber
             let isLetter = character.isLetter
             guard isDigit || isLetter else {
-                if !current.isEmpty { result.append(Token(text: current, isNumber: currentIsNumber)) }
+                if !current.isEmpty {
+                    result.append(Token(text: current, isNumber: currentIsNumber))
+                }
                 current = ""
                 continue
             }
@@ -287,7 +303,9 @@ public enum VersionOrder {
             current.append(character)
             currentIsNumber = isDigit
         }
-        if !current.isEmpty { result.append(Token(text: current, isNumber: currentIsNumber)) }
+        if !current.isEmpty {
+            result.append(Token(text: current, isNumber: currentIsNumber))
+        }
         return result
     }
 }
@@ -295,9 +313,9 @@ public enum VersionOrder {
 private extension ComparisonResult {
     var inverted: ComparisonResult {
         switch self {
-        case .orderedAscending: return .orderedDescending
-        case .orderedDescending: return .orderedAscending
-        case .orderedSame: return .orderedSame
+        case .orderedAscending: .orderedDescending
+        case .orderedDescending: .orderedAscending
+        case .orderedSame: .orderedSame
         }
     }
 }

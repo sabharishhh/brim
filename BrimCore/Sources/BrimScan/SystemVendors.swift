@@ -43,7 +43,11 @@ struct SystemVendors: Sendable {
             // `Library/<location>/<developer>/<product>`, or `<product>` alone.
             let parts = Array(folder.standardizedFileURL.pathComponents.dropFirst(depth))
             guard parts.count >= 3 else { continue }
-            if parts.count >= 4 { parents.insert(parts[2].lowercased()) } else { own.insert(parts[2].lowercased()) }
+            if parts.count >= 4 {
+                parents.insert(parts[2].lowercased())
+            } else {
+                own.insert(parts[2].lowercased())
+            }
         }
         packaged = own
         packagedParents = parents
@@ -56,7 +60,8 @@ struct SystemVendors: Sendable {
               !apple.contains(where: { $0.hasPrefix(prefix) })
         else { return nil }
         let names = installed.union(recorded)
-        if packagedParents.contains(name) || names.contains(where: { $0.hasPrefix(prefix) && $0.count > prefix.count }) {
+        let hasChildren = names.contains { $0.hasPrefix(prefix) && $0.count > prefix.count }
+        if packagedParents.contains(name) || hasChildren {
             return .developer
         }
         if packaged.contains(name) || names.contains(name) {

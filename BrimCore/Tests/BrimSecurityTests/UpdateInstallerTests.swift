@@ -1,7 +1,7 @@
-import CryptoKit
-import XCTest
 import BrimCore
 @testable import BrimOps
+import CryptoKit
+import XCTest
 
 /// What stands between a download and the installed application.
 ///
