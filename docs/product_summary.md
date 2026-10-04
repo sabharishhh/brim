@@ -27,7 +27,7 @@ knows, and nothing is ticked on a guess.
 Home, Apps (with Updates), Remnants, Background, Energy, Space, Developer and
 Journal. Settings holds the rest.
 
-- Home: what changed, and what needs the person.
+- Home: storage, cleanup status and recently installed apps.
 - Apps: every installed app and its footprint, removal with a review panel,
   and Updates for apps Brim can update.
 - Remnants: apps that have gone and left something, with Finish Removal,
@@ -78,5 +78,34 @@ deferral does not justify skipping discovery or hiding leftovers.
 Review planning uses ancestor lookups, ownership checks reuse one raw claim
 read per bundle, and overlapping Apps and Updates loads share one inventory.
 Independent footprint sizing has four workers; volumes appear before the
-leftovers estimate finishes. Discovery coverage and fresh removal checks remain.
+leftovers estimate finishes. Incomplete measurements display a lower bound or
+Size unavailable in Space. Discovery coverage and fresh removal checks remain.
 See [the measurements and limits](performance.md).
+
+## Home summaries, 4 October 2026
+
+Home groups Space and the four status cards together, followed by a full-width
+Recently installed card and the app drop area. The Changes panel has been removed.
+Recently installed shows current independent apps from the last five days,
+including observed reinstalls. An update does not renew the installation date.
+Entries expire while Home is open and refresh from current inventory when asked.
+No installation watcher or resident service was added. App refresh no longer
+loads the change history for a panel that does not exist.
+
+Home checks recoverability on manual refresh as well as existing Trash and
+activation events. A completed registration step counts as recoverable only
+when its owned restore route survives. A stopped launch job also needs its
+original declaration identity and modification time. Home calls registration
+maintenance through the service protocol. A failed read cannot support a claim
+that earlier removals can still be restored. Measured removed-app data is independent of unknown
+protected storage; incomplete size reads remain visible in Remnants.
+
+Home and Remnants use the same filter for unknown items worth reviewing. When
+only those items remain, Home shows a review count rather than claiming Empty.
+Saved installation history retains valid removal and reinstall cycles.
+
+Verification: the final package suite passed with one existing skip. The signed
+Release build and lint comparison passed. On the local machine, Home showed
+a full-width recent-app row, no Changes panel and no stale restore banner after refresh.
+Its ten unknown items matched the Remnants list. No new install or removal was
+performed in the real account for this follow-up.

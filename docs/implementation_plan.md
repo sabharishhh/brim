@@ -19,7 +19,9 @@ reads and overlapping application enumeration. Footprint sizing is bounded to fo
 workers and volume results publish before leftovers estimates. The existing
 registration preparation and aggregate accounting passes remain separate.
 [Measurements and validation](performance.md) distinguish component timings from
-real-app observations and list deferred work.
+real-app observations and list deferred work. The combined audit corrected
+registration maintenance protocol dispatch, bound launch-job restoration to the
+recorded declaration and preserved incomplete measurement status in Space.
 
 ## 1. Invariants
 
@@ -629,7 +631,7 @@ dropped with it.
 - **Acceptance** 100k rows: constant memory, 60fps scroll, full keyboard traversal.
 
 ### T-6.2 · Home · changed
-- **As built** Home rather than a ranked queue: what changed since the last look, what needs the person, and a card per page with its figure. No score, no percentage, no health colour.
+- **As built** Home shows current apps installed in the last five days, current Trash recoverability and a card per page. Space and status cards precede a full-width recent-app row and drop area; the Changes panel is removed. Reinstallation begins a new observed presence period. Remnants measures removed-app data independently of unknown storage and identifies incomplete reads. No score, percentage or resident installation watcher.
 
 ### T-6.3 · Explanations
 - **Objective** Deterministic prose from the evidence model.

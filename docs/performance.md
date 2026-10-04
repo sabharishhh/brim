@@ -72,9 +72,38 @@ not run for this performance change.
 The application list still waits for bundle sizes, and the inspector still
 waits for complete discovery and aggregate accounting. Broader consolidation
 across evidence sources, progressive inspector output, developer discovery
-and leftovers measurement remain outside this pass. No language migration,
+remain outside this performance pass. The separate Home follow-up reuses the
+existing bounded size reader for leftovers. No language migration,
 persistent index or background service was introduced.
 
-The separately queued Home fixes cover recent installs and reinstalls,
-Changes history, restore counts after Trash is emptied, and Remnants measurement
-and wording. They are not included in this performance change.
+The separate Home follow-up implements recent installs and reinstalls, restore
+counts after Trash is emptied, and Remnants measurement and wording. Home no
+longer displays Changes or requests its history during an app refresh. These fixes are separate from the performance change.
+
+## Combined performance and Home audit, 4 October 2026
+
+The audit traced shared inventory reads, ownership reuse, bounded measurements,
+selection cancellation, planner containment, recent installation history and
+recovery summaries. No further defect was found in the performance algorithms.
+The existing component timings remain the evidence for their speed improvement.
+
+Three defects were corrected. Registration maintenance returned a different
+value type from its protocol requirement, so Home invoked the default no-op.
+It now satisfies the protocol, and the existing lifecycle test calls through
+that interface. Undo now checks the stopped job declaration's recorded file
+identity and modification time before offering or executing its restore route.
+A replacement at the same path cannot be started by that earlier removal.
+Space now carries incomplete remnants measurements into its figure, showing
+a lower bound or Size unavailable instead of an exact size or Empty.
+
+Regression fixtures cover the protocol signature, same-date replacement,
+in-place declaration edits and unreadable remnants with zero or partial bytes.
+The full package suite passed: 484 XCTest cases with one existing skip and
+253 Swift Testing cases. After extracting the launch-job recovery check into
+a small function, its eight focused regressions passed again. The final
+Release build, strict signature check and lint comparison passed with no new
+violations. The installed build loaded Home and Space, completed small and
+large inspectors, retained the latest rapid selection and prepared a removal
+review. The review was closed without approval. Real registration lifecycle
+experiments were excluded; the protocol regression does not establish live
+record erasure.

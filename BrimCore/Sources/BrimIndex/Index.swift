@@ -5,7 +5,7 @@ import BrimCore
 /// A concurrency-safe coordinator for the database.
 /// Manages writes sequentially using actor isolation, while exposing concurrent read paths.
 public actor Index {
-    private let dbManager: DatabaseManager
+    let dbManager: DatabaseManager
     
     public init(dbManager: DatabaseManager) {
         self.dbManager = dbManager
@@ -193,7 +193,7 @@ public actor Index {
         return changes.sorted { $0.name < $1.name }
     }
 
-    private static func snapshot(
+    static func snapshot(
         _ db: Database, scanID: String
     ) throws -> [String: InstallObservation] {
         let rows = try Row.fetchAll(db, sql: """
@@ -220,57 +220,62 @@ public actor Index {
         return result
     }
 
-    /// When each application that was not there the first time Brim
-    /// looked first appeared.
+    /// When each currently installed application began its latest recorded
+    /// period on the disk. A reinstall starts another period.
     ///
     /// An application in the first snapshot has no appearance date: it was
     /// already installed, and nothing Brim recorded says when it arrived.
     /// By rowid, for the reason `changesSinceLastScan` gives.
     public nonisolated func appearances() async throws -> [String: Date] {
-        try await dbManager.dbPool.read { database in
-            guard let firstScan = try String.fetchOne(database, sql: """
-            SELECT scan_id FROM observation WHERE scan_id IS NOT NULL ORDER BY id LIMIT 1
-            """) else { return [:] }
-            let rows = try Row.fetchAll(database, sql: """
-            SELECT identity_id, MIN(observed_at) AS seen FROM observation
-            WHERE scan_id IS NOT NULL
-            GROUP BY identity_id
-            HAVING SUM(scan_id = ?) = 0
-            """, arguments: [firstScan])
-            var appeared: [String: Date] = [:]
-            for row in rows {
-                appeared[row["identity_id"]] = row["seen"]
-            }
-            return appeared
-        }
+        try await appearanceWindows().mapValues(\.seen)
     }
 
-    /// For each application first seen after Brim's first look: when it
-    /// was first seen, and when Brim had last looked before that. An app
+    /// For each app's current installed period: when it began, and when
+    /// Brim had last looked before that. An app
     /// whose bundle was already on the disk before that earlier look was
     /// not installed in between; the list simply had not included it.
     public nonisolated func appearanceWindows() async throws -> [String: AppearanceWindow] {
         try await dbManager.dbPool.read { database in
-            let scans = try Row.fetchAll(database, sql: """
-            SELECT scan_id, MAX(observed_at) AS at, MIN(id) AS first FROM observation
-            WHERE scan_id IS NOT NULL GROUP BY scan_id ORDER BY first
+            // Absence and order are facts about snapshots, not timestamps.
+            // Select only current apps' period starts instead of loading
+            // every historical observation into the process.
+            let rows = try Row.fetchAll(database, sql: """
+            WITH scans AS (
+                SELECT scan_id, MAX(observed_at) AS at, MAX(id) AS last_row
+                FROM observation WHERE scan_id IS NOT NULL GROUP BY scan_id
+            ), current AS (
+                SELECT DISTINCT identity_id FROM observation
+                WHERE scan_id = (SELECT scan_id FROM scans ORDER BY last_row DESC LIMIT 1)
+            ), periods AS (
+                SELECT current.identity_id, (
+                    SELECT MAX(scans.last_row) FROM scans WHERE NOT EXISTS (
+                        SELECT 1 FROM observation o
+                        WHERE o.scan_id = scans.scan_id AND o.identity_id = current.identity_id
+                    )
+                ) AS last_absent FROM current
+            ), starts AS (
+                SELECT periods.identity_id, periods.last_absent, (
+                    SELECT MIN(o.id) FROM observation o
+                    WHERE o.identity_id = periods.identity_id AND o.scan_id IS NOT NULL
+                        AND o.id > periods.last_absent
+                ) AS first_row FROM periods WHERE periods.last_absent IS NOT NULL
+            )
+            SELECT o.identity_id, o.observed_at, o.added_at, (
+                SELECT scans.at FROM scans WHERE scans.last_row < o.id
+                ORDER BY scans.last_row DESC LIMIT 1
+            ) AS previous_look, EXISTS (
+                SELECT 1 FROM observation earlier
+                WHERE earlier.identity_id = o.identity_id AND earlier.scan_id IS NOT NULL
+                    AND earlier.id < starts.last_absent
+            ) AS reinstalled
+            FROM starts JOIN observation o ON o.id = starts.first_row
             """)
-            guard scans.count > 1 else { return [:] }
-            var previousLook: [String: Date] = [:]
-            for index in 1 ..< scans.count {
-                previousLook[scans[index]["scan_id"]] = scans[index - 1]["at"]
-            }
-            let firsts = try Row.fetchAll(database, sql: """
-            SELECT identity_id, scan_id, observed_at FROM observation
-            WHERE id IN (SELECT MIN(id) FROM observation WHERE scan_id IS NOT NULL GROUP BY identity_id)
-            """)
-            var windows: [String: AppearanceWindow] = [:]
-            for row in firsts {
-                let scan: String = row["scan_id"]
-                guard let before = previousLook[scan] else { continue }
-                windows[row["identity_id"]] = AppearanceWindow(seen: row["observed_at"], previousLook: before)
-            }
-            return windows
+            return Dictionary(uniqueKeysWithValues: rows.map { row in
+                (row["identity_id"] as String, AppearanceWindow(
+                    seen: row["observed_at"], previousLook: row["previous_look"],
+                    addedAt: row["added_at"], isReinstallation: row["reinstalled"]
+                ))
+            })
         }
     }
 
@@ -351,14 +356,19 @@ public actor Index {
     }
 }
 
-/// When an application first appeared in a snapshot, and when Brim had
-/// last looked before that.
+/// When an app's current installed period began, and when Brim had last
+/// looked before that. The first bundle's added date keeps later updates
+/// from turning an old discovery into a new installation.
 public struct AppearanceWindow: Sendable, Equatable {
     public let seen: Date
     public let previousLook: Date
+    public let addedAt: Date?
+    public let isReinstallation: Bool
 
-    public init(seen: Date, previousLook: Date) {
+    public init(seen: Date, previousLook: Date, addedAt: Date? = nil, isReinstallation: Bool = false) {
         self.seen = seen
         self.previousLook = previousLook
+        self.addedAt = addedAt
+        self.isReinstallation = isReinstallation
     }
 }
