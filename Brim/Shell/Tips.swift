@@ -1,31 +1,13 @@
 import SwiftUI
 import TipKit
 
-/// The two things worth learning once, each shown once and never again
+/// The one thing worth learning once, shown once and never again
 /// (plan §14).
 ///
 /// TipKit only retires a tip that is closed with its own button, so a tip
-/// left open came back every time its panel or the Tray appeared, launch
-/// after launch. Each is now shown at most once, and doing the thing it
-/// describes retires it at once (`BrimTips.learned`).
-struct DropAppTip: Tip {
-    var options: [any TipOption] {
-        [MaxDisplayCount(1)]
-    }
-
-    var title: Text {
-        Text("The Dock icon works too")
-    }
-
-    var message: Text? {
-        Text("Drop an app on it to open its page")
-    }
-
-    var image: Image? {
-        Image(systemName: "arrow.down.app")
-    }
-}
-
+/// left open came back every time the Tray appeared, launch after launch.
+/// It is now shown at most once, and doing the thing it describes retires
+/// it at once (`BrimTips.learned`).
 struct TrayTip: Tip {
     var options: [any TipOption] {
         [MaxDisplayCount(1)]

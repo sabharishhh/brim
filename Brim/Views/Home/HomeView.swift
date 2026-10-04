@@ -48,7 +48,6 @@ struct HomeView: View {
                 Spacer(minLength: 0)
                 VStack(alignment: .leading, spacing: 20) {
                     header
-                    DropWell { models.openApplication(from: $0, shell: shell) }
                     if !fullDiskAccess.isGranted {
                         accessNote
                     }
