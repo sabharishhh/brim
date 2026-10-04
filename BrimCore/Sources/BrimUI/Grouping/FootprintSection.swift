@@ -60,8 +60,7 @@ public struct FootprintSection: Identifiable, Equatable, Sendable {
 
     public static func arrange(_ footprint: Footprint) -> [FootprintSection] {
         let buckets = Dictionary(grouping: footprint.items, by: FootprintLoss.of)
-        let order: [FootprintLoss] = [.app, .settings, .data, .background, .rebuilds, .other]
-        return order.compactMap { loss in
+        return FootprintLoss.displayOrder.compactMap { loss in
             guard let items = buckets[loss] else { return nil }
             let paths = Dictionary(grouping: items) { $0.evidence.url.standardizedFileURL.path }
             let locations = paths.values.compactMap { FootprintLocation(items: $0) }.sorted {
