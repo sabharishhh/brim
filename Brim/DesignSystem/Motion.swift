@@ -25,6 +25,8 @@ enum Motion {
     static let pointerLight = Animation.spring(duration: 0.18, bounce: 0)
     static let release = Animation.spring(duration: 0.18, bounce: 0)
     static let openEvidence = Animation.spring(duration: 0.22, bounce: 0)
+    /// One verified mark finishing in place.
+    static let resolve = Animation.easeOut(duration: 0.24)
     static let refreshEnter = Animation.smooth(duration: 0.25)
     static let refreshSettle = Animation.smooth(duration: 0.6)
 
