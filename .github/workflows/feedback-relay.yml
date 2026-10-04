@@ -1,0 +1,25 @@
+name: Feedback relay
+
+on:
+  pull_request:
+    paths:
+      - 'Support/FeedbackRelay/**'
+      - '.github/workflows/feedback-relay.yml'
+  push:
+    branches: [main, ui-ux-redesign]
+    paths:
+      - 'Support/FeedbackRelay/**'
+      - '.github/workflows/feedback-relay.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test Support/FeedbackRelay/worker.test.mjs

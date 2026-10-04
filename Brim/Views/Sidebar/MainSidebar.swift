@@ -121,10 +121,22 @@ struct MainSidebar: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            if let found = release.available {
-                NewReleaseNotice(release: found)
-                    .padding(10)
-                    .transition(.opacity)
+            VStack(spacing: 8) {
+                if let found = release.available {
+                    NewReleaseNotice(release: found)
+                        .padding(10)
+                        .transition(.opacity)
+                }
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
+                .padding(10)
             }
         }
     }
