@@ -43,7 +43,7 @@ struct ContentView: View {
             ZStack {
                 page(shell.selection)
                     .id(shell.selection)
-                    .transition(.opacity)
+                    .transition(.replacement)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas)
