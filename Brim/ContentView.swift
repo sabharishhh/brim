@@ -91,8 +91,7 @@ struct ContentView: View {
         }
         // An application dropped anywhere on the window opens it in Apps.
         .dropDestination(for: URL.self) { urls, _ in
-            BrimTips.learned(DropAppTip())
-            return models.openApplication(from: urls, shell: shell)
+            models.openApplication(from: urls, shell: shell)
         }
         // A minimum, and deliberately no ideal.
         //
