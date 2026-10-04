@@ -178,9 +178,11 @@ struct SpaceView: View {
     // MARK: - What can be cleared
 
     private var leftoversCard: some View {
-        let status: CardStatus = model.isLoading && model.startupVolume == nil
+        let status: CardStatus = !model.hasEstimate
             ? .checking : (model.estimateUnavailable ? .partial : (model.brimCanClear > 0 ? .attention : .clear))
-        let phrase = if model.estimateUnavailable {
+        let phrase = if !model.hasEstimate {
+            "Checking"
+        } else if model.estimateUnavailable {
             "Could not read"
         } else if model.brimCanClearCount == 0 {
             "Nothing found"
@@ -189,8 +191,8 @@ struct SpaceView: View {
         }
         return StatCard(
             title: "Remnants", symbol: "app.dashed",
-            figure: ByteText.short(model.brimCanClear), status: status, phrase: phrase,
-            isRefreshing: model.isLoading && model.startupVolume != nil
+            figure: model.hasEstimate ? ByteText.short(model.brimCanClear) : "…", status: status, phrase: phrase,
+            isRefreshing: model.isLoading && model.hasEstimate
         ) { shell.go(to: .leftovers) }
     }
 
