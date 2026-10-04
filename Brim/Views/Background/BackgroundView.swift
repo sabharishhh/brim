@@ -109,7 +109,7 @@ struct BackgroundView: View {
     }
 
     private var summary: String {
-        let running = "\(model.live.count) running"
+        let running = "\(model.live.count) listed"
         let gone = model.stale.count
         return gone == 0 ? running : "\(running) · \(gone) left over"
     }
@@ -125,7 +125,8 @@ struct BackgroundView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if sections.isEmpty {
             if model.searchText.isEmpty {
-                EmptyState(symbol: "checkmark.seal", title: "Nothing running", message: "No background items.")
+                EmptyState(symbol: "checkmark.seal", title: "Nothing listed",
+                           message: "No application background items.")
             } else {
                 EmptyState(symbol: "magnifyingglass", title: "No matches", message: "Nothing matches your search.")
             }
@@ -195,7 +196,7 @@ struct BackgroundView: View {
                 onClose: { proven in
                     reviewRequest = nil
                     if let proven {
-                        offerPutBack(proven)
+                        offerPutBack(proven.planId)
                     }
                 },
                 onUnverified: { Task { await model.load(service: service) } }
@@ -246,7 +247,7 @@ extension BackgroundView {
     private var notices: some View {
         let faults = model.faults
         let waiting = !model.waitingOnHelper.isEmpty && !helper.state.canRemove
-        if !faults.isEmpty || waiting {
+        if !faults.isEmpty || waiting || helper.retirementProblem != nil {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(faults, id: \.kind) { gap in
                     Notice(
@@ -255,6 +256,10 @@ extension BackgroundView {
                         actionTitle: gap.isFixableByTheUser ? "Open Settings" : nil,
                         action: FullDiskAccess.openSettings
                     )
+                }
+                if let problem = helper.retirementProblem {
+                    Notice(symbol: "exclamationmark.triangle", title: "Earlier background registration remains",
+                           detail: problem)
                 }
                 if waiting {
                     helperNotice
@@ -265,31 +270,16 @@ extension BackgroundView {
         }
     }
 
-    /// Offered only when there is something it would do. A standing
-    /// invitation to install a root daemon on a Mac with nothing for it to
-    /// remove is not a thing to put in front of anybody.
     private var helperNotice: some View {
         let count = model.waitingOnHelper.count
-        let title = count == 1 ? "1 needs Brim's helper" : "\(count) need Brim's helper"
-        return Group {
-            switch helper.state {
-            case .waitingForApproval:
-                Notice(
-                    symbol: "key.horizontal", title: title, detail: "Allow it in Login Items",
-                    actionTitle: "Open Settings", action: helper.openSettings
-                )
-            case let .unavailable(why):
-                Notice(symbol: "key.horizontal", title: title, detail: why)
-            case .stale:
-                Notice(symbol: "key.horizontal", title: title, detail: "Replaced with this version. Starts next time.")
-            default:
-                Notice(
-                    symbol: "key.horizontal", title: title, detail: "Sets job files aside so they can be restored",
-                    actionTitle: "Set Up", action: helper.install
-                )
-            }
+        let title = count == 1 ? "1 protected item cannot be removed" : "\(count) protected items cannot be removed"
+        let detail: String = if case let .unavailable(reason) = helper.state {
+            reason
+        } else {
+            "Administrator cleanup is unavailable."
         }
-        .onAppear { helper.refresh() }
+        return Notice(symbol: "key.horizontal", title: title, detail: detail)
+            .onAppear { helper.refresh() }
     }
 
     // MARK: - Tray
@@ -300,7 +290,7 @@ extension BackgroundView {
         return TrayContents(
             count: count, bytes: nil,
             canReview: !model.isLoading,
-            note: model.selectionUsesHelper ? "Some use Brim's helper" : nil,
+            note: model.selectionUsesHelper ? "Administrator password required" : nil,
             review: review,
             clear: { model.selection = [] }
         )
@@ -321,21 +311,29 @@ extension BackgroundView {
     private func offerPutBack(_ planId: UUID) {
         let count = removedInReview
         guard count > 0 else { return }
-        shell.show(ToastMessage(
-            symbol: "checkmark.circle.fill",
-            text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs",
-            actionTitle: "Put Back",
-            action: {
-                Task {
-                    do {
-                        try await service.undo(planId: planId)
-                        await model.load(service: service)
-                    } catch {
-                        shell.show(ToastMessage(symbol: "exclamationmark.triangle.fill", text: "Could not put it back"))
+        Task {
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = {
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            await model.load(service: service)
+                        } catch {
+                            shell.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill",
+                                text: "Could not put it back"
+                            ))
+                        }
                     }
                 }
             }
-        ))
+            shell.show(toast)
+        }
     }
 }
 

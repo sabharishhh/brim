@@ -1,6 +1,7 @@
 import BrimCore
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// Resolves installer receipts and Bill of Materials (BOM) files (Tier A),
 /// and whatever else the same installer run put down (Tier B).
 ///
@@ -48,8 +49,13 @@ public struct InstallerReceiptSource: EvidenceSource {
             }
             var anchors: [String] = []
             var named = Self.namedPackages(for: identity)
-            if case let .listed(names) = listing, let installer = installerOf(identity, among: names, in: receiptsDir, root: root),
-               !named.contains(where: { $0.0 == installer }) {
+            if case let .listed(names) = listing, let installer = installerOf(
+                identity,
+                among: names,
+                in: receiptsDir,
+                root: root
+            ),
+                !named.contains(where: { $0.0 == installer }) {
                 named.insert((installer, .A), at: 0)
             }
             for (packageID, tier) in named {
@@ -62,7 +68,9 @@ public struct InstallerReceiptSource: EvidenceSource {
                         ? "Installer receipt matching bundle identifier"
                         : "Installer receipt for this app"
                 ))
-                if tier == .A { anchors.append(packageID) }
+                if tier == .A {
+                    anchors.append(packageID)
+                }
             }
             guard case let .listed(names) = listing else { continue }
             results += sameRun(as: anchors, among: names, in: receiptsDir, identity: identity, root: root)
@@ -96,7 +104,9 @@ public struct InstallerReceiptSource: EvidenceSource {
     /// Packages named after the application, and how sure each name is.
     static func namedPackages(for identity: Identity) -> [(String, EvidenceTier)] {
         var named: [(String, EvidenceTier)] = []
-        if let pkgID = identity.packageIdentifier { named.append((pkgID, .A)) }
+        if let pkgID = identity.packageIdentifier {
+            named.append((pkgID, .A))
+        }
         for bundleID in identity.searchBundleIdentifiers where !named.contains(where: { $0.0 == bundleID }) {
             named.append((bundleID, bundleID == identity.bundleID ? .A : .C))
         }
@@ -174,7 +184,9 @@ public struct InstallerReceiptSource: EvidenceSource {
                 let url = prefix.appendingPathComponent(item)
                 return url.pathExtension == "app" && Self.isInApplicationsFolder(url, root: root)
                     && FileManager.default.fileExists(atPath: url.path)
-            }) { return true }
+            }) {
+                return true
+            }
         }
         return false
     }
@@ -189,7 +201,9 @@ public struct InstallerReceiptSource: EvidenceSource {
     static func isInApplicationsFolder(_ url: URL, root: FileSystemRoot) -> Bool {
         let rootParts = root.rootURL.standardizedFileURL.pathComponents
         let parts = Array(url.standardizedFileURL.pathComponents.dropFirst(rootParts.count))
-        if parts.first == "Applications" { return true }
+        if parts.first == "Applications" {
+            return true
+        }
         return parts.count > 3 && parts[0] == "Users" && parts[2] == "Applications"
     }
 
@@ -208,6 +222,35 @@ public struct InstallerReceiptSource: EvidenceSource {
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         else { return nil }
         return (plist["InstallToken"] as? String, plist["InstallPrefixPath"] as? String ?? "")
+    }
+
+    /// All receipt files, not just the top-level discovery hints. An unreadable
+    /// or malformed payload keeps its receipt. This never removes payload files.
+    public static func reviewedPayload(for packageID: String, receiptURL: URL,
+                                       in root: FileSystemRoot) -> [String]? {
+        guard root.rootURL.standardizedFileURL.path == "/",
+              !packageID.hasPrefix("-"), !packageID.contains("/"),
+              let metadata = receipt(receiptURL.deletingLastPathComponent(), packageID),
+              let output = ToolOutput.read("/usr/sbin/pkgutil", ["--only-files", "--files", packageID])
+        else { return nil }
+        return payloadPaths(listing: output, prefix: metadata.prefix, in: root)
+    }
+
+    static func payloadPaths(listing: String, prefix: String, in root: FileSystemRoot) -> [String]? {
+        let boundary = root.rootURL.standardizedFileURL.path
+        let base = root.rootURL.appendingPathComponent(prefix).standardizedFileURL
+        guard boundary == "/" || base.path == boundary || base.path.hasPrefix(boundary + "/") else { return nil }
+        let lines = listing.split(separator: "\n").map(String.init)
+        guard !lines.isEmpty, lines.count <= 100_000 else { return nil }
+        var paths = Set<String>()
+        for line in lines {
+            guard !line.hasPrefix("/"), !line.contains("\0"),
+                  !line.split(separator: "/").contains("..") else { return nil }
+            let path = base.appendingPathComponent(line).standardizedFileURL.path
+            guard path.hasPrefix(base.path == "/" ? "/" : base.path + "/") else { return nil }
+            paths.insert(path)
+        }
+        return paths.sorted()
     }
 
     /// Asks `pkgutil`, which reads the BOM format, and only about the real

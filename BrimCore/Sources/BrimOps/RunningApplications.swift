@@ -112,12 +112,16 @@ public enum RunningApplications {
         }
 
         return running.filter { candidate in
+            // The selected path distinguishes copies sharing an identifier.
+            // Fall back to identifier matching only when a path is unknown.
+            if let resolvedBundle, let theirPath = candidate.bundlePath {
+                let resolvedCandidate = URL(fileURLWithPath: theirPath).resolvingSymlinksInPath().path
+                return resolvedCandidate == resolvedBundle || resolvedCandidate.hasPrefix(resolvedBundle + "/")
+            }
             if let bundleID, let theirs = candidate.bundleIdentifier, theirs == bundleID {
                 return true
             }
-            guard let resolvedBundle, let theirPath = candidate.bundlePath else { return false }
-            return theirPath == resolvedBundle
-                || theirPath.hasPrefix(resolvedBundle.hasSuffix("/") ? resolvedBundle : resolvedBundle + "/")
+            return false
         }
     }
 

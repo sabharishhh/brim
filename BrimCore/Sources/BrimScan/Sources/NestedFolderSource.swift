@@ -15,7 +15,11 @@ import Foundation
 /// it. A name alone never counts. `~/Documents/antigravity` is somebody's
 /// project, and the person's own folders are never read.
 public struct NestedFolderSource: EvidenceSource {
-    public init() {}
+    private let budget: @Sendable () -> ScanBudget
+
+    public init(budget: @escaping @Sendable () -> ScanBudget = { ScanBudget() }) {
+        self.budget = budget
+    }
 
     public func evidence(for identity: Identity, in root: FileSystemRoot) async throws -> [Evidence] {
         await scan(for: identity, in: root).evidence
@@ -26,47 +30,68 @@ public struct NestedFolderSource: EvidenceSource {
         let names = ProvenanceSource.names(for: identity)
         guard !identifiers.isEmpty || !names.isEmpty else { return EvidenceFindings(evidence: []) }
         let stamp = identity.bundlePath.flatMap(ProvenanceSource.provenance)
+        var search = DirectorySearch(budget: budget())
         var evidence: [Evidence] = []
-        for parent in Self.parents(in: root) {
+        let parents = Self.parents(in: root, search: &search)
+        for parent in parents {
             let parentName = parent.lastPathComponent
             // A folder named for the application is the application's
             // already, and macOS's own folders hold nothing of anyone else's.
-            if ProvenanceSource.isNamed(parentName, identifiers: identifiers, names: names)
-                || LeftoversScanner.isAppleOwned(parentName) { continue }
-            guard case let .listed(children) = DirectoryEntries.read(parent) else { continue }
-            for child in children.prefix(500) {
+            let skipParent = ProvenanceSource.isNamed(parentName, identifiers: identifiers, names: names)
+                || LeftoversScanner.isAppleOwned(parentName)
+            if skipParent {
+                continue
+            }
+            for child in search.entries(parent) {
+                guard search.canContinue(at: parent) else { break }
                 let url = parent.appendingPathComponent(child)
                 if Self.isNamedWithIdentifier(child, identifiers) {
                     evidence.append(Evidence(
                         url: url, tier: .B, mechanism: "NestedFolderSource",
-                        humanSentence: "Named for \(identity.name) inside \(parentName)."))
-                } else if let stamp, ProvenanceSource.isNamed(child, identifiers: [], names: names),
-                          ProvenanceSource.provenance(url.path) == stamp {
+                        humanSentence: "Named for \(identity.name) inside \(parentName)."
+                    ))
+                } else if let stamp {
+                    let named = ProvenanceSource.isNamed(child, identifiers: [], names: names)
+                    guard named, ProvenanceSource.provenance(url.path) == stamp else { continue }
                     evidence.append(Evidence(
                         url: url, tier: .B, mechanism: "NestedFolderSource",
-                        humanSentence: "macOS records that \(identity.name) created this inside \(parentName)."))
+                        humanSentence: "macOS records that \(identity.name) created this inside \(parentName)."
+                    ))
                 }
             }
         }
-        return EvidenceFindings(evidence: evidence)
+        return EvidenceFindings(evidence: evidence, completeness: search.completeness)
     }
 
     /// The folders whose children are read: the home folder's dot folders
     /// and the places applications keep their own data.
-    static func parents(in root: FileSystemRoot) -> [URL] {
+    private static func parents(in root: FileSystemRoot, search: inout DirectorySearch) -> [URL] {
         let home = root.url(for: .userLibrary).deletingLastPathComponent()
+        let locations = [(home, true)] + [FileSystemRoot.Domain.userApplicationSupport, .userCaches, .userLogs,
+                                          .userDotConfig, .userDotCache, .userDotLocalShare]
+            .map { (root.url(for: $0), false) }
         var parents: [URL] = []
-        if case let .listed(entries) = DirectoryEntries.read(home) {
-            parents += entries.filter { $0.hasPrefix(".") && $0 != ".Trash" }
-                .map { home.appendingPathComponent($0) }
+        for (directory, hiddenOnly) in locations {
+            let names = search.entries(directory).filter {
+                hiddenOnly ? $0.hasPrefix(".") && $0 != ".Trash" : !$0.hasPrefix(".")
+            }
+            for name in names {
+                guard search.canContinue(at: directory) else { break }
+                let url = directory.appendingPathComponent(name)
+                do {
+                    let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    if values.isDirectory == true, values.isSymbolicLink != true {
+                        parents.append(url)
+                    }
+                } catch {
+                    // A vanished child is absent; other stat failures hide a possible parent.
+                    if !DirectoryEntries.isMissing(error) {
+                        search.unreadable.append(url.path)
+                    }
+                }
+            }
         }
-        for domain in [FileSystemRoot.Domain.userApplicationSupport, .userCaches, .userLogs,
-                       .userDotConfig, .userDotCache, .userDotLocalShare] {
-            let folder = root.url(for: domain)
-            guard case let .listed(entries) = DirectoryEntries.read(folder) else { continue }
-            parents += entries.filter { !$0.hasPrefix(".") }.map { folder.appendingPathComponent($0) }
-        }
-        return parents.filter(Self.isFolder)
+        return parents
     }
 
     static func isNamedWithIdentifier(_ name: String, _ identifiers: [String]) -> Bool {

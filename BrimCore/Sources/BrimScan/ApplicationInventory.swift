@@ -31,7 +31,7 @@ public actor ApplicationInventory {
     public func installedApplications() async -> [InstalledApplication] {
         var seen = Set<String>()
         var results: [InstalledApplication] = []
-        let casks = UpdateSourceScanner().installedCasks()
+        let casks = UpdateSourceScanner().installedCaskInventory()
         var developers = DeveloperNames()
 
         for candidate in candidates() {
@@ -64,7 +64,7 @@ public actor ApplicationInventory {
     /// Category, source, developer and use, for grouping. Every value is
     /// read from a file or Spotlight; none of it is worked out by guessing.
     private func describe(
-        _ application: inout InstalledApplication, resolved: URL, casks: Set<String>,
+        _ application: inout InstalledApplication, resolved: URL, casks: HomebrewCaskInventory,
         developers: inout DeveloperNames
     ) {
         let bundleID = application.identity.bundleID

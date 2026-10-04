@@ -25,7 +25,9 @@ final class RecordedOutcomeCopyTests: XCTestCase {
         ) { _ in .ok }
 
         XCTAssertFalse(text.contains("did not say why"), text)
-        XCTAssertTrue(text.contains("helper"), text)
+        XCTAssertTrue(text.contains("Administrator cleanup was unavailable"), text)
+        XCTAssertTrue(text.contains("Review the removal again"), text)
+        XCTAssertFalse(text.contains("turned on in Background"), text)
         XCTAssertTrue(text.contains(folder), "Where they are is part of the answer:\n\(text)")
         XCTAssertTrue(text.hasSuffix("node, npm, npx"), text)
     }

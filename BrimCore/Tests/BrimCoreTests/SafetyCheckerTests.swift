@@ -2,8 +2,21 @@ import XCTest
 @testable import BrimCore
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 final class SafetyCheckerTests: XCTestCase {
     
+    func testSharedBackgroundDatabaseAndItsParentsCannotBeRemoved() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let checker = SafetyChecker(root: FileSystemRoot(rootURL: directory),
+                                    brimAppURL: directory.appendingPathComponent("Applications/Brim.app"))
+        for path in ["var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v18-account.btm",
+                     "private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v18-account.btm",
+                     "var/db/com.apple.backgroundtaskmanagement", "var/db"] {
+            XCTAssertFalse(checker.isSafeToRemove(url: directory.appendingPathComponent(path)), path)
+        }
+    }
+
     func testSafetyCheckerRejectsForbiddenPaths() {
         let fakeRootURL = URL(fileURLWithPath: "/private/var/folders/xyz/temp")
         let root = FileSystemRoot(rootURL: fakeRootURL)

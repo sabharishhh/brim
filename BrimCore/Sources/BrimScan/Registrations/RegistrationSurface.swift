@@ -1,6 +1,7 @@
 import BrimCore
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// A place macOS records that an application exists, other than the
 /// filesystem.
 ///
@@ -26,9 +27,14 @@ public protocol RegistrationSurface: Sendable {
 public struct RegistrationSnapshot: Sendable {
     public let registrations: [Registration]
     public let coverage: RegistrationCoverage
-    public init(registrations: [Registration], coverage: RegistrationCoverage) {
+    public let observedAt: Date
+    public let readerVersion: Int
+    public init(registrations: [Registration], coverage: RegistrationCoverage,
+                observedAt: Date = Date(), readerVersion: Int = 1) {
         self.registrations = registrations
         self.coverage = coverage
+        self.observedAt = observedAt
+        self.readerVersion = readerVersion
     }
 }
 
@@ -45,6 +51,22 @@ public actor RegistrationInventory {
 
     public init(surfaces: [any RegistrationSurface]) {
         self.surfaces = surfaces
+    }
+
+    public func snapshot(in root: FileSystemRoot) async -> RegistrationReport {
+        let results = await withTaskGroup(of: (Int, RegistrationSnapshot).self) { group in
+            for (index, source) in surfaces.enumerated() {
+                group.addTask { await (index, source.snapshot(in: root)) }
+            }
+            var results: [Int: RegistrationSnapshot] = [:]
+            for await (index, result) in group {
+                results[index] = result
+            }
+            return results
+        }
+        let ordered = surfaces.indices.compactMap { results[$0] }
+        return RegistrationReport(registrations: ordered.flatMap(\.registrations),
+                                  coverage: ordered.map(\.coverage))
     }
 
     /// Every registration on the machine, from every readable surface.
@@ -110,7 +132,8 @@ public actor RegistrationInventory {
 
         return mine.filter { registration in
             !otherClaimants.contains { other in
-                guard other.identity.bundleID != identity.bundleID else { return false }
+                guard !Self.isSameInstallation(other.identity, bundleURL: other.bundleURL,
+                                               as: identity, bundleURL: bundleURL) else { return false }
                 return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
             }
         }
@@ -123,11 +146,23 @@ public actor RegistrationInventory {
         besides identity: Identity,
         among candidates: [(identity: Identity, bundleURL: URL?)]
     ) -> [Identity] {
-        candidates.compactMap { other in
-            guard other.identity.bundleID != identity.bundleID else { return nil }
+        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0) }
+        return candidates.compactMap { other in
+            guard !Self.isSameInstallation(other.identity, bundleURL: other.bundleURL,
+                                           as: identity, bundleURL: subject)
+            else { return nil }
             return registration.belongs(to: other.identity, bundleURL: other.bundleURL)
                 ? other.identity : nil
         }
+    }
+
+    private static func isSameInstallation(
+        _ other: Identity, bundleURL: URL?, as identity: Identity, bundleURL subjectURL: URL?
+    ) -> Bool {
+        let otherPath = bundleURL ?? other.bundlePath.map { URL(fileURLWithPath: $0) }
+        let subjectPath = subjectURL ?? identity.bundlePath.map { URL(fileURLWithPath: $0) }
+        guard let otherPath, let subjectPath else { return other == identity }
+        return otherPath.resolvingSymlinksInPath().path == subjectPath.resolvingSymlinksInPath().path
     }
 
     /// Registrations pointing at something no longer installed, whichever

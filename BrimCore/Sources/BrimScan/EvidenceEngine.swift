@@ -2,7 +2,7 @@ import BrimCore
 import Foundation
 
 /// The engine revision, bumped whenever heuristic logic changes.
-public let EvidenceEngineRevision = "1.1.0"
+public let EvidenceEngineRevision = "1.2.0"
 
 /// The discovered application artifact containing deduplicated and sorted evidence.
 public struct DiscoveredApp: AppArtifact {

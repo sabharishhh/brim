@@ -14,77 +14,165 @@ import Foundation
 public struct ProjectBuildScanner: Sendable {
     struct Kind: Sendable {
         let markers: [String]
-        let folders: [String]
+        let artifacts: [Artifact]
         let tool: String
-        let rebuild: String
-        /// A lock file that must sit beside the marker, so reinstalling gives
-        /// back the same packages. Empty when the build needs none.
-        var lockFiles: [String] = []
     }
 
-    static let kinds: [Kind] = [
-        Kind(markers: ["Cargo.toml"], folders: ["target"], tool: "Rust", rebuild: "cargo build"),
-        Kind(markers: ["Package.swift"], folders: [".build"], tool: "Swift", rebuild: "swift build"),
-        Kind(markers: ["package.json"], folders: ["node_modules", ".next"], tool: "Node", rebuild: "npm install",
-             lockFiles: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock"]),
-        Kind(markers: ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
-             folders: ["build", ".gradle"], tool: "Gradle", rebuild: "the next Gradle build"),
-        Kind(markers: ["pubspec.yaml"], folders: [".dart_tool", "build"], tool: "Flutter", rebuild: "flutter pub get"),
-        Kind(markers: ["pyproject.toml", "requirements.txt"], folders: [".venv", "venv"], tool: "Python",
-             rebuild: "reinstalling the project's packages"),
-        Kind(markers: ["Podfile"], folders: ["Pods"], tool: "CocoaPods", rebuild: "pod install",
-             lockFiles: ["Podfile.lock"]),
-        Kind(markers: ["pom.xml"], folders: ["target"], tool: "Maven", rebuild: "mvn package"),
-        Kind(markers: ["mix.exs"], folders: ["_build", "deps"], tool: "Elixir", rebuild: "mix compile")
-    ]
+    struct Artifact: Sendable {
+        let folder: String
+        let classification: ArtifactClassification
+        let restore: String
+        var lockFiles: [String] = []
+        var dependency: String?
+    }
 
-    /// Where projects are looked for when Spotlight cannot answer.
     static let usualFolders = ["Developer", "Projects", "Code", "code", "src", "dev", "work", "GitHub", "Documents"]
-
     public typealias Search = @Sendable (_ markers: [String], _ home: URL) -> [URL]?
-
     private let search: Search
 
     public init(search: @escaping Search = ProjectBuildScanner.spotlight) {
         self.search = search
     }
 
-    public func scan(home: URL) -> [DeveloperCache] {
+    public func scan(home: URL, excluding: [URL] = []) -> [DeveloperCache] {
+        discover(home: home, excluding: excluding).compactMap { cache in
+            let size = ArtifactSizer.measure(at: cache.url)
+            return size.isEmpty ? nil : cache.measured(using: size)
+        }.sorted { $0.sizeBytes > $1.sizeBytes }
+    }
+
+    /// Discovery returns rows before their potentially expensive size walks.
+    public func discover(home: URL, excluding: [URL] = []) -> [DeveloperCache] {
         let markers = Self.kinds.flatMap(\.markers)
         let files = search(markers, home) ?? Self.walk(markers, home: home)
         var seen = Set<String>()
+        var seenProjects = Set<String>()
         var found: [DeveloperCache] = []
         for file in files where Self.isProjectFile(file, home: home) {
+            if Task.isCancelled {
+                break
+            }
             let project = file.deletingLastPathComponent()
-            guard let kind = Self.kinds.first(where: { $0.markers.contains(file.lastPathComponent) }) else { continue }
-            if !kind.lockFiles.isEmpty, !kind.lockFiles.contains(where: {
-                FileManager.default.fileExists(atPath: project.appendingPathComponent($0).path)
-            }) { continue }
-            for folder in kind.folders {
-                let output = project.appendingPathComponent(folder)
-                guard seen.insert(output.path).inserted, Self.isRealFolder(output) else { continue }
-                let size = DeveloperCacheScanner.size(of: output)
-                guard size > 0 else { continue }
-                found.append(DeveloperCache(
-                    name: "Build output", tool: project.lastPathComponent, url: output, sizeBytes: size,
-                    cost: .rebuilt,
-                    explanation: "\(kind.tool) build output in \(project.path.replacingOccurrences(of: home.path, with: "~")). "
-                        + "Made again by \(kind.rebuild).",
-                    lastBuilt: Self.lastChanged(output)
-                ))
+            guard seenProjects.insert(project.standardizedFileURL.path).inserted else { continue }
+            for cache in Self.candidates(project: project, home: home) {
+                let path = cache.url.standardizedFileURL.path
+                guard !excluding.contains(where: { ArtifactSizer.rootsOverlap(cache.url, $0) }),
+                      seen.insert(path).inserted else { continue }
+                found.append(cache)
             }
         }
-        return found.sorted { $0.sizeBytes > $1.sizeBytes }
+        return found
+    }
+
+    private static func candidates(project: URL, home: URL) -> [DeveloperCache] {
+        let proven = kinds.filter { kind in
+            kind.markers.contains { marker in
+                let file = project.appendingPathComponent(marker)
+                return isProjectFile(file, home: home) && isRealFile(file)
+            }
+        }
+        let entries = proven.flatMap { kind in kind.artifacts.map { (kind, $0) } }.sorted {
+            ($0.1.classification == .stateful ? 0 : 1) < ($1.1.classification == .stateful ? 0 : 1)
+        }
+        var seen = Set<String>()
+        return entries.compactMap { kind, artifact in
+            let output = project.appendingPathComponent(artifact.folder)
+            guard isRealFolder(output), isContained(output, by: project),
+                  artifact.lockFiles.isEmpty || artifact.lockFiles.contains(where: {
+                      isRealFile(project.appendingPathComponent($0))
+                  }), (artifact.dependency.map { hasDependency($0, in: project) } ?? true)
+            else { return nil }
+            let restore = artifact.folder == "node_modules"
+                ? nodeRestore(in: project) : artifact.restore
+            guard let restore, seen.insert(output.standardizedFileURL.path).inserted else { return nil }
+            let classification = artifact.classification
+            let presentation = presentation(for: classification)
+            let recovery = classification == .stateful
+                ? "Reported only. Restore through \(restore)."
+                : "Made again by \(restore)."
+            let protection = classification == .dependencyStore
+                ? " Moved to the Trash so local changes and offline copies can be recovered." : ""
+            return DeveloperCache(
+                name: presentation.name, tool: project.lastPathComponent, url: output, sizeBytes: 0,
+                cost: presentation.cost,
+                explanation: "\(kind.tool) artifact in \(project.path.replacingOccurrences(of: home.path, with: "~")). "
+                    + recovery + protection,
+                lastBuilt: lastChanged(output), sizeMeasurement: .pending,
+                artifactClassification: classification
+            )
+        }
+    }
+
+    private static func presentation(for value: ArtifactClassification) -> (cost: DeveloperCache.Cost, name: String) {
+        switch value {
+        case .rebuildableOutput: (.rebuilt, "Build output")
+        case .rebuildableCache: (.rebuilt, "Build cache")
+        case .dependencyStore: (.restored, "Project dependencies and cache")
+        case .toolManaged: (.refetched, "Tool-managed store")
+        case .stateful, .unknown: (.configured, "Project environment")
+        }
+    }
+
+    private static func nodeRestore(in project: URL) -> String? {
+        let choices = [
+            (["package-lock.json", "npm-shrinkwrap.json"], "npm ci"),
+            (["pnpm-lock.yaml"], "pnpm install --frozen-lockfile"),
+            (["yarn.lock"], "yarn install using the lockfile"),
+            (["bun.lock", "bun.lockb"], "bun install --frozen-lockfile")
+        ]
+        let present = choices.filter { names, _ in names.contains { isRealFile(project.appendingPathComponent($0)) } }
+        guard present.count == 1 else { return nil }
+        if let declared = packageJSON(in: project)?["packageManager"] as? String {
+            let manager = declared.split(separator: "@").first.map(String.init)
+            guard let manager, present[0].1.hasPrefix(manager + " ") else { return nil }
+        }
+        return present[0].1
+    }
+
+    private static func hasDependency(_ name: String, in project: URL) -> Bool {
+        guard let json = packageJSON(in: project) else { return false }
+        return ["dependencies", "devDependencies"].contains { key in
+            (json[key] as? [String: Any])?[name] != nil
+        }
+    }
+
+    private static func packageJSON(in project: URL) -> [String: Any]? {
+        let file = project.appendingPathComponent("package.json")
+        guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+              size <= 1024 * 1024, let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private static func isRealFile(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        return values?.isRegularFile == true && values?.isSymbolicLink != true
+    }
+
+    private static func isContained(_ output: URL, by project: URL) -> Bool {
+        output.resolvingSymlinksInPath().path.hasPrefix(project.resolvingSymlinksInPath().path + "/")
     }
 
     /// A project's own file, not one inside a dependency, a build, the
     /// Library, the Trash or a hidden folder.
     static func isProjectFile(_ file: URL, home: URL) -> Bool {
         let path = file.standardizedFileURL.path
-        guard path.hasPrefix(home.standardizedFileURL.path + "/") else { return false }
+        guard path.hasPrefix(home.standardizedFileURL.path + "/"),
+              file.resolvingSymlinksInPath().path.hasPrefix(home.resolvingSymlinksInPath().path + "/")
+        else { return false }
         let parts = path.dropFirst(home.standardizedFileURL.path.count + 1).split(separator: "/")
-        let excluded: Set<Substring> = ["Library", "node_modules", "target", "build", "Pods", "deps", "_build",
-                                        "Applications", "Pictures", "Music", "Movies"]
+        let excluded: Set<Substring> = [
+            "Library",
+            "node_modules",
+            "target",
+            "build",
+            "Pods",
+            "deps",
+            "_build",
+            "Applications",
+            "Pictures",
+            "Music",
+            "Movies"
+        ]
         return !parts.dropLast().contains { $0.hasPrefix(".") || excluded.contains($0) }
     }
 
@@ -99,7 +187,8 @@ public struct ProjectBuildScanner: Sendable {
         let keys: [URLResourceKey] = [.contentModificationDateKey]
         var newest = (try? folder.resourceValues(forKeys: Set(keys)))?.contentModificationDate ?? .distantPast
         for child in (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: keys, options: [])) ?? [] {
+            at: folder, includingPropertiesForKeys: keys, options: []
+        )) ?? [] {
             if let date = (try? child.resourceValues(forKeys: Set(keys)))?.contentModificationDate, date > newest {
                 newest = date
             }
@@ -128,13 +217,123 @@ public struct ProjectBuildScanner: Sendable {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
             for case let url as URL in enumerator {
-                if enumerator.level > 4 { enumerator.skipDescendants(); continue }
+                if Task.isCancelled {
+                    return found
+                }
+                if enumerator.level > 4 {
+                    enumerator.skipDescendants(); continue
+                }
                 if ["node_modules", "target", "build", "Pods", ".build"].contains(url.lastPathComponent) {
                     enumerator.skipDescendants(); continue
                 }
-                if wanted.contains(url.lastPathComponent) { found.append(url) }
+                if wanted.contains(url.lastPathComponent) {
+                    found.append(url)
+                }
             }
         }
         return found
+    }
+}
+
+extension ProjectBuildScanner {
+    /// Used again by service planning. UI eligibility is never the authority.
+    public static func classification(at url: URL, home: URL) -> ArtifactClassification? {
+        guard url.isFileURL, url.path.hasPrefix("/") else { return nil }
+        if hasEnvironmentAncestor(url) || hasEnvironmentAncestor(url.resolvingSymlinksInPath()) {
+            return .stateful
+        }
+        let homes = Set([home.standardizedFileURL.path, home.resolvingSymlinksInPath().path])
+        var seen = Set<String>()
+        var exactClassification: ArtifactClassification?
+        var overlapsToolStore = false
+        for start in [url.standardizedFileURL, url.resolvingSymlinksInPath()] {
+            var path = start.standardizedFileURL.path
+            while homes.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
+                let project = URL(fileURLWithPath: path)
+                if seen.insert(path).inserted {
+                    if protectsStatefulEntry(target: url, project: project, home: home) {
+                        return .stateful
+                    }
+                    let isStateful = classify(
+                        candidates(project: project, home: home),
+                        target: url,
+                        exact: &exactClassification,
+                        overlapsToolStore: &overlapsToolStore
+                    )
+                    if isStateful {
+                        return .stateful
+                    }
+                }
+                guard let parent = parentPath(of: path) else { break }
+                path = parent
+            }
+        }
+        return overlapsToolStore ? .toolManaged : exactClassification
+    }
+
+    private static func classify(
+        _ caches: [DeveloperCache], target: URL,
+        exact: inout ArtifactClassification?, overlapsToolStore: inout Bool
+    ) -> Bool {
+        for cache in caches {
+            let overlaps = ArtifactSizer.rootsOverlap(target, cache.url)
+            if cache.artifactClassification == .stateful, overlaps {
+                return true
+            }
+            if cache.artifactClassification == .toolManaged, overlaps {
+                overlapsToolStore = true
+            }
+            if sameTarget(cache.url, target) {
+                exact = cache.artifactClassification
+            }
+        }
+        return false
+    }
+
+    private static func sameTarget(_ first: URL, _ second: URL) -> Bool {
+        first.standardizedFileURL.path == second.standardizedFileURL.path
+            || first.resolvingSymlinksInPath().path == second.resolvingSymlinksInPath().path
+    }
+
+    /// Negative protection does not require a removable directory. A linked
+    /// environment still owns its contents, even outside the project.
+    private static func protectsStatefulEntry(target: URL, project: URL, home: URL) -> Bool {
+        kinds.contains { kind in
+            guard kind.artifacts.contains(where: { $0.classification == .stateful }),
+                  kind.markers.contains(where: {
+                      let marker = project.appendingPathComponent($0)
+                      return isProjectFile(marker, home: home) && isRealFile(marker)
+                  }) else { return false }
+            return kind.artifacts.contains { artifact in
+                let entry = project.appendingPathComponent(artifact.folder)
+                return artifact.classification == .stateful && PathExistence.exists(at: entry)
+                    && ArtifactSizer.rootsOverlap(target, entry)
+            }
+        }
+    }
+
+    /// Python creates this marker in a virtual environment. It also protects
+    /// direct targets using the resolved location of a project environment.
+    private static func hasEnvironmentAncestor(_ target: URL) -> Bool {
+        guard target.isFileURL, target.path.hasPrefix("/") else { return false }
+        var path = target.standardizedFileURL.path
+        while path != "/" {
+            let folder = URL(fileURLWithPath: path)
+            if isRealFile(folder.appendingPathComponent("pyvenv.cfg")) {
+                return true
+            }
+            guard let parent = parentPath(of: path) else { return false }
+            path = parent
+        }
+        return false
+    }
+
+    /// String parents reach the filesystem root monotonically. Foundation
+    /// file URL parents can alternate between root and empty path forms.
+    private static func parentPath(of path: String) -> String? {
+        guard path != "/", path.hasPrefix("/") else { return nil }
+        let parent = (path as NSString).deletingLastPathComponent
+        guard parent.hasPrefix("/"), parent.utf8.count < path.utf8.count else { return nil }
+        return parent
     }
 }
