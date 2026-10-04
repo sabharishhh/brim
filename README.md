@@ -6,7 +6,10 @@ you remove it.
 Every row says how Brim knows what it claims: an installer receipt, a
 launch job, a record macOS keeps, a matching identifier. Anything another
 installed app still uses stays where it is. Removals go to the Trash first
-and can be put back from History.
+when possible. Writable files can be put back from History. Protected files
+may be retained as recovery copies without a restore action in Brim.
+Permanent actions, including deleting recovery copies, are shown before
+approval.
 
 Brim runs on macOS 27 or later.
 

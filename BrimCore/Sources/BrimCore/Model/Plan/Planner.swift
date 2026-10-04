@@ -347,31 +347,31 @@ public struct Planner: Sendable {
         }
 
         if intent.type == .uninstall,
-           intent.explicitTargets.isEmpty,
-           capabilityReport?.checks.first(where: { $0.capability == .launchServices })?.coverage.absence != .byDesign,
-           let bundleStep = steps.first(where: { $0.executionPhase == .appBundle }) {
-            let host = bundleStep.target
+           capabilityReport?.checks.first(where: { $0.capability == .launchServices })?.coverage.absence != .byDesign {
+            let removedPaths = steps.filter {
+                [.trashPath, .trashPathPrivileged].contains($0.kind)
+            }.map(\.target)
             let registered = capabilityReport?.checks
-                .first { $0.capability == .launchServices }?.registrations.compactMap(\.programPath) ?? []
-            let components = evaluatedFootprint.identity.identitySurface?.components.map(\.path) ?? []
-            let paths = Set([host] + (registered + components).filter {
-                $0.hasPrefix(host + "/") && $0.hasSuffix(".app")
+                .first { $0.capability == .launchServices }?.registrations ?? []
+            let components = evaluatedFootprint.identity.identitySurface?.components ?? []
+            let hosts = intent.explicitTargets.isEmpty
+                ? steps.filter { $0.executionPhase == .appBundle }.map(\.target) : []
+            let paths = Set((hosts + registered.compactMap(\.programPath) + components.map(\.path)).filter { path in
+                URL(fileURLWithPath: path).pathExtension.lowercased() == "app"
+                    && removedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
             })
             for registrationPath in paths.sorted() {
+                let identifier = registered.first { $0.programPath == registrationPath }?.identifier
+                    ?? components.first { $0.path == registrationPath }?.bundleIdentifier
+                    ?? (hosts.contains(registrationPath) ? evaluatedFootprint.identity.bundleID : nil)
                 steps.append(Step(
-                    index: index,
-                    kind: .unregisterLaunchServices,
-                    target: registrationPath,
-                    targetFingerprint: nil,
-                    tier: .A,
+                    index: index, kind: .unregisterLaunchServices,
+                    target: registrationPath, targetFingerprint: nil, tier: .A,
                     evidence: "Removes the Launch Services registration, so the app stops appearing in "
                         + "\"Open With\" and no longer claims its document types or URL schemes.",
-                    expectedBytes: 0,
-                    capability: .ok,
-                    reversible: false,
-                    costOfError: .low,
-                    executionPhase: .registration,
-                    disposition: .delete
+                    expectedBytes: 0, capability: .ok, reversible: false, costOfError: .low,
+                    executionPhase: .registration, disposition: .delete,
+                    registrationBundleID: identifier
                 ))
                 index += 1
             }
