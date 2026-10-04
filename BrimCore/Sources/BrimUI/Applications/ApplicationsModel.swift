@@ -204,6 +204,17 @@ public final class ApplicationsModel: ObservableObject {
             try Task.checkCancellation()
             applications = found
             errorMessage = nil
+            // A selection outlives the panel that removed its app, so the
+            // inspector went on offering eqMac's old footprint and a Remove
+            // button after the app was gone. The fresh list is the record.
+            let listed = Set(found.map(\.id))
+            marked.removeAll { !listed.contains($0.id) }
+            if let selected, !listed.contains(selected.id) {
+                inspectionTask?.cancel()
+                self.selected = nil
+                footprint = nil
+                isInspecting = false
+            }
         } catch is CancellationError {
             return
         } catch {
