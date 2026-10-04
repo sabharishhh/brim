@@ -43,7 +43,7 @@ public struct InstallObservation: Equatable, Sendable, Codable {
 /// and it is one more daemon on a Mac whose whole complaint is that it
 /// has too many. Two snapshots and a difference answer the same question
 /// for nothing.
-public struct InstallChange: Equatable, Sendable, Codable {
+public struct InstallChange: Equatable, Sendable, Codable, Identifiable {
     public enum Kind: Equatable, Sendable, Codable {
         case appeared
         case disappeared
@@ -58,13 +58,22 @@ public struct InstallChange: Equatable, Sendable, Codable {
     public let name: String
     public let since: Date
     public let until: Date
+    /// The newer snapshot's existing identifier, when available. Several
+    /// events for one app can share a timestamp but cannot share a snapshot.
+    public let snapshotID: String?
 
-    public init(kind: Kind, bundleID: String, name: String, since: Date, until: Date) {
+    public init(kind: Kind, bundleID: String, name: String, since: Date, until: Date, snapshotID: String? = nil) {
         self.kind = kind
         self.bundleID = bundleID
         self.name = name
         self.since = since
         self.until = until
+        self.snapshotID = snapshotID
+    }
+
+    public var id: String {
+        let snapshot = snapshotID ?? "\(since.timeIntervalSince1970):\(until.timeIntervalSince1970)"
+        return snapshot + "|" + bundleID
     }
 
     /// The consequence, not the category.

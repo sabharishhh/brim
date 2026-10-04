@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Leftovers view.
 ///
@@ -14,7 +14,6 @@ import BrimProtocol
 /// Collapsing them into one list would quietly pre-select the second kind.
 @MainActor
 public final class LeftoversModel: ObservableObject {
-
     @Published public private(set) var orphaned: [Leftover] = []
     @Published public private(set) var unclaimed: [Leftover] = []
     @Published public private(set) var isScanning = false
@@ -61,7 +60,16 @@ public final class LeftoversModel: ObservableObject {
 
     public init() {}
 
-    public var all: [Leftover] { orphaned + unclaimed }
+    public var all: [Leftover] {
+        orphaned + unclaimed
+    }
+
+    /// Unknown items shown for review use the same rule on Home and Remnants.
+    public var unclaimedGroupsForReview: [LeftoverGroup] {
+        unclaimedGroups.filter {
+            $0.totalBytes >= 1_000_000 || $0.items.contains { $0.capability != .ok || $0.sizeIsKnown == false }
+        }
+    }
 
     public var hasUnreadRecoveryCopies: Bool {
         unclaimed.contains { $0.url.path == RecoveryCopy.directory }
@@ -323,6 +331,7 @@ public final class LeftoversModel: ObservableObject {
             return
         } catch {
             hasLoaded = false
+            checkedAt = nil
             inspected = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
