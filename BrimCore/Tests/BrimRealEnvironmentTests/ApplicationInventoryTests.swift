@@ -69,7 +69,7 @@ final class EmbeddedApplicationTests: XCTestCase {
 
     func testAHelperBuriedElsewhereInABundleIsNotAnApp() {
         let url = URL(fileURLWithPath: "/Applications/Chrome.app/Contents/Frameworks/Helper.app")
-        XCTAssertNil(ApplicationInventory.placement(of: url) as String??)
+        XCTAssertTrue(ApplicationInventory.placement(of: url) == nil)
     }
 
     func testAnAppDeepInOrdinaryFoldersStandsAlone() {

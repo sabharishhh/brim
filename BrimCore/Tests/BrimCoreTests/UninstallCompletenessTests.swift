@@ -1,7 +1,8 @@
-import XCTest
 @testable import BrimCore
 @testable import BrimScan
+import XCTest
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// What the first real uninstall test on this Mac found missing.
 ///
 /// Four applications were measured against an independent scan before
@@ -123,7 +124,9 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertEqual(listed.map(\.url.lastPathComponent), ["Vendor Updater.app"])
 
         let identity = Identity(bundleID: "com.vendor.updater2", name: "Vendor Updater", bundlePath: updater.path)
-        let source = InstallerReceiptSource(payload: { id, _ in id == "com.vendor.package.Updater.app" ? ["Vendor Updater.app"] : nil })
+        let source = InstallerReceiptSource(payload: { id, _ in
+            id == "com.vendor.package.Updater.app" ? ["Vendor Updater.app"] : nil
+        })
         let found = await source.scan(for: identity, in: root).evidence
         XCTAssertEqual(found.map(\.url.lastPathComponent), ["com.vendor.package.Updater.app.bom"])
         XCTAssertEqual(found.first?.tier, .A)
@@ -291,16 +294,16 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertTrue(plan.steps.isEmpty)
     }
 
-    /// A receipt is forgotten, which removes its files. Trashing the BOM as
-    /// well gave one record two rows, one of them saying it stayed.
-    func testAReceiptIsForgottenRatherThanTrashed() {
+    /// A receipt with an unmeasured payload must stay. Forgetting the record
+    /// cannot establish that the package's files or shared components are gone.
+    func testAReceiptWithAnUnmeasuredPayloadIsKept() {
         let identity = Identity(bundleID: "com.test.app", name: "Test")
         let bom = URL(fileURLWithPath: "/private/var/db/receipts/com.test.app.bom")
         let receipt = FootprintItem(evidence: Evidence(url: bom, tier: .A, mechanism: "InstallerReceiptSource",
                                                        humanSentence: ""), sizeBytes: 1, capability: .needsHelper)
         let plan = plan(identity, [EvaluatedItem(footprintItem: receipt, selection: .selected, costOfError: .medium)])
-        XCTAssertEqual(plan.steps.map(\.kind), [.forgetReceipt])
-        XCTAssertTrue(plan.excludedItems.isEmpty)
+        XCTAssertTrue(plan.steps.isEmpty)
+        XCTAssertEqual(plan.excludedItems.first?.canBeTickedByHand, false)
     }
 
     /// An application an installer left owned by root is the helper's to
@@ -320,7 +323,8 @@ final class UninstallCompletenessTests: XCTestCase {
         let contents = url.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
         try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier,
-                                                              "CFBundleName": url.deletingPathExtension().lastPathComponent],
+                                                              "CFBundleName": url.deletingPathExtension()
+                                                                  .lastPathComponent],
                                            format: .xml, options: 0)
             .write(to: contents.appendingPathComponent("Info.plist"))
         return url

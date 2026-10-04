@@ -66,6 +66,17 @@ public struct SafetyChecker: Sendable {
         // Get the relative components
         let relativeComponents = Array(urlComponents.dropFirst(rootComponents.count))
         
+        // The BTM archive holds many applications' records. It is never
+        // an app-owned file, even when a record attributes one of its entries.
+        let protectedStores = [["var", "db", "com.apple.backgroundtaskmanagement"],
+                               ["private", "var", "db", "com.apple.backgroundtaskmanagement"]]
+        if protectedStores.contains(where: { store in
+            let sharedCount = min(store.count, relativeComponents.count)
+            return Array(store.prefix(sharedCount)) == Array(relativeComponents.prefix(sharedCount))
+        }) {
+            return false
+        }
+
         // 2. Protect /System
         if relativeComponents.first == "System" {
             return false

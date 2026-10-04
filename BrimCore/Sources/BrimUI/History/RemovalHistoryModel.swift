@@ -38,7 +38,7 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         if recoverable != nil {
             return nil
         }
-        if plan.steps.contains(where: { $0.kind == .trashPathPrivileged }) {
+        if plan.steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
             return "Set aside by the helper; restore is unavailable in Brim"
         }
         if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
