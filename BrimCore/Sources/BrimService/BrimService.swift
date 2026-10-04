@@ -816,7 +816,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
             && !privacyResetFailed && !otherActionsFailed && !executionEvidenceUnavailable
-            && !postChecks.contains(where: { !$0.remaining.isEmpty || $0.couldNotCheck })
+            && !postChecks.contains(where: { !$0.remaining.isEmpty })
+            && RemovalReport.unansweredChecks(postChecks, declaredNone: RemovalReport.declaredNone(in: plan)).isEmpty
         let recorded = Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining)
         let observedReason = Self.verificationReason(
             pathsRemaining: pathsRemaining,
