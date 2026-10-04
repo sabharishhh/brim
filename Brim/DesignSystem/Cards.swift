@@ -95,7 +95,6 @@ struct StatCard<Detail: View>: View {
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
-    @State private var isHovering = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -152,14 +151,9 @@ struct StatCard<Detail: View>: View {
             .fixedSize(horizontal: false, vertical: true)
             .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
-            .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
-            .offset(y: isHovering && !reduceMotion ? -2 : 0)
-            .animation(nil, value: reduceMotion)
+            .hoverLift()
         }
         .buttonStyle(.press)
-        .onHover { hovering in
-            withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) { isHovering = hovering }
-        }
         .accessibilityLabel("\(title), \(figure), \(phrase)")
     }
 }
@@ -226,5 +220,28 @@ struct FlowLayout: Layout {
             rows.append(current)
         }
         return rows
+    }
+}
+
+/// How a card on Home answers the pointer: it rises 2 points onto a soft
+/// shadow. Under Reduce Motion only the shadow comes. One modifier, so the
+/// stat cards, the notes above them and Recently installed answer alike.
+private struct HoverLift: ViewModifier {
+    @State private var isHovering = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
+            .offset(y: isHovering && !reduceMotion ? -2 : 0)
+            .onHover { hovering in
+                withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) { isHovering = hovering }
+            }
+    }
+}
+
+extension View {
+    func hoverLift() -> some View {
+        modifier(HoverLift())
     }
 }
