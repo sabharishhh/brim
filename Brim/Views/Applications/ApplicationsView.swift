@@ -251,7 +251,9 @@ struct ApplicationsView: View {
 /// An app and what is being done to it, for the review in the right pane.
 struct AppReview: Identifiable, Equatable {
     let app: InstalledApplication
-    var id: String { app.id }
+    var id: String {
+        app.id
+    }
 }
 
 /// The apps ticked with Select or Command-click, before their review.

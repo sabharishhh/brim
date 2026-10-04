@@ -32,7 +32,6 @@ struct AppStacks: View {
                     // a pinned header is drawn on its own band with a rule under it.
                     Group {
                         header(group)
-
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
@@ -164,7 +163,8 @@ struct AppTable: View {
                 HStack(spacing: 8) {
                     if model.isChoosing {
                         Image(systemName: model.isMarked(app) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(model.isMarked(app) ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary))
+                            .foregroundStyle(model
+                                .isMarked(app) ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.inkTertiary))
                             .opacity(app.isSystemProtected ? 0.35 : 1)
                             .accessibilityHidden(true)
                     }

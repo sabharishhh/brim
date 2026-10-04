@@ -25,25 +25,27 @@ struct StayingSection: View {
                 ForEach(items, id: \.target) { item in
                     let name = URL(fileURLWithPath: item.target).lastPathComponent
                     HStack(alignment: .top, spacing: 10) {
-                    LocationIcon(url: URL(fileURLWithPath: item.target))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(name).font(.callout)
-                        Text(UninstallPlanRow.abbreviated((item.target as NSString).deletingLastPathComponent))
-                            .font(.caption).foregroundColor(.secondary)
-                            .truncationMode(.middle).lineLimit(1)
-                        Text(item.reason)
-                            .font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 6)
-                    RevealButton(urls: [URL(fileURLWithPath: item.target)])
-                        .buttonStyle(.borderless)
+                        LocationIcon(url: URL(fileURLWithPath: item.target))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name).font(.callout)
+                            Text(UninstallPlanRow.abbreviated((item.target as NSString).deletingLastPathComponent))
+                                .font(.caption).foregroundColor(.secondary)
+                                .truncationMode(.middle).lineLimit(1)
+                            Text(item.reason)
+                                .font(.caption).foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        RevealButton(urls: [URL(fileURLWithPath: item.target)])
+                            .buttonStyle(.borderless)
                     }
                     .padding(.vertical, 1)
                     .listRowSeparator(.hidden)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(name), needs you. \(item.reason)")
-                    .accessibilityAction(named: "Show in Finder") { RevealButton.reveal([URL(fileURLWithPath: item.target)]) }
+                    .accessibilityAction(named: "Show in Finder") {
+                        RevealButton.reveal([URL(fileURLWithPath: item.target)])
+                    }
                     .accessibilityAddTraits(.isStaticText)
                 }
             }

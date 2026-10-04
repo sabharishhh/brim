@@ -225,11 +225,11 @@ struct TrayBar: View {
                     BrimTips.learned(TrayTip())
                     review()
                 }
-                    .buttonStyle(.glassProminent)
-                    // A capsule inside a capsule, so the ends nest.
-                    .buttonBorderShape(.capsule)
-                    .disabled(!canReview)
-                    .popoverTip(TrayTip(), arrowEdge: .bottom)
+                .buttonStyle(.glassProminent)
+                // A capsule inside a capsule, so the ends nest.
+                .buttonBorderShape(.capsule)
+                .disabled(!canReview)
+                .popoverTip(TrayTip(), arrowEdge: .bottom)
             }
             .font(.body.weight(.medium))
             .monospacedDigit()

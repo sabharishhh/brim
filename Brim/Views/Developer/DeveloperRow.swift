@@ -256,9 +256,12 @@ struct DeveloperInspector: View {
                         .buttonBorderShape(.capsule)
                 }
             } else if cache.cleanupID == "uv.cache" {
-                Text("Automatic cleanup is unavailable because uv can remove environments or break linked packages. Manage this cache in uv after reviewing the environments that use it.")
-                    .font(.caption)
-                    .foregroundStyle(Palette.inkSecondary)
+                Text(
+                    "Automatic cleanup is unavailable because uv can remove environments or break linked packages. "
+                        + "Manage this cache in uv after reviewing the environments that use it."
+                )
+                .font(.caption)
+                .foregroundStyle(Palette.inkSecondary)
             } else if let command = cache.cleanupCommand {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(command)

@@ -47,80 +47,13 @@ public struct TierSVetoEngine: Sendable {
         }, uniquingKeysWith: { first, _ in first })
         let survivingCopies = Self.survivingCopies(of: footprint.identity, among: applications)
 
+        let context = VetoContext(identity: footprint.identity, applications: applications,
+                                  survivingCopies: survivingCopies, groupClaims: groupClaims,
+                                  others: others, resolver: resolver)
         for item in footprint.items {
-            var uncertainContainer = false
-            // Unticked rows can be promoted by the planner. Veto them now too.
-            if case .excluded = item.selection {
-                vettedItems.append(item)
-                continue
-            }
-            do {
-                let targetURL = item.footprintItem.evidence.url
-                if Self.isContainer(targetURL) {
-                    let ownership = ContainerOwnershipReader.read(at: targetURL)
-                    completeness = completeness.merging(ownership.completeness)
-                    if let owner = ownership.identifiers.compactMap({ identifier in
-                        applications.first { other in
-                            Self.protectionIdentifiers(of: other).contains {
-                                identifier.lowercased() == $0 || identifier.lowercased().hasPrefix($0 + ".")
-                            }
-                        }
-                    }).first {
-                        vettedItems.append(EvaluatedItem(
-                            footprintItem: item.footprintItem,
-                            selection: .excluded(
-                                reason: "Container metadata is claimed by \(owner.name), which is still installed."
-                            ),
-                            costOfError: item.costOfError
-                        ))
-                        continue
-                    }
-                    uncertainContainer = ownership.uncertainty != nil
-                }
-                if let copy = survivingCopies.first,
-                   !Self.isInsideSelectedBundle(targetURL, identity: footprint.identity) {
-                    let location = copy.bundlePath ?? "another installation"
-                    vettedItems.append(EvaluatedItem(
-                        footprintItem: item.footprintItem,
-                        selection: .excluded(reason: "Shared with \(copy.name) at \(location)."),
-                        costOfError: item.costOfError
-                    ))
-                    continue
-                }
-                if let reason = Self.groupVetoReason(for: targetURL, claims: groupClaims) {
-                    vettedItems.append(EvaluatedItem(
-                        footprintItem: item.footprintItem,
-                        selection: .excluded(reason: reason),
-                        costOfError: item.costOfError
-                    ))
-                    continue
-                }
-
-                if let owner = Self.namedFor(targetURL, among: others, besides: footprint.identity) {
-                    vettedItems.append(EvaluatedItem(
-                        footprintItem: item.footprintItem,
-                        selection: .excluded(reason: "Named for \(owner), which is still installed."),
-                        costOfError: item.costOfError
-                    ))
-                    continue
-                }
-
-                // The installer's own record already says whose this is:
-                // a driver installed in the same run carries its own
-                // identifier, and that is not a second owner.
-                if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
-                   let sharedWith = await checkSharedClaims(
-                       for: targetURL, identity: footprint.identity, resolver: resolver
-                   ) {
-                    vettedItems.append(EvaluatedItem(
-                        footprintItem: item.footprintItem,
-                        selection: .excluded(reason: "Shared file claimed by \(sharedWith.name)"),
-                        costOfError: item.costOfError
-                    ))
-                    continue
-                }
-            }
-            vettedItems.append(uncertainContainer ? Self.leftUnticked(item) : item)
+            let result = await vet(item, context: context)
+            vettedItems.append(result.item)
+            completeness = completeness.merging(result.completeness)
         }
 
         if Task.isCancelled {
@@ -137,6 +70,72 @@ public struct TierSVetoEngine: Sendable {
                 applications.contains { Self.protectionIdentifiers(of: $0).contains(identifier.lowercased()) }
             }
         )
+    }
+
+    private struct VetoContext {
+        let identity: Identity
+        let applications: [Identity]
+        let survivingCopies: [Identity]
+        let groupClaims: (owners: [String: String], complete: Bool)
+        let others: [String: String]
+        let resolver: IdentityResolver
+    }
+
+    private func vet(
+        _ item: EvaluatedItem, context: VetoContext
+    ) async -> (item: EvaluatedItem, completeness: ScanCompleteness) {
+        var completeness = ScanCompleteness.complete
+        var uncertainContainer = false
+        // Unticked rows can be promoted by the planner. Veto them now too.
+        if case .excluded = item.selection {
+            return (item, completeness)
+        }
+        let targetURL = item.footprintItem.evidence.url
+        if Self.isContainer(targetURL) {
+            let ownership = ContainerOwnershipReader.read(at: targetURL)
+            completeness = completeness.merging(ownership.completeness)
+            if let owner = Self.containerOwner(ownership.identifiers, among: context.applications) {
+                return (Self.excluded(item, reason:
+                    "Container metadata is claimed by \(owner.name), which is still installed."), completeness)
+            }
+            uncertainContainer = ownership.uncertainty != nil
+        }
+        if let copy = context.survivingCopies.first,
+           !Self.isInsideSelectedBundle(targetURL, identity: context.identity) {
+            let location = copy.bundlePath ?? "another installation"
+            return (Self.excluded(item, reason: "Shared with \(copy.name) at \(location)."), completeness)
+        }
+        if let reason = Self.groupVetoReason(for: targetURL, claims: context.groupClaims) {
+            return (Self.excluded(item, reason: reason), completeness)
+        }
+        if let owner = Self.namedFor(targetURL, among: context.others, besides: context.identity) {
+            return (Self.excluded(item, reason: "Named for \(owner), which is still installed."), completeness)
+        }
+        // The installer's own record already says whose this is:
+        // a driver installed in the same run carries its own
+        // identifier, and that is not a second owner.
+        if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
+           let sharedWith = await checkSharedClaims(
+               for: targetURL, identity: context.identity, resolver: context.resolver
+           ) {
+            return (Self.excluded(item, reason: "Shared file claimed by \(sharedWith.name)"), completeness)
+        }
+        return (uncertainContainer ? Self.leftUnticked(item) : item, completeness)
+    }
+
+    private static func containerOwner(_ identifiers: Set<String>, among applications: [Identity]) -> Identity? {
+        identifiers.compactMap { identifier in
+            applications.first { other in
+                Self.protectionIdentifiers(of: other).contains {
+                    identifier.lowercased() == $0 || identifier.lowercased().hasPrefix($0 + ".")
+                }
+            }
+        }.first
+    }
+
+    private static func excluded(_ item: EvaluatedItem, reason: String) -> EvaluatedItem {
+        EvaluatedItem(footprintItem: item.footprintItem, selection: .excluded(reason: reason),
+                      costOfError: item.costOfError)
     }
 
     private static func leftUnticked(_ item: EvaluatedItem) -> EvaluatedItem {
