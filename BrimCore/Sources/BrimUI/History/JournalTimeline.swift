@@ -6,8 +6,9 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     public enum Event: Equatable, Sendable {
         /// Brim removed something, which may still be put back.
         case removed(RemovalRecord)
-        /// An application first appeared, proved by a snapshot.
-        case installed(url: URL)
+        /// An application was installed, proved by a snapshot. The bundle
+        /// may have gone since: a removed app keeps its installs.
+        case installed(url: URL?)
     }
 
     public let id: String
@@ -15,6 +16,9 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     public let date: Date
     public let name: String
     public let bundleID: String?
+    /// The bundle is still where the install found it. Read once, when the
+    /// entry is made, so a row never touches the disk while it draws.
+    public let isPresent: Bool
     /// The time of day, written once when the entry is made (`CLAUDE.md`,
     /// on formatters).
     public let time: String
@@ -25,15 +29,17 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
         date = record.plan.createdAt
         name = record.name
         bundleID = record.plan.intent.subjectIdentity.bundleID
+        isPresent = false
         time = Self.timeStyle.format(date)
     }
 
-    public init(installed app: InstalledApplication, on date: Date) {
-        id = "installed:" + app.id
-        event = .installed(url: app.url)
-        self.date = date
-        name = app.name
-        bundleID = app.identity.bundleID
+    public init(installed record: InstallRecord) {
+        id = "installed:\(record.bundleID):\(record.installedAt.timeIntervalSinceReferenceDate)"
+        event = .installed(url: record.bundlePath.map { URL(fileURLWithPath: $0) })
+        date = record.installedAt
+        name = record.name
+        bundleID = record.bundleID
+        isPresent = record.bundlePath.map { FileManager.default.fileExists(atPath: $0) } ?? false
         time = Self.timeStyle.format(date)
     }
 
@@ -43,9 +49,12 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
 /// The Journal by time (plan §8): Today, Yesterday, This week, then one
 /// group per month, newest first.
 public enum JournalTimeline {
-    public static func entries(records: [RemovalRecord], applications: [InstalledApplication]) -> [JournalEntry] {
-        let installs = applications.compactMap { app in app.installedAt.map { JournalEntry(installed: app, on: $0) } }
-        return (records.map(JournalEntry.init(record:)) + installs).sorted { $0.date > $1.date }
+    /// Removals and installs together, newest first. Installs come from
+    /// the snapshots rather than the apps on the disk now, so removing an
+    /// app does not take its installs out of the Journal with it.
+    public static func entries(records: [RemovalRecord], installs: [InstallRecord]) -> [JournalEntry] {
+        (records.map(JournalEntry.init(record:)) + installs.map(JournalEntry.init(installed:)))
+            .sorted { $0.date > $1.date }
     }
 
     public static func groups(

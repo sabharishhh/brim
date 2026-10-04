@@ -29,6 +29,30 @@ struct RecentInstallHistoryTests {
         }
     }
 
+    /// The Journal showed Figma removed, removed, and later eqMac the same
+    /// way: installs were read from the apps on the disk now, so removing
+    /// an app took every install it had out of the history. Each install
+    /// stays, dated by Spotlight's date added inside its window. An app
+    /// already here at the first look, one whose bundle predates the look
+    /// before it appeared, and an app inside another are not installs.
+    @Test func everyInstallStaysInTheHistoryAfterItsAppIsRemoved() async throws {
+        try await withIndex { index in
+            let anchor = app("Anchor")
+            let hour: TimeInterval = 3600
+            _ = try await index.recordInstalled([anchor], at: now - 10 * day)
+            _ = try await index.recordInstalled([anchor, app("Figma", added: now - 8 * day - hour),
+                                                 app("Listed", added: now - 30 * day),
+                                                 app("Inner", path: "/Applications/Anchor.app/Contents/Inner.app")],
+                                                at: now - 8 * day)
+            _ = try await index.recordInstalled([anchor], at: now - 6 * day)
+            _ = try await index.recordInstalled([anchor, app("Figma", added: now - 4 * day - hour)], at: now - 4 * day)
+            _ = try await index.recordInstalled([anchor], at: now - 2 * day)
+            let records = try await index.installRecords()
+            #expect(records.map(\.name) == ["Figma", "Figma"])
+            #expect(records.map(\.installedAt) == [now - 8 * day - hour, now - 4 * day - hour])
+        }
+    }
+
     @Test func laterUpdatesDoNotReplaceTheOriginalDiscoveryEvidence() async throws {
         try await withIndex { index in
             let anchor = app("Anchor")

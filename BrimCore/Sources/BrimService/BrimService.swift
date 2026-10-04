@@ -1483,6 +1483,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return await withInstallDates(applications)
     }
 
+    public func installRecords() async -> [InstallRecord] {
+        await (try? index?.installRecords()) ?? []
+    }
+
     /// Apps and Updates can open together. Share their active read, then drop
     /// it so a later check always describes the filesystem again. The service
     /// owns the task; cancelling one waiter cannot stop the other one's read.

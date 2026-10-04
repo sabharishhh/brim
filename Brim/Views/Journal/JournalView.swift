@@ -38,14 +38,18 @@ struct JournalView: View {
             Button("OK", role: .cancel) {}
         } message: { Text(checkError) }
         .task { await model.load(service: service) }
-        .task { await applications.loadIfNeeded(service: service) }
+        // Listing the apps writes the snapshot an install is read from.
+        .task {
+            await applications.loadIfNeeded(service: service)
+            await model.reload()
+        }
         // Whether something can be put back changes when the Trash does.
         .task { await recovery.start(service: service) }
         .onChange(of: recovery.items) { _, _ in
             Task { await model.reload() }
         }
-        .task(id: Signature(model.records, apps: applications.applications.count)) {
-            let entries = JournalTimeline.entries(records: model.records, applications: applications.applications)
+        .task(id: Signature(model.records, installs: model.installs.count)) {
+            let entries = JournalTimeline.entries(records: model.records, installs: model.installs)
             withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
                 groups = JournalTimeline.groups(entries)
             }
@@ -53,17 +57,17 @@ struct JournalView: View {
     }
 
     /// What the timeline is rebuilt on: which removals, whether each can
-    /// still be put back, and how many apps. Not the records themselves,
+    /// still be put back, and how many installs. Not the records themselves,
     /// whose equality compares every step of every plan on each update.
     private struct Signature: Equatable {
         let records: [UUID]
         let putBack: [Bool]
-        let apps: Int
+        let installs: Int
 
-        init(_ records: [RemovalRecord], apps: Int) {
+        init(_ records: [RemovalRecord], installs: Int) {
             self.records = records.map(\.id)
             putBack = records.map(\.canUndo)
-            self.apps = apps
+            self.installs = installs
         }
     }
 
@@ -247,7 +251,13 @@ private struct JournalRow: View {
     private var icon: IconSource {
         switch entry.event {
         case let .installed(url):
-            return .bundle(url)
+            if let url, entry.isPresent {
+                return .bundle(url)
+            }
+            guard let bundleID = entry.bundleID, IconMemory.standard.has(bundleID) else {
+                return .monogram(Monogram(name: entry.name))
+            }
+            return .remembered(bundleID: bundleID)
         case .removed:
             guard let bundleID = entry.bundleID, IconMemory.standard.has(bundleID) else {
                 return entry.bundleID == nil ? .symbol(.folder) : .monogram(Monogram(name: entry.name))

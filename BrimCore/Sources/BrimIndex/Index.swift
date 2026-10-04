@@ -301,3 +301,54 @@ public struct AppearanceWindow: Sendable, Equatable {
         self.isReinstallation = isReinstallation
     }
 }
+
+public extension Index {
+    /// Every installation the snapshots record, removed apps included.
+    ///
+    /// A period starts where an app is in a snapshot and was not in the one
+    /// before. A first appearance counts only when nothing shows the bundle
+    /// was already on the disk at Brim's previous look, the rule
+    /// `appearanceWindows` gives; an appearance after an absence is a
+    /// reinstall. Apps inside another app arrive with it and are left out.
+    /// The date is Spotlight's date added when it falls inside the window
+    /// between the two looks, and the look that found it otherwise.
+    nonisolated func installRecords() async throws -> [InstallRecord] {
+        try await dbManager.dbPool.read { database in
+            let rows = try Row.fetchAll(database, sql: """
+            WITH scans AS (
+                SELECT scan_id, MAX(id) AS last_row, MAX(observed_at) AS at
+                FROM observation WHERE scan_id IS NOT NULL GROUP BY scan_id
+            ), ordered AS (
+                SELECT scan_id, at, ROW_NUMBER() OVER (ORDER BY last_row) AS n FROM scans
+            ), presence AS (
+                SELECT o.identity_id, ordered.n, MIN(o.id) AS row_id
+                FROM observation o JOIN ordered ON ordered.scan_id = o.scan_id
+                GROUP BY o.identity_id, ordered.n
+            ), runs AS (
+                SELECT identity_id, n, row_id,
+                       LAG(n) OVER (PARTITION BY identity_id ORDER BY n) AS previous_n
+                FROM presence
+            )
+            SELECT runs.identity_id, identity.name, o.bundle_path, o.observed_at, o.added_at,
+                   before.at AS previous_look
+            FROM runs
+            JOIN observation o ON o.id = runs.row_id
+            JOIN ordered before ON before.n = runs.n - 1
+            LEFT JOIN identity ON identity.id = runs.identity_id
+            WHERE (runs.previous_n IS NULL OR runs.previous_n < runs.n - 1)
+              AND (runs.previous_n IS NOT NULL OR o.added_at IS NULL OR o.added_at >= before.at)
+              AND (o.bundle_path IS NULL OR o.bundle_path NOT LIKE '%.app/%')
+            ORDER BY o.id
+            """)
+            return rows.map { row in
+                let seen: Date = row["observed_at"]
+                let previousLook: Date = row["previous_look"]
+                let added: Date? = row["added_at"]
+                let date = added.flatMap { $0 >= previousLook && $0 <= seen ? $0 : nil } ?? seen
+                let bundleID: String = row["identity_id"]
+                return InstallRecord(bundleID: bundleID, name: row["name"] ?? bundleID,
+                                     bundlePath: row["bundle_path"], installedAt: date)
+            }
+        }
+    }
+}
