@@ -14,6 +14,13 @@ The supported cleanup and verification changes have completed their final review
 
 The work since the last revision, beyond this plan (see also section 15): Developer finds project build folders and update downloads; the evidence search follows what it finds for up to three rounds and looks one level inside shared folders; Remnants (was Removed apps) uses Brim's own history as ownership evidence; the helper removes preference files in `/Library/Preferences`; matching builds an identity's lists once, which took Xcode's review from 13 seconds to 3.
 
+The focused loading pass removes quadratic path comparisons, duplicate protection
+reads and overlapping application enumeration. Footprint sizing is bounded to four
+workers and volume results publish before leftovers estimates. The existing
+registration preparation and aggregate accounting passes remain separate.
+[Measurements and validation](performance.md) distinguish component timings from
+real-app observations and list deferred work.
+
 ## 1. Invariants
 
 These are checked at every task. A task that violates one is wrong even if it passes its own tests.
