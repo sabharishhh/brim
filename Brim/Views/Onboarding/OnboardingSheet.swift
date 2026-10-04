@@ -35,10 +35,13 @@ struct OnboardingSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The next step replaces this one where it stands: a short fade
+            // with at most 4 points of travel, and under Reduce Motion an
+            // immediate change. Next is never held up by it.
             content
                 .id(step)
                 .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : 16)),
+                    insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : 4)),
                     removal: .opacity
                 ))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -53,7 +56,7 @@ struct OnboardingSheet: View {
     }
 
     private func go(to next: Step) {
-        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+        withAnimation(reduceMotion ? nil : Motion.openEvidence) {
             savedStep = next.rawValue
         }
     }
@@ -77,7 +80,14 @@ struct OnboardingSheet: View {
 
     private var whatBrimDoes: some View {
         VStack(alignment: .leading, spacing: 22) {
-            title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
+            HStack(alignment: .top) {
+                title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
+                Spacer(minLength: 12)
+                // The character beside the welcome, not above it, so the
+                // fixed-size sheet keeps its room for the steps below.
+                CharacterArtwork(size: 80)
+                    .padding(.top, -20)
+            }
             VStack(alignment: .leading, spacing: 16) {
                 point(
                     "magnifyingglass", "Looks where uninstalls miss", "Login items, background jobs, settings, caches"
@@ -92,7 +102,7 @@ struct OnboardingSheet: View {
         VStack(alignment: .leading, spacing: 22) {
             title("Full Disk Access", "The one setting Brim asks for")
             if access.isGranted {
-                status("checkmark.circle.fill", .accentColor, "On", "Everything Brim needs can be read")
+                status("checkmark.circle.fill", Palette.success, "On", "Everything Brim needs can be read")
             } else {
                 status("lock.fill", Palette.caution, "Off", "Containers and login items stay hidden until it is on")
                 Button {
@@ -135,7 +145,7 @@ struct OnboardingSheet: View {
             Spacer(minLength: 0)
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 56))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.success)
                 .symbolEffect(.bounce, options: .nonRepeating, value: step)
                 .symbolEffectsRemoved(reduceMotion)
             Text("Ready")
