@@ -21,9 +21,10 @@ struct AppInspector: View {
     let opened: String?
     let remove: () -> Void
 
-    /// The group whose locations are showing. The first group until the
-    /// person picks one; the inspector is rebuilt for each app.
-    @State private var openGroup: FootprintLoss?
+    /// The group whose locations are showing, remembered across apps for
+    /// this window: someone checking Data for one app usually wants Data
+    /// for the next. An app without that group opens on its first.
+    @SceneStorage("apps.footprintGroup") private var openGroup = FootprintLoss.app.rawValue
     /// Locations whose evidence is showing.
     @State private var detailed: Set<String> = []
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -47,7 +48,7 @@ struct AppInspector: View {
     /// The open group, falling back to the first that exists, so a stale
     /// choice never leaves the pane empty.
     private var shown: FootprintSection? {
-        sections.first { $0.loss == openGroup } ?? sections.first
+        sections.first { $0.loss.rawValue == openGroup } ?? sections.first
     }
 
     var body: some View {
@@ -91,7 +92,7 @@ struct AppInspector: View {
         guard loss != shown?.loss else { return }
         var change = Transaction()
         change.disablesAnimations = true
-        withTransaction(change) { openGroup = loss }
+        withTransaction(change) { openGroup = loss.rawValue }
     }
 
     private func toggleDetails(_ id: String) {
@@ -180,6 +181,7 @@ struct AppInspector: View {
                 SkeletonRows(count: 4, showsTick: false)
             }
             .shimmer()
+            .appearsAfterBriefWait()
             .padding(.top, 8)
             .accessibilityLabel("Checking")
         } else if let footprint = model.footprint {

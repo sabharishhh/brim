@@ -1,3 +1,4 @@
+import AppKit
 import BrimCore
 import BrimUI
 import SwiftUI
@@ -12,6 +13,23 @@ struct CommandBar: View {
     @State private var query = ""
     @State private var highlighted = 0
     @FocusState private var isFocused: Bool
+    @State private var returnFocus = ReturnFocus()
+
+    /// What had keyboard focus when the bar opened. Held weakly, and given
+    /// back on close only if it is still in the same window: after a page
+    /// change it has gone, and the new page keeps its own focus.
+    private final class ReturnFocus {
+        weak var window: NSWindow?
+        weak var responder: NSResponder?
+
+        func restore() {
+            guard let window, let responder else { return }
+            if let view = responder as? NSView, view.window !== window {
+                return
+            }
+            DispatchQueue.main.async { window.makeFirstResponder(responder) }
+        }
+    }
 
     private struct Result: Identifiable {
         let id: String
@@ -73,7 +91,12 @@ struct CommandBar: View {
         }
         .frame(width: 560)
         .glassEffect(.regular, in: .rect(cornerRadius: Metrics.cardRadius))
-        .onAppear { isFocused = true }
+        .onAppear {
+            returnFocus.window = NSApp.keyWindow
+            returnFocus.responder = NSApp.keyWindow?.firstResponder
+            isFocused = true
+        }
+        .onDisappear { returnFocus.restore() }
         .onChange(of: query) { highlighted = 0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command bar")
