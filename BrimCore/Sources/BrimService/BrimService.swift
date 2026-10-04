@@ -1146,6 +1146,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 let outcome = journal.stepOutcomes[step.index] ?? ""
                 guard outcome == "ok" || outcome.hasPrefix("stopped_unverified:") else { continue }
                 do {
+                    try LaunchdExecution.verifyModification(step)
                     try await launchdRuntime.restore(step.target)
                     try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
                 } catch {
@@ -1845,17 +1846,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let outcome = journal.stepOutcomes[step.index] ?? ""
         switch step.kind {
         case .unloadLaunchdJob:
-            guard outcome == "ok" || outcome.hasPrefix("stopped_unverified:") else { return false }
-            if PathExistence.exists(atPath: step.target) {
-                return true
-            }
-            return plan.steps.contains { removal in
-                guard removal.kind == .removeLaunchdPlist, removal.target == step.target,
-                      removal.effectiveDisposition == .trash,
-                      journal.restoreOutcomes?[removal.index] != "ok",
-                      let saved = journal.stepTrashedURLs?[removal.index] else { return false }
-                return PathExistence.exists(at: saved)
-            }
+            return launchdJobCanBeRestored(step, plan: plan, journal: journal, outcome: outcome)
         case .unregisterLaunchServices:
             guard outcome == "ok",
                   let removal = plan.steps.first(where: {
@@ -1885,6 +1876,33 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
+    private static func launchdJobCanBeRestored(
+        _ step: Step, plan: Plan, journal: JournalEntry, outcome: String
+    ) -> Bool {
+        guard outcome == "ok" || outcome.hasPrefix("stopped_unverified:") else {
+            return false
+        }
+        let declaration: String
+        if PathExistence.exists(atPath: step.target) {
+            declaration = step.target
+        } else if let removal = plan.steps.first(where: { removal in
+            removal.kind == .removeLaunchdPlist && removal.target == step.target
+                && removal.effectiveDisposition == .trash
+                && journal.restoreOutcomes?[removal.index] != "ok"
+                && journal.stepTrashedURLs?[removal.index] != nil
+        }), let saved = journal.stepTrashedURLs?[removal.index] {
+            declaration = saved.path
+        } else {
+            return false
+        }
+        do {
+            try LaunchdExecution.verifyModification(step, at: declaration)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Clears Launch Services records that went stale since the last look.
     ///
     /// An uninstall retracts the record for the path an app was installed
@@ -1899,10 +1917,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Called on every Trash change, so it stays cheap: no Launch Services
     /// lookup at all unless a plan has actually lost a trashed bundle, and
     /// retracting an already-retracted record is a no-op.
-    @discardableResult
-    public func reconcileRegistrations() async -> [URL] {
+    public func reconcileRegistrations() async {
         let fm = FileManager.default
-        var retracted: [URL] = []
 
         for entry in await (try? ledgerStore.allEntries()) ?? [] {
             guard let plan = try? await planStore.load(planId: entry.planId),
@@ -1925,13 +1941,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 guard PathObservation.observe(url.path).isAbsent else { continue }
                 do {
                     try await LaunchServicesRegistration.unregisterBounded(bundlePath: url.path)
-                    retracted.append(url)
                 } catch {
                     // A refused maintenance command is not a completed action.
                     continue
                 }
             }
         }
-        return retracted
     }
 }

@@ -1,4 +1,5 @@
 import BrimCore
+import BrimOps
 @testable import BrimService
 import Foundation
 import Testing
@@ -23,11 +24,49 @@ struct RegistrationRecoverabilityTests {
         defer { try? FileManager.default.removeItem(at: fixture.folder) }
         let declaration = fixture.folder.appendingPathComponent("Worker.plist")
         try Data("fixture declaration".utf8).write(to: declaration)
-        let plan = fixture.plan(target: declaration, registration: .unloadLaunchdJob)
+        let plan = try fixture.plan(target: declaration, registration: .unloadLaunchdJob,
+                                    fingerprint: fixture.fingerprint(declaration))
         try await fixture.record(plan, outcomes: [0: "not_removed", 1: "stopped_unverified: Fixture gap."])
         #expect(try await fixture.service.recoverableItems().map(\.planId) == [plan.planId])
         try FileManager.default.removeItem(at: declaration)
         #expect(try await fixture.service.recoverableItems().isEmpty)
+    }
+
+    @Test func aReplacedOrModifiedJobDeclarationCannotBeRecoveredOrStarted() async throws {
+        for replaced in [true, false] {
+            let fixture = try RegistrationRecoveryFixture(runtime: LaunchdRuntimeClient(restore: { _ in
+                Issue.record("Recovery started a declaration that no longer matches the stopped job.")
+            }))
+            defer { try? FileManager.default.removeItem(at: fixture.folder) }
+            let declaration = fixture.folder.appendingPathComponent("Worker.plist")
+            try Data("reviewed declaration".utf8).write(to: declaration)
+            let fingerprint = try fixture.fingerprint(declaration)
+            let plan = fixture.plan(target: declaration, registration: .unloadLaunchdJob,
+                                    fingerprint: fingerprint)
+            try await fixture.record(plan, outcomes: [0: "not_removed", 1: "stopped_unverified: Fixture gap."])
+            #expect(try await fixture.service.recoverableItems().map(\.planId) == [plan.planId])
+
+            // A successful stop retained the plist, and a later installer
+            // reused that path. Path existence alone offered to start its job.
+            if replaced {
+                try FileManager.default.moveItem(at: declaration,
+                                                 to: fixture.folder.appendingPathComponent("Retired.plist"))
+            }
+            try Data("another job's declaration".utf8).write(to: declaration)
+            let modified = replaced ? fingerprint.mtime : fingerprint.mtime.addingTimeInterval(60)
+            try FileManager.default.setAttributes([.modificationDate: modified],
+                                                  ofItemAtPath: declaration.path)
+            #expect(try (fixture.fingerprint(declaration).ino == fingerprint.ino) != replaced)
+            #expect(try await fixture.service.recoverableItems().isEmpty)
+            await #expect(throws: (any Error).self) {
+                try await fixture.service.undo(planId: plan.planId)
+            }
+            let store = JournalStore(directoryURL: fixture.folder.appendingPathComponent("Journal"))
+            let journal = try #require(await store.load(planId: plan.planId))
+            #expect(journal.restoredAt == nil)
+            #expect(journal.restoreOutcomes?[1] != "ok")
+            #expect(try Data(contentsOf: declaration) == Data("another job's declaration".utf8))
+        }
     }
 
     @Test func registrationRecoveryRetainsAnOwnedRestoredBundleButRejectsAReplacement() async throws {
@@ -63,14 +102,15 @@ private struct RegistrationRecoveryFixture {
     let folder: URL
     let service: BrimService
 
-    init() throws {
+    init(runtime: LaunchdRuntimeClient = .init()) throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         self.folder = folder.resolvingSymlinksInPath()
         service = BrimService(root: FileSystemRoot(rootURL: self.folder, userName: "fixture"),
                               brimAppURL: self.folder.appendingPathComponent("Brim.app"),
                               planStoreDirectory: self.folder.appendingPathComponent("Plans"),
-                              journalStoreDirectory: self.folder.appendingPathComponent("Journal"))
+                              journalStoreDirectory: self.folder.appendingPathComponent("Journal"),
+                              launchdRuntime: runtime)
     }
 
     func plan(target: URL, registration: StepKind, fingerprint: TargetFingerprint? = nil) -> Plan {
