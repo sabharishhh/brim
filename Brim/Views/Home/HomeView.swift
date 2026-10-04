@@ -281,6 +281,7 @@ struct HomeView: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+        .hoverLift()
     }
 }
 
@@ -314,5 +315,6 @@ private struct HomeNote: View {
         }
         .padding(18)
         .card()
+        .hoverLift()
     }
 }
