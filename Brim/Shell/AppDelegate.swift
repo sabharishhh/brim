@@ -35,6 +35,13 @@ final class ExternalRequests {
 
 /// The Dock: its menu, and applications dropped on its icon.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Brim is dark whatever the system is set to. Set on the application
+    /// before any window exists, so every window, sheet, menu and alert,
+    /// Settings included, is drawn dark from its first frame.
+    func applicationWillFinishLaunching(_: Notification) {
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+    }
+
     func applicationWillTerminate(_: Notification) {
         PrivilegedHelperClient.stopAll()
     }

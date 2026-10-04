@@ -96,7 +96,9 @@ struct RemovalSheet: View {
             ProgressView("Checking each item is still where it was…")
         case .failed(let reason):
             VStack(spacing: 6) {
-                Text("Stopped").font(.headline).foregroundColor(.red)
+                Label("Stopped", systemImage: "xmark.octagon.fill")
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink, Palette.destructive)
                 Text(reason).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding()
@@ -124,7 +126,7 @@ struct RemovalSheet: View {
                 VStack(spacing: 10) {
                     Image(systemName: result.success ? "checkmark.seal" : "exclamationmark.triangle")
                         .font(.largeTitle)
-                        .foregroundColor(result.success ? .green : .orange)
+                        .foregroundStyle(result.success ? Palette.success : Palette.caution)
                     Text(result.success ? "Nothing is left" : "Some of it is still there")
                         .font(.headline)
 
@@ -156,7 +158,7 @@ struct RemovalSheet: View {
 
                     if let explanation = model.spaceExplanation {
                         Label(explanation, systemImage: "clock.arrow.circlepath")
-                            .font(.caption).foregroundColor(.orange)
+                            .font(.caption).foregroundStyle(Palette.caution)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -203,7 +205,7 @@ struct RemovalSheet: View {
 
     private func helperNotice(_ problem: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock.shield").foregroundColor(.orange)
+            Image(systemName: "lock.shield").foregroundStyle(Palette.caution)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.helperSteps == 1
                     ? "One item requires administrator access."
@@ -230,7 +232,7 @@ struct RemovalSheet: View {
                     systemImage: byHelper ? "lock.shield" : permanent ? "trash.slash" : "arrow.uturn.backward"
                 )
                 .font(.caption2)
-                .foregroundColor(permanent ? .orange : .secondary)
+                .foregroundStyle(permanent ? Palette.caution : Palette.inkSecondary)
                 Text(step.sizeIsKnown == false ? "Not measured" : ByteText.short(step.expectedBytes))
                     .font(.caption).foregroundColor(.secondary).monospacedDigit()
             }
