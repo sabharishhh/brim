@@ -104,6 +104,16 @@ public final class RemovalHistoryModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var undoingPlanIds: Set<UUID> = []
     @Published public var errorMessage: String?
+    /// What the last Put Back of each record did, shown beside that record.
+    /// After a restore the record can no longer be undone, and without this
+    /// its row read "No longer in the Trash", which is true and says nothing
+    /// about the person's files having just come back.
+    @Published public private(set) var putBackOutcomes: [UUID: PutBackOutcome] = [:]
+
+    public enum PutBackOutcome: Equatable, Sendable {
+        case restored
+        case failed(String)
+    }
 
     private var service: (any BrimServiceProtocol)?
 
@@ -139,11 +149,14 @@ public final class RemovalHistoryModel: ObservableObject {
         undoingPlanIds.insert(record.id)
         defer { undoingPlanIds.remove(record.id) }
         errorMessage = nil
+        putBackOutcomes[record.id] = nil
 
         do {
             try await service.undo(planId: record.plan.planId)
+            putBackOutcomes[record.id] = .restored
         } catch {
             errorMessage = error.localizedDescription
+            putBackOutcomes[record.id] = .failed(error.localizedDescription)
         }
 
         // Reload either way: a failed undo usually means the world moved, and

@@ -27,14 +27,8 @@ struct JournalView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if let message = model.errorMessage {
-                Notice(
-                    symbol: "exclamationmark.triangle", title: "Could not put it back", detail: message,
-                    actionTitle: "Dismiss", action: { model.errorMessage = nil }
-                )
-                .padding(.horizontal, 20)
-                .padding(.bottom, 6)
-            }
+            // A Put Back's outcome is shown beside its record, once, rather
+            // than in a banner above a list the person has scrolled.
             content
         }
         .sheet(item: $checkedResult) { result in
@@ -138,6 +132,7 @@ struct JournalView: View {
                             JournalRow(
                                 entry: entry,
                                 isPuttingBack: isPuttingBack(entry),
+                                outcome: outcome(entry),
                                 putBack: { putBack(entry) }
                             )
                             .contextMenu {
@@ -184,6 +179,11 @@ struct JournalView: View {
         return model.undoingPlanIds.contains(record.id)
     }
 
+    private func outcome(_ entry: JournalEntry) -> RemovalHistoryModel.PutBackOutcome? {
+        guard case let .removed(record) = entry.event else { return nil }
+        return model.putBackOutcomes[record.id]
+    }
+
     private func putBack(_ entry: JournalEntry) {
         guard case let .removed(record) = entry.event else { return }
         Task { await model.undo(record) }
@@ -194,7 +194,9 @@ struct JournalView: View {
 private struct JournalRow: View {
     let entry: JournalEntry
     let isPuttingBack: Bool
+    let outcome: RemovalHistoryModel.PutBackOutcome?
     let putBack: () -> Void
+    @State private var showsFailure = false
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
 
@@ -215,7 +217,10 @@ private struct JournalRow: View {
             .lineLimit(1)
             .accessibilityHidden(true)
             Spacer(minLength: 8)
+            // Reserved width, so Put Back, its progress and its outcome take
+            // turns in one place and the time beside them never moves.
             trailing
+                .frame(minWidth: 120, alignment: .trailing)
             Text(entry.time)
                 .font(.brimFacts)
                 .monospacedDigit()
@@ -268,9 +273,36 @@ private struct JournalRow: View {
     private var trailing: some View {
         if case let .removed(record) = entry.event {
             if isPuttingBack {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Putting back")
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Putting back").font(.caption).foregroundStyle(Palette.inkSecondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Putting back")
+            } else if outcome == .restored {
+                // What actually happened, in place of the button: the files
+                // are back where they were.
+                Label("Put back", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSecondary, Palette.success)
+            } else if case let .failed(reason) = outcome {
+                Button {
+                    showsFailure = true
+                } label: {
+                    Label("Could not put back", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Palette.inkSecondary, Palette.caution)
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .help(reason)
+                .accessibilityHint("Shows why")
+                .popover(isPresented: $showsFailure) {
+                    Text(reason)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(width: 300, alignment: .leading)
+                }
             } else if record.canUndo {
                 // Only where it would do something: a disabled button on
                 // every row is thirty-nine controls that do nothing.
@@ -294,7 +326,11 @@ private struct JournalRow: View {
         case .installed:
             return "\(entry.name), installed, \(entry.time)"
         case let .removed(record):
-            let state = record.canUndo ? "can be put back" : (record.unavailableReason ?? "")
+            let state = switch outcome {
+            case .restored: "put back"
+            case let .failed(reason): "could not put back. \(reason)"
+            case nil: record.canUndo ? "can be put back" : (record.unavailableReason ?? "")
+            }
             return [entry.name, facts, state, entry.time].filter { !$0.isEmpty }.joined(separator: ", ")
         }
     }

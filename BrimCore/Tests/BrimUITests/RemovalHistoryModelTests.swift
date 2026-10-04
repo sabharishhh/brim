@@ -141,6 +141,8 @@ final class RemovalHistoryModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.records.first?.canUndo, false, "Restored items are no longer undoable")
         XCTAssertTrue(model.undoingPlanIds.isEmpty)
+        // The row says the files came back, not just that the Trash is empty.
+        XCTAssertEqual(model.putBackOutcomes[trashed.planId], .restored)
     }
 
     func testAFailedUndoSurfacesTheServiceSentence() async throws {
@@ -157,6 +159,9 @@ final class RemovalHistoryModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "No longer in the Trash, so it cannot be restored: Thing.")
         XCTAssertTrue(model.undoingPlanIds.isEmpty, "The row must not stay stuck in a spinner")
+        // The failure stays beside the record it belongs to.
+        XCTAssertEqual(model.putBackOutcomes[trashed.planId],
+                       .failed("No longer in the Trash, so it cannot be restored: Thing."))
     }
 
     func testRecordsAreNewestFirst() async {
