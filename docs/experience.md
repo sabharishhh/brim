@@ -26,6 +26,45 @@ stationary feedback. Cards and disabled result regions share refresh appearance
 without sharing interaction policy. Existing refresh timings are retained for
 this foundation pass; shortening visual recovery is a later measured change.
 
+## Footprint inspection, 4 October 2026
+
+The Apps inspector's footprint is now a set of equal groups, App, Settings,
+Data, Background, Rebuilds and Other, each showing its count of locations,
+with one group open at a time and its locations listed below. It replaces a
+coloured size bar over one long list: the bar read as a chart of what removal
+frees, and the evidence for an item sat far from its group's name. Equal
+widths make no claim about proportion. The total and its location count stay
+above the groups, and incomplete scanning and unreadable entries are stated
+beside them rather than folded into a group.
+
+Several ownership records for one path are one location, so a path is never
+counted twice and a Shared record is kept even when stronger evidence names
+the same place. A location whose observations disagree on size, or whose
+size was not fully measured, shows its size as unknown rather than the larger
+or smaller figure. Groups are worked out once per inspection, not while the
+pane redraws.
+
+Each location has an explicit Details control listing every record that
+names it, strongest first, with a note when another app claims it or part of
+it could not be read, and a Show in Finder link. That evidence used to be
+hover help only. The hover-only Reveal button was removed from the row so the
+name has room; Reveal remains in Details, the context menu and double-click.
+
+Two classification faults surfaced while checking WhatsApp. A folder named
+for an identifier ending in `.app`, such as `Containers/io.getpurge.app`, was
+grouped as the app itself; only a bundle outside the Library is now. And the
+Application Scripts folders sandboxed apps get were grouped as Other; they,
+and Autosave Information, are Data, and `~/.config` is Settings.
+
+Choosing a group replaces the list below at once, and only the selected
+button's indicator moves. The planned 220 ms reveal was built and dropped
+after watching it: the list drew the outgoing and incoming groups on top of
+each other, and then, with a fade alone, scrolled the incoming rows up under
+the group buttons for a moment before settling. A location's Details still
+opens with a short spring, and Reduce Motion reduces it. A narrow-window inspection sheet was not added: at the 1100 pt minimum
+window the list and inspector both fit, so it could not be reached. It
+belongs with the adaptive layout work, before the minimum is lowered.
+
 ## Verification
 
 The package suite completed 484 XCTest cases with one existing skip and no
@@ -59,9 +98,18 @@ new branches have been inspected in source; reduced-motion animation, VoiceOver
 and contrast behavior still need a dedicated real-device walkthrough. A short
 idle trace is not a launch benchmark or proof of frame-rate performance.
 
+Footprint inspection was checked on the real Mac with WhatsApp, from Home's
+Recently installed into Apps: App, Data and Rebuilds groups with 1, 18 and 3
+locations; Data at 1.19 GB, largest first; the first location's Details
+showing "Direct" with its entitlement sentence and Show in Finder; nothing
+in Other after the classification fixes. Nothing was removed. Keyboard
+selection of a group, a Shared location and VoiceOver reading of the groups
+were not checked on the real Mac; the Shared and partial cases are covered by
+unit tests only.
+
 ## Remaining design work
 
-The footprint presentation, review-to-result continuity, adaptive inspector,
-read-only browsing during refresh, artwork depth, and the broader interaction
-matrix remain planned. This first slice establishes the shared controls and
-motion behavior before that work changes more screens.
+Review-to-result continuity, the adaptive inspector, read-only browsing
+during refresh, artwork depth, and the broader interaction matrix remain
+planned. The footprint groups are not yet carried into the review and the
+result, which is the next step of the footprint-to-result direction.

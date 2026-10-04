@@ -5,6 +5,14 @@ import SwiftUI
 /// One app in depth: who made it, how it arrived, and everything it has
 /// put on this Mac, grouped by what removing it would cost.
 ///
+/// The footprint is a row of equal groups, App, Settings, Data and the
+/// rest, and one of them is open at a time with its locations below. It
+/// replaced a coloured size bar over one long list: the bar read as a
+/// chart of what removal would free, and the list put the evidence for a
+/// preferences file thirty rows from its group's name. Equal widths say
+/// nothing about proportion, and coverage is said beside the groups rather
+/// than folded into a total.
+///
 /// A `List`, not a scroll view over a stack, so each row is measured once.
 struct AppInspector: View {
     let app: InstalledApplication
@@ -12,6 +20,13 @@ struct AppInspector: View {
     @ObservedObject var access: FullDiskAccessModel
     let opened: String?
     let remove: () -> Void
+
+    /// The group whose locations are showing. The first group until the
+    /// person picks one; the inspector is rebuilt for each app.
+    @State private var openGroup: FootprintLoss?
+    /// Locations whose evidence is showing.
+    @State private var detailed: Set<String> = []
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let installed: DateFormatter = {
         let formatter = DateFormatter()
@@ -25,6 +40,16 @@ struct AppInspector: View {
             .compactMap(\.self).joined(separator: " · ")
     }
 
+    private var sections: [FootprintSection] {
+        model.isInspecting ? [] : model.footprintSections
+    }
+
+    /// The open group, falling back to the first that exists, so a stale
+    /// choice never leaves the pane empty.
+    private var shown: FootprintSection? {
+        sections.first { $0.loss == openGroup } ?? sections.first
+    }
+
     var body: some View {
         List {
             Group {
@@ -36,29 +61,25 @@ struct AppInspector: View {
             .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
             .listRowBackground(Color.clear)
 
-            if let footprint = model.footprint, !model.isInspecting {
-                ForEach(FootprintLoss.arrange(footprint)) { group in
-                    Section {
-                        ForEach(group.items, id: \.evidence.url) { item in
-                            FootprintRow(item: item)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 1, leading: 14, bottom: 1, trailing: 14))
-                                .listRowBackground(Color.clear)
-                        }
-                    } header: {
-                        HStack {
-                            Text(group.title)
-                                .font(.brimGroupTitle)
-                                .foregroundStyle(Palette.ink)
-                            Text("\(group.items.count) · \(ByteText.short(Self.bytes(group)))")
-                                .font(.brimFacts)
-                                .monospacedDigit()
-                                .foregroundStyle(Palette.inkSecondary)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.top, 8)
+            if let section = shown {
+                Section {
+                    ForEach(section.locations) { location in
+                        LocationRow(
+                            location: location, showsDetails: detailed.contains(location.id),
+                            toggleDetails: { toggleDetails(location.id) }
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 14, bottom: 1, trailing: 14))
+                        .listRowBackground(Color.clear)
                     }
+                } header: {
+                    sectionHeader(section)
                 }
+                // A new group replaces the old one at once. Animated, the list
+                // drew both groups on top of each other, and then scrolled the
+                // incoming rows up under the group buttons for a moment before
+                // settling. The selected button's indicator carries the motion.
+                .id(section.id)
             }
             ListBottomSpacing()
         }
@@ -66,8 +87,43 @@ struct AppInspector: View {
         .scrollContentBackground(.hidden)
     }
 
-    static func bytes(_ group: ItemGroup<FootprintItem>) -> Int64 {
-        group.items.reduce(0) { $0 + $1.sizeBytes }
+    private func open(_ loss: FootprintLoss, animated _: Bool) {
+        guard loss != shown?.loss else { return }
+        var change = Transaction()
+        change.disablesAnimations = true
+        withTransaction(change) { openGroup = loss }
+    }
+
+    private func toggleDetails(_ id: String) {
+        withAnimation(Motion.resolved(Motion.openEvidence, reduceMotion: reduceMotion)) {
+            detailed.formSymmetricDifference([id])
+        }
+    }
+
+    private func sectionHeader(_ section: FootprintSection) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // The same word as the group's button above it.
+            Text(section.loss.navigationTitle)
+                .font(.brimGroupTitle)
+                .foregroundStyle(Palette.ink)
+            Text(Self.facts(section))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// "3 locations · 12 MB", or "size not known" when any location's size
+    /// was not measured, rather than a smaller total that looks complete.
+    static func facts(_ section: FootprintSection) -> String {
+        let count = section.locations.count == 1 ? "1 location" : "\(section.locations.count) locations"
+        let sizes = section.locations.map(\.logicalBytes)
+        guard !sizes.contains(where: { $0 == nil }) else { return count + " · size not fully known" }
+        return count + " · " + ByteText.short(sizes.compactMap(\.self).reduce(0, +))
     }
 
     private var header: some View {
@@ -127,21 +183,25 @@ struct AppInspector: View {
             .padding(.top, 8)
             .accessibilityLabel("Checking")
         } else if let footprint = model.footprint {
-            VStack(alignment: .leading, spacing: 10) {
+            let places = sections.reduce(0) { $0 + $1.locations.count }
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(ByteText.short(footprint.totalSizeBytes))
                         .font(.brimFigure)
                         .foregroundStyle(Palette.ink)
-                    Text(footprint.items.count == 1 ? "in 1 place" : "in \(footprint.items.count) places")
+                    Text(places == 1 ? "in 1 location" : "in \(places) locations")
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 }
-                MeterBar(segments: FootprintLoss.arrange(footprint).prefix(4).enumerated().map { index, group in
-                    MeterSegment(
-                        label: group.title, value: group.items.reduce(0) { $0 + $1.sizeBytes },
-                        color: Palette.hue([1, 5, 2, 0][index])
-                    )
-                })
+                if !sections.isEmpty {
+                    FootprintNavigator(
+                        sections: sections, selected: shown?.loss ?? sections[0].loss
+                    ) { loss, animated in
+                        open(loss, animated: animated)
+                    }
+                }
+                // Coverage is its own fact, beside the groups, never folded
+                // into them: an unfinished search does not shrink a group.
                 if let gap = footprint.completeness.explanation {
                     Label(gap, systemImage: "clock.badge.exclamationmark")
                         .font(.caption)
@@ -176,50 +236,122 @@ struct AppInspector: View {
     }
 }
 
-/// One place the app lives: Finder's icon, the path from ~, its size.
-private struct FootprintRow: View {
-    let item: FootprintItem
+/// One place the app lives: Finder's icon, the path from ~, its size, and
+/// an explicit Details control for how Brim knows it is the app's. The
+/// evidence used to be hover help only, which a keyboard or VoiceOver user
+/// never reached.
+private struct LocationRow: View {
+    let location: FootprintLocation
+    let showsDetails: Bool
+    let toggleDetails: () -> Void
     @SwiftUI.Environment(ShellState.self) private var shell
 
     var body: some View {
-        HStack(spacing: 10) {
-            BrimIcon(source: .finder(item.evidence.url), size: 24)
-            // The name first, then where it sits: two short lines read
-            // better than one long path cut in the middle.
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.evidence.url.lastPathComponent)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.ink)
-                Text(Self.abbreviated(item.evidence.url.deletingLastPathComponent().path))
-                    .font(.caption)
-                    .foregroundStyle(Palette.inkTertiary)
-                    .truncationMode(.middle)
-            }
-            .lineLimit(1)
-            Spacer(minLength: 6)
-            HoverActions {
-                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
-                    shell.reveal([item.evidence.url])
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                BrimIcon(source: .finder(location.url), size: 24)
+                // The name first, then where it sits: two short lines read
+                // better than one long path cut in the middle.
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        // Identifiers differ at the end, so keep both ends.
+                        Text(location.url.lastPathComponent)
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.ink)
+                            .truncationMode(.middle)
+                        if location.isShared {
+                            StatusChip(text: "Shared")
+                        }
+                    }
+                    Text(Self.abbreviated(location.url.deletingLastPathComponent().path))
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkTertiary)
+                        .truncationMode(.middle)
                 }
+                .lineLimit(1)
+                .help(location.url.path)
+                Spacer(minLength: 6)
+                // Show in Finder lives in Details, the context menu and a
+                // double-click. A hover-only button here took the room the
+                // name needed and was never reachable from the keyboard.
+                Text(size)
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+                    .fixedSize()
+                Button(action: toggleDetails) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(showsDetails ? 90 : 0))
+                        .frame(width: 20, height: 20)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(Palette.inkTertiary)
+                .help(showsDetails ? "Hide details" : "Details")
+                .accessibilityLabel(showsDetails ? "Hide details" : "Details")
             }
-            Text(ByteText.short(item.sizeBytes))
-                .font(.brimFacts)
-                .monospacedDigit()
-                .foregroundStyle(Palette.inkSecondary)
-                .frame(width: 64, alignment: .trailing)
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+
+            if showsDetails {
+                evidence
+                    .padding(.leading, 44)
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 44)
         .rowHighlight(isInspected: false)
         .contentShape(.rect)
-        .onTapGesture(count: 2) { shell.showInFinder(item.evidence.url) }
-        .contextMenu { ItemMenuItems(urls: [item.evidence.url]) }
-        .help(item.evidence.humanSentence)
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel("\(item.evidence.url.lastPathComponent), \(ByteText.short(item.sizeBytes))")
-        .accessibilityValue(item.evidence.url.path)
-        .accessibilityAction(named: "Show in Finder") { shell.showInFinder(item.evidence.url) }
+        .onTapGesture(count: 2) { shell.showInFinder(location.url) }
+        .contextMenu { ItemMenuItems(urls: [location.url]) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(location.url.lastPathComponent), \(size)\(location.isShared ? ", shared" : "")")
+        .accessibilityValue(location.url.path)
+        .accessibilityAction(named: "Show in Finder") { shell.showInFinder(location.url) }
+    }
+
+    /// Every record that names this place, strongest first, with what it
+    /// means for the removal. A shared record is the one that keeps it.
+    private var evidence: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(location.items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.evidence.tier.shortLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(item.evidence.tier == .S ? Palette.caution : Palette.inkSecondary)
+                        .fixedSize()
+                    Text(item.evidence.humanSentence.isEmpty ? item.evidence.mechanism : item.evidence.humanSentence)
+                        .font(.caption)
+                        .foregroundStyle(Palette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            if location.isShared {
+                Text("Another installed app claims this, so a removal leaves it.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSecondary)
+            }
+            if location.isPartial {
+                Text("Part of it could not be read, so its size is not complete.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.caution)
+            }
+            Button("Show in Finder") { shell.reveal([location.url]) }
+                .buttonStyle(.link)
+                .font(.caption)
+        }
+    }
+
+    private var size: String {
+        // Says why there is no figure: not measured yet, or two records
+        // that disagree, neither of which Brim picks between.
+        if let bytes = location.logicalBytes {
+            return ByteText.short(bytes)
+        }
+        return location.isUnmeasured ? "Not measured" : "Sizes differ"
     }
 
     static func abbreviated(_ path: String) -> String {

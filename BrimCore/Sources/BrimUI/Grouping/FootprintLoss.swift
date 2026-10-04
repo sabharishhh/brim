@@ -26,12 +26,24 @@ public enum FootprintLoss: String, CaseIterable, Sendable {
 
     public static func of(_ item: FootprintItem) -> FootprintLoss {
         let url = item.evidence.url
-        if url.pathExtension == "app" {
+        let path = url.path
+        // An identifier can end in ".app", and the folders named for it sit
+        // in the Library: `Containers/io.getpurge.app` is data, not the app.
+        if url.pathExtension == "app", !path.contains("/Library/") {
             return .app
         }
-        let path = url.path
         if path.contains("/LaunchAgents/") || path.contains("/LaunchDaemons/") {
             return .background
+        }
+        // A sandboxed app's scripts folder and its autosaved documents are its
+        // data. WhatsApp's nine Application Scripts folders sat in Other,
+        // under a group that says nothing about what removing them costs.
+        if path.contains("/Library/Application Scripts/") || path.contains("/Library/Autosave Information/") {
+            return .data
+        }
+        // Settings kept the cross-platform way, outside the Library folder.
+        if path.contains("/.config/") {
+            return .settings
         }
         let domain = LeftoverDomain.of(url)
         switch domain {

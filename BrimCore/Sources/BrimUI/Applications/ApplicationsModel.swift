@@ -89,7 +89,10 @@ public final class ApplicationsModel: ObservableObject {
     /// least two: a single mark is just a selection.
     @Published public private(set) var marked: [InstalledApplication] = []
     @Published public private(set) var footprint: Footprint? {
-        didSet { footprintGroups = makeFootprintGroups() }
+        didSet {
+            footprintGroups = makeFootprintGroups()
+            footprintSections = footprint.map(FootprintSection.arrange) ?? []
+        }
     }
 
     @Published public private(set) var isInspecting = false
@@ -130,6 +133,9 @@ public final class ApplicationsModel: ObservableObject {
     /// Groups the selected app's footprint by what Brim can say about each
     /// item and how sure it is, strongest evidence first.
     @Published public private(set) var footprintGroups: [FootprintGroup] = []
+
+    /// Cached once per inspection, rather than regrouped during hover or disclosure.
+    @Published public private(set) var footprintSections: [FootprintSection] = []
 
     private func makeFootprintGroups() -> [FootprintGroup] {
         guard let footprint else { return [] }
