@@ -32,8 +32,7 @@ struct ApplicationsView: View {
         // Fixed panes rather than an HSplitView, which relaid out the whole
         // window on every scroll (`CLAUDE.md`).
         AdaptivePanes(
-            // Wider for a review, whose rows carry more.
-            detailWidth: review == nil && batch == nil ? 360 : 440,
+            detailWidth: Metrics.detailWidth,
             hasDetail: review != nil || batch != nil || model.isChoosing
                 || model.marked.count >= 2 || model.selected != nil,
             isReviewing: review != nil || batch != nil,
@@ -202,7 +201,7 @@ struct ApplicationsView: View {
                 onClose: { self.review = nil }
             )
             .id(review.id)
-            .transition(.replacement)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let batch {
             BatchRemovalPanel(
                 apps: batch, service: service,
@@ -219,7 +218,7 @@ struct ApplicationsView: View {
                 onClose: { self.batch = nil }
             )
             .id(batch.map(\.id).joined(separator: ","))
-            .transition(.replacement)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if model.marked.count >= 2 || model.isChoosing {
             MarkedApps(apps: model.marked) {
                 if model.marked.count == 1, let app = model.marked.first {

@@ -53,6 +53,17 @@ extension AnyTransition {
     /// of the fade, with their text overlapping.
     static let replacement = AnyTransition.asymmetric(insertion: .opacity, removal: .identity)
 
+    /// A review taking the pane over: fades in while settling from just
+    /// under full size, which is drawn rather than laid out, so nothing is
+    /// re-measured on the way. The pane leaving goes at once, as in
+    /// `replacement`. Under Reduce Motion it only fades.
+    static func paneSwap(reduceMotion: Bool) -> AnyTransition {
+        .asymmetric(
+            insertion: reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),
+            removal: .identity
+        )
+    }
+
     /// Enter: fades in from 6 points below. Exit: fades while shrinking a
     /// little, so a leaving row reads as going away rather than sliding off.
     static func brimRow(reduceMotion: Bool) -> AnyTransition {
