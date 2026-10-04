@@ -86,6 +86,33 @@ final class BreadthTests: XCTestCase {
         XCTAssertTrue(without.isEmpty)
     }
 
+    /// Sentry names its folder `Caches/io.sentry/<SHA-1 of the address>`.
+    /// eqMac's address is in its executable, and hashing it gave exactly
+    /// the folder that outlived its removal. Another app's folder there
+    /// hashes to something else and is left alone.
+    func testASentryFolderCountsWhenItIsNamedForTheAddressInTheApp() async throws {
+        let address = "https://afd95e4c332b4b1da4bb23b9cc66782c@sentry.io/1243254"
+        XCTAssertEqual(CrashReporterFolders.sha1(address), "a456d41a8479da4fe7ad5452565d41fafe14cb35")
+        let bundle = rootURL.appendingPathComponent("Applications/Sample.app")
+        let executable = bundle.appendingPathComponent("Contents/MacOS/Sample")
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(("\0\0junk" + address + "\0more").utf8).write(to: executable)
+        let ours = try put("Users/tester/Library/Caches/io.sentry/a456d41a8479da4fe7ad5452565d41fafe14cb35/s")
+        let theirs = try put("Users/tester/Library/Caches/io.sentry/0123456789abcdef0123456789abcdef01234567/s")
+        let surface = IdentitySurface(bundlePath: bundle.path, components: [
+            IdentitySurface.Component(path: bundle.path, bundleIdentifier: "com.example.sample", name: "Sample",
+                                      bundleName: nil, executableName: "Sample", teamIdentifier: "TEAM",
+                                      groups: [], urlSchemes: [], exportedTypes: []),
+            component(bundle.path + "/Contents/Frameworks/Sentry.framework", "io.sentry.Sentry")
+        ])
+        let identity = Identity(bundleID: "com.example.sample", name: "Sample", bundlePath: bundle.path,
+                                identitySurface: surface)
+        let found = try await Set(NestedFolderSource().evidence(for: identity, in: root).map(\.url.standardizedFileURL))
+        XCTAssertTrue(found.contains(ours.standardizedFileURL))
+        XCTAssertFalse(found.contains(theirs.standardizedFileURL))
+    }
+
     private func component(_ path: String, _ identifier: String) -> IdentitySurface.Component {
         IdentitySurface.Component(path: path, bundleIdentifier: identifier,
                                   name: (path as NSString).lastPathComponent, bundleName: nil,
