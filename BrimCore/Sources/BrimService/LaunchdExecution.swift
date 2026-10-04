@@ -3,17 +3,18 @@ import BrimOps
 import Foundation
 
 enum LaunchdExecution {
-    static func verifyModification(_ step: Step) throws {
+    static func verifyModification(_ step: Step, at path: String? = nil) throws {
+        let path = path ?? step.target
         guard let fingerprint = step.targetFingerprint,
               let modified = try FileManager.default.attributesOfItem(
-                  atPath: step.target
+                  atPath: path
               )[.modificationDate] as? Date,
               // Stored plans use fractional ISO dates with millisecond precision.
               abs(modified.timeIntervalSince(fingerprint.mtime)) <= 0.001
         else {
             throw SafeOpsError.fingerprintMismatch
         }
-        try SafeOps.verifyTargetFingerprint(targetPath: step.target,
+        try SafeOps.verifyTargetFingerprint(targetPath: path,
                                             expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
     }
 

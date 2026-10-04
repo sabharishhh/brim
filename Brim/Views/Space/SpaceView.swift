@@ -191,7 +191,7 @@ struct SpaceView: View {
         }
         return StatCard(
             title: "Remnants", symbol: "app.dashed",
-            figure: model.hasEstimate ? ByteText.short(model.brimCanClear) : "…", status: status, phrase: phrase,
+            figure: model.brimCanClearFigure, status: status, phrase: phrase,
             isRefreshing: model.isLoading && model.hasEstimate
         ) { shell.go(to: .leftovers) }
     }
