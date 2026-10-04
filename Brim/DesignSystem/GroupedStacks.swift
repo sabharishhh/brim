@@ -34,7 +34,6 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
                     // a pinned header is drawn on its own band with a rule under it.
                     Group {
                         header(section)
-
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
@@ -197,9 +196,9 @@ struct RowHighlight: ViewModifier {
                 shaped
             }
         }
-            .animation(.easeOut(duration: 0.08), value: isPressed)
-            .animation(Motion.quick, value: isInspected)
-            .environment(\.isRowHovered, isHovering)
+        .animation(.easeOut(duration: 0.08), value: isPressed)
+        .animation(Motion.quick, value: isInspected)
+        .environment(\.isRowHovered, isHovering)
     }
 
     private var fill: Color {

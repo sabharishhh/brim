@@ -97,7 +97,9 @@ public struct Replacement: Codable, Equatable, Hashable, Sendable {
     /// it is spelled, and without regard to case.
     static func normal(_ path: String) -> String {
         var url = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
-        while url.count > 1, url.hasSuffix("/") { url.removeLast() }
+        while url.count > 1, url.hasSuffix("/") {
+            url.removeLast()
+        }
         return url.lowercased()
     }
 }

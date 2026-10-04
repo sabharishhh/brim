@@ -207,7 +207,7 @@ extension UpdateFinder {
         if listing.isShared {
             guard let url = AppStoreCatalog.macPageURL(trackID: listing.trackID, region: region),
                   let (data, response) = try? await fetch(URLRequest(url: url)), response.statusCode == 200,
-                  let mac = AppStoreCatalog.macVersion(fromPage: String(decoding: data, as: UTF8.self))
+                  let mac = AppStoreCatalog.macVersion(fromPage: String(decoding: data, as: Unicode.UTF8.self))
             else { return .noAnswer }
             guard VersionOrder.isNewer(mac, than: candidate.version) else { return .current }
             latest = mac
@@ -268,7 +268,7 @@ extension UpdateFinder {
               ),
               let feed = ElectronFeed.feed(fromConfiguration: text),
               let (data, response) = try? await fetch(URLRequest(url: feed.manifest)), response.statusCode == 200,
-              let manifest = ElectronFeed.manifest(from: String(decoding: data, as: UTF8.self))
+              let manifest = ElectronFeed.manifest(from: String(decoding: data, as: Unicode.UTF8.self))
         else { return .noAnswer }
         guard VersionOrder.isNewer(manifest.version, than: candidate.version) else { return .current }
         guard let bundleID = candidate.bundleID,

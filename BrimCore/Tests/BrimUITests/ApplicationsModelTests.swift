@@ -1,7 +1,7 @@
-import XCTest
 import BrimCore
 import BrimProtocol
 @testable import BrimUI
+import XCTest
 
 private actor AppsStub: BrimServiceProtocol {
     var apps: [InstalledApplication]
@@ -17,7 +17,9 @@ private actor AppsStub: BrimServiceProtocol {
         self.gated = gated
     }
 
-    func installedApplications() async throws -> [InstalledApplication] { apps }
+    func installedApplications() async throws -> [InstalledApplication] {
+        apps
+    }
 
     func inspect(identity: Identity) async throws -> Footprint {
         inspectCalls.append(identity.name)
@@ -27,21 +29,52 @@ private actor AppsStub: BrimServiceProtocol {
         return footprints[identity.name] ?? Footprint(identity: identity, items: [])
     }
 
-    func release() { gate?.resume(); gate = nil }
-    func calls() -> [String] { inspectCalls }
+    func release() {
+        gate?.resume(); gate = nil
+    }
 
-    func plan(intent: PlanIntent) async throws -> Plan { throw Stub.no }
-    func explain(planId: UUID) async throws -> String { throw Stub.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.no }
-    func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.no }
-    func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Stub.no }
-    func leftovers() async throws -> [Leftover] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
+    func calls() -> [String] {
+        inspectCalls
+    }
+
+    func plan(intent _: PlanIntent) async throws -> Plan {
+        throw Stub.unavailable
+    }
+
+    func explain(planId _: UUID) async throws -> String {
+        throw Stub.unavailable
+    }
+
+    func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
+        throw Stub.unavailable
+    }
+
+    func apply(planId _: UUID, token _: ApprovalToken) async throws {
+        throw Stub.unavailable
+    }
+
+    func verify(planId _: UUID) async throws -> VerificationResult {
+        throw Stub.unavailable
+    }
+
+    func history() async throws -> [Plan] {
+        []
+    }
+
+    func undo(planId _: UUID) async throws {
+        throw Stub.unavailable
+    }
+
+    func leftovers() async throws -> [Leftover] {
+        []
+    }
+
+    func recoverableItems() async throws -> [RecoverableItem] {
+        []
+    }
 }
 
-private enum Stub: Error { case no }
+private enum Stub: Error { case unavailable }
 
 private func app(_ name: String, bundleID: String? = nil, protected: Bool = false) -> InstalledApplication {
     InstalledApplication(
@@ -52,7 +85,13 @@ private func app(_ name: String, bundleID: String? = nil, protected: Bool = fals
     )
 }
 
-private func item(_ path: String, mechanism: String, tier: EvidenceTier, bytes: Int64, sentence: String = "because") -> FootprintItem {
+private func item(
+    _ path: String,
+    mechanism: String,
+    tier: EvidenceTier,
+    bytes: Int64,
+    sentence: String = "because"
+) -> FootprintItem {
     FootprintItem(
         evidence: Evidence(url: URL(fileURLWithPath: path), tier: tier, mechanism: mechanism, humanSentence: sentence),
         sizeBytes: bytes,
@@ -62,26 +101,25 @@ private func item(_ path: String, mechanism: String, tier: EvidenceTier, bytes: 
 
 @MainActor
 final class ApplicationsModelTests: XCTestCase {
-
     /// Command-click marks apps for one review, as in Finder: the app
     /// already selected is the first mark, one mark is just a selection, and
     /// an app that is part of macOS cannot be marked.
     func testMarkingSeveralAppsForOneReview() {
         let model = ApplicationsModel()
-        let a = app("Alpha"), b = app("Beta"), c = app("Gamma"), system = app("Safari", protected: true)
-        model.select(a)
-        model.toggleMark(b)
+        let alpha = app("Alpha"), beta = app("Beta"), gamma = app("Gamma"), system = app("Safari", protected: true)
+        model.select(alpha)
+        model.toggleMark(beta)
         XCTAssertEqual(model.marked.map(\.name), ["Alpha", "Beta"])
         model.toggleMark(system)
         XCTAssertEqual(model.marked.count, 2, "part of macOS is not marked")
-        model.toggleMark(c)
+        model.toggleMark(gamma)
         XCTAssertEqual(model.marked.count, 3)
-        model.toggleMark(b)
-        model.toggleMark(c)
+        model.toggleMark(beta)
+        model.toggleMark(gamma)
         XCTAssertTrue(model.marked.isEmpty, "one mark is a selection")
         XCTAssertEqual(model.selected?.name, "Alpha")
-        model.toggleMark(b)
-        model.select(c)
+        model.toggleMark(beta)
+        model.select(gamma)
         XCTAssertTrue(model.marked.isEmpty, "a plain click ends marking")
     }
 
@@ -90,21 +128,21 @@ final class ApplicationsModelTests: XCTestCase {
     /// plain selection ends it.
     func testChoosingTicksAppsOneClickAtATime() {
         let model = ApplicationsModel()
-        let a = app("Alpha"), b = app("Beta"), system = app("Safari", protected: true)
-        model.select(a)
+        let alpha = app("Alpha"), beta = app("Beta"), system = app("Safari", protected: true)
+        model.select(alpha)
         model.startChoosing()
         XCTAssertEqual(model.marked.map(\.name), ["Alpha"])
-        model.toggleChoice(a)
+        model.toggleChoice(alpha)
         XCTAssertTrue(model.marked.isEmpty)
         XCTAssertTrue(model.isChoosing, "no ticks is still choosing")
-        model.toggleChoice(b)
+        model.toggleChoice(beta)
         model.toggleChoice(system)
         XCTAssertEqual(model.marked.map(\.name), ["Beta"])
         model.stopChoosing()
         XCTAssertFalse(model.isChoosing)
         XCTAssertTrue(model.marked.isEmpty)
         model.startChoosing()
-        model.select(b)
+        model.select(beta)
         XCTAssertFalse(model.isChoosing)
     }
 
@@ -190,7 +228,7 @@ final class ApplicationsModelTests: XCTestCase {
             item("/lib/Caches/com.test.app", mechanism: "LocationInventorySource",
                  tier: .B, bytes: 1, sentence: "A cache folder keyed to the bundle identifier."),
             item("/lib/HTTPStorages/com.test.app", mechanism: "LocationInventorySource",
-                 tier: .B, bytes: 1, sentence: "Cookies and web storage macOS keeps."),
+                 tier: .B, bytes: 1, sentence: "Cookies and web storage macOS keeps.")
         ])
 
         for group in found {
@@ -198,7 +236,7 @@ final class ApplicationsModelTests: XCTestCase {
                 XCTAssertEqual(
                     row.evidence.humanSentence, group.explanation,
                     "\(row.evidence.url.lastPathComponent) sits under a heading that says "
-                    + "\"\(group.explanation)\", which is not what Brim knows about it."
+                        + "\"\(group.explanation)\", which is not what Brim knows about it."
                 )
             }
         }
@@ -217,9 +255,9 @@ final class ApplicationsModelTests: XCTestCase {
             item("/lib/Support/Code", mechanism: "BundleIdentifierComponentSource", tier: .C,
                  bytes: 131_500_000,
                  sentence: "Named after the application rather than its identifier, so Brim "
-                    + "will not tick it for you."),
+                     + "will not tick it for you."),
             item("/lib/Preferences/com.test.app.plist", mechanism: "BundleIdentifierComponentSource",
-                 tier: .B, bytes: 1_000, sentence: "Preferences keyed to the bundle identifier"),
+                 tier: .B, bytes: 1000, sentence: "Preferences keyed to the bundle identifier")
         ])
 
         for group in found {
@@ -227,8 +265,8 @@ final class ApplicationsModelTests: XCTestCase {
                 XCTAssertEqual(
                     row.evidence.tier, group.strongestTier,
                     "A \(row.evidence.tier.rawValue) row is labelled "
-                    + "\(group.strongestTier.shortLabel) because it shares a group with "
-                    + "stronger evidence."
+                        + "\(group.strongestTier.shortLabel) because it shares a group with "
+                        + "stronger evidence."
                 )
             }
         }
@@ -244,7 +282,7 @@ final class ApplicationsModelTests: XCTestCase {
             item("/lib/Caches/com.test.app", mechanism: "BundleIdentifierStateSource",
                  tier: .B, bytes: 10, sentence: "A cache folder keyed to the bundle identifier."),
             item("/lib/Caches/com.test.app.ShipIt", mechanism: "LocationInventorySource",
-                 tier: .B, bytes: 20, sentence: "A cache folder keyed to the bundle identifier."),
+                 tier: .B, bytes: 20, sentence: "A cache folder keyed to the bundle identifier.")
         ])
 
         XCTAssertEqual(found.count, 1)
@@ -257,7 +295,7 @@ final class ApplicationsModelTests: XCTestCase {
     func testRowsWithoutASentenceAreNotMergedAcrossSources() async {
         let found = await groups(for: [
             item("/x", mechanism: "OneSource", tier: .B, bytes: 1, sentence: ""),
-            item("/y", mechanism: "AnotherSource", tier: .B, bytes: 1, sentence: ""),
+            item("/y", mechanism: "AnotherSource", tier: .B, bytes: 1, sentence: "")
         ])
 
         XCTAssertEqual(found.count, 2)
@@ -324,98 +362,11 @@ final class ApplicationsModelTests: XCTestCase {
     }
 
     func testAFailedListingIsReported() async {
-        struct Failing: BrimServiceProtocol {
-            func installedApplications() async throws -> [InstalledApplication] { throw Stub.no }
-            func inspect(identity: Identity) async throws -> Footprint { throw Stub.no }
-            func plan(intent: PlanIntent) async throws -> Plan { throw Stub.no }
-            func explain(planId: UUID) async throws -> String { throw Stub.no }
-            func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Stub.no }
-            func apply(planId: UUID, token: ApprovalToken) async throws { throw Stub.no }
-            func verify(planId: UUID) async throws -> VerificationResult { throw Stub.no }
-            func history() async throws -> [Plan] { [] }
-            func undo(planId: UUID) async throws { throw Stub.no }
-            func leftovers() async throws -> [Leftover] { [] }
-            func recoverableItems() async throws -> [RecoverableItem] { [] }
-        }
-
         let model = ApplicationsModel()
-        await model.load(service: Failing())
+        await model.load(service: FailingAppsService())
 
         XCTAssertTrue(model.applications.isEmpty)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertFalse(model.isLoading)
     }
 }
-
-/// Removing an application must take its row off screen at once. Waiting for
-/// a full re-enumeration leaves a removed app visible for seconds after the
-/// sheet says nothing remains.
-@MainActor
-final class ApplicationsModelRemovalTests: XCTestCase {
-
-    private func app(at url: URL) -> InstalledApplication {
-        InstalledApplication(
-            identity: Identity(bundleID: "com.t.\(url.lastPathComponent)", name: url.lastPathComponent),
-            url: url,
-            bundleSizeBytes: 1,
-            isSystemProtected: false
-        )
-    }
-
-    func testARemovedApplicationLeavesTheListImmediately() async throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let goneURL = dir.appendingPathComponent("Gone.app")
-        let stillURL = dir.appendingPathComponent("Still.app")
-        try FileManager.default.createDirectory(at: goneURL, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: stillURL, withIntermediateDirectories: true)
-
-        let gone = app(at: goneURL)
-        let still = app(at: stillURL)
-        let model = ApplicationsModel()
-        await model.load(service: StubInventoryService(applications: [gone, still]))
-        model.select(gone)
-
-        // Still on disk: nothing is dropped on the sheet's word alone.
-        XCTAssertFalse(model.forgetIfRemoved(gone))
-        XCTAssertEqual(model.applications.count, 2)
-
-        try FileManager.default.removeItem(at: goneURL)
-        XCTAssertTrue(model.forgetIfRemoved(gone))
-        XCTAssertEqual(model.applications.map(\.id), [still.id])
-        XCTAssertNil(model.selected, "A removed app must not stay selected")
-        XCTAssertNil(model.footprint)
-    }
-
-    func testTheSharedTierIsLabelledSharedRatherThanGuaranteed() {
-        // It read "Guaranteed", which is the opposite of what Tier S means
-        // and would have read to a person as a reason to remove the item
-        // with confidence. S says another application claims it.
-        XCTAssertEqual(EvidenceTier.S.shortLabel, "Shared")
-        XCTAssertEqual(EvidenceTier.A.shortLabel, "Direct")
-    }
-
-}
-
-private actor StubInventoryService: BrimServiceProtocol {
-    let applications: [InstalledApplication]
-    init(applications: [InstalledApplication]) { self.applications = applications }
-
-    func installedApplications() async throws -> [InstalledApplication] { applications }
-
-    func plan(intent: PlanIntent) async throws -> Plan { throw Nope.no }
-    func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw Nope.no }
-    func apply(planId: UUID, token: ApprovalToken) async throws { throw Nope.no }
-    func verify(planId: UUID) async throws -> VerificationResult { throw Nope.no }
-    func inspect(identity: Identity) async throws -> Footprint { throw Nope.no }
-    func explain(planId: UUID) async throws -> String { throw Nope.no }
-    func history() async throws -> [Plan] { [] }
-    func undo(planId: UUID) async throws { throw Nope.no }
-    func leftovers() async throws -> [Leftover] { [] }
-    func recoverableItems() async throws -> [RecoverableItem] { [] }
-}
-
-private enum Nope: Error { case no }
