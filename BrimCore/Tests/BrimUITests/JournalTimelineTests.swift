@@ -27,7 +27,7 @@ final class JournalTimelineTests: XCTestCase {
         let groups = JournalTimeline.groups(entries, now: now, calendar: calendar)
 
         XCTAssertEqual(groups.map(\.id), ["today", "yesterday", "week", "2026-9", "2025-12"])
-        XCTAssertEqual(groups.map { $0.items.count }, [1, 1, 1, 1, 1])
+        XCTAssertEqual(groups.map(\.items.count), [1, 1, 1, 1, 1])
     }
 
     /// Spotlight's date added moves on every update, so only a snapshot

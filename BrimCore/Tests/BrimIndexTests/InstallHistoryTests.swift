@@ -1,7 +1,7 @@
-import XCTest
 import BrimCore
-import GRDB
 @testable import BrimIndex
+import GRDB
+import XCTest
 
 /// History, kept by writing snapshots and subtracting them.
 ///
@@ -11,7 +11,6 @@ import GRDB
 /// view and migration hygiene both, could not be built. The schema
 /// existing is not the feature.
 final class InstallHistoryTests: XCTestCase {
-
     private var directory: URL!
 
     override func setUpWithError() throws {
@@ -25,14 +24,14 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     private func makeIndex(named name: String = "brim.sqlite") throws -> Index {
-        Index(dbManager: try DatabaseManager(
+        try Index(dbManager: DatabaseManager(
             databaseURL: directory.appendingPathComponent(name)
         ))
     }
 
     private func app(
         _ bundleID: String, _ name: String,
-        version: String = "1.0", size: Int64 = 1_000
+        version: String = "1.0", size: Int64 = 1000
     ) -> InstallObservation {
         InstallObservation(
             bundleID: bundleID, name: name, version: version,
@@ -131,7 +130,7 @@ final class InstallHistoryTests: XCTestCase {
 
     func testAnUpdateThatGrewIsOneEventAndNotTwo() async throws {
         let index = try makeIndex()
-        _ = try await index.recordInstalled([app("com.a", "Alpha", version: "1.0", size: 1_000)])
+        _ = try await index.recordInstalled([app("com.a", "Alpha", version: "1.0", size: 1000)])
         _ = try await index.recordInstalled([
             app("com.a", "Alpha", version: "2.0", size: 900_000_000)
         ])
@@ -157,7 +156,7 @@ final class InstallHistoryTests: XCTestCase {
         // be subtracted from, which would mean watching for changes with
         // a resident process, which is the thing nobody wants running.
         let index = try makeIndex()
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             _ = try await index.recordInstalled([app("com.a", "Alpha")])
         }
 
@@ -200,30 +199,30 @@ final class InstallHistoryTests: XCTestCase {
         let pool = try DatabasePool(path: url.path)
         try pool.write { db in
             try db.execute(sql: """
-                CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY);
-                """)
+            CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY);
+            """)
             try db.execute(sql: "INSERT INTO grdb_migrations VALUES ('v1')")
             try db.execute(sql: """
-                CREATE TABLE identity (
-                    id TEXT PRIMARY KEY, bundle_id TEXT, team_id TEXT,
-                    name TEXT NOT NULL, version TEXT,
-                    is_sandboxed BOOLEAN NOT NULL DEFAULT 0
-                );
-                """)
+            CREATE TABLE identity (
+                id TEXT PRIMARY KEY, bundle_id TEXT, team_id TEXT,
+                name TEXT NOT NULL, version TEXT,
+                is_sandboxed BOOLEAN NOT NULL DEFAULT 0
+            );
+            """)
             try db.execute(sql: """
-                CREATE TABLE observation (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    identity_id TEXT NOT NULL REFERENCES identity(id) ON DELETE CASCADE,
-                    observed_at DATETIME NOT NULL, state TEXT NOT NULL
-                );
-                """)
+            CREATE TABLE observation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identity_id TEXT NOT NULL REFERENCES identity(id) ON DELETE CASCADE,
+                observed_at DATETIME NOT NULL, state TEXT NOT NULL
+            );
+            """)
             try db.execute(
                 sql: "INSERT INTO identity (id, bundle_id, name) VALUES ('com.old', 'com.old', 'Older')"
             )
             try db.execute(sql: """
-                INSERT INTO observation (identity_id, observed_at, state)
-                VALUES ('com.old', '2020-01-01 00:00:00', 'installed')
-                """)
+            INSERT INTO observation (identity_id, observed_at, state)
+            VALUES ('com.old', '2020-01-01 00:00:00', 'installed')
+            """)
         }
         try pool.close()
 
@@ -251,11 +250,11 @@ final class InstallHistoryTests: XCTestCase {
     func testAnAppAnEarlierSnapshotSawIsRemovedAsOfTheLastTimeItWasSeen() async throws {
         let index = try makeIndex()
         let first = Date(timeIntervalSince1970: 1_000_000)
-        let second = first.addingTimeInterval(86_400)
+        let second = first.addingTimeInterval(86400)
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta"),
                                              app("com.apple.x", "Apple")], at: first)
         _ = try await index.recordInstalled([app("com.a", "Alpha"), app("com.b", "Beta")], at: second)
-        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second.addingTimeInterval(86_400))
+        _ = try await index.recordInstalled([app("com.a", "Alpha")], at: second.addingTimeInterval(86400))
 
         let removed = try await index.removedApplications()
         XCTAssertEqual(Set(removed.keys), ["com.b"], "macOS's own are left out")

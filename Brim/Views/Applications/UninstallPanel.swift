@@ -104,7 +104,6 @@ struct UninstallPanel: View {
         onClose()
     }
 
-
     @ViewBuilder
     private var content: some View {
         switch model.phase {
@@ -331,7 +330,9 @@ private extension UninstallPanel {
 struct ReviewRun: Identifiable {
     let folder: String
     let steps: [Step]
-    var id: Int { steps[0].index }
+    var id: Int {
+        steps[0].index
+    }
 
     static func runs(of steps: [Step]) -> [ReviewRun] {
         let byFolder = Dictionary(grouping: steps) { ($0.target as NSString).deletingLastPathComponent }
@@ -364,7 +365,7 @@ struct ReviewHeading: View {
                 .foregroundStyle(Palette.ink)
             if let count {
                 Text([count.formatted(), bytes.map { ByteText.short($0) }].compactMap(\.self)
-                        .joined(separator: " · "))
+                    .joined(separator: " · "))
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkTertiary)

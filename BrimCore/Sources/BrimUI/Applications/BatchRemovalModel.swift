@@ -1,6 +1,6 @@
-import Foundation
 import BrimCore
 import BrimProtocol
+import Foundation
 
 /// Several apps removed from one review.
 ///
@@ -17,7 +17,9 @@ public final class BatchRemovalModel: ObservableObject {
     public struct Entry: Identifiable {
         public let app: InstalledApplication
         public let removal: UninstallExecutionModel
-        public var id: String { app.id }
+        public var id: String {
+            app.id
+        }
     }
 
     @Published public private(set) var entries: [Entry] = []
@@ -49,7 +51,13 @@ public final class BatchRemovalModel: ObservableObject {
 
     /// The apps whose plans are ready to run.
     public var ready: [Entry] {
-        entries.filter { if case .ready = $0.removal.phase { true } else { false } }
+        entries.filter {
+            if case .ready = $0.removal.phase {
+                true
+            } else {
+                false
+            }
+        }
     }
 
     /// What the plans will move, in total.

@@ -66,7 +66,11 @@ struct BatchRemovalPanel: View {
     /// "2 removed · 1 needs you", once they have all run.
     private var outcome: String {
         let done = model.entries.filter {
-            if case let .verified(result) = $0.removal.phase { result.success } else { false }
+            if case let .verified(result) = $0.removal.phase {
+                result.success
+            } else {
+                false
+            }
         }.count
         let rest = model.entries.count - done
         return ["\(done) removed", rest > 0 ? "\(rest) \(rest == 1 ? "needs" : "need") you" : nil]
