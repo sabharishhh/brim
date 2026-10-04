@@ -212,12 +212,32 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         }
     }
 
+    /// Kinds the bundle declares it does not have, and the review found none of.
+    public static func declaredNone(in plan: Plan) -> [DeclaredCapability] {
+        (plan.capabilityReport?.checks ?? [])
+            .filter { $0.declaration == .notDeclared && $0.registrations.isEmpty }
+            .map(\.capability)
+    }
+
+    /// Checks that could not be answered for a kind of registration the
+    /// review had reason to expect. One that could not be read for a kind
+    /// the app never declared and the review never found answers nothing
+    /// anyone asked: configuration profiles cannot be fully read on this
+    /// Mac, and eqMac's clean removal was marked incomplete because of it.
+    public static func unansweredChecks(
+        _ observations: [RegistrationVerification], declaredNone: [DeclaredCapability]
+    ) -> [RegistrationVerification] {
+        observations.filter { $0.couldNotCheck && !declaredNone.contains($0.capability) }
+    }
+
+    public var unansweredChecks: [RegistrationVerification] {
+        Self.unansweredChecks(registrationObservations ?? [], declaredNone: declaredNone)
+    }
+
     private static func registrationSummary(
         plan: Plan, observations: [RegistrationVerification]?, verificationStartedAt: Date?
     ) -> RemovalRegistrationSummary {
-        let declaredNone = (plan.capabilityReport?.checks ?? [])
-            .filter { $0.declaration == .notDeclared && $0.registrations.isEmpty }
-            .map(\.capability)
+        let declaredNone = declaredNone(in: plan)
         // Declarations are useful review evidence, but do not certify absence.
         let grouped = Dictionary(grouping: observations ?? [], by: \.capability)
         let checked = DeclaredCapability.allCases.filter { capability in
