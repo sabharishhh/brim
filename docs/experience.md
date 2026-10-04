@@ -209,14 +209,27 @@ were not checked on the real Mac; the Shared and partial cases are covered by
 unit tests only.
 
 The second slice was built with the screen locked for most of the session,
-so its new presentations were verified by build, tests and code reading, not
-on screen: the review and result groups, the resolve mark, Review Again, the
-Journal outcomes, page fades, toast and tray timing, Welcome and About
-artwork and tilt, the drop well, the narrow layouts and Apps browsing during
-refresh still need a look on the real Mac. The full package suite passed
-after each chunk (486 XCTest cases in the last run, one existing skip) and
-the changed-file lint added no violations. Launch measurements are in
-`docs/performance.md`.
+then checked on the real Mac once it was unlocked. Seen working: the About
+window and its close; Journal row alignment; the WhatsApp review grouped as
+System records, App, Data (18) and Rebuilds (2), with an unticked crash
+report marked as a name match, closed without removing anything; Home's
+cards wrapping two by two at 900 points; and Remnants at 900 points.
+
+The look found two faults that tests had passed. At 900 points the Apps
+list stayed beside its pane, squeezed the sidebar and clipped the pane off
+the window, because the list's own minimum width was what the adaptive
+container measured. With that minimum removed the list takes the full width
+and the pane floats with Close, which clears the selection. Page and pane
+changes also drew both pages for a moment while one faded out and the other
+in; the outgoing view now leaves at once, and a capture straight after a
+sidebar click showed only the new page.
+
+Not looked at on screen: toast and tray timing, the Welcome artwork (setup
+was already complete), the drop well refusal, the update Details popover,
+Apps browsing during Check Again, and Select mode in the narrow layout.
+The full package suite passed (486 XCTest cases, one existing skip, and
+the Swift Testing runs) and the changed-file lint added no violations.
+Launch measurements are in `docs/performance.md`.
 
 ## Remaining design work
 
