@@ -99,6 +99,12 @@ It goes online only to check for updates:
 - **Brim itself.** Brim asks GitHub for the latest release to tell you when
   a new version is out.
 
+## Loading and review performance
+
+Brim shares overlapping application reads, reuses ownership claims within a
+review, and bounds independent measurements to four workers. Later checks
+still read current disk state. See [measurements and remaining work](docs/performance.md).
+
 ## Building from source
 
 You need Xcode 27 and a free Apple ID signed in to Xcode.

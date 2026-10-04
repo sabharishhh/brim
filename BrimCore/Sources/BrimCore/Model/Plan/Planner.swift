@@ -70,19 +70,19 @@ public struct Planner: Sendable {
         }
 
         // Nested paths leave with the selected containing bundle.
-        let removedWhole: [String] = evaluatedItems.compactMap { item in
+        let removedWhole = Set(evaluatedItems.compactMap { item -> String? in
             guard case .selected = item.selection else { return nil }
             let path = item.footprintItem.evidence.url.standardizedFileURL.path
             let helperOnly = item.footprintItem.capability == .needsHelper
             return helperOnly && !HelperScope.covers(path) ? nil : path
-        }
+        })
 
         var plannedPaths = Set<String>()
         for item in evaluatedItems {
             let targetURL = item.footprintItem.evidence.url
             let targetPath = targetURL.path
             let standardized = targetURL.standardizedFileURL.path
-            if removedWhole.contains(where: { standardized.hasPrefix($0 + "/") }) {
+            if Self.hasAncestor(of: standardized, in: removedWhole) {
                 continue
             }
             // Shown with the reason it stays whatever its tier, and never
@@ -351,6 +351,7 @@ public struct Planner: Sendable {
             let removedPaths = steps.filter {
                 [.trashPath, .trashPathPrivileged].contains($0.kind)
             }.map(\.target)
+            let removedRoots = Set(removedPaths)
             let registered = capabilityReport?.checks
                 .first { $0.capability == .launchServices }?.registrations ?? []
             let components = evaluatedFootprint.identity.identitySurface?.components ?? []
@@ -358,7 +359,7 @@ public struct Planner: Sendable {
                 ? steps.filter { $0.executionPhase == .appBundle }.map(\.target) : []
             let paths = Set((hosts + registered.compactMap(\.programPath) + components.map(\.path)).filter { path in
                 URL(fileURLWithPath: path).pathExtension.lowercased() == "app"
-                    && removedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
+                    && (removedRoots.contains(path) || Self.hasAncestor(of: path, in: removedRoots))
             })
             for registrationPath in paths.sorted() {
                 let identifier = registered.first { $0.programPath == registrationPath }?.identifier
