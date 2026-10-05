@@ -46,8 +46,12 @@ struct HomeView: View {
             // the window open at half the display.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 20) {
-                    header
+                VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
+                    if case .failed = freshness {
+                        FreshnessLabel(freshness: freshness)
+                    } else if case .partial = freshness {
+                        FreshnessLabel(freshness: freshness)
+                    }
                     if !fullDiskAccess.isGranted {
                         accessNote
                     }
@@ -86,9 +90,17 @@ struct HomeView: View {
                         }
                     }
                 }
-                .frame(maxWidth: 900, alignment: .leading)
+                .frame(maxWidth: Metrics.cardPageWidth, alignment: .leading)
                 .padding(Metrics.pagePadding)
                 Spacer(minLength: 0)
+            }
+        }
+        .navigationTitle(Self.macName)
+        // How fresh the numbers are, under the Mac's name in the toolbar,
+        // kept current by the minute.
+        .background {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Color.clear.navigationSubtitle(freshness.sentence(now: context.date))
             }
         }
         .task { await leftovers.loadIfNeeded(service: service) }
@@ -101,20 +113,7 @@ struct HomeView: View {
         .onAppear { fullDiskAccess.startObserving() }
     }
 
-    // MARK: - Header
-
-    /// The Mac's name and how fresh the numbers are. No sentence: the
-    /// cards say what matters in a few words each.
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(Self.macName)
-                .font(.brimHeadline)
-                .foregroundStyle(Palette.ink)
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
-            FreshnessLabel(freshness: freshness)
-        }
-    }
+    // MARK: - Title
 
     /// The computer's own name, as Sharing settings has it. Read once:
     /// `Host.current()` can wait on the network to answer the same thing.

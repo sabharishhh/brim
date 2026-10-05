@@ -60,6 +60,7 @@ struct BackgroundView: View {
         } detail: {
             inspector
         }
+        .pageTitle("Background", subtitle: hasData ? summary : nil)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.revision) {
             icons = Self.icons(for: sections)
@@ -85,32 +86,13 @@ struct BackgroundView: View {
 
     // MARK: - Header
 
+    /// The search at the top of the list. The page's name and count are in
+    /// the toolbar.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Background")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                if hasData {
-                    Text(summary)
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
-                }
-                if model.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Checking")
-                }
-                Spacer()
-            }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search background items")
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
+        BrimSearchField(text: $model.searchText, prompt: "Search Background Items")
+            .padding(.horizontal, Metrics.pagePadding)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
     }
 
     private var hasData: Bool {

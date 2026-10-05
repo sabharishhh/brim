@@ -78,9 +78,6 @@ struct ContentView: View {
         // seen through glass: a shade apart, with no line between them.
         .containerBackground(Palette.canvas, for: .window)
         .onAppear { LaunchSignpost.shellAppeared() }
-        // The page says where you are. A window titled with the app's name
-        // tells nobody anything (HIG, Toolbars).
-        .toolbar(removing: .title)
         .overlay(alignment: .top) { commandBar }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
         // The preview panel is not the key window, so Escape arrives here.
@@ -233,29 +230,17 @@ struct ContentView: View {
     private var toolbar: some ToolbarContent {
         if shell.selection == .apps {
             ToolbarItem(placement: .principal) {
-                Picker("View", selection: $shell.appsLens) {
-                    ForEach(AppsLens.allCases, id: \.self) { lens in
-                        LensTitle(lens: lens, updates: models.updates).tag(lens)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
+                LensSwitch(lens: $shell.appsLens, updates: models.updates)
             }
         }
         // Keeps Check Again on the trailing edge on every page, including
         // those with nothing in the middle of the toolbar.
         ToolbarSpacer(.flexible)
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                shell.requestCheck()
-            } label: {
-                Label("Check Again", systemImage: "arrow.clockwise")
-                    // Turns once per press, so the click is answered even
-                    // before the check has anything to show.
-                    .symbolEffect(.rotate.clockwise, options: .nonRepeating, value: shell.checkRequests)
-                    .symbolEffectsRemoved(reduceMotion)
-            }
-            .help("Check this page again (⌘R)")
+            CheckAgainButton(
+                activity: models.activity, destination: shell.selection, presses: shell.checkRequests,
+                check: { shell.requestCheck() }, stop: models.developer.cancelScan
+            )
         }
     }
 
@@ -323,21 +308,6 @@ private struct DockBadge: View {
     private var count: Int {
         guard isOn else { return 0 }
         return session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id))).count
-    }
-}
-
-/// A lens's name, with the number of updates beside Updates once a check
-/// has counted them.
-private struct LensTitle: View {
-    let lens: AppsLens
-    @ObservedObject var updates: UpdatesModel
-
-    var body: some View {
-        if lens == .updates, let count = updates.count, count > 0 {
-            Text("\(lens.rawValue) \(count)")
-        } else {
-            Text(lens.rawValue)
-        }
     }
 }
 

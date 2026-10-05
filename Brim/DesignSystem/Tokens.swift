@@ -90,6 +90,11 @@ enum Metrics {
     static let rowRadius: CGFloat = 10
     static let cardPadding: CGFloat = 8
     static let pagePadding: CGFloat = 24
+    /// Space between the cards of a card page (Home, Space, Energy).
+    static let cardSpacing: CGFloat = 16
+    /// The widest a card page grows, so a full screen window keeps its
+    /// cards at a readable width rather than stretching figures apart.
+    static let cardPageWidth: CGFloat = 880
 
     static let rowIcon: CGFloat = 32
     static let compactRowIcon: CGFloat = 24
