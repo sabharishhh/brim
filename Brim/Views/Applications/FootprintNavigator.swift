@@ -64,7 +64,8 @@ struct FootprintNavigator: View {
             .contentShape(.rect(cornerRadius: Metrics.rowRadius))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(section.loss.navigationTitle), \(section.locations.count) locations")
+        .accessibilityLabel("\(section.loss.navigationTitle), "
+            + (section.locations.count == 1 ? "1 location" : "\(section.locations.count) locations"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("Show found locations in this group")
         .onKeyPress(keys: [.return, .space]) { _ in

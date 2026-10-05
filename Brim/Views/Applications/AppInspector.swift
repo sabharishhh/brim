@@ -332,12 +332,12 @@ private struct LocationRow: View {
                 }
             }
             if location.isShared {
-                Text("Another installed app claims this, so a removal leaves it.")
+                Text("Another installed app uses this. It stays.")
                     .font(.caption)
                     .foregroundStyle(Palette.inkSecondary)
             }
             if location.isPartial {
-                Text("Part of it could not be read, so its size is not complete.")
+                Text("Part of it could not be read. It may be larger.")
                     .font(.caption)
                     .foregroundStyle(Palette.caution)
             }

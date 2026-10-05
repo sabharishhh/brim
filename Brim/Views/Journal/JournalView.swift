@@ -36,6 +36,7 @@ struct JournalView: View {
         }
         .pageTitle("Journal")
         .toolbar { journalActions }
+        .focusedSceneValue(\.pageActions, menuActions)
         .sheet(item: $checkedResult) { result in
             RemovalVerificationSheet(result: result, plan: checkedPlan)
         }
@@ -98,6 +99,9 @@ struct JournalView: View {
     /// could be seen until it was looked for. Each still asks first.
     @ToolbarContentBuilder
     private var journalActions: some ToolbarContent {
+        // Their own group, apart from Check Again: a refresh and two actions
+        // that delete were one capsule.
+        ToolbarSpacer(.fixed, placement: .primaryAction)
         ToolbarItemGroup(placement: .primaryAction) {
             Button("Empty Removed Items from Trash", systemImage: "trash") {
                 trashRequest = model.records.filter(\.canUndo)
@@ -108,6 +112,21 @@ struct JournalView: View {
                 .disabled(!model.canClear)
                 .help("Clear the Journal")
         }
+    }
+
+    /// The same two commands for the Action menu, when there is something
+    /// for them to do.
+    private var menuActions: [FocusedAction<Void>] {
+        var actions: [FocusedAction<Void>] = []
+        if model.records.contains(where: \.canUndo) {
+            actions.append(FocusedAction(name: "Empty Removed Items from Trash…") { _ in
+                trashRequest = model.records.filter(\.canUndo)
+            })
+        }
+        if model.canClear {
+            actions.append(FocusedAction(name: "Clear Journal…") { _ in confirmsClear = true })
+        }
+        return actions
     }
 
     /// Names one removal, counts several, and says how much goes.

@@ -8,7 +8,7 @@ struct FeedbackWindowHeader: View {
         HStack(spacing: 14) {
             Image(systemName: "bubble.left.and.text.bubble.right")
                 .font(.title2)
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(width: 44, height: 44)
                 .background(Palette.selected, in: .rect(cornerRadius: 14))
                 .accessibilityHidden(true)

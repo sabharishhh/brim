@@ -96,8 +96,19 @@ struct LeftoversView: View {
 private extension LeftoversView {
     // MARK: - List
 
+    /// Brim's own protected recovery copies were listed among the Unknown
+    /// items, under a caption saying nobody could be named for them. They
+    /// have their own heading now.
+    private static func isRecovery(_ group: LeftoverGroup) -> Bool {
+        group.items.contains { $0.url.path == RecoveryCopy.directory }
+    }
+
     private var unknowns: [LeftoverGroup] {
-        model.unclaimedGroupsForReview.sorted { $0.totalBytes > $1.totalBytes }
+        model.unclaimedGroupsForReview.filter { !Self.isRecovery($0) }.sorted { $0.totalBytes > $1.totalBytes }
+    }
+
+    private var recoveryGroups: [LeftoverGroup] {
+        model.unclaimedGroupsForReview.filter(Self.isRecovery)
     }
 
     private var apps: [LeftoverGroup] {
@@ -149,7 +160,7 @@ private extension LeftoversView {
                     unknownTitle
                         .padding(.top, 20)
                     if showsUnknown {
-                        Text("Nobody can be named for these, so they are never counted.")
+                        Text("Not matched to any app. Left out of totals.")
                             .font(.caption)
                             .foregroundStyle(Palette.inkTertiary)
                             .padding(.horizontal, 12)
@@ -170,6 +181,23 @@ private extension LeftoversView {
                                 )
                             }
                         }
+                    }
+                }
+                if !recoveryGroups.isEmpty {
+                    sectionTitle("Brim's recovery copies", count: 0, bytes: 0)
+                        .padding(.top, 20)
+                    ForEach(recoveryGroups) { group in
+                        UnknownRow(
+                            group: group, isScanning: model.isScanning,
+                            readRecovery: {
+                                if let problem = await HelperRoute.authorizeRecoveryRead() {
+                                    recoveryReadError = problem
+                                } else {
+                                    await model.load(service: service)
+                                }
+                            },
+                            review: { open(group) }
+                        )
                     }
                 }
             }
@@ -205,6 +233,7 @@ private extension LeftoversView {
         }
         .padding(.top, 10)
         .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
 
@@ -320,11 +349,14 @@ private struct LeftoverBatchActions: View {
                 Button("Clear", action: clear).buttonStyle(.borderless)
             }
             Spacer()
-            Button("Delete All Remnants", action: removeAll)
+            // Both open a review, and what is approved there goes to the
+            // Trash first. They said Delete, which promised more than happens
+            // and less than the review asks.
+            Button("Review All…", action: removeAll)
+                .capsuleAction()
                 .disabled(!canRemoveAll)
-                .help("Review all removable items from known removed apps. "
-                    + "Unknown items need to be selected separately.")
-            Button("Delete Selected", action: removeSelected)
+                .help("Review everything removed apps left. Unknown items are only included when ticked.")
+            Button("Review Selected…", action: removeSelected)
                 .capsuleAction(prominent: true)
                 .disabled(!canRemoveSelection)
         }
@@ -498,7 +530,11 @@ private struct UnknownRow: View {
                     .opacity(0.7)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(group.displayName)
+                // The folder's own name. A guessed owner, title-cased from
+                // the folder ("Openai chat", "Adobe acc", "Sh"), read like an
+                // app Brim had identified, under a heading saying none was.
+                Text(group.items.count == 1 ? (group.items.first?.url.lastPathComponent ?? group.displayName)
+                    : group.displayName)
                     .foregroundStyle(Palette.inkSecondary)
                 if let first = group.items.first {
                     Text((first.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)

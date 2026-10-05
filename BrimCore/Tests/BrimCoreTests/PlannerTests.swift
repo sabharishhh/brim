@@ -116,7 +116,7 @@ final class PlannerTests: XCTestCase {
         
         XCTAssertEqual(plan.excludedItems.count, 2)
         XCTAssertEqual(plan.excludedItems[0].reason, "Brim refused to modify this item to ensure system stability.")
-        XCTAssertEqual(plan.excludedItems[1].reason, "You opted to keep this item, or it was unselected by default due to low confidence.")
+        XCTAssertEqual(plan.excludedItems[1].reason, "Not ticked. Brim ticks only what it is sure belongs to the app.")
         
         XCTAssertEqual(plan.expectedTotalBytes, 1024)
     }

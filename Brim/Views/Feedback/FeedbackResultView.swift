@@ -13,7 +13,7 @@ struct FeedbackResultView: View {
                 .font(.system(size: 52, weight: .light))
                 // Green only once GitHub confirms the report; the handoff
                 // before that is a next step, in the accent.
-                .foregroundStyle(feedback.receipt == nil ? Color.accentColor : Palette.success)
+                .foregroundStyle(feedback.receipt == nil ? Palette.ink : Palette.success)
                 .symbolEffect(.bounce, options: .nonRepeating, isActive: !reduceMotion && feedback.receipt != nil)
                 .accessibilityHidden(true)
             VStack(spacing: 10) {
@@ -30,13 +30,13 @@ struct FeedbackResultView: View {
                 Link(destination: receipt.url) {
                     Label("View Report #\(receipt.number)", systemImage: "arrow.up.right")
                 }
-                .buttonStyle(.glass)
+                .capsuleAction()
                 .controlSize(.large)
             }
             HStack(spacing: 12) {
                 Button(feedback.receipt == nil ? "Back to Draft" : "Write Another") { feedback.editAgain() }
                 Button("Done") { dismissWindow(id: FeedbackWindow.windowID) }
-                    .buttonStyle(.glassProminent)
+                    .capsuleAction(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
             Spacer()

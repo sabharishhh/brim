@@ -89,7 +89,7 @@ public enum RemovalCapability {
         case .ok:
             return nil
         case .needsHelper:
-            return "\(folder) belongs to the system, so removing anything in it needs an "
+            return "\(folder) belongs to the system. Removing anything in it needs an "
                  + "administrator."
         case .needsFullDiskAccess:
             return "\(folder) is one macOS keeps private. Brim needs Full Disk Access to "
@@ -105,7 +105,7 @@ public enum RemovalCapability {
         case .ok:
             return nil
         case .needsHelper:
-            return "This sits in a folder that belongs to the system, so removing it needs an "
+            return "This is in a folder that belongs to the system. Removing it needs an "
                  + "administrator."
         case .needsFullDiskAccess:
             return "Needs Full Disk Access."

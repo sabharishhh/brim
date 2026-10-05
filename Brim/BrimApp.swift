@@ -10,6 +10,7 @@ private let log = BrimLog.make("app")
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
+    @FocusedValue(\.pageActions) var pageActions
     @FocusedValue(\.shell) var shell
     @FocusedValue(\.selectedItems) var selectedItems
 
@@ -45,14 +46,14 @@ private let log = BrimLog.make("app")
         mainWindow
         Settings {
             SettingsView()
-                .buttonStyle(.glass)
+                .tint(Palette.tint)
                 .environment(session)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
         Window("Feedback", id: FeedbackWindow.windowID) {
             FeedbackWindow()
-                .buttonStyle(.glass)
+                .tint(Palette.tint)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
@@ -63,7 +64,7 @@ private let log = BrimLog.make("app")
         .windowResizability(.contentSize)
         Window("About Brim", id: AboutView.windowID) {
             AboutView()
-                .buttonStyle(.glass)
+                .tint(Palette.tint)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -73,9 +74,9 @@ private let log = BrimLog.make("app")
     private var mainWindow: some Scene {
         WindowGroup {
             root
-                // Every button without a style of its own is glass, as the
-                // toolbar's are. Rows, links and icon buttons keep theirs.
-                .buttonStyle(.glass)
+                // Monochrome: the person's system accent would colour
+                // checkboxes, switches and the sidebar selection.
+                .tint(Palette.tint)
                 .environment(\.brimService, client)
                 .environment(session)
                 .environment(feedback)
@@ -163,6 +164,9 @@ private let log = BrimLog.make("app")
                         .keyboardShortcut(KeyEquivalent(destination.keyboardDigit ?? "0"), modifiers: .command)
                         .disabled(shell == nil)
                 }
+                // The other half of the Apps and Updates switch.
+                Button("Updates") { shell?.go(to: .apps, lens: .updates) }
+                    .disabled(shell == nil)
             }
             CommandGroup(before: .sidebar) {
                 Toggle("Compact Rows", isOn: $compactRows)
@@ -175,7 +179,7 @@ private let log = BrimLog.make("app")
             }
             CommandGroup(after: .newItem) {
                 Divider()
-                Button("Reveal in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
+                Button("Show in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
                     .keyboardShortcut("r", modifiers: [.command, .option])
                     .disabled(selectedItems?.urls.isEmpty ?? true)
                 Button("Quick Look") { shell?.quickLook(selectedItems?.urls ?? []) }
@@ -193,6 +197,12 @@ private let log = BrimLog.make("app")
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(removeSelectedAction == nil)
+                if let pageActions, !pageActions.isEmpty {
+                    Divider()
+                    ForEach(pageActions, id: \.name) { action in
+                        Button(action.name) { action.perform(()) }
+                    }
+                }
             }
             CommandGroup(replacing: .appInfo) {
                 AboutMenuItem()

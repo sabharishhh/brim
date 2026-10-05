@@ -23,7 +23,7 @@ enum SelfRemoval {
     static func perform(helper: PrivilegedHelperClient) async -> String? {
         if let problem = await helper.uninstall(resettingPrivacy: FullDiskAccessProbe.isGranted()) {
             log.error("could not clear what root owns: \(problem)")
-            return "Brim's folder in /Library could not be cleared, so nothing has been removed.\n\n"
+            return "Brim's folder in /Library could not be cleared. Nothing was removed.\n\n"
                 + problem
         }
         let bundle = Bundle.main.bundleURL

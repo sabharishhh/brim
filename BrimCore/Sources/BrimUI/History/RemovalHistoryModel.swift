@@ -13,8 +13,11 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         plan.planId
     }
 
+    /// Removals from Remnants were recorded under its old name, Leftovers,
+    /// and the Journal showed a page that no longer exists.
     public var name: String {
-        plan.intent.subjectIdentity.name
+        let recorded = plan.intent.subjectIdentity.name
+        return recorded == "Leftovers" ? "Remnants" : recorded
     }
 
     public var itemCount: Int {
@@ -39,10 +42,10 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
             return nil
         }
         if plan.steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
-            return "Set aside by the helper; restore is unavailable in Brim"
+            return "Set aside. Brim cannot put this back."
         }
         if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
-            return "Run by the tool; cannot be undone"
+            return "Run by the tool. Cannot be undone."
         }
         return plan.isReversible ? "No longer in the Trash" : "Deleted permanently"
     }

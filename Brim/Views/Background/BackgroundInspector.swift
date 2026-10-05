@@ -24,7 +24,7 @@ struct BackgroundInspector: View {
                 header
                 switch entry.state {
                 case .gone:
-                    Label("Points at nothing", systemImage: "exclamationmark.triangle")
+                    Label("App not found", systemImage: "exclamationmark.triangle")
                         .font(.brimFacts)
                         .foregroundStyle(Palette.caution)
                 case .clearing:
@@ -167,7 +167,7 @@ private struct RecordRow: View {
             }
             if let url = reveals[registration.id] {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal target in Finder") {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Show Target in Finder") {
                         shell.reveal([url])
                     }
                 }

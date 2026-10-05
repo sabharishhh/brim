@@ -18,23 +18,23 @@ struct SearchDetailsView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(check.capability.title)
                         Text("\(declarationText(check.declaration)) · \(coverageText(check.coverage))")
-                            .font(.caption).foregroundColor(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                         if check.coverage.available {
                             Text("\(check.registrations.count + check.locations.count) found")
-                                .font(.caption).foregroundColor(.secondary)
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         if check.declaration == .declared || !check.registrations.isEmpty || check.followUp != nil {
                             if let tier = check.removalTier {
                                 Text(removalText(tier))
-                                    .font(.caption).foregroundColor(.secondary)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                             if let followUp = check.followUp {
                                 Text(followUp.sentence)
-                                    .font(.caption).foregroundColor(.secondary)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         ForEach(check.locations, id: \.self) { path in
-                            Text(path).font(.caption2).foregroundColor(.secondary)
+                            Text(path).font(.caption2).foregroundStyle(.secondary)
                                 .lineLimit(1).truncationMode(.middle)
                         }
                     }

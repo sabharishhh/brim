@@ -91,24 +91,74 @@ private struct PointerLight: ViewModifier {
     }
 }
 
-/// Brim's action buttons are the system's Liquid Glass buttons.
+/// Brim's action buttons: flat monochrome capsules.
 ///
-/// They were Brim's own capsules for a while, because a bordered button on
-/// the Mac has no hover state and Open Journal and Finish Removal sat still
-/// while the cards around them responded. Glass buttons answer the pointer
-/// and a press themselves, the way the toolbar's do, follow Reduce
-/// Transparency and Increase Contrast without anything written here, and
-/// keep the toolbar and the page in one material. Prominent ones carry the
-/// person's accent.
-extension View {
-    /// A glass action button, accent tinted when prominent.
-    @ViewBuilder
-    func capsuleAction(prominent: Bool = false) -> some View {
-        if prominent {
-            buttonStyle(.glassProminent)
-        } else {
-            buttonStyle(.glass)
+/// They were Liquid Glass for a day, and Apple's guidance is plain that glass
+/// belongs to the controls floating above content, not to content: a glass
+/// Open Journal on a card was glass in the content layer. The main action is
+/// a snow capsule with dark text, every other one a faint white capsule, and
+/// neither takes the person's system accent, which turned them red. Hover
+/// brightens the fill, a press dims it, disabled fades it, and Increase
+/// Contrast draws an edge. The toolbar, the tray, the toast and the command
+/// bar keep the system's glass.
+struct ActionStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        ActionBody(configuration: configuration, prominent: prominent)
+    }
+}
+
+private struct ActionBody: View {
+    let configuration: ButtonStyleConfiguration
+    let prominent: Bool
+    @State private var isHovering = false
+    @SwiftUI.Environment(\.controlSize) private var controlSize
+    @SwiftUI.Environment(\.isEnabled) private var isEnabled
+    @SwiftUI.Environment(\.colorSchemeContrast) private var contrast
+
+    private var padding: (horizontal: CGFloat, vertical: CGFloat) {
+        switch controlSize {
+        case .mini, .small: (10, 3)
+        case .large, .extraLarge: (18, 7)
+        default: (13, 4)
         }
+    }
+
+    private var fill: Color {
+        let pressed = configuration.isPressed && isEnabled
+        let hovered = isHovering && isEnabled
+        if prominent {
+            return Color(white: pressed ? 0.78 : hovered ? 0.97 : 0.9)
+        }
+        return Color.white.opacity(pressed ? 0.2 : hovered ? 0.15 : 0.1)
+    }
+
+    var body: some View {
+        configuration.label
+            .font(.body.weight(prominent ? .semibold : .regular))
+            .lineLimit(1)
+            .foregroundStyle(prominent ? Color.black : Palette.ink)
+            .padding(.horizontal, padding.horizontal)
+            .padding(.vertical, padding.vertical)
+            .background(fill, in: .capsule)
+            .overlay {
+                if contrast == .increased {
+                    Capsule().strokeBorder(Palette.ink.opacity(0.7), lineWidth: 1)
+                }
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(.capsule)
+            .onHover { isHovering = $0 }
+            .animation(Motion.quick, value: isHovering)
+            .animation(Motion.quick, value: configuration.isPressed)
+    }
+}
+
+extension View {
+    /// Brim's action button, the main one when prominent.
+    func capsuleAction(prominent: Bool = false) -> some View {
+        buttonStyle(ActionStyle(prominent: prominent))
     }
 
     /// The pointer light, inside a rounded card of this radius.

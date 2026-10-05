@@ -54,6 +54,9 @@ private struct DockSection: View {
     var body: some View {
         Section {
             Toggle("Show removed apps that left something on the Dock icon", isOn: $showsDockBadge)
+                // A Form lays the label out beside the switch, and the
+                // switch alone exposed no name.
+                .accessibilityLabel("Show removed apps that left something on the Dock icon")
         } header: {
             Text("Dock")
         } footer: {
@@ -106,7 +109,7 @@ private struct RemoveBrimSection: View {
                 Button("Remove Brim…", role: .destructive) { confirms = true }
             }
         } footer: {
-            Text("Deleted permanently, not moved to the Trash")
+            Text("Deleted permanently. Nothing goes to the Trash.")
                 .font(.caption)
                 .foregroundStyle(Palette.inkSecondary)
         }

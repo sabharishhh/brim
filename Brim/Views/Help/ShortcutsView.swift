@@ -19,7 +19,7 @@ struct ShortcutsView: View {
         ]),
         ("Looking", [
             Shortcut(keys: "Space  ⌘Y", action: "Quick Look"),
-            Shortcut(keys: "⌥⌘R", action: "Reveal in Finder"),
+            Shortcut(keys: "⌥⌘R", action: "Show in Finder"),
             Shortcut(keys: "⌥⌘C", action: "Copy path"),
             Shortcut(keys: "⌘R", action: "Check again"),
             Shortcut(keys: "⌥⌘0", action: "Compact rows")
