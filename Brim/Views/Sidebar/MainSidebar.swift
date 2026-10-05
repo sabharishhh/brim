@@ -104,16 +104,10 @@ struct MainSidebar: View {
         // accessibility press, so the sidebar looked operable to VoiceOver
         // and to automation while doing nothing.
         List(selection: $selection) {
+            // Home carries Brim's own icon, so a header naming Brim above it
+            // said the same thing twice.
             Section {
                 rows(Destination.brim)
-            } header: {
-                HStack(spacing: 8) {
-                    BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 28)
-                    Text("Brim")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Palette.ink)
-                }
-                .padding(.vertical, 4)
             }
             Section("Your Mac") {
                 rows(Destination.yourMac)
@@ -176,8 +170,14 @@ private struct SidebarLabel: View {
         Label {
             Text(destination.rawValue)
         } icon: {
-            Image(systemName: destination.icon)
-                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+            if destination == .home {
+                // Home is Brim's overview of this Mac, so it wears Brim's
+                // icon. The row says where you are; the icon says whose.
+                BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 18)
+            } else {
+                Image(systemName: destination.icon)
+                    .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+            }
         }
         .onChange(of: isSelected) { _, selected in
             if selected, !reduceMotion {

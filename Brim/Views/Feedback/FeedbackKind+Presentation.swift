@@ -17,6 +17,14 @@ extension FeedbackKind {
         }
     }
 
+    var titlePrompt: String {
+        switch self {
+        case .bug: "What went wrong, in a few words"
+        case .feature: "What Brim could do"
+        case .general: "What it's about"
+        }
+    }
+
     var descriptionPrompt: String {
         switch self {
         case .bug: "What happened? Tell us what you were doing and what went wrong."

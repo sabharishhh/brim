@@ -34,10 +34,10 @@ final class FeedbackTests: XCTestCase {
         draft.title = " \n "
         XCTAssertNotNil(draft.validationMessage)
         draft.title = "A title"
-        draft.details = String(repeating: "a", count: 6001)
+        draft.details = String(repeating: "a", count: FeedbackDraft.Limit.details + 1)
         XCTAssertNotNil(draft.validationMessage)
         draft.details = "Description"
-        draft.reproduction = String(repeating: "a", count: 4001)
+        draft.reproduction = String(repeating: "a", count: FeedbackDraft.Limit.reproduction + 1)
         XCTAssertNotNil(draft.validationMessage)
         draft.kind = .feature
         XCTAssertNil(draft.validationMessage)
