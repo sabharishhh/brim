@@ -164,6 +164,43 @@ public struct SafeOps {
         return resultingURL as URL?
     }
 
+    /// Deletes for good something a removal put in the Trash.
+    ///
+    /// Only an item directly inside a Trash folder is accepted, so a
+    /// recorded URL that has been tampered with or moved cannot reach
+    /// anything else. A link is removed as a link; its target is never
+    /// followed. An item already gone is not an error.
+    public static func deleteFromTrash(_ url: URL) throws {
+        let path = url.standardizedFileURL.path
+        guard isInTrash(path) else {
+            throw NSError(domain: "SafeOps", code: Int(EPERM), userInfo: [
+                NSLocalizedDescriptionKey: "\(url.lastPathComponent) is no longer in the Trash."
+            ])
+        }
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return }
+        try FileManager.default.removeItem(atPath: path)
+    }
+
+    /// Directly inside the person's Trash, a volume's Trash, or, under
+    /// tests, the stand-in Trash a test's removals landed in.
+    static func isInTrash(_ path: String) -> Bool {
+        let parent = (path as NSString).deletingLastPathComponent
+        let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
+        if parent == home.standardizedFileURL.path || parent == home.resolvingSymlinksInPath().path {
+            return true
+        }
+        if (parent as NSString).deletingLastPathComponent.hasSuffix("/.Trashes") {
+            return true
+        }
+        #if DEBUG
+            if let stand = standInTrash()?.standardizedFileURL.path, parent.hasPrefix(stand + "/") {
+                return true
+            }
+        #endif
+        return false
+    }
+
     #if DEBUG
     /// Where a test's trashed items land instead of the user's Trash.
     ///
