@@ -145,8 +145,8 @@ final class BundleNameAgreementTests: XCTestCase {
         let identity = await IdentityResolver(root: root).resolve(bundleURL: bundle)
 
         XCTAssertEqual(
-            identity.searchNames, ["Visual Studio Code", "Code"],
-            "Both names, file name first, no duplicates."
+            identity.searchNames, ["Visual Studio Code", "Code", "VSCode"],
+            "Both names, file name first, then the identifier's own label, no duplicates."
         )
         XCTAssertEqual(
             LocationInventorySource.candidates(
@@ -193,5 +193,16 @@ final class BundleNameAgreementTests: XCTestCase {
             .resolve(bundleURL: bundle)
         XCTAssertNil(identity.bundleName)
         XCTAssertEqual(identity.searchNames, ["Plain"])
+    }
+
+    /// SystemEQ for Mac (`com.denzam.SystemEQ`) kept its presets in
+    /// `Application Support/SystemEQ`, which none of its displayed names
+    /// reach, so the folder never appeared in its review. A generic last
+    /// label, as in `dev.recordly.app`, adds nothing.
+    func testTheIdentifiersProductLabelIsSearchedToo() {
+        XCTAssertEqual(Identity(bundleID: "com.denzam.SystemEQ", name: "SystemEQ for Mac").searchNames,
+                       ["SystemEQ for Mac", "SystemEQ"])
+        XCTAssertEqual(Identity(bundleID: "dev.recordly.app", name: "Recordly").searchNames, ["Recordly"])
+        XCTAssertEqual(Identity(bundleID: "com.figma.Desktop", name: "Figma").searchNames, ["Figma"])
     }
 }
