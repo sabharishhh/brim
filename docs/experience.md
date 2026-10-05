@@ -287,6 +287,28 @@ snapshots and stay. And a removed app could stay selected in the Apps
 inspector with its old footprint; a fresh list now clears it. Both are
 covered by tests; neither has been looked at on screen yet.
 
+### Put Back, the Journal and what removals missed
+
+Recordly's Put Back restored every file and still read "Could not put
+back". Its identifier ends in `.app`, so cache folders named for it were
+planned as application bundles; re-registering one failed. A path that
+exists is now an application only with a `Contents/Info.plist`, and Put
+Back skips re-registering anything else.
+
+The Journal can now be cleared (removals that can still be put back stay
+listed) and can delete one removal's items, or all of them, from the
+Trash after asking. Only the exact items those removals recorded are
+deleted, and only while they are still in a Trash folder.
+
+SystemEQ for Mac (`com.denzam.SystemEQ`) left `Application
+Support/SystemEQ`, which no displayed name reaches; the identifier's last
+label is now searched as a name. `Application Support/Microsoft` was
+judged whole because Visual Studio Code's name does not begin with
+Microsoft; a developer's folder is now opened in the person's Library as
+in `/Library`. SystemEQ's install and Gatekeeper removal never appeared
+because they happened between two of Brim's looks, which is by design.
+None of this has been looked at on screen yet.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
