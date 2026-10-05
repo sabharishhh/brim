@@ -3,29 +3,58 @@ import SwiftUI
 // MARK: - Page title
 
 extension View {
-    /// The page's name, alone, in the toolbar's row.
+    /// The page's name, alone, in the toolbar's row, starting exactly where
+    /// the page's content starts.
     ///
     /// Every page used to draw its own title row under the toolbar, which
     /// left the toolbar's row empty and pushed every list down. The system's
     /// toolbar title was tried next, with the page's facts as a subtitle:
-    /// two lines squeezed into the row made the name small and crowded, so
-    /// the name is drawn here at heading size on one line, and the facts
-    /// stay with the lists that own them. The window keeps the name as its
-    /// title for the Window menu and Mission Control.
-    func pageTitle(_ title: String) -> some View {
+    /// two lines squeezed into the row made the name small and crowded.
+    /// Then a toolbar item, which sits where the toolbar puts it, a few
+    /// points from the sidebar, while the cards below began further in. So
+    /// the page draws its own name into the toolbar's row, in its own
+    /// coordinates: on a list page at the page padding, on a card page
+    /// (`centredWidth`) at the left edge of the centred column. The window
+    /// keeps the name as its title for the Window menu and Mission Control.
+    func pageTitle(_ title: String, centredWidth: CGFloat? = nil) -> some View {
         navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
+            .modifier(PageTitleBar(title: title, centredWidth: centredWidth))
+    }
+}
+
+private struct PageTitleBar: ViewModifier {
+    let title: String
+    let centredWidth: CGFloat?
+    /// The toolbar row's height, used when the page's frame starts below it.
+    private static let toolbarHeight: CGFloat = 52
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            GeometryReader { proxy in
+                let inset = proxy.safeAreaInsets.top
+                let height = inset > 0 ? inset : Self.toolbarHeight
+                HStack(spacing: 0) {
+                    if centredWidth != nil {
+                        Spacer(minLength: 0)
+                    }
                     Text(title)
                         .font(.brimToolbarTitle)
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
-                        .fixedSize()
-                        .padding(.leading, 4)
+                        .frame(maxWidth: centredWidth ?? .infinity, alignment: .leading)
+                        .padding(.horizontal, Metrics.pagePadding)
                         .accessibilityAddTraits(.isHeader)
+                    if centredWidth != nil {
+                        Spacer(minLength: 0)
+                    }
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .frame(height: height)
+                .offset(y: inset > 0 ? -inset : -height)
+                // Decoration over the toolbar's row: the window is still
+                // dragged by it and its buttons still take their clicks.
+                .allowsHitTesting(false)
             }
+        }
     }
 }
 

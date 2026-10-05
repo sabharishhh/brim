@@ -175,7 +175,9 @@ private extension LeftoversView {
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            // With the list's own 8 points, the first column lands on the
+            // page padding, under the page's title.
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             ListBottomSpacing()
         }
         .listStyle(.plain)
@@ -201,7 +203,6 @@ private extension LeftoversView {
             }
             Spacer()
         }
-        .padding(.horizontal, 4)
         .padding(.top, 10)
         .padding(.bottom, 8)
         .accessibilityAddTraits(.isHeader)

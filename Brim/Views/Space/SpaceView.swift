@@ -50,7 +50,7 @@ struct SpaceView: View {
                 Spacer(minLength: 0)
             }
         }
-        .pageTitle("Space")
+        .pageTitle("Space", centredWidth: Metrics.cardPageWidth)
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }

@@ -21,7 +21,7 @@ struct EnergyView: View {
 
     var body: some View {
         content
-            .pageTitle("Energy")
+            .pageTitle("Energy", centredWidth: Metrics.cardPageWidth)
             .task { await model.loadIfNeeded(service: service) }
     }
 

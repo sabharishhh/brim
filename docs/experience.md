@@ -409,7 +409,11 @@ used the system's toolbar title with the page's facts as a subtitle, and
 two lines squeezed into the toolbar row made the name small and the row
 crowded. Now `pageTitle(_:)` (`PageChrome.swift`) draws the page's name
 alone in the toolbar row at 20 point semibold (`brimToolbarTitle`), with
-no subtitle; the window keeps the name as its title. The facts stay with
+no subtitle; the window keeps the name as its title. The page draws it
+itself, so it starts exactly where the page's content starts: the page
+padding on list pages, the centred column's edge on card pages. Lists add
+8 points of their own, so Remnants and the Journal inset their rows by 16
+to land on the same 24. The facts stay with
 the lists that already show them in their section headers. Home's title
 is the Mac's name. The same rule now holds for the review panels: the
 Review, app removal and batch removal headers show the title alone, and
