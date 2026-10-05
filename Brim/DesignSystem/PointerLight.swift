@@ -88,91 +88,31 @@ private struct PointerLight: ViewModifier {
     }
 }
 
-/// Brim's capsule action button: the shape the app already used, drawn by
-/// Brim so it can answer the pointer. A standard bordered button on the Mac
-/// has no hover state, and SwiftUI draws it as an AppKit control above
-/// anything layered on it, so Open Journal and Finish Removal sat still
-/// while the cards around them responded. Hover brightens the fill, a press
-/// sinks it slightly, and disabled dims it. Approval buttons keep the
-/// system's own button, which the person should recognise unchanged.
-struct CapsuleActionStyle: ButtonStyle {
-    var prominent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        CapsuleActionBody(configuration: configuration, prominent: prominent)
-    }
-}
-
-private struct CapsuleActionBody: View {
-    let configuration: ButtonStyleConfiguration
-    let prominent: Bool
-    @State private var isHovering = false
-    @SwiftUI.Environment(\.controlSize) private var controlSize
-    @SwiftUI.Environment(\.isEnabled) private var isEnabled
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @SwiftUI.Environment(\.colorSchemeContrast) private var contrast
-
-    private var metrics: (font: CGFloat, horizontal: CGFloat, vertical: CGFloat) {
-        switch controlSize {
-        case .mini, .small: (11, 10, 3)
-        case .large, .extraLarge: (13, 18, 7)
-        default: (13, 13, 4)
-        }
-    }
-
-    private var fill: AnyShapeStyle {
-        let pressed = configuration.isPressed && isEnabled
-        let hovered = isHovering && isEnabled
-        if prominent {
-            let tint = Color.accentColor
-            return AnyShapeStyle(pressed ? tint.mix(with: .black, by: 0.15)
-                : hovered ? tint.mix(with: .white, by: 0.12) : tint)
-        }
-        return AnyShapeStyle(Color.white.opacity(pressed ? 0.2 : hovered ? 0.16 : 0.1))
-    }
-
-    var body: some View {
-        configuration.label
-            .font(.system(size: metrics.font))
-            .lineLimit(1)
-            .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(Palette.ink))
-            .padding(.horizontal, metrics.horizontal)
-            .padding(.vertical, metrics.vertical)
-            .background(fill, in: .capsule)
-            .overlay {
-                if contrast == .increased {
-                    Capsule().strokeBorder(Palette.ink.opacity(0.7), lineWidth: 1)
-                }
-            }
-            .opacity(isEnabled ? 1 : 0.45)
-            .contentShape(.capsule)
-            // Inside the button, where the label is drawn: an AppKit view
-            // cannot live in or on a button. Cards track through AppKit, so
-            // they never compete with this for the pointer.
-            .onHover { hovering in
-                guard hovering != isHovering else { return }
-                withAnimation(Motion.resolved(hovering ? Motion.acknowledge : Motion.lightExit,
-                                              reduceMotion: reduceMotion)) { isHovering = hovering }
-            }
-            .scaleEffect(configuration.isPressed && isEnabled && !reduceMotion ? 0.97 : 1)
-            .animation(Motion.resolved(configuration.isPressed ? Motion.acknowledge : Motion.release,
-                                       reduceMotion: reduceMotion), value: configuration.isPressed)
-    }
-}
-
+/// Brim's action buttons are the system's Liquid Glass buttons.
+///
+/// They were Brim's own capsules for a while, because a bordered button on
+/// the Mac has no hover state and Open Journal and Finish Removal sat still
+/// while the cards around them responded. Glass buttons answer the pointer
+/// and a press themselves, the way the toolbar's do, follow Reduce
+/// Transparency and Increase Contrast without anything written here, and
+/// keep the toolbar and the page in one material. Prominent ones carry the
+/// person's accent.
 extension View {
-    /// Brim's capsule action button, answering the pointer.
+    /// A glass action button, accent tinted when prominent.
+    @ViewBuilder
     func capsuleAction(prominent: Bool = false) -> some View {
-        buttonStyle(CapsuleActionStyle(prominent: prominent))
+        if prominent {
+            buttonStyle(.glassProminent)
+        } else {
+            buttonStyle(.glass)
+        }
     }
 
     /// The pointer light, inside a rounded card of this radius.
     func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
         modifier(PointerLight(cornerRadius: cornerRadius))
     }
-
 }
-
 
 /// Reports where the pointer is over this view, or nil when it leaves,
 /// through an AppKit tracking area. Every tracking area hears the pointer
@@ -181,24 +121,30 @@ extension View {
 struct PointerTracking: NSViewRepresentable {
     let onChange: (CGPoint?) -> Void
 
-    func makeNSView(context: Context) -> TrackingView {
+    func makeNSView(context _: Context) -> TrackingView {
         let view = TrackingView()
         view.onChange = onChange
         return view
     }
 
-    func updateNSView(_ view: TrackingView, context: Context) {
+    func updateNSView(_ view: TrackingView, context _: Context) {
         view.onChange = onChange
     }
 
     final class TrackingView: NSView {
         var onChange: ((CGPoint?) -> Void)?
 
-        override var isFlipped: Bool { true }
+        override var isFlipped: Bool {
+            true
+        }
 
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func hitTest(_: NSPoint) -> NSView? {
+            nil
+        }
 
-        override func isAccessibilityElement() -> Bool { false }
+        override func isAccessibilityElement() -> Bool {
+            false
+        }
 
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
@@ -210,11 +156,17 @@ struct PointerTracking: NSViewRepresentable {
             ))
         }
 
-        override func mouseEntered(with event: NSEvent) { report(event) }
+        override func mouseEntered(with event: NSEvent) {
+            report(event)
+        }
 
-        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseMoved(with event: NSEvent) {
+            report(event)
+        }
 
-        override func mouseExited(with event: NSEvent) { onChange?(nil) }
+        override func mouseExited(with _: NSEvent) {
+            onChange?(nil)
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -228,4 +180,3 @@ struct PointerTracking: NSViewRepresentable {
         }
     }
 }
-

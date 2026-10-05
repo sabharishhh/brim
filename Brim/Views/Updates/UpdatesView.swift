@@ -29,41 +29,28 @@ struct UpdatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             content
             footer
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+        .pageTitle("Updates", subtitle: summary.isEmpty ? nil : summary)
+        .toolbar { updateAll }
         .task { await model.loadIfNeeded(service: service) }
     }
 
     // MARK: - Header
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Updates")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            Text(summary)
-                .font(.brimFacts)
-                .monospacedDigit()
-                .foregroundStyle(Palette.inkSecondary)
-            if model.isChecking {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-            if model.installableHere.count > 1 {
+    /// Update All sits in the toolbar beside Check Again once there is
+    /// more than one update to install here.
+    @ToolbarContentBuilder
+    private var updateAll: some ToolbarContent {
+        if model.installableHere.count > 1 {
+            ToolbarItem(placement: .primaryAction) {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .capsuleAction(prominent: true)
+                    .buttonStyle(.glassProminent)
                     .disabled(model.isInstalling || model.isChecking)
             }
         }
-        .buttonBorderShape(.capsule)
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
     }
 
     private var summary: String {

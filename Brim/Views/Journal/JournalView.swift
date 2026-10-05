@@ -30,10 +30,13 @@ struct JournalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             // A Put Back's outcome is shown beside its record, once, rather
             // than in a banner above a list the person has scrolled.
             content
+        }
+        .pageTitle("Journal", subtitle: model.visibleRecords.isEmpty ? nil : summary)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { moreMenu }
         }
         .sheet(item: $checkedResult) { result in
             RemovalVerificationSheet(result: result, plan: checkedPlan)
@@ -92,42 +95,21 @@ struct JournalView: View {
 
     // MARK: - Header
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Journal")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if !model.visibleRecords.isEmpty {
-                Text(summary)
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
+    /// Trash and clearing, in the toolbar beside Check Again. The page's
+    /// name and count are the toolbar's title.
+    private var moreMenu: some View {
+        Menu {
+            Button("Empty Removed Items from Trash…", systemImage: "trash") {
+                trashRequest = model.records.filter(\.canUndo)
             }
-            if model.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-            Menu {
-                Button("Empty Removed Items from Trash…", systemImage: "trash") {
-                    trashRequest = model.records.filter(\.canUndo)
-                }
-                .disabled(!model.records.contains(where: \.canUndo))
-                Button("Clear Journal…", systemImage: "clear") { confirmsClear = true }
-                    .disabled(!model.canClear)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More")
-            .accessibilityLabel("More")
+            .disabled(!model.records.contains(where: \.canUndo))
+            Button("Clear Journal…", systemImage: "clear") { confirmsClear = true }
+                .disabled(!model.canClear)
+        } label: {
+            Label("More", systemImage: "ellipsis")
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
+        .menuIndicator(.hidden)
+        .help("More")
     }
 
     private var summary: String {
@@ -208,7 +190,7 @@ struct JournalView: View {
                             )
                             .contextMenu {
                                 if case let .removed(record) = entry.event {
-                                    Button("Check removal", systemImage: "arrow.clockwise") {
+                                    Button("Check Removal", systemImage: "arrow.clockwise") {
                                         recheck(record.plan)
                                     }
                                     .disabled(checkingPlanID != nil)

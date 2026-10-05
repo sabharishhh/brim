@@ -25,8 +25,7 @@ struct SpaceView: View {
             // its width without asking the window for more.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+                VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
                     if let volume = model.startupVolume {
                         startup(volume)
                             .refreshing(model.isLoading)
@@ -46,28 +45,15 @@ struct SpaceView: View {
                             .refreshing(model.isLoading)
                     }
                 }
-                .frame(maxWidth: 820, alignment: .leading)
+                .frame(maxWidth: Metrics.cardPageWidth, alignment: .leading)
                 .padding(Metrics.pagePadding)
                 Spacer(minLength: 0)
             }
         }
+        .pageTitle("Space", subtitle: model.startupVolume.map { "\(ByteText.short($0.freeRightNow)) free" })
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Space")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if model.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-        }
     }
 
     // MARK: - Startup volume

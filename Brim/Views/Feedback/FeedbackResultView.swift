@@ -28,15 +28,15 @@ struct FeedbackResultView: View {
             }
             if let receipt = feedback.receipt {
                 Link(destination: receipt.url) {
-                    Label("View report #\(receipt.number)", systemImage: "arrow.up.right")
+                    Label("View Report #\(receipt.number)", systemImage: "arrow.up.right")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 .controlSize(.large)
             }
             HStack(spacing: 12) {
-                Button(feedback.receipt == nil ? "Back to draft" : "Write another") { feedback.editAgain() }
+                Button(feedback.receipt == nil ? "Back to Draft" : "Write Another") { feedback.editAgain() }
                 Button("Done") { dismissWindow(id: FeedbackWindow.windowID) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction)
             }
             Spacer()

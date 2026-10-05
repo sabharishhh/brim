@@ -63,7 +63,7 @@ struct FeedbackComposerFooter: View {
                     .frame(minWidth: 150)
                     .contentTransition(.opacity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(feedback.draft.validationMessage != nil || feedback.isSending)
