@@ -90,7 +90,7 @@ struct ContentView: View {
             return .handled
         }
         // An application dropped anywhere on the window opens it in Apps.
-        .dropDestination(for: URL.self) { urls, _ in
+        .dropDestination(for: URL.self) { urls, _ -> Bool in
             models.openApplication(from: urls, shell: shell)
         }
         // A minimum, and deliberately no ideal.
