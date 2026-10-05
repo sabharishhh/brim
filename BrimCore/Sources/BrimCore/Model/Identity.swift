@@ -70,10 +70,31 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
     /// and the uninstall correctly failed to remove it when it was not.
     public var searchNames: [String] {
         var seen = Set<String>()
-        return ([name, bundleName] + (identitySurface?.names ?? []).map(Optional.some))
+        let names = ([name, bundleName] + (identitySurface?.names ?? []).map(Optional.some))
             .compactMap(\.self)
             .filter { IdentitySurface.isPathComponent($0) && seen.insert($0).inserted }
+        // The label is often the name in another case, `obsidian` for
+        // Obsidian, which says nothing new.
+        guard let label = productLabel, IdentitySurface.isPathComponent(label),
+              !names.contains(where: { $0.lowercased() == label.lowercased() }) else { return names }
+        return Array(names.prefix(2)) + [label] + names.dropFirst(2)
     }
+
+    /// The last label of the bundle identifier, which is the developer's own
+    /// name for the product. SystemEQ for Mac is `com.denzam.SystemEQ` and
+    /// kept its presets in `Application Support/SystemEQ`, which no name it
+    /// displays would find. A match on it is still a name match. Labels that
+    /// name a kind of thing rather than a product are left out.
+    var productLabel: String? {
+        guard let label = bundleID?.split(separator: ".").last.map(String.init),
+              label.count >= 4, !Self.genericLabels.contains(label.lowercased()) else { return nil }
+        return label
+    }
+
+    private static let genericLabels: Set<String> = [
+        "app", "application", "desktop", "client", "macos", "helper", "agent", "launcher", "service",
+        "electron", "main", "native", "beta", "release", "stable", "mac", "osx"
+    ]
 
     public var searchBundleIdentifiers: [String] {
         Array(Set([bundleID].compactMap(\.self)
