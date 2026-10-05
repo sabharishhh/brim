@@ -51,7 +51,7 @@ struct ApplicationsView: View {
             inspector
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
-        .pageTitle("Apps")
+        .pageTitle("Apps", shown: false)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
         // A removal asked for by a Shortcut or Spotlight: the review opens
@@ -283,7 +283,7 @@ private struct MarkedApps: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
             Button(apps.count == 1 ? "Review" : "Remove \(apps.count) Apps", action: review)
-                .buttonStyle(.glassProminent)
+                .capsuleAction(prominent: true)
                 .controlSize(.large)
         }
         .padding(24)

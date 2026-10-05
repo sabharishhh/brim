@@ -74,11 +74,11 @@ public struct PowerAssertions: Sendable, Equatable {
         public var consequence: String {
             switch self {
             case .systemAwake:
-                return "The Mac will not sleep on its own while this is held, so it keeps "
-                     + "drawing power with the lid shut."
+                return "The Mac will not sleep while this is held. It keeps drawing power "
+                     + "with the lid closed."
             case .displayAwake:
-                return "The screen will not switch off on its own, which is the single most "
-                     + "expensive thing a laptop can leave running."
+                return "The screen will not turn off while this is held. A lit screen uses more "
+                     + "battery than almost anything else."
             }
         }
 

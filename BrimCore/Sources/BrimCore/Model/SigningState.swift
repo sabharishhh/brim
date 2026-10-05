@@ -34,7 +34,7 @@ public enum SigningState: Equatable, Sendable, Codable {
         case .invalid(let reason):
             return "The signature does not check out. \(reason)"
         case .unsigned:
-            return "Nothing signs this, so macOS cannot tell who wrote it."
+            return "Not signed. macOS cannot tell who made it."
         case .notChecked(let why):
             return why
         }

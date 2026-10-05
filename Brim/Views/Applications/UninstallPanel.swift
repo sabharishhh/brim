@@ -269,13 +269,13 @@ private extension UninstallPanel {
                 } label: {
                     HStack(spacing: 8) {
                         if model.phase == .executing || model.phase == .preparing {
-                            ProgressView().controlSize(.small).tint(.white)
+                            ProgressView().controlSize(.small).tint(.black)
                         }
                         Text(buttonTitle)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .capsuleAction(prominent: true)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }

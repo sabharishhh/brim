@@ -62,7 +62,7 @@ final class SystemConditionTests: XCTestCase {
         let condition = SystemCondition(
             thermal: .normal, power: .adapterOnly, lowPowerMode: true
         )
-        XCTAssertTrue(condition.note?.contains("deliberately") ?? false, condition.note ?? "nil")
+        XCTAssertTrue(condition.note?.contains("runs slower to save battery") ?? false, condition.note ?? "nil")
     }
 
     func testARunningLowBatteryChangesWhatTheNumbersMean() {

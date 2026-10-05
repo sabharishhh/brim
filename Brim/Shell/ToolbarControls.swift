@@ -41,10 +41,10 @@ struct LensSwitch: View {
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
                     .monospacedDigit()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 16, minHeight: 16)
-                    .background(Color.accentColor, in: .capsule)
+                    .background(Palette.snow, in: .capsule)
             }
         }
         .font(.body.weight(.medium))

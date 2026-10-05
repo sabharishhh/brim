@@ -385,7 +385,7 @@ public final class LeftoversModel: ObservableObject {
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
-            subjectIdentity: Identity(bundleID: nil, name: "Leftovers"),
+            subjectIdentity: Identity(bundleID: nil, name: "Remnants"),
             requesterKind: "ui",
             requesterIdentity: requesterIdentity,
             specificTargets: targets

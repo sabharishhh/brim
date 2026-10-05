@@ -114,7 +114,7 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         } label: {
             Text(expanded.contains(section.id) ? "Show fewer" : "Show all \(section.items.count)")
                 .font(.brimFacts.weight(.medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 34)
         }

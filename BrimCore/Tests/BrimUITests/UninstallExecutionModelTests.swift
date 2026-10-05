@@ -278,7 +278,7 @@ struct RemovalCapacityExplanationTests {
     @Test("A measured shortfall describes possible causes")
     func measuredShortfall() async {
         let model = await completedModel(success: true, measured: true)
-        #expect(model.spaceExplanation?.contains("can explain") == true)
+        #expect(model.spaceExplanation?.contains("account for it") == true)
     }
 
     private func completedModel(success: Bool, measured: Bool?) async -> UninstallExecutionModel {

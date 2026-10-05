@@ -209,7 +209,7 @@ struct TrayBar: View {
             HStack(spacing: 12) {
                 HStack(spacing: 12) {
                     Image(systemName: "tray.full")
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(Palette.ink)
                     Text(count == 1 ? "1 item" : "\(count) items")
                         .contentTransition(.identity)
                     if let bytes {
@@ -263,7 +263,7 @@ struct Toast: View {
         if symbol.hasPrefix("exclamationmark") || symbol.hasPrefix("xmark") {
             return Palette.caution
         }
-        return .accentColor
+        return Palette.ink
     }
 
     var body: some View {
@@ -276,7 +276,7 @@ struct Toast: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.borderless)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(Palette.ink)
             }
         }
         .font(.body)

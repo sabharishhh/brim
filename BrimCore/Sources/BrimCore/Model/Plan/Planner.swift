@@ -160,9 +160,7 @@ public struct Planner: Sendable {
                     } else {
                         excludedItems.append(ExcludedItem(
                             target: targetPath,
-                            reason: "macOS has locked this at the system level, not you. "
-                                + "It cannot be unlocked here, and it is almost "
-                                + "always locked for a reason."
+                            reason: "macOS locked this. Brim cannot unlock it."
                         ))
                         continue
                     }
@@ -260,7 +258,7 @@ public struct Planner: Sendable {
                 // beside the steps and a row a person is asked to decide on
                 excludedItems.append(ExcludedItem(
                     target: targetPath,
-                    reason: "You opted to keep this item, or it was unselected by default due to low confidence.",
+                    reason: "Not ticked. Brim ticks only what it is sure belongs to the app.",
                     evidence: ExplanationRenderer().render(
                         tier: item.footprintItem.evidence.tier,
                         capability: item.footprintItem.capability,

@@ -103,6 +103,8 @@ struct EnergyView: View {
         .hoverLift()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([caption, title, phrase].compactMap(\.self).joined(separator: ", "))
+        // A label with no role exposes as AXUnknown (`CLAUDE.md`).
+        .accessibilityAddTraits(.isStaticText)
     }
 
     // MARK: - Keeping the Mac awake
@@ -111,7 +113,7 @@ struct EnergyView: View {
     /// which application is holding the Mac awake.
     private var awake: some View {
         VStack(alignment: .leading, spacing: 4) {
-            sectionTitle("Keeping this Mac awake", trailing: "Quitting one releases it")
+            sectionTitle("Keeping this Mac awake", trailing: "Quit an app to let the Mac sleep")
             ForEach(model.appsKeepingMacAwake) { held in
                 HStack(spacing: 12) {
                     BrimIcon(source: icon(bundlePath: held.bundlePath, name: held.owner), size: Metrics.compactRowIcon)
@@ -202,7 +204,7 @@ struct EnergyView: View {
                     // Against the busiest app, so rows compare as a shape.
                     GeometryReader { proxy in
                         Capsule()
-                            .fill(Color.accentColor)
+                            .fill(Palette.snow)
                             .frame(width: max(3, proxy.size.width * model.share(of: reading)))
                             .frame(maxHeight: .infinity, alignment: .center)
                     }
