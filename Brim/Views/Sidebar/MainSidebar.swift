@@ -86,10 +86,23 @@ struct RemoveSelectedActionKey: FocusedValueKey {
     typealias Value = FocusedAction<Void>
 }
 
+/// The commands a page shows in its toolbar, offered to the Action menu as
+/// well. Apple's guidance is that a toolbar item must also be a menu
+/// command, because a toolbar can be hidden or customised; Update All,
+/// emptying the Trash and clearing the Journal were in the toolbar only.
+struct PageActionsKey: FocusedValueKey {
+    typealias Value = [FocusedAction<Void>]
+}
+
 extension FocusedValues {
     var removeSelectedAction: FocusedAction<Void>? {
         get { self[RemoveSelectedActionKey.self] }
         set { self[RemoveSelectedActionKey.self] = newValue }
+    }
+
+    var pageActions: [FocusedAction<Void>]? {
+        get { self[PageActionsKey.self] }
+        set { self[PageActionsKey.self] = newValue }
     }
 }
 
@@ -160,50 +173,26 @@ struct MainSidebar: View {
     }
 }
 
-/// A sidebar row's label. Its icon answers once when the row becomes
-/// selected, so a click is answered by the thing clicked rather than only by
-/// the highlight moving. Every icon answers the same way, a short downward
-/// press and release, the way Apps always has. A different motion per place
-/// (gears turning, a hammer swinging, remnants breathing) was tried and read
-/// as decoration rather than as the click being felt. Never on the row being
-/// left, and never under Reduce Motion.
+/// A sidebar row's label. The icon does not move when the row is chosen:
+/// the selection is the answer to the click. Each icon once bounced, then
+/// turned, swung or breathed, on every change of page, and Apple's guidance
+/// is to keep motion off things people do constantly.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
-    @State private var arrivals = 0
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Label {
             Text(destination.rawValue)
         } icon: {
-            icon
-        }
-        .onChange(of: isSelected) { _, selected in
-            if selected, !reduceMotion {
-                arrivals += 1
+            switch destination {
+            case .home:
+                // An app icon carries its own margin inside the square, so it
+                // is drawn larger than a symbol to look the same size.
+                BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
+            default:
+                Image(systemName: destination.icon)
             }
-        }
-    }
-
-    @ViewBuilder private var icon: some View {
-        let symbol = Image(systemName: destination.icon)
-        switch destination {
-        case .home:
-            // An app icon carries its own margin inside the square, so it
-            // is drawn larger than a symbol to look the same size.
-            BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
-                // The app icon is an image, not a symbol, so the same press
-                // is drawn by hand: down a little, then settle without
-                // overshoot.
-                .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    CubicKeyframe(0.9, duration: 0.1)
-                    SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
-                }
-        default:
-            symbol.symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
         }
     }
 }
@@ -216,7 +205,7 @@ private struct NewReleaseNotice: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
             Text("Brim \(release.version) is out")
                 .font(.callout)
             Spacer(minLength: 4)

@@ -254,8 +254,8 @@ public final class UninstallExecutionModel: ObservableObject {
         // removal, not a threshold worth tuning.
         guard result.recoveredBytes < promised / 10 else { return nil }
 
-        return "The files are gone, but little free space increased during the check. Shared blocks, "
-            + "local snapshots or other activity on this Mac can explain the difference."
+        return "The files are gone, but free space barely changed. Snapshots, shared file blocks "
+            + "or other activity on this Mac can account for it."
     }
 
     /// Told the moment a removal is proved, with the paths that went.

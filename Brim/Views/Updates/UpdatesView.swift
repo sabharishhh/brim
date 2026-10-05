@@ -33,8 +33,10 @@ struct UpdatesView: View {
             footer
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-        .pageTitle("Updates")
+        .pageTitle("Updates", shown: false)
         .toolbar { updateAll }
+        .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
+            ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
         .task { await model.loadIfNeeded(service: service) }
     }
 
@@ -47,7 +49,6 @@ struct UpdatesView: View {
         if model.installableHere.count > 1 {
             ToolbarItem(placement: .primaryAction) {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .buttonStyle(.glassProminent)
                     .disabled(model.isInstalling || model.isChecking)
             }
         }
@@ -102,14 +103,10 @@ struct UpdatesView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title2)
                 .foregroundStyle(Palette.success)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("All apps are up to date")
-                    .font(.brimRowTitle)
-                    .foregroundStyle(Palette.ink)
-                Text("\(check.checked) \(check.checked == 1 ? "app" : "apps") checked")
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-            }
+            // How many were checked is in the line at the foot of the page.
+            Text("All apps are up to date")
+                .font(.brimRowTitle)
+                .foregroundStyle(Palette.ink)
             Spacer()
         }
         .padding(.horizontal, Metrics.pagePadding)
@@ -201,7 +198,7 @@ struct UpdatesView: View {
         case .failed, .stillOpen:
             HStack(spacing: 6) {
                 FailureDetails(reason: failure(update) ?? "")
-                Button("Retry") { Task { await model.install(update, service: service) } }
+                Button("Try Again") { Task { await model.install(update, service: service) } }
                     .capsuleAction()
                     .disabled(model.isChecking)
             }

@@ -10,7 +10,7 @@ struct FeedbackKindCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: kind.symbol)
                     .font(.title2)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(Palette.ink)
                     .frame(width: 40, height: 40)
                     .background(Palette.selected, in: .rect(cornerRadius: Metrics.rowRadius))
                 VStack(alignment: .leading, spacing: 6) {

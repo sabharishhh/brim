@@ -61,7 +61,17 @@ extension BackgroundEntry {
     }
 
     /// "Background job, login item", capitalised.
+    private var loneExtension: Registration? {
+        guard group.items.count == 1, let only = group.items.first, only.kind == .appExtension else { return nil }
+        return only.label.isEmpty || only.label == group.displayName ? nil : only
+    }
+
     var facts: String {
+        // A lone extension names itself: WhatsApp has two, and two rows of
+        // "WhatsApp, App extension" could not be told apart.
+        if let only = loneExtension {
+            return "App extension · \(only.label)"
+        }
         let text = group.composition
         return text.prefix(1).uppercased() + text.dropFirst()
     }
@@ -117,7 +127,7 @@ struct BackgroundRow: View {
             Spacer(minLength: 8)
             if let url = entry.group.items.lazy.compactMap({ reveals[$0.id] }).first {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 }

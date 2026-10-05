@@ -77,6 +77,7 @@ struct MeterBar: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(segments.map { "\($0.label) \(ByteText.short($0.value))" }.joined(separator: ", "))
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -223,34 +224,17 @@ struct FlowLayout: Layout {
     }
 }
 
-/// How a card answers the pointer: it rises 1 point onto a faint shadow and
-/// carries a third of the pointer light along its edge. Under Reduce Motion
-/// only the shadow comes. One modifier, so the cards on Home, Space and
-/// Energy answer alike. A full light and a 2 point rise read as the page
-/// lighting up rather than the card answering, first on the wide Space card
-/// and then on every card beside it.
+/// How a card answers the pointer: a third of the pointer light along its
+/// edge, and nothing else. One modifier, so the cards on Home, Space and
+/// Energy answer alike. A full light read as the page lighting up rather
+/// than the card answering; a rise and a shadow on every card under the
+/// pointer was motion on something people do constantly, which Apple's
+/// guidance keeps off.
 private struct HoverLift: ViewModifier {
     let cornerRadius: CGFloat
-    @State private var isHovering = false
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        content
-            .pointerLight(cornerRadius: cornerRadius)
-            .shadow(color: .black.opacity(isHovering ? 0.04 : 0), radius: 12, y: 4)
-            .offset(y: isHovering && !reduceMotion ? -1 : 0)
-            // An AppKit tracking area, like the pointer light, so a button on
-            // the card keeps its own hover.
-            .overlay {
-                PointerTracking { point in
-                    let hovering = point != nil
-                    guard hovering != isHovering else { return }
-                    withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) {
-                        isHovering = hovering
-                    }
-                }
-                .allowsHitTesting(false)
-            }
+        content.pointerLight(cornerRadius: cornerRadius)
     }
 }
 

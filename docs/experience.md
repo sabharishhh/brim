@@ -464,6 +464,44 @@ Verified: build and lint. Not verified: the pointer letting go, because
 the synthetic pointer did not light a card even while over it, so those
 captures proved nothing. It needs a real mouse.
 
+### Audit fixes and monochrome, 5 October 2026
+
+An audit against Apple's guidelines (toolbars, materials, buttons, writing,
+motion, colour, accessibility) and published lists of generated-UI and
+generated-writing tells found glass in the content layer, the system accent
+carrying data, 2.3:1 text, five VoiceOver failures, contradictory status
+and a recognisable machine cadence in the copy. Changed:
+
+- Monochrome. Measures, selection, links, tiles and control tint are
+  whites and greys (`Palette.snow`, `frost`, `mist`, `tint`, `selected`);
+  only status keeps the Okabe–Ito colours.
+- Glass only where it floats. Action buttons are `ActionStyle` (a snow
+  capsule for the main action, a faint one otherwise), the search field is
+  flat, and unstyled buttons are the system's push buttons again.
+- `Palette.inkTertiary` raised from 2.3:1 to about 4.6:1.
+- VoiceOver: the Settings Dock switch is named, the Energy cards and the
+  Space meter have a role, Home's arrow is hidden, "1 locations" fixed, the
+  Remnants section header is one heading.
+- Status: Home and Space share one rule for the Remnants dot, zero bytes is
+  "0 KB" rather than "Empty", Brim's recovery copies have their own heading
+  instead of sitting under Unknown, unknown rows show the real folder name,
+  a lone extension names itself, project caches show their folder, and old
+  Journal rows named Leftovers read Remnants.
+- Wording: Review All and Review Selected instead of Delete, Show in Finder
+  everywhere, Try Again, no "we", and the sentences built on ", so" or "not
+  X" rewritten plainly.
+- Motion: sidebar icons no longer animate; cards keep only the faint light.
+- Titles: Apps and Updates draw no title beside their switch, and drawn
+  titles dim in an inactive window.
+- Menus: Update All, Empty Removed Items from Trash, Clear Journal and
+  Updates are in the menu bar.
+
+Verified: build, the full suite (pinned copy updated in five tests) and
+lint. Not seen on screen: the screen was locked when the captures ran, and
+glass never renders in them. The Home grid that repeats the sidebar, the
+empty right-hand pane at rest, and the ✕ badge on Journal install rows are
+not changed.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device

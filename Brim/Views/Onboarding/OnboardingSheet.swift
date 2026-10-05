@@ -183,7 +183,7 @@ struct OnboardingSheet: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(heading)

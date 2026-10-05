@@ -102,7 +102,7 @@ public enum BackgroundGrouper {
         return Grouping.assign(
             entries,
             rules: [
-                GroupRule(id: "gone", title: "Points at nothing", matches: { $0.state == .gone }, order: byName),
+                GroupRule(id: "gone", title: "App not found", matches: { $0.state == .gone }, order: byName),
                 GroupRule(
                     id: "clearing", title: "Still listed", collapsed: true,
                     matches: { $0.state == .clearing || $0.group.items.allSatisfy { $0.isStale && $0.isReportOnly } },

@@ -120,7 +120,7 @@ struct AppStacks: View {
         } label: {
             Text(expanded.contains(group.id) ? "Show fewer" : "Show all \(group.items.count)")
                 .font(.brimFacts.weight(.medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 34)
         }

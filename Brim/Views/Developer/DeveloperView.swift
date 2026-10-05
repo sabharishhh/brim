@@ -115,7 +115,7 @@ struct DeveloperView: View {
         } else if model.caches.isEmpty, model.excludedFolders.isEmpty {
             EmptyState(symbol: "hammer", title: "No build caches", message: "Nothing from Xcode, npm, Go or the rest.")
         } else if model.visibleCaches.isEmpty {
-            EmptyState(symbol: "line.3.horizontal.decrease", title: "No artifacts in this view",
+            EmptyState(symbol: "line.3.horizontal.decrease", title: "No caches match this filter",
                        message: "Change the age filter or reset folder exclusions to show more.")
         } else {
             GroupedStacks(

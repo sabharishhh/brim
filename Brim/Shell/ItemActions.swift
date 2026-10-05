@@ -9,7 +9,7 @@ struct ItemMenuItems: View {
     @Environment(ShellState.self) private var shell
 
     var body: some View {
-        Button("Reveal in Finder") { shell.reveal(urls) }
+        Button("Show in Finder") { shell.reveal(urls) }
         Button("Quick Look") { shell.quickLook(urls) }
         Button(urls.count == 1 ? "Copy Path" : "Copy Paths") { shell.copyPaths(urls) }
     }

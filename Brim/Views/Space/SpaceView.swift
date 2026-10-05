@@ -73,10 +73,10 @@ struct SpaceView: View {
             MeterBar(segments: segments(volume), showsLegend: false)
             // Three facts, never added into one.
             HStack(alignment: .top, spacing: 12) {
-                figure("Used", volume.used, "Files and apps", Color.accentColor)
+                figure("Used", volume.used, "Files and apps", Palette.snow)
                 figure(
                     "Held by macOS", volume.reclaimableByTheSystem, "Released when needed",
-                    Color.accentColor.opacity(0.4)
+                    Palette.frost
                 )
                 figure("Free", volume.freeRightNow, "Available now", Palette.inkTertiary)
             }
@@ -96,9 +96,9 @@ struct SpaceView: View {
 
     private func segments(_ volume: VolumeAccount) -> [MeterSegment] {
         [
-            MeterSegment(label: "Used", value: volume.used, color: Color.accentColor),
+            MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
             MeterSegment(
-                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Color.accentColor.opacity(0.4)
+                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Palette.frost
             ),
             MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
         ]
@@ -139,7 +139,7 @@ struct SpaceView: View {
                 .foregroundStyle(Palette.inkSecondary)
             if pinning > 0 {
                 Text("·").foregroundStyle(Palette.inkTertiary)
-                Text("\(pinning) kept until removed, so deleting may free nothing")
+                Text("\(pinning) holding deleted files. Deleting may free less.")
                     .foregroundStyle(Palette.caution)
             }
         }
@@ -166,7 +166,7 @@ struct SpaceView: View {
 
     private var leftoversCard: some View {
         let status: CardStatus = !model.hasEstimate
-            ? .checking : (model.estimateUnavailable ? .partial : (model.brimCanClear > 0 ? .attention : .clear))
+            ? .checking : (model.estimateUnavailable ? .partial : (model.brimCanClearCount > 0 ? .attention : .clear))
         let phrase = if !model.hasEstimate {
             "Checking"
         } else if model.estimateUnavailable {

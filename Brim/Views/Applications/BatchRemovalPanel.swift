@@ -78,7 +78,7 @@ struct BatchRemovalPanel: View {
                 .foregroundStyle(Palette.inkSecondary)
             if model.isFinished {
                 Button("Done", action: onFinished)
-                    .buttonStyle(.glassProminent)
+                    .capsuleAction(prominent: true)
                     .keyboardShortcut(.defaultAction)
             } else {
                 Button(model.isRemoving ? "Removing" : "Remove \(model.ready.count) Apps") {
@@ -87,7 +87,7 @@ struct BatchRemovalPanel: View {
                         onRemoved()
                     }
                 }
-                .buttonStyle(.glassProminent)
+                .capsuleAction(prominent: true)
                 .disabled(model.isPreparing || model.isRemoving || model.ready.isEmpty)
             }
         }

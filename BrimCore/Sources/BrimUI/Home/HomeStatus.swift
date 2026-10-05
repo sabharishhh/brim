@@ -75,6 +75,6 @@ public enum HomeStatus {
         if leftOver > 0 {
             return (.attention, "\(leftOver) left over")
         }
-        return (.clear, "No missing targets found")
+        return (.clear, "All belong to installed apps")
     }
 }

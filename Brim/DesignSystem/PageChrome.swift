@@ -16,15 +16,26 @@ extension View {
     /// coordinates: on a list page at the page padding, on a card page
     /// (`centredWidth`) at the left edge of the centred column. The window
     /// keeps the name as its title for the Window menu and Mission Control.
-    func pageTitle(_ title: String, centredWidth: CGFloat? = nil) -> some View {
-        navigationTitle(title)
-            .modifier(PageTitleBar(title: title, centredWidth: centredWidth))
+    ///
+    /// `shown: false` keeps the window's title but draws none, where the
+    /// toolbar already says it: Apps and Updates sat beside an Apps and
+    /// Updates switch. Apple's guidance leaves a redundant title area empty.
+    @ViewBuilder
+    func pageTitle(_ title: String, centredWidth: CGFloat? = nil, shown: Bool = true) -> some View {
+        if shown {
+            navigationTitle(title)
+                .modifier(PageTitleBar(title: title, centredWidth: centredWidth))
+        } else {
+            navigationTitle(title)
+        }
     }
 }
 
 private struct PageTitleBar: ViewModifier {
     let title: String
     let centredWidth: CGFloat?
+    /// Dimmed in a window that is not in front, as macOS's own titles are.
+    @SwiftUI.Environment(\.controlActiveState) private var activeState
     /// The toolbar row's height, used when the page's frame starts below it.
     private static let toolbarHeight: CGFloat = 52
 
@@ -39,7 +50,7 @@ private struct PageTitleBar: ViewModifier {
                     }
                     Text(title)
                         .font(.brimToolbarTitle)
-                        .foregroundStyle(Palette.ink)
+                        .foregroundStyle(activeState == .inactive ? Palette.inkSecondary : Palette.ink)
                         .lineLimit(1)
                         .frame(maxWidth: centredWidth ?? .infinity, alignment: .leading)
                         .padding(.horizontal, Metrics.pagePadding)
@@ -60,12 +71,13 @@ private struct PageTitleBar: ViewModifier {
 
 // MARK: - Search
 
-/// The search field at the top of a list: a glass capsule with the
+/// The search field at the top of a list: a faint capsule with the
 /// magnifying glass inside it and a clear button once there is text.
 ///
 /// The rounded-border text field it replaces was the one square, sunken
-/// control on a window of capsules and glass. Escape clears the search and
-/// Command-F reaches it from anywhere on the page.
+/// control on a window of capsules. It is not glass: glass belongs to the
+/// controls floating above content, and this sits in it. Escape clears the
+/// search and Command-F reaches it from anywhere on the page.
 struct BrimSearchField: View {
     @Binding var text: String
     let prompt: String
@@ -107,10 +119,10 @@ struct BrimSearchField: View {
         .frame(height: 30)
         .contentShape(.capsule)
         .onTapGesture { isFocused = true }
-        .glassEffect(.regular, in: .capsule)
+        .background(Color.white.opacity(0.07), in: .capsule)
         .overlay {
             Capsule()
-                .strokeBorder(Color.accentColor.opacity(isFocused ? 0.55 : 0), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(isFocused ? 0.35 : 0), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: isFocused)

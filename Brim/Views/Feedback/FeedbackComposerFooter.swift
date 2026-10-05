@@ -34,8 +34,8 @@ struct FeedbackComposerFooter: View {
                     // Held at the width of the longer label, so the
                     // acknowledgement never pushes Clear along.
                     ZStack(alignment: .leading) {
-                        Label("Copy report", systemImage: "doc.on.doc").hidden()
-                        Label(copied ? "Copied" : "Copy report", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        Label("Copy Report", systemImage: "doc.on.doc").hidden()
+                        Label(copied ? "Copied" : "Copy Report", systemImage: copied ? "checkmark" : "doc.on.doc")
                             .contentTransition(.opacity)
                     }
                 }
@@ -63,7 +63,7 @@ struct FeedbackComposerFooter: View {
                     .frame(minWidth: 150)
                     .contentTransition(.opacity)
                 }
-                .buttonStyle(.glassProminent)
+                .capsuleAction(prominent: true)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(feedback.draft.validationMessage != nil || feedback.isSending)

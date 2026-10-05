@@ -72,7 +72,7 @@ public enum VendorUninstallerDetector {
                     path: directory.appendingPathComponent(name).path,
                     reason: "\(bundleURL.lastPathComponent) ships its own uninstaller. Removing "
                           + "the files by hand can leave a licence registered or a system "
-                          + "extension loaded, so the vendor's uninstaller is shown instead."
+                          + "extension loaded. Its uninstaller is shown instead."
                 )
             }
         }

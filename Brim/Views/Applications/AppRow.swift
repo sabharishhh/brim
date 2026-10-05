@@ -51,7 +51,7 @@ struct AppRow: View {
 
             if !isChoosing {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([app.url])
                     }
                 }

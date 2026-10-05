@@ -23,7 +23,11 @@ enum Palette {
     static let surface = Color("Surface")
     static let ink = Color(nsColor: .labelColor)
     static let inkSecondary = Color(nsColor: .secondaryLabelColor)
-    static let inkTertiary = Color(nsColor: .tertiaryLabelColor)
+    /// The faintest text. The system's tertiary label measured 2.3:1 on
+    /// the canvas and on cards, under the 4.5:1 text needs, and it carried
+    /// the Journal's times and reasons and every section count. Nine tenths
+    /// of the secondary label is 4.6:1 on a card and still a step quieter.
+    static let inkTertiary = Color(nsColor: .secondaryLabelColor).opacity(0.9)
     /// Fills behind bars, meters, chips and placeholders.
     static let well = Color(nsColor: .tertiarySystemFill)
 
@@ -33,7 +37,24 @@ enum Palette {
     /// so a click is felt before anything else changes.
     static let pressed = Color(nsColor: .tertiarySystemFill)
     /// The row the inspector is showing, or the highlighted result.
-    static let selected = Color.accentColor.opacity(0.18)
+    static let selected = Color.white.opacity(0.1)
+
+    // Brim is monochrome. Its accent was the person's system accent, and a
+    // red accent turned the Space meter, Energy's bars, the selected row and
+    // the put-back icon red, so ordinary facts read as errors and clashed
+    // with the red that means a permanent deletion. Measures and selection
+    // are shades of white instead, and colour is left to status alone.
+
+    /// The tint for controls Brim does not draw itself: checkboxes,
+    /// switches, the sidebar's selection. Mid grey, so a white checkmark on
+    /// it still reads.
+    static let tint = Color(white: 0.5)
+    /// The first thing a measure shows: used space, the biggest draw.
+    static let snow = Color(white: 0.9)
+    /// The second: what macOS holds, the other part of a pair.
+    static let frost = Color(white: 0.6)
+    /// A third, where a measure has one.
+    static let mist = Color(white: 0.4)
 
     /// The light that sweeps across loading placeholders.
     static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.06)
@@ -47,7 +68,7 @@ enum Palette {
     // the only signal; every status also has a word or a symbol.
     //
     // Accent, selection and progress use the person's own system accent
-    // (`Color.accentColor`), never one of these.
+    // (`Palette.tint` and the shades below), never one of these.
 
     /// Done and checked. Okabe–Ito bluish green #009E73, lifted 6% toward
     /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
@@ -61,19 +82,19 @@ enum Palette {
     /// Neutral information. Okabe–Ito sky blue #56B4E9 (6.2:1 on a card).
     static let info = Color(light: 0x56B4E9, dark: 0x56B4E9)
 
-    /// Eight system colours for monograms and symbol tiles, in the
-    /// order `Monogram.hue` indexes them. The system's own, as in System
-    /// Settings, so they adapt to Increase Contrast. Kept away from red,
-    /// orange and green, which here are status. Meters use the accent.
+    /// Greys for monograms and symbol tiles, in the order `Monogram.hue`
+    /// indexes them. They were eight system colours, and a column of
+    /// letters in teal, pink and indigo read as decoration; neighbouring
+    /// tiles still differ by a shade.
     static let hues: [Color] = [
-        Color(nsColor: .systemTeal),
-        Color(nsColor: .systemBlue),
-        Color(nsColor: .systemIndigo),
-        Color(nsColor: .systemPurple),
-        Color(nsColor: .systemPink),
-        Color(nsColor: .systemBrown),
-        Color(nsColor: .systemCyan),
-        Color(nsColor: .systemGray)
+        Color(white: 0.34),
+        Color(white: 0.42),
+        Color(white: 0.3),
+        Color(white: 0.38),
+        Color(white: 0.46),
+        Color(white: 0.32),
+        Color(white: 0.4),
+        Color(white: 0.36)
     ]
 
     static func hue(_ index: Int) -> Color {

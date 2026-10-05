@@ -226,7 +226,7 @@ struct StackCard<Item: Identifiable, Row: View, HeaderAccessory: View>: View {
                 } label: {
                     Text(showsAll ? "Show fewer" : "Show all \(items.count)")
                         .font(.brimFacts.weight(.medium))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(Palette.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)

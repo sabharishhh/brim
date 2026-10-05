@@ -124,7 +124,7 @@ struct HomeView: View {
         HomeNote(
             symbol: "lock", tint: Palette.caution,
             title: "Full Disk Access is off",
-            detail: "Most of Library is out of sight, so counts are low.",
+            detail: "Brim cannot see most of Library. Counts are low.",
             actionTitle: "Open Settings"
         ) { FullDiskAccess.openSettings() }
     }
@@ -132,7 +132,7 @@ struct HomeView: View {
     private var recoveryNote: some View {
         let count = recovery.items.count
         return HomeNote(
-            symbol: "arrow.uturn.backward", tint: .accentColor,
+            symbol: "arrow.uturn.backward", tint: Palette.ink,
             title: count == 1 ? "1 removal can be put back" : "\(count) removals can be put back",
             detail: recovery.totalBytes > 0 ? "\(ByteText.short(recovery.totalBytes)) in the Trash"
                 : "Ready to put back",
@@ -155,10 +155,10 @@ struct HomeView: View {
                 // Three facts, never added into one: what is used, what
                 // macOS will release when it needs to, and what is free.
                 MeterBar(segments: [
-                    MeterSegment(label: "Used", value: volume.used, color: Color.accentColor),
+                    MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
                     MeterSegment(
                         label: "Held by macOS", value: volume.reclaimableByTheSystem,
-                        color: Color.accentColor.opacity(0.4)
+                        color: Palette.frost
                     ),
                     MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
                 ])
@@ -188,8 +188,8 @@ struct HomeView: View {
         ) {
             if checked, size.isComplete, rebuilds + data > 0 {
                 MeterBar(segments: [
-                    MeterSegment(label: "Data", value: data, color: Color.accentColor),
-                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Color.accentColor.opacity(0.4))
+                    MeterSegment(label: "Data", value: data, color: Palette.snow),
+                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.frost)
                 ])
             }
         } action: { shell.go(to: .leftovers) }
@@ -286,6 +286,8 @@ private struct HomeNote: View {
                 .font(.title3)
                 .foregroundStyle(tint)
                 .frame(width: 24)
+                // Decoration: the arrow was read out as "Undo".
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.brimRowTitle).foregroundStyle(Palette.ink)
                 Text(detail)

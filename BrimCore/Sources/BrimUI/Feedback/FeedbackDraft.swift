@@ -34,7 +34,7 @@ public struct FeedbackDraft: Codable, Equatable, Sendable {
             return "Keep the title within \(Limit.title) characters."
         }
         if details.trimmed.isEmpty {
-            return "Add a description so we can understand your feedback."
+            return "Add a description."
         }
         if details.count > Limit.details {
             return "Keep the description within 5,000 characters."
