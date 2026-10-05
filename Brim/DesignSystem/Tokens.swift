@@ -136,6 +136,9 @@ extension Font {
     static let brimHeadline = Font.system(size: 26, weight: .semibold, design: .rounded)
     static let brimDayHeader = Font.system(.title3, design: .rounded, weight: .semibold)
     static let brimPageTitle = Font.system(.title2, design: .rounded, weight: .semibold)
+    /// A page's name in the toolbar's row: one line, and the largest text
+    /// in the window's chrome.
+    static let brimToolbarTitle = Font.system(size: 20, weight: .semibold, design: .rounded)
     static let brimGroupTitle = Font.system(.headline)
     static let brimRowTitle = Font.system(.body, weight: .medium)
     static let brimFacts = Font.system(.subheadline)

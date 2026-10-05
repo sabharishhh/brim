@@ -78,6 +78,9 @@ struct ContentView: View {
         // seen through glass: a shade apart, with no line between them.
         .containerBackground(Palette.canvas, for: .window)
         .onAppear { LaunchSignpost.shellAppeared() }
+        // Each page draws its own name in the toolbar (`pageTitle`); the
+        // system's title would repeat it beside a subtitle.
+        .toolbar(removing: .title)
         .overlay(alignment: .top) { commandBar }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
         // The preview panel is not the key window, so Escape arrives here.

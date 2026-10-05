@@ -13,6 +13,9 @@ import SwiftUI
 /// Contrast all leave it off.
 private struct PointerLight: ViewModifier {
     let cornerRadius: CGFloat
+    /// 1 on a card with a few words; less on one dense with figures, where
+    /// a bright light would sit on top of the numbers being read.
+    var strength: Double = 1
     @State private var location: UnitPoint?
     @State private var isLit = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -81,8 +84,8 @@ private struct PointerLight: ViewModifier {
             )
             let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             ZStack {
-                shape.fill(glow).opacity(0.14)
-                shape.strokeBorder(glow, lineWidth: 1)
+                shape.fill(glow).opacity(0.14 * strength)
+                shape.strokeBorder(glow, lineWidth: 1).opacity(strength)
             }
         }
     }
@@ -109,8 +112,8 @@ extension View {
     }
 
     /// The pointer light, inside a rounded card of this radius.
-    func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
-        modifier(PointerLight(cornerRadius: cornerRadius))
+    func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius, strength: Double = 1) -> some View {
+        modifier(PointerLight(cornerRadius: cornerRadius, strength: strength))
     }
 }
 

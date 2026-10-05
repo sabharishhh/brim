@@ -60,7 +60,7 @@ struct BackgroundView: View {
         } detail: {
             inspector
         }
-        .pageTitle("Background", subtitle: hasData ? summary : nil)
+        .pageTitle("Background")
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.revision) {
             icons = Self.icons(for: sections)
@@ -97,12 +97,6 @@ struct BackgroundView: View {
 
     private var hasData: Bool {
         !model.report.registrations.isEmpty
-    }
-
-    private var summary: String {
-        let running = "\(model.live.count) listed"
-        let gone = model.stale.count
-        return gone == 0 ? running : "\(running) · \(gone) left over"
     }
 
     // MARK: - List

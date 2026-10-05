@@ -95,14 +95,7 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }
         }
-        .navigationTitle(Self.macName)
-        // How fresh the numbers are, under the Mac's name in the toolbar,
-        // kept current by the minute.
-        .background {
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                Color.clear.navigationSubtitle(freshness.sentence(now: context.date))
-            }
-        }
+        .pageTitle(Self.macName)
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }

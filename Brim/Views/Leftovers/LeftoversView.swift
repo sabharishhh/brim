@@ -48,7 +48,7 @@ struct LeftoversView: View {
             }
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-        .pageTitle("Remnants", subtitle: model.checkedAt == nil ? nil : summary)
+        .pageTitle("Remnants")
         .alert("Recovery copies could not be read", isPresented: Binding(
             get: { recoveryReadError != nil },
             set: {
@@ -94,21 +94,6 @@ struct LeftoversView: View {
 }
 
 private extension LeftoversView {
-    private var summary: String {
-        let groups = model.orphanedGroups
-        guard !groups.isEmpty else {
-            return model.hasUnreadRecoveryCopies ? "Recovery copies not checked" : "Nothing left behind"
-        }
-        let apps = groups.count == 1 ? "1 app" : "\(groups.count) apps"
-        if groups.flatMap(\.items).contains(where: { $0.sizeIsKnown == false }) {
-            return "\(apps) left traces, size not fully measured"
-        }
-        let bytes = groups.reduce(0) { $0 + $1.totalBytes }
-        // "1 app left Empty" was what a removed app with only empty
-        // folders behind it read as.
-        return bytes == 0 ? "\(apps) left traces" : "\(apps) left \(ByteText.short(bytes))"
-    }
-
     // MARK: - List
 
     private var unknowns: [LeftoverGroup] {
