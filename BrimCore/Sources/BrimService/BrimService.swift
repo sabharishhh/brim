@@ -1614,7 +1614,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 bundlePath: application.url.path,
                 sizeBytes: application.bundleSizeBytes,
                 addedAt: application.addedAt,
-                lastUsedAt: application.lastOpened
+                lastUsedAt: application.lastOpened,
+                names: application.identity.ownNames + application.identity.derivedNames
             )
         }
         do {
@@ -1813,17 +1814,27 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // was named from its identifier alone, so Teams' would read "Teams2"
         // although Brim had recorded "Microsoft Teams" for weeks.
         var knownNames = await (try? index?.recordedNames()) ?? [:]
+        var knownAliases = await (try? index?.recordedAliases()) ?? [:]
+        var knownIdentities: [Identity] = []
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
             if let plan = try? await planStore.load(planId: entry.planId) {
-                if let bid = plan.intent.subjectIdentity.bundleID {
+                let subject = plan.intent.subjectIdentity
+                if let bid = subject.bundleID {
                     knownPastBundleIDs.insert(bid)
-                    knownNames[bid.lowercased()] = plan.intent.subjectIdentity.name
+                    knownNames[bid.lowercased()] = subject.name
+                    knownAliases[bid.lowercased(), default: []] += subject.ownNames + subject.derivedNames
+                    if plan.intent.type == .uninstall, subject.identitySurface != nil {
+                        knownIdentities.append(subject)
+                    }
                 }
             }
         }
 
-        let found = try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
+        let found = try await scanner.scanLeftovers(
+            knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames, knownAliases: knownAliases,
+            knownIdentities: knownIdentities
+        )
         return await attachingReplacements(to: found) + recoveryLeftovers()
     }
 

@@ -46,6 +46,9 @@ public struct OwnershipSearch: Sendable {
     /// Lowercased names of those same applications, for the many directories
     /// named after an app rather than its identifier.
     public let installedNames: Set<String>
+    /// The same names compared as `NameKey` compares them, so `Codex` and
+    /// `codex-app` agree with the removal about whose a folder is.
+    let installedNameKeys: Set<String>
     /// Identifiers with an installer receipt in `/var/db/receipts`.
     public let receiptBundleIDs: Set<String>
     /// Identifiers Brim itself has removed, from its own ledger.
@@ -74,6 +77,7 @@ public struct OwnershipSearch: Sendable {
     ) {
         self.installedBundleIDs = installedBundleIDs
         self.installedNames = installedNames
+        installedNameKeys = Set(installedNames.map(NameKey.of).filter { !$0.isEmpty })
         self.receiptBundleIDs = receiptBundleIDs
         self.previouslyRemovedBundleIDs = previouslyRemovedBundleIDs
         self.staleRegistrationOwners = staleRegistrationOwners
@@ -89,6 +93,7 @@ public struct OwnershipSearch: Sendable {
     /// must never be reported as orphaned on the strength of a database.
     public func ownership(of identifier: String) -> Ownership {
         let installed = installedBundleIDs.contains(identifier) || installedNames.contains(identifier.lowercased())
+            || installedNameKeys.contains(NameKey.of(identifier))
         if installed {
             return .present(owner: URL(fileURLWithPath: "/"))
         }

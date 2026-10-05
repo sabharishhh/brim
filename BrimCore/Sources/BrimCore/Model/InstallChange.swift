@@ -36,15 +36,18 @@ public struct InstallObservation: Equatable, Sendable, Codable {
     /// When it was last opened, as far as Spotlight knows.
     public let lastUsedAt: Date?
     public let observedAt: Date
+    /// Every name the application answers to, kept so they outlive it.
+    public let names: [String]
 
     public init(
         bundleID: String, name: String, version: String? = nil,
         bundlePath: String? = nil, sizeBytes: Int64? = nil,
         addedAt: Date? = nil, lastUsedAt: Date? = nil,
-        observedAt: Date = Date()
+        observedAt: Date = Date(), names: [String] = []
     ) {
         self.bundleID = bundleID
         self.name = name
+        self.names = names
         self.version = version
         self.bundlePath = bundlePath
         self.sizeBytes = sizeBytes

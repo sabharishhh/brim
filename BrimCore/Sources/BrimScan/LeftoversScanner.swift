@@ -75,7 +75,8 @@ public actor LeftoversScanner {
     }
 
     public func scanLeftovers(
-        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:]
+        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:],
+        knownAliases: [String: [String]] = [:], knownIdentities: [Identity] = []
     ) async throws -> [Leftover] {
         try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
@@ -108,14 +109,9 @@ public actor LeftoversScanner {
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
-        // With the names Brim recorded, so a folder named after the app, not
-        // its identifier, is recognised as its too. Short names say too
-        // little to match on.
-        let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
-            .map { id in
-                let name = knownNames[id.lowercased()] ?? ""
-                return Identity(bundleID: id, name: name.count >= 4 ? name : "")
-            }
+        let pastIdentities = Self.pastIdentities(
+            knownPastBundleIDs, names: knownNames, aliases: knownAliases, identities: knownIdentities
+        )
 
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -154,7 +150,7 @@ public actor LeftoversScanner {
         // owner while ChatGPT was installed and using it.
         let writers = ProvenanceSource.owners(of: activeIdentities)
         let vendors = SystemVendors(
-            installed: activeIdentities, recorded: knownNames,
+            installed: activeIdentities, recorded: knownNames, past: pastIdentities,
             packageFolders: InstalledBundleInventory.packageInstallFolders(in: root), root: root
         )
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
@@ -832,8 +828,33 @@ public actor LeftoversScanner {
         .userCaches, .userApplicationSupport, .userLogs
     ]
 
+    /// Removed applications as the sweep knows them, longest identifier
+    /// first. An app Brim removed itself left its whole identity in the
+    /// plan, helpers included, which says more than any name history kept.
+    /// Any other keeps every name Brim recorded, so a folder named after the
+    /// app, not its identifier, is recognised as its too. Short names say
+    /// too little to match on.
+    static func pastIdentities(
+        _ identifiers: Set<String>, names: [String: String], aliases: [String: [String]], identities: [Identity]
+    ) -> [Identity] {
+        let full = Dictionary(identities.compactMap { identity in
+            identity.bundleID.map { ($0.lowercased(), identity) }
+        }, uniquingKeysWith: { first, _ in first })
+        return identifiers.sorted { $0.count > $1.count }.map { id in
+            if let identity = full[id.lowercased()] {
+                return identity
+            }
+            let name = names[id.lowercased()] ?? ""
+            let recorded = (aliases[id.lowercased()] ?? []).filter { NameKey.of($0).count >= 4 }
+            return Identity(bundleID: id, name: name.count >= 4 ? name : "", recordedNames: recorded)
+        }
+    }
+
     static let recordOnlyDomains: Set<FileSystemRoot.Domain> = [
-        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports
+        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports,
+        // iCloud keeps its own databases beside each application's folder,
+        // and nothing names those.
+        .userCloudKitCaches
     ]
 
     static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
