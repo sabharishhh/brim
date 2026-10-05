@@ -445,6 +445,25 @@ from Brim's own window drawn to a file. That drawing does not render
 glass, so the glass buttons, the search capsule and the lens switch's light
 have not been seen as glass, and their hover needs a real mouse.
 
+### Cards letting go of the pointer, 5 October 2026
+
+Cards stayed lit and raised after the pointer left, on every page with
+the light. A card's lift and scrolling rebuild its tracking area with the
+pointer inside, and AppKit reports leaving only an area it saw entered. A
+first fix that re-checked the pointer on each rebuild lit the card with no
+exit to follow and made it worse. `PointerTracking` now rebuilds with
+`assumeInside` when the pointer is in the area, and `PointerWatch` (one
+local and one global monitor) re-checks every view that thinks it holds
+the pointer on every move. Every card answers through `hoverLift()` at one
+strength: a third of the light, a 1 point rise, a faint shadow; the
+Settings feedback cards lost their own light and background change. The
+sidebar reads Home again, Home's title is Home, and every sidebar icon
+answers a click with the short press Apps has.
+
+Verified: build and lint. Not verified: the pointer letting go, because
+the synthetic pointer did not light a card even while over it, so those
+captures proved nothing. It needs a real mouse.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
