@@ -99,7 +99,9 @@ public struct SafetyEngine: Sendable {
                     ? .selected
                     : .unselected
             case .C:
-                .unselected
+                searchFinished && Self.isClearlyNamedData(url, for: footprint.identity)
+                    ? .selected
+                    : .unselected
             }
 
             return EvaluatedItem(
@@ -113,6 +115,25 @@ public struct SafetyEngine: Sendable {
             identity: footprint.identity, items: evaluatedItems, completeness: footprint.completeness
         )
         return await vetoEngine.applyVeto(to: preVeto)
+    }
+
+    /// The folders an application keeps its own data in, where a folder
+    /// clearly named for it is its own and goes with it.
+    ///
+    /// A name match was never ticked, so `Application Support/SystemEQ for
+    /// Mac` was found and stayed behind, in the folder people open first
+    /// when they check whether a removal was complete. Elsewhere a name can
+    /// mean more than one thing (`~/.docker` holds credentials, Services
+    /// can be the person's own), so those stay suggestions.
+    static let namedDataFolders = [
+        "Library/Application Support", "Library/Caches", "Library/Logs", "Library/HTTPStorages",
+        "Library/WebKit", "Library/Saved Application State"
+    ]
+
+    static func isClearlyNamedData(_ url: URL, for identity: Identity) -> Bool {
+        let parent = url.deletingLastPathComponent().standardizedFileURL.path
+        guard namedDataFolders.contains(where: { parent.hasSuffix("/" + $0) }) else { return false }
+        return identity.isClearlyNamed(url.lastPathComponent)
     }
 
     private static func preservedData(_ item: FootprintItem, identity: Identity) -> EvaluatedItem? {

@@ -108,7 +108,8 @@ public struct TierSVetoEngine: Sendable {
         if let reason = Self.groupVetoReason(for: targetURL, claims: context.groupClaims) {
             return (Self.excluded(item, reason: reason), completeness)
         }
-        if let owner = Self.namedFor(targetURL, among: context.others, besides: context.identity) {
+        if let owner = Self.namedFor(targetURL, among: context.others, besides: context.identity)
+            ?? Self.sharesName(targetURL, with: context.applications) {
             return (Self.excluded(item, reason: "Named for \(owner), which is still installed."), completeness)
         }
         // The installer's own record already says whose this is:
@@ -324,4 +325,20 @@ private struct OtherClaimants: Sendable {
     let identities: [Identity]
     let completeness: ScanCompleteness
     let groupClaims: (owners: [String: String], complete: Bool)
+}
+
+extension TierSVetoEngine {
+    /// The installed application whose own name the item has, in any case
+    /// or spacing. A name match can now be ticked, so a folder two
+    /// applications both answer to must belong to neither by default.
+    static func sharesName(_ url: URL, with applications: [Identity]) -> String? {
+        guard url.pathExtension.lowercased() != "app" else { return nil }
+        var name = url.lastPathComponent
+        if name.hasPrefix(".") {
+            name.removeFirst()
+        }
+        let key = NameKey.of(name)
+        guard !key.isEmpty else { return nil }
+        return applications.first { $0.ownNames.contains { NameKey.of($0) == key } }?.name
+    }
 }

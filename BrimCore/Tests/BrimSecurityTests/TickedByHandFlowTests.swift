@@ -43,11 +43,11 @@ final class TickedByHandFlowTests: XCTestCase {
         rootURL.appendingPathComponent("Users/\(NSUserName())")
     }
 
-    /// Found only through the name the application gives itself, so Tier C
-    /// and left unticked, which is exactly Visual Studio Code's
-    /// `Application Support/Code`.
+    /// Found only through a name that begins with the application's, so
+    /// Tier C and left unticked. A folder named exactly for it is now ticked,
+    /// so the row a person has to tick themselves is one like this.
     private func makeSupportFolder() throws -> URL {
-        let folder = home.appendingPathComponent("Library/Application Support/Studio")
+        let folder = home.appendingPathComponent("Library/Application Support/Studio-cache")
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data(repeating: 7, count: 2048).write(to: folder.appendingPathComponent("state.db"))
         return folder
