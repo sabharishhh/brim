@@ -146,3 +146,57 @@ final class LeftoversAuditTests: XCTestCase {
         XCTAssertEqual(misses, [], "Left by a removed application and not offered:\n" + misses.joined(separator: "\n"))
     }
 }
+
+/// Nothing Remnants offers belongs to an application that is installed.
+///
+/// Remnants listed four of ChatGPT's files as removed apps while ChatGPT ran:
+/// its folder was opened as a developer's, and Chromium's lock links inside
+/// were read as broken commands. Nothing here knows about ChatGPT. Remnants is
+/// built as the app builds it, from a copy of Brim's own history, and each
+/// installed application's removal is built as its review would be; a row
+/// inside one of those, or holding one, contradicts it.
+final class InstalledOwnershipAuditTests: XCTestCase {
+    func testNoRemnantBelongsToAnInstalledApplication() async throws {
+        try RealEnvironmentFixture.requireEnabled(self)
+        let real = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Brim")
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("BrimOwners-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: copy) }
+        for name in ["Plans", "Journals", "Ledgers", "brim.sqlite", "brim.sqlite-wal", "brim.sqlite-shm"] {
+            let source = real.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: source.path) {
+                try FileManager.default.copyItem(at: source, to: copy.appendingPathComponent(name))
+            }
+        }
+        let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
+        let service = BrimService(
+            root: root, brimAppURL: Bundle.main.bundleURL,
+            planStoreDirectory: copy.appendingPathComponent("Plans"),
+            journalStoreDirectory: copy.appendingPathComponent("Journals")
+        )
+        let remnants = try await service.leftovers().map { Self.normalized($0.url) }
+
+        var conflicts: [String] = []
+        for identity in await FootprintAuditTests.installed(in: root) {
+            let owned = try await service.inspect(identity: identity).items.map { Self.normalized($0.evidence.url) }
+            for remnant in remnants {
+                guard let held = owned.first(where: { Self.overlaps(remnant, $0) }) else { continue }
+                conflicts.append("\(remnant) is offered, and \(identity.name) holds \(held)")
+            }
+        }
+        XCTAssertEqual(conflicts, [], "Remnants offers what an installed application holds:\n"
+            + conflicts.joined(separator: "\n"))
+    }
+
+    /// The same path, or one inside the other.
+    static func overlaps(_ first: String, _ second: String) -> Bool {
+        first == second || first.hasPrefix(second + "/") || second.hasPrefix(first + "/")
+    }
+
+    /// One spelling per file: lower case, and `/var` as `/private/var`.
+    static func normalized(_ url: URL) -> String {
+        let path = url.standardizedFileURL.path.lowercased()
+        return path.hasPrefix("/var/") ? "/private" + path : path
+    }
+}
