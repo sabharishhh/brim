@@ -136,6 +136,9 @@ struct PointerTracking: NSViewRepresentable {
 
     final class TrackingView: NSView {
         var onChange: ((CGPoint?) -> Void)?
+        /// Whether the pointer was last reported inside.
+        private var isInside = false
+        private var resignObserver: NSObjectProtocol?
 
         override var isFlipped: Bool {
             true
@@ -157,6 +160,12 @@ struct PointerTracking: NSViewRepresentable {
                 options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
                 owner: self
             ))
+            // A tracking area replaced while the pointer is inside it never
+            // reports the exit. The card's own lift moves this view and
+            // rebuilds the area under the pointer, and so does scrolling, so
+            // a card stayed lit and raised after the pointer had left, and
+            // the window looked frozen. Ask where the pointer is instead.
+            syncWithPointer()
         }
 
         override func mouseEntered(with event: NSEvent) {
@@ -168,17 +177,52 @@ struct PointerTracking: NSViewRepresentable {
         }
 
         override func mouseExited(with _: NSEvent) {
+            leave()
+        }
+
+        private func syncWithPointer() {
+            guard let window, window.isKeyWindow else {
+                leave()
+                return
+            }
+            let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            if visibleRect.contains(point) {
+                isInside = true
+                onChange?(point)
+            } else {
+                leave()
+            }
+        }
+
+        private func leave() {
+            guard isInside else { return }
+            isInside = false
             onChange?(nil)
         }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            if let resignObserver {
+                NotificationCenter.default.removeObserver(resignObserver)
+                self.resignObserver = nil
+            }
+            if let window {
+                // A window losing focus stops its tracking areas without
+                // an exit, which left the card lit behind another window.
+                resignObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.leave() }
+                }
+            }
             if window == nil {
+                isInside = false
                 onChange?(nil)
             }
         }
 
         private func report(_ event: NSEvent) {
+            isInside = true
             onChange?(convert(event.locationInWindow, from: nil))
         }
     }

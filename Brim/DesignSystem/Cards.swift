@@ -92,6 +92,8 @@ struct StatCard<Detail: View>: View {
     /// Showing the last scan's figures while a new scan runs: they go grey
     /// until the new ones arrive. The card still opens its page.
     var isRefreshing = false
+    /// A quieter response, for a wide card dense with figures.
+    var subtleHover = false
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
@@ -151,7 +153,7 @@ struct StatCard<Detail: View>: View {
             .fixedSize(horizontal: false, vertical: true)
             .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
-            .hoverLift()
+            .hoverLift(subtle: subtleHover)
         }
         .buttonStyle(.press)
         .accessibilityLabel("\(title), \(figure), \(phrase)")
@@ -226,8 +228,8 @@ struct FlowLayout: Layout {
 /// How a card answers the pointer: it rises 2 points onto a soft shadow and
 /// carries the pointer light along its edge. Under Reduce Motion only the
 /// shadow comes. One modifier, so the cards on Home, Space and Energy answer
-/// alike. A subtle card, dense with figures, rises 1 point under half the
-/// light.
+/// alike. A subtle card, wide or dense with figures, rises 1 point under a
+/// third of the light.
 private struct HoverLift: ViewModifier {
     let cornerRadius: CGFloat
     let subtle: Bool
@@ -236,8 +238,8 @@ private struct HoverLift: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .pointerLight(cornerRadius: cornerRadius, strength: subtle ? 0.5 : 1)
-            .shadow(color: .black.opacity(isHovering ? (subtle ? 0.05 : 0.08) : 0), radius: 12, y: 4)
+            .pointerLight(cornerRadius: cornerRadius, strength: subtle ? 0.3 : 1)
+            .shadow(color: .black.opacity(isHovering ? (subtle ? 0.04 : 0.08) : 0), radius: 12, y: 4)
             .offset(y: isHovering && !reduceMotion ? (subtle ? -1 : -2) : 0)
             // An AppKit tracking area, like the pointer light, so a button on
             // the card keeps its own hover.
