@@ -1,7 +1,6 @@
 import BrimCore
 import BrimUI
 import SwiftUI
-import SystemConfiguration
 
 /// The first page: this Mac at a glance, then in depth one click away.
 ///
@@ -95,7 +94,7 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }
         }
-        .pageTitle(Self.macName, centredWidth: Metrics.cardPageWidth)
+        .pageTitle("Home", centredWidth: Metrics.cardPageWidth)
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
@@ -105,12 +104,6 @@ struct HomeView: View {
         .task { await updates.loadIfNeeded(service: service) }
         .onAppear { fullDiskAccess.startObserving() }
     }
-
-    // MARK: - Title
-
-    /// The computer's own name, as Sharing settings has it. Read once:
-    /// `Host.current()` can wait on the network to answer the same thing.
-    private static let macName: String = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "This Mac"
 
     private var freshness: Freshness {
         if leftovers.isScanning {
@@ -156,8 +149,7 @@ struct HomeView: View {
             figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
             status: volume == nil ? .checking : .neutral,
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
-            isRefreshing: storage.isLoading && volume != nil,
-            subtleHover: true
+            isRefreshing: storage.isLoading && volume != nil
         ) {
             if let volume {
                 // Three facts, never added into one: what is used, what
@@ -308,8 +300,6 @@ private struct HomeNote: View {
         }
         .padding(18)
         .card()
-        // A note across the whole page: a full light over its width read as
-        // the page lighting up, not the note.
-        .hoverLift(subtle: true)
+        .hoverLift()
     }
 }

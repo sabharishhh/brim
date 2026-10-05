@@ -91,7 +91,7 @@ struct SpaceView: View {
         }
         .padding(20)
         .card()
-        .hoverLift(subtle: true)
+        .hoverLift()
     }
 
     private func segments(_ volume: VolumeAccount) -> [MeterSegment] {

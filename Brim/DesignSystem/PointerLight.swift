@@ -13,9 +13,9 @@ import SwiftUI
 /// Contrast all leave it off.
 private struct PointerLight: ViewModifier {
     let cornerRadius: CGFloat
-    /// 1 on a card with a few words; less on one dense with figures, where
-    /// a bright light would sit on top of the numbers being read.
-    var strength: Double = 1
+    /// A third of a full light, everywhere: brighter read as the page
+    /// lighting up rather than the card answering.
+    private let strength = 0.3
     @State private var location: UnitPoint?
     @State private var isLit = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -112,8 +112,8 @@ extension View {
     }
 
     /// The pointer light, inside a rounded card of this radius.
-    func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius, strength: Double = 1) -> some View {
-        modifier(PointerLight(cornerRadius: cornerRadius, strength: strength))
+    func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
+        modifier(PointerLight(cornerRadius: cornerRadius))
     }
 }
 
@@ -152,46 +152,52 @@ struct PointerTracking: NSViewRepresentable {
             false
         }
 
+        /// Cards stayed lit and raised after the pointer left, and the window
+        /// looked frozen. AppKit reports leaving only an area it saw the
+        /// pointer enter, and an area rebuilt under the pointer (the card's
+        /// own lift moves this view; so does scrolling) never saw that. So
+        /// the area is rebuilt with `assumeInside` when the pointer is in it,
+        /// and every pointer move in the window is checked against this view
+        /// too, which lets the card go whatever AppKit reports.
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             trackingAreas.forEach(removeTrackingArea)
-            addTrackingArea(NSTrackingArea(
-                rect: .zero,
-                options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
-                owner: self
-            ))
-            // A tracking area replaced while the pointer is inside it never
-            // reports the exit. The card's own lift moves this view and
-            // rebuilds the area under the pointer, and so does scrolling, so
-            // a card stayed lit and raised after the pointer had left, and
-            // the window looked frozen. Ask where the pointer is instead.
-            syncWithPointer()
+            let point = pointer()
+            var options: NSTrackingArea.Options = [
+                .mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect
+            ]
+            if let point, visibleRect.contains(point) {
+                options.insert(.assumeInside)
+            }
+            addTrackingArea(NSTrackingArea(rect: .zero, options: options, owner: self))
+            follow(point)
         }
 
         override func mouseEntered(with event: NSEvent) {
-            report(event)
+            follow(convert(event.locationInWindow, from: nil))
         }
 
         override func mouseMoved(with event: NSEvent) {
-            report(event)
+            follow(convert(event.locationInWindow, from: nil))
         }
 
         override func mouseExited(with _: NSEvent) {
             leave()
         }
 
-        private func syncWithPointer() {
-            guard let window, window.isKeyWindow else {
+        /// The pointer in this view's coordinates, while the window is key.
+        private func pointer() -> CGPoint? {
+            guard let window, window.isKeyWindow else { return nil }
+            return convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        }
+
+        private func follow(_ point: CGPoint?) {
+            guard let point, visibleRect.contains(point) else {
                 leave()
                 return
             }
-            let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            if visibleRect.contains(point) {
-                isInside = true
-                onChange?(point)
-            } else {
-                leave()
-            }
+            isInside = true
+            onChange?(point)
         }
 
         private func leave() {
@@ -206,24 +212,70 @@ struct PointerTracking: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(resignObserver)
                 self.resignObserver = nil
             }
-            if let window {
-                // A window losing focus stops its tracking areas without
-                // an exit, which left the card lit behind another window.
-                resignObserver = NotificationCenter.default.addObserver(
-                    forName: NSWindow.didResignKeyNotification, object: window, queue: .main
-                ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.leave() }
-                }
-            }
-            if window == nil {
+            guard let window else {
+                PointerWatch.forget(self)
                 isInside = false
                 onChange?(nil)
+                return
+            }
+            // Pointer moves over empty canvas reach the watch only if the
+            // window asks for them.
+            window.acceptsMouseMovedEvents = true
+            PointerWatch.watch(self)
+            // A window losing focus stops its tracking areas without an exit.
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.leave() }
             }
         }
 
-        private func report(_ event: NSEvent) {
-            isInside = true
-            onChange?(convert(event.locationInWindow, from: nil))
+        /// Called by `PointerWatch` for every pointer move, in this window or
+        /// outside the app, while this view thinks the pointer is inside.
+        fileprivate func recheck(_ event: NSEvent) {
+            guard isInside else { return }
+            if event.window !== window || event.type == .scrollWheel {
+                follow(pointer())
+            } else {
+                follow(convert(event.locationInWindow, from: nil))
+            }
+        }
+    }
+}
+
+/// One watch over the pointer for every tracking view: a local monitor for
+/// moves and scrolls in Brim's windows and a global one for moves outside
+/// them, which is where the pointer goes when it leaves the window and no
+/// exit arrives. Only views that think the pointer is inside do anything.
+@MainActor
+private enum PointerWatch {
+    private static let views = NSHashTable<PointerTracking.TrackingView>.weakObjects()
+    private static var monitors: [Any] = []
+
+    static func watch(_ view: PointerTracking.TrackingView) {
+        views.add(view)
+        guard monitors.isEmpty else { return }
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .scrollWheel]
+        if let local = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { event in
+            MainActor.assumeIsolated { recheck(event) }
+            return event
+        }) {
+            monitors.append(local)
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { event in
+            MainActor.assumeIsolated { recheck(event) }
+        }) {
+            monitors.append(global)
+        }
+    }
+
+    static func forget(_ view: PointerTracking.TrackingView) {
+        views.remove(view)
+    }
+
+    private static func recheck(_ event: NSEvent) {
+        for view in views.allObjects {
+            view.recheck(event)
         }
     }
 }
