@@ -93,16 +93,13 @@ private let log = BrimLog.make("app")
                 } message: {
                     Text(releaseMessage)
                 }
-                .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
+                .alert(SelfRemoval.confirmationTitle, isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
-                    Button("Uninstall", role: .destructive) {
+                    Button("Remove Brim", role: .destructive) {
                         Task { await performSelfUninstall() }
                     }
                 } message: {
-                    Text("This removes Brim, the helper that runs as an administrator, its "
-                        + "background agents and everything it has written. Any job files "
-                        + "Brim set aside for you go with it, so restore anything you still "
-                        + "want first.")
+                    Text(SelfRemoval.confirmationMessage)
                 }
                 .alert(
                     "Brim has not removed itself",
@@ -198,7 +195,7 @@ private let log = BrimLog.make("app")
                 }
                 .disabled(release.isChecking)
                 Divider()
-                Button("Uninstall Brim") {
+                Button("Remove Brim…") {
                     showSelfUninstall = true
                 }
             }
@@ -235,43 +232,6 @@ private let log = BrimLog.make("app")
     @StateObject private var helper = PrivilegedHelperClient()
 
     private func performSelfUninstall() async {
-        let bundleID = Bundle.main.bundleIdentifier ?? "devplaceholder.PJ52YXEB.brim"
-        let identity = Identity(bundleID: bundleID, teamID: "PJ52YXEB", name: "Brim")
-        let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
-
-        // The daemon first, while it is still running. Its quarantine is
-        // root owned, so nothing left behind can remove it afterwards, and
-        // an uninstaller that leaves a root-owned folder on the disk is
-        // the exact failure this product exists to point at.
-        if let complaint = await helper.uninstall() {
-            log.error("the helper did not clean up after itself: \(complaint)")
-            // `uninstall` unregisters the daemon whether or not its own
-            // cleanup worked, and only the running daemon can clear a folder
-            // owned by root, so at this point the folder is there for good.
-            // Removing Brim now would take away the only thing that knows,
-            // which is the failure this product exists to point at in other
-            // people's software.
-            selfUninstallProblem =
-                "The helper that runs as an administrator could not clear its own folder "
-                    + "before it was unregistered, so \(BrimJobHelper.quarantineDirectory) is "
-                    + "still on the disk and belongs to root. Removing it now needs an "
-                    + "administrator, which Finder will ask for.\n\n"
-                    + "Brim is untouched, so nothing else has been removed. Asking again will "
-                    + "remove Brim, but it will not remove that folder.\n\n"
-                    + complaint
-            return
-        }
-
-        do {
-            let plan = try await client.plan(intent: intent)
-            try await client.approveAndApply(
-                planId: plan.planId, requesterIdentity: NSUserName()
-            )
-            // Quit immediately after applying the uninstall
-            NSApplication.shared.terminate(nil)
-        } catch {
-            log.error("could not remove Brim: \(error.localizedDescription)")
-            selfUninstallProblem = "Brim could not remove itself. \(error.localizedDescription)"
-        }
+        selfUninstallProblem = await SelfRemoval.perform(helper: helper)
     }
 }
