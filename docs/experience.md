@@ -359,6 +359,35 @@ once a week has passed since they were written. Snapshots record names but
 not helper identifiers, which would need each bundle's parts read at every
 look.
 
+### Settings, feedback, sidebar and removing Brim, 5 October 2026
+
+Settings is two tabs, General (Dock, Access, Privacy, Remove Brim as
+sections) and Feedback, and opens on the tab used last. Feedback dropped
+the recent reports list and the drafts note; Browse reports on GitHub
+takes that card. Title (100) and description (5,000) are held to limits as
+typed, with counts; the title prompt depends on the kind of report; the
+description has a Dictation button using macOS Dictation, and its prompt
+clears while the field is focused because dictated text is provisional
+until committed. The steps disclosure opens from its title. Home is named
+Brim with Brim's icon at 22 pt, and each sidebar symbol has its own
+selection effect. Seen on screen: Settings, the composer, the counts,
+Dictation starting from the button, the disclosure, the sidebar.
+
+Remove Brim replaces Uninstall Brim, which trashed Brim's files and wrote
+a journal into the folder it removed. Root's part (the `/Library` folder,
+the system privacy grants) goes through the temporary administrator
+process before quitting; a script waiting on a pipe Brim holds then clears
+the preference domains and deletes the app and every path named for
+Brim's identifiers, retracts Launch Services and deletes itself. Tested on
+a fixture tree only. It has not been run on this Mac, because running it
+deletes Brim and its history; the Settings section was not seen because
+the screen locked.
+
+Hover: nothing was removed by accident. The pointer light lived only in
+the Inspect an app card, removed on request with that card; the card
+lifts, row hovers and feedback cards remain. System buttons never had a
+custom hover.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
