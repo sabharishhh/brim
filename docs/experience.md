@@ -307,7 +307,57 @@ judged whole because Visual Studio Code's name does not begin with
 Microsoft; a developer's folder is now opened in the person's Library as
 in `/Library`. SystemEQ's install and Gatekeeper removal never appeared
 because they happened between two of Brim's looks, which is by design.
-None of this has been looked at on screen yet.
+
+### Why folders were missed, 5 October 2026
+
+The label fix above was a patch for one app. Measured instead: Brim's
+footprint for every installed app against a looser search of the data
+folders (any name containing a distinctive part of the app's names or
+identifier, any case), and the same for the fourteen apps history shows as
+removed.
+
+Where Brim looked was fine. Name matching failed three ways:
+
+- **Comparison.** A folder counted only when its name equalled one of the
+  app's names exactly. `Caches/Codex` was found for ChatGPT only because the
+  volume ignores case, and the row carried the wrong spelling.
+- **Names.** History kept one name per app, so after removal the sweep
+  knew SystemEQ only as "SystemEQ for Mac". Worse, the developer folder
+  rule from the previous batch treated `SystemEQ` as a developer's folder,
+  because a recorded app name began with it, and judged `presets` inside it
+  on its own. That was this session's regression.
+- **Decision.** A name match was never ticked, and provenance, the only
+  thing that could promote one, is absent on SystemEQ's folder and on the
+  Visual Studio Code, WhatsApp and boringNotch bundles, and ChatGPT.app
+  carries Claude's value. So `SystemEQ for Mac` was found and stayed.
+
+The verification after the removal shared the removal's names, which is
+why the miss was invisible, including to the check made in this session.
+
+Changed: names are compared through `NameKey` (case, spaces and
+punctuation ignored) everywhere, rows carry the on-disk spelling, names
+gain the form without a platform word ("SystemEQ for Mac" gives
+"SystemEQ"), history keeps every name, the sweep uses the full identity
+in Brim's own uninstall plans, a folder that is itself an app's name is
+never taken for a developer's, and `Caches/CloudKit/<identifier>` is a
+location. A folder in an app's own data folders (Application Support,
+Caches, Logs, HTTPStorages, WebKit, Saved Application State) named for it
+is now ticked when the name is one it declares, or a derived name that is
+not a dictionary word, and no other installed app answers to it. Anywhere
+else a name match stays a suggestion.
+
+Verified: both real machine audits (`FootprintAuditTests`,
+`LeftoversAuditTests`, `BRIM_REAL_ENV=1`) pass on this Mac; Remnants on
+the new build lists `Application Support/SystemEQ` (116.7 MB) under
+SystemEQ for Mac and the WWDC app's CloudKit cache; Visual Studio Code's
+review shows `Application Support/Code` ticked and the shared
+`UBF8T346G9.ms` unticked. Nothing was removed.
+
+Remaining: Microsoft AutoUpdate's `com.microsoft.autoupdate.fba` caches
+are a helper identifier nothing recorded, so they appear only as unclaimed
+once a week has passed since they were written. Snapshots record names but
+not helper identifiers, which would need each bundle's parts read at every
+look.
 
 ## Remaining design work
 
