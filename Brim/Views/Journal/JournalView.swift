@@ -35,9 +35,7 @@ struct JournalView: View {
             content
         }
         .pageTitle("Journal")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) { moreMenu }
-        }
+        .toolbar { journalActions }
         .sheet(item: $checkedResult) { result in
             RemovalVerificationSheet(result: result, plan: checkedPlan)
         }
@@ -95,21 +93,21 @@ struct JournalView: View {
 
     // MARK: - Header
 
-    /// Trash and clearing, in the toolbar beside Check Again. The page's
-    /// name and count are the toolbar's title.
-    private var moreMenu: some View {
-        Menu {
-            Button("Empty Removed Items from Trash…", systemImage: "trash") {
+    /// Emptying the Trash and clearing the Journal, as two buttons in the
+    /// toolbar beside Check Again. They sat in a More menu, where neither
+    /// could be seen until it was looked for. Each still asks first.
+    @ToolbarContentBuilder
+    private var journalActions: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button("Empty Removed Items from Trash", systemImage: "trash") {
                 trashRequest = model.records.filter(\.canUndo)
             }
             .disabled(!model.records.contains(where: \.canUndo))
-            Button("Clear Journal…", systemImage: "clear") { confirmsClear = true }
+            .help("Empty removed items from the Trash")
+            Button("Clear Journal", systemImage: "eraser") { confirmsClear = true }
                 .disabled(!model.canClear)
-        } label: {
-            Label("More", systemImage: "ellipsis")
+                .help("Clear the Journal")
         }
-        .menuIndicator(.hidden)
-        .help("More")
     }
 
     /// Names one removal, counts several, and says how much goes.
