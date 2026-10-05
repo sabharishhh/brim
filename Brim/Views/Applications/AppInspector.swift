@@ -158,7 +158,7 @@ struct AppInspector: View {
                 .foregroundStyle(Palette.inkSecondary)
         } else {
             Button("Remove", action: remove)
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 // Never disabled while the footprint loads: the review works out
                 // its own plan, and a disabled button drawn at full strength
                 // took a press and did nothing.

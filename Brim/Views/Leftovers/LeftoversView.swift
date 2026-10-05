@@ -361,7 +361,7 @@ private struct LeftoverBatchActions: View {
                 .help("Review all removable items from known removed apps. "
                     + "Unknown items need to be selected separately.")
             Button("Delete Selected", action: removeSelected)
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .disabled(!canRemoveSelection)
         }
         .padding(.horizontal, 24)
@@ -457,14 +457,14 @@ private struct RemnantCard: View {
     @ViewBuilder private var action: some View {
         if group.items.contains(where: \.canBeRemovedByBrim) {
             Button("Finish Removal", action: finish)
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
                 .disabled(isScanning)
         } else {
             // Nothing Brim can take: what is left is for the person.
             RevealButton(urls: group.items.map(\.url), title: "Show in Finder")
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
         }

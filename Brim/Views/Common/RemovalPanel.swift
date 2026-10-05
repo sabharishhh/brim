@@ -257,7 +257,7 @@ extension RemovalPanel {
                 Button(action: close) {
                     Text("Done").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .keyboardShortcut(.defaultAction)
             } else {
                 Button {
@@ -341,7 +341,7 @@ extension RemovalPanel {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Check Again") { Task { await checkHelper() } }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
             }
             .buttonBorderShape(.capsule)
             .controlSize(.small)

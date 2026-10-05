@@ -310,7 +310,7 @@ private struct HomeNote: View {
             }
             Spacer(minLength: 12)
             Button(actionTitle, action: action)
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .buttonBorderShape(.capsule)
         }
         .padding(18)

@@ -56,7 +56,7 @@ struct UpdatesView: View {
             Spacer()
             if model.installableHere.count > 1 {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .buttonStyle(.borderedProminent)
+                    .capsuleAction(prominent: true)
                     .disabled(model.isInstalling || model.isChecking)
             }
         }
@@ -147,7 +147,7 @@ struct UpdatesView: View {
         case let .recent(recent):
             UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
                 Button("Open") { NSWorkspace.shared.open(recent.appURL) }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
             }
         }
     }
@@ -215,12 +215,12 @@ struct UpdatesView: View {
                 open(Self.appManagementSettings)
                 model.clearState(of: update)
             }
-            .buttonStyle(.bordered)
+            .capsuleAction()
         case .failed, .stillOpen:
             HStack(spacing: 6) {
                 FailureDetails(reason: failure(update) ?? "")
                 Button("Retry") { Task { await model.install(update, service: service) } }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .disabled(model.isChecking)
             }
         case nil:
@@ -233,15 +233,15 @@ struct UpdatesView: View {
         switch update.route {
         case .replace, .homebrew, .installer:
             Button("Update") { Task { await model.install(update, service: service) } }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(model.isChecking)
         case .appStore:
             Button("App Store") { open(update.pageURL) }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(update.pageURL == nil)
         case .website:
             Button("Website") { open(update.pageURL ?? update.releaseNotesURL) }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(update.pageURL == nil && update.releaseNotesURL == nil)
         }
     }

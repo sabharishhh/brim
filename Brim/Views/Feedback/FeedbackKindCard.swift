@@ -30,6 +30,7 @@ struct FeedbackKindCard: View {
             .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
             .padding(16)
             .background(hovering ? Palette.hover : Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius))
+            .pointerLight()
         }
         .buttonStyle(.press)
         .onHover { hovering = $0 }
