@@ -92,8 +92,6 @@ struct StatCard<Detail: View>: View {
     /// Showing the last scan's figures while a new scan runs: they go grey
     /// until the new ones arrive. The card still opens its page.
     var isRefreshing = false
-    /// A quieter response, for a wide card dense with figures.
-    var subtleHover = false
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
@@ -153,7 +151,7 @@ struct StatCard<Detail: View>: View {
             .fixedSize(horizontal: false, vertical: true)
             .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
-            .hoverLift(subtle: subtleHover)
+            .hoverLift()
         }
         .buttonStyle(.press)
         .accessibilityLabel("\(title), \(figure), \(phrase)")
@@ -225,22 +223,22 @@ struct FlowLayout: Layout {
     }
 }
 
-/// How a card answers the pointer: it rises 2 points onto a soft shadow and
-/// carries the pointer light along its edge. Under Reduce Motion only the
-/// shadow comes. One modifier, so the cards on Home, Space and Energy answer
-/// alike. A subtle card, wide or dense with figures, rises 1 point under a
-/// third of the light.
+/// How a card answers the pointer: it rises 1 point onto a faint shadow and
+/// carries a third of the pointer light along its edge. Under Reduce Motion
+/// only the shadow comes. One modifier, so the cards on Home, Space and
+/// Energy answer alike. A full light and a 2 point rise read as the page
+/// lighting up rather than the card answering, first on the wide Space card
+/// and then on every card beside it.
 private struct HoverLift: ViewModifier {
     let cornerRadius: CGFloat
-    let subtle: Bool
     @State private var isHovering = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
-            .pointerLight(cornerRadius: cornerRadius, strength: subtle ? 0.3 : 1)
-            .shadow(color: .black.opacity(isHovering ? (subtle ? 0.04 : 0.08) : 0), radius: 12, y: 4)
-            .offset(y: isHovering && !reduceMotion ? (subtle ? -1 : -2) : 0)
+            .pointerLight(cornerRadius: cornerRadius)
+            .shadow(color: .black.opacity(isHovering ? 0.04 : 0), radius: 12, y: 4)
+            .offset(y: isHovering && !reduceMotion ? -1 : 0)
             // An AppKit tracking area, like the pointer light, so a button on
             // the card keeps its own hover.
             .overlay {
@@ -257,7 +255,7 @@ private struct HoverLift: ViewModifier {
 }
 
 extension View {
-    func hoverLift(cornerRadius: CGFloat = Metrics.cardRadius, subtle: Bool = false) -> some View {
-        modifier(HoverLift(cornerRadius: cornerRadius, subtle: subtle))
+    func hoverLift(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
+        modifier(HoverLift(cornerRadius: cornerRadius))
     }
 }

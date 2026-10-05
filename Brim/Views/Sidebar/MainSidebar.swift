@@ -10,7 +10,7 @@ import SwiftUI
 enum Destination: String, Hashable, CaseIterable {
     /// Brim's overview of this Mac, named for Brim like the app's own
     /// first page. A saved "Home" from an earlier build falls back here.
-    case home = "Brim"
+    case home = "Home"
     case apps = "Apps"
     case leftovers = "Remnants"
     case background = "Background"
@@ -162,9 +162,11 @@ struct MainSidebar: View {
 
 /// A sidebar row's label. Its icon answers once when the row becomes
 /// selected, so a click is answered by the thing clicked rather than only by
-/// the highlight moving. Each place moves in its own way, small and short:
-/// the gears turn, the hammer swings, the remnants breathe. Never on the row
-/// being left, and never under Reduce Motion.
+/// the highlight moving. Every icon answers the same way, a short downward
+/// press and release, the way Apps always has. A different motion per place
+/// (gears turning, a hammer swinging, remnants breathing) was tried and read
+/// as decoration rather than as the click being felt. Never on the row being
+/// left, and never under Reduce Motion.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
@@ -191,26 +193,17 @@ private struct SidebarLabel: View {
             // An app icon carries its own margin inside the square, so it
             // is drawn larger than a symbol to look the same size.
             BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
+                // The app icon is an image, not a symbol, so the same press
+                // is drawn by hand: down a little, then settle without
+                // overshoot.
                 .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
                     content.scaleEffect(scale)
                 } keyframes: { _ in
-                    SpringKeyframe(1.12, duration: 0.14, spring: .snappy)
-                    SpringKeyframe(1.0, duration: 0.32, spring: .bouncy(extraBounce: 0.05))
+                    CubicKeyframe(0.9, duration: 0.1)
+                    SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
                 }
-        case .apps:
+        default:
             symbol.symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
-        case .leftovers:
-            symbol.symbolEffect(.breathe, options: .nonRepeating, value: arrivals)
-        case .background:
-            symbol.symbolEffect(.rotate.byLayer, options: .nonRepeating, value: arrivals)
-        case .energy:
-            symbol.symbolEffect(.bounce.up, options: .nonRepeating, value: arrivals)
-        case .space:
-            symbol.symbolEffect(.pulse, options: .nonRepeating, value: arrivals)
-        case .developer:
-            symbol.symbolEffect(.wiggle.counterClockwise, options: .nonRepeating, value: arrivals)
-        case .journal:
-            symbol.symbolEffect(.wiggle.forward, options: .nonRepeating, value: arrivals)
         }
     }
 }
