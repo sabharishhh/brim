@@ -391,7 +391,8 @@ custom hover.
 ### Pointer light and capsule hover, 5 October 2026
 
 The pointer light is one modifier (`PointerLight.swift`) on Home's cards
-and the feedback cards. Capsule actions use `CapsuleActionStyle`: bordered
+and the feedback cards. Capsule actions used `CapsuleActionStyle` for a
+day (replaced the same day by native glass, below): bordered
 system buttons have no hover state, and SwiftUI draws them as AppKit
 controls above anything layered on them, so an overlay highlight was
 invisible. Cards track the pointer with an AppKit tracking area, because
@@ -400,6 +401,40 @@ button on it (traced with a temporary log). Approval buttons stay native.
 Seen on screen: the card light following the pointer. Not confirmed: the
 capsule hover, since the automation pointer reaches tracking areas but no
 button hover, native glass buttons included.
+
+### Page titles, search and glass buttons, 5 October 2026
+
+Every page drew its own title row under an empty toolbar. Titles now live
+in the toolbar through `pageTitle(_:subtitle:)` (`PageChrome.swift`):
+`navigationTitle` and `navigationSubtitle`, so the name sits at the
+system's size and weight with its one line of facts under it ("Remnants",
+"1 app left traces"), and the window title says the same. Home's title is
+the Mac's name with its freshness as the subtitle; a failed or partial
+check still shows its warning on the page.
+
+Page actions moved into the toolbar beside the refresh button: Update All,
+the Journal's More menu. The refresh button is now the page's own: Take a
+Reading on Energy (its separate button did the same thing), Scan Again on
+Developer, Check Again elsewhere. While a page works it turns into a
+spinner, which replaced a spinner beside each title, and a Developer scan
+can be stopped from it.
+
+Search is `BrimSearchField`: a glass capsule with the magnifying glass, a
+clear button, Escape to clear and Command-F to focus. On Apps it shares one
+row with Group By, Select and the view switch. Apps and Updates are
+`LensSwitch`, a capsule whose lit half slides between the two, with the
+update count as an accent badge; VoiceOver gets a segmented picker.
+
+Buttons are glass: `capsuleAction()` is `.glass` or `.glassProminent`,
+every window defaults unstyled buttons to `.glass`, and the approval
+buttons are `.glassProminent`. Rows, links and icon buttons keep their
+own styles. Button labels are title case throughout. Card pages (Home,
+Space, Energy) share `Metrics.cardSpacing` and `Metrics.cardPageWidth`.
+
+Verified: the build, the full suite, lint, and the layout of every page
+from Brim's own window drawn to a file. That drawing does not render
+glass, so the glass buttons, the search capsule and the lens switch's light
+have not been seen as glass, and their hover needs a real mouse.
 
 ## Remaining design work
 
