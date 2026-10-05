@@ -1631,7 +1631,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Whether each application has a newer version, from its own source.
     ///
     /// Reaches the network: Apple's catalogue, the feeds applications read
-    /// themselves, and Homebrew's public catalogue at most once a day.
+    /// themselves, and Homebrew's public catalogue revalidated for this check.
     public func checkForUpdates() async -> UpdateCheck {
         let applications = await applicationInventoryRead().value
         let interrupted = pendingInterruptedUpdates

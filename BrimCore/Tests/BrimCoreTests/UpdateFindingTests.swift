@@ -140,22 +140,28 @@ final class UpdateFindingTests: XCTestCase {
         let code = try app("Visual Studio Code", "com.microsoft.VSCode", "1.138.0")
         let catalogue = folder.appendingPathComponent("catalogue")
         try FileManager.default.createDirectory(at: catalogue, withIntermediateDirectories: true)
-        try Data("""
+        let catalogueData = Data("""
         [{"token":"whatsapp","version":"26.38.22","url":"https://w","sha256":"no_check",
           "artifacts":[{"app":["WhatsApp.app"]}]},
          {"token":"figma","version":"126.8.18","url":"https://f","sha256":"no_check",
           "artifacts":[{"app":["Figma.app"]}]},
          {"token":"visual-studio-code","version":"1.139.1","url":"https://c","sha256":"abc",
           "artifacts":[{"app":["Visual Studio Code.app"]}]}]
-        """.utf8).write(to: catalogue.appendingPathComponent("cask.json"))
+        """.utf8)
+        try catalogueData.write(to: catalogue.appendingPathComponent("cask.json"))
 
         let finder = UpdateFinder(fetch: { request in
-            guard request.url?.host == "itunes.apple.com" else { throw URLError(.notConnectedToInternet) }
+            guard let url = request.url,
+                  let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+            else { throw URLError(.badServerResponse) }
+            if url == CatalogueCache.source {
+                return (catalogueData, response)
+            }
+            guard url.host == "itunes.apple.com" else {
+                throw URLError(.notConnectedToInternet)
+            }
             let body = #"{"results":[{"bundleId":"net.whatsapp.WhatsApp","version":"26.37.76","trackId":1}]}"#
-            return (
-                Data(body.utf8),
-                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            )
+            return (Data(body.utf8), response)
         }, catalogueDirectory: catalogue, platform: sequoia, installedCasks: [])
 
         let check = await finder.check([store, figma, code])
