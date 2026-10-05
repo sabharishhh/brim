@@ -100,6 +100,7 @@ struct EnergyView: View {
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
         .card()
+        .hoverLift()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([caption, title, phrase].compactMap(\.self).joined(separator: ", "))
     }
@@ -131,6 +132,7 @@ struct EnergyView: View {
         }
         .padding(8)
         .card()
+        .hoverLift()
     }
 
     // MARK: - Drawing power
@@ -161,6 +163,7 @@ struct EnergyView: View {
         }
         .padding(8)
         .card()
+        .hoverLift()
     }
 
     private func sectionTitle(_ title: String, trailing: String?) -> some View {

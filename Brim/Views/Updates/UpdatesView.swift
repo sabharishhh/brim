@@ -33,7 +33,7 @@ struct UpdatesView: View {
             footer
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-        .pageTitle("Updates", subtitle: summary.isEmpty ? nil : summary)
+        .pageTitle("Updates")
         .toolbar { updateAll }
         .task { await model.loadIfNeeded(service: service) }
     }
@@ -51,11 +51,6 @@ struct UpdatesView: View {
                     .disabled(model.isInstalling || model.isChecking)
             }
         }
-    }
-
-    private var summary: String {
-        guard let count = model.count else { return model.isChecking ? "Checking" : "" }
-        return count == 1 ? "1 update available" : "\(count) updates available"
     }
 
     // MARK: - Lists

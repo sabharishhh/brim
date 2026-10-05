@@ -51,7 +51,7 @@ struct ApplicationsView: View {
             inspector
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
-        .pageTitle("Apps", subtitle: subtitle)
+        .pageTitle("Apps")
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
         // A removal asked for by a Shortcut or Spotlight: the review opens
@@ -135,10 +135,6 @@ struct ApplicationsView: View {
         .padding(.horizontal, Metrics.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 8)
-    }
-
-    private var subtitle: String? {
-        model.applications.isEmpty ? nil : "\(model.applications.count) · \(ByteText.short(totalBytes))"
     }
 
     private var totalBytes: Int64 {
