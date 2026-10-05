@@ -388,6 +388,19 @@ the Inspect an app card, removed on request with that card; the card
 lifts, row hovers and feedback cards remain. System buttons never had a
 custom hover.
 
+### Pointer light and capsule hover, 5 October 2026
+
+The pointer light is one modifier (`PointerLight.swift`) on Home's cards
+and the feedback cards. Capsule actions use `CapsuleActionStyle`: bordered
+system buttons have no hover state, and SwiftUI draws them as AppKit
+controls above anything layered on them, so an overlay highlight was
+invisible. Cards track the pointer with an AppKit tracking area, because
+nested SwiftUI hover regions gave the pointer to the card and never to a
+button on it (traced with a temporary log). Approval buttons stay native.
+Seen on screen: the card light following the pointer. Not confirmed: the
+capsule hover, since the automation pointer reaches tracking areas but no
+button hover, native glass buttons included.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
