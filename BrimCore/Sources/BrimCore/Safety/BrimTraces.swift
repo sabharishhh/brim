@@ -22,8 +22,9 @@ public enum BrimTraces {
     /// recent documents and its crash reports. Containers are left out:
     /// macOS keeps them as data vaults nobody but Finder can delete, and Brim
     /// is not sandboxed, so the only ones carrying its name came from tests.
-    public static func paths(in root: FileSystemRoot, identifiers: [String],
-                             fileManager: FileManager = .default) -> [URL] {
+    public static func paths(
+        in root: FileSystemRoot, identifiers: [String], fileManager: FileManager = .default
+    ) -> [URL] {
         var found: [URL] = []
         func add(_ url: URL) {
             var info = stat()
@@ -47,11 +48,15 @@ public enum BrimTraces {
             add(root.url(for: .userRecentDocuments).appendingPathComponent("\(identifier).sfl4"))
         }
         let reports = root.url(for: .userDiagnosticReports)
-        for name in ((try? fileManager.contentsOfDirectory(atPath: reports.path)) ?? []).sorted()
-            where ["brim", "BrimJobHelper"].contains(where: { LocationInventory.Location.isReport(name, of: $0) }) {
+        let reportNames = ((try? fileManager.contentsOfDirectory(atPath: reports.path)) ?? []).sorted()
+        for name in reportNames where isBrimsReport(name) {
             add(reports.appendingPathComponent(name))
         }
         return found
+    }
+
+    static func isBrimsReport(_ name: String) -> Bool {
+        ["brim", "BrimJobHelper"].contains { LocationInventory.Location.isReport(name, of: $0) }
     }
 
     /// A shell script that waits for Brim to quit, then clears its preference

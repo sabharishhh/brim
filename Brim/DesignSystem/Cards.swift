@@ -224,24 +224,36 @@ struct FlowLayout: Layout {
 }
 
 /// How a card on Home answers the pointer: it rises 2 points onto a soft
-/// shadow. Under Reduce Motion only the shadow comes. One modifier, so the
-/// stat cards, the notes above them and Recently installed answer alike.
+/// shadow and carries the pointer light along its edge. Under Reduce Motion
+/// only the shadow comes. One modifier, so the stat cards, the notes above
+/// them and Recently installed answer alike.
 private struct HoverLift: ViewModifier {
+    let cornerRadius: CGFloat
     @State private var isHovering = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
+            .pointerLight(cornerRadius: cornerRadius)
             .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
             .offset(y: isHovering && !reduceMotion ? -2 : 0)
-            .onHover { hovering in
-                withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) { isHovering = hovering }
+            // An AppKit tracking area, like the pointer light, so a button on
+            // the card keeps its own hover.
+            .overlay {
+                PointerTracking { point in
+                    let hovering = point != nil
+                    guard hovering != isHovering else { return }
+                    withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) {
+                        isHovering = hovering
+                    }
+                }
+                .allowsHitTesting(false)
             }
     }
 }
 
 extension View {
-    func hoverLift() -> some View {
-        modifier(HoverLift())
+    func hoverLift(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
+        modifier(HoverLift(cornerRadius: cornerRadius))
     }
 }

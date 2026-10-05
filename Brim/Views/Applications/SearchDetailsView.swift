@@ -10,7 +10,7 @@ struct SearchDetailsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button("Back to Review", action: onBack)
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .buttonBorderShape(.capsule)
                 .padding()
             List {

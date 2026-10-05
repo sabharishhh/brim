@@ -373,7 +373,7 @@ struct Notice: View {
             Spacer(minLength: 8)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             }

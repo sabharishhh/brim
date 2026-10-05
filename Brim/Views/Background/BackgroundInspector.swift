@@ -86,14 +86,14 @@ struct BackgroundInspector: View {
             HStack(spacing: 8) {
                 if entry.state == .gone {
                     Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                        .buttonStyle(.borderedProminent)
+                        .capsuleAction(prominent: true)
                         .disabled(!canPick)
                 }
                 if !urls.isEmpty {
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting(urls)
                     }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                 }
             }
             .buttonBorderShape(.capsule)
@@ -101,7 +101,7 @@ struct BackgroundInspector: View {
         if entry.group.items.contains(where: { $0.isStale && $0.loginItemsFollowUp != nil }),
            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
             Link("Open Login Items", destination: url)
-                .buttonStyle(.bordered)
+                .capsuleAction()
         }
     }
 }

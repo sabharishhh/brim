@@ -240,7 +240,7 @@ struct DeveloperInspector: View {
         switch cache.cost {
         case .rebuilt, .restored:
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .buttonBorderShape(.capsule)
         case .refetched:
             // The exact command, shown before anything is approved:
@@ -252,7 +252,7 @@ struct DeveloperInspector: View {
                         .foregroundStyle(Palette.inkSecondary)
                     Button("Clean Up Downloads", action: cleanUp)
                         .disabled(!canCleanUp)
-                        .buttonStyle(.borderedProminent)
+                        .capsuleAction(prominent: true)
                         .buttonBorderShape(.capsule)
                 }
             } else if cache.cleanupID == "uv.cache" {
@@ -278,7 +278,7 @@ struct DeveloperInspector: View {
                     } else if cache.cleanupID != nil {
                         Button("Clean Up with \(cache.tool)", action: cleanUp)
                             .disabled(!canCleanUp)
-                            .buttonStyle(.borderedProminent)
+                            .capsuleAction(prominent: true)
                             .buttonBorderShape(.capsule)
                     }
                 }

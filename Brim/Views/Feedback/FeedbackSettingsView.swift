@@ -44,6 +44,7 @@ struct FeedbackSettingsView: View {
                         }
                         .padding(16)
                         .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
+                        .pointerLight(cornerRadius: Metrics.rowRadius)
                     }
                     .buttonStyle(.press)
                 }
@@ -58,6 +59,7 @@ struct FeedbackSettingsView: View {
                     }
                     .padding(12)
                     .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
+                    .pointerLight(cornerRadius: Metrics.rowRadius)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.press)
