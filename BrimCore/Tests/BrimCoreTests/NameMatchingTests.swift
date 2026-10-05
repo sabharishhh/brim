@@ -28,6 +28,7 @@ final class NameMatchingTests: XCTestCase {
         FileSystemRoot(rootURL: rootURL, userName: "testuser")
     }
 
+    @discardableResult
     private func makeBundle(file: String, name: String, identifier: String) throws -> URL {
         let bundle = root.url(for: .applications).appendingPathComponent("\(file).app")
         try FileManager.default.createDirectory(at: bundle.appendingPathComponent("Contents"),
@@ -39,6 +40,7 @@ final class NameMatchingTests: XCTestCase {
         return bundle
     }
 
+    @discardableResult
     private func makeFolder(_ domain: FileSystemRoot.Domain, _ name: String) throws -> URL {
         let folder = root.url(for: domain).appendingPathComponent(name)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
