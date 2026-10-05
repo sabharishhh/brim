@@ -24,7 +24,9 @@ final class NameMatchingTests: XCTestCase {
         try? FileManager.default.removeItem(at: rootURL)
     }
 
-    private var root: FileSystemRoot { FileSystemRoot(rootURL: rootURL, userName: "testuser") }
+    private var root: FileSystemRoot {
+        FileSystemRoot(rootURL: rootURL, userName: "testuser")
+    }
 
     private func makeBundle(file: String, name: String, identifier: String) throws -> URL {
         let bundle = root.url(for: .applications).appendingPathComponent("\(file).app")
@@ -91,7 +93,8 @@ final class NameMatchingTests: XCTestCase {
 
     /// **The incident.** Both folders go with the app, unasked.
     func testSystemEQsSupportFoldersAreRemovedWithIt() async throws {
-        let bundle = try makeBundle(file: "SystemEQ for Mac", name: "SystemEQ for Mac", identifier: "com.denzam.SystemEQ")
+        let bundle = try makeBundle(file: "SystemEQ for Mac", name: "SystemEQ for Mac",
+                                    identifier: "com.denzam.SystemEQ")
         let presets = try makeFolder(.userApplicationSupport, "SystemEQ")
         let named = try makeFolder(.userApplicationSupport, "SystemEQ for Mac")
         let elsewhere = try makeFolder(.userServices, "SystemEQ")
@@ -99,7 +102,8 @@ final class NameMatchingTests: XCTestCase {
         let plan = try await automaticPlan(for: bundle)
         XCTAssertTrue(plan.steps.contains { $0.target == presets.path }, "Application Support/SystemEQ stayed")
         XCTAssertTrue(plan.steps.contains { $0.target == named.path }, "Application Support/SystemEQ for Mac stayed")
-        XCTAssertFalse(plan.steps.contains { $0.target == elsewhere.path }, "A name outside the data folders was ticked")
+        XCTAssertFalse(plan.steps.contains { $0.target == elsewhere.path },
+                       "A name outside the data folders was ticked")
     }
 
     /// A folder two installed applications both answer to belongs to neither
@@ -137,6 +141,27 @@ final class NameMatchingTests: XCTestCase {
         )
         let offered = leftovers.map(\.url.standardizedFileURL.path)
         XCTAssertTrue(offered.contains(presets.deletingLastPathComponent().standardizedFileURL.path), "\(offered)")
+    }
+
+    /// **ChatGPT's own folder offered while it ran.** "Codex Computer Use"
+    /// begins with "Codex", so `Application Support/Codex` was opened as a
+    /// developer's folder, and Chromium's lock links inside it, which point
+    /// at tokens rather than files, were each listed as a removed app.
+    func testAnInstalledAppsFolderIsNeverOpenedAndItsLocksAreNotLeftovers() async throws {
+        try makeBundle(file: "ChatGPT", name: "ChatGPT", identifier: "com.openai.codex")
+        try makeBundle(file: "Codex Computer Use", name: "Codex Computer Use", identifier: "com.openai.sky.CUAService")
+        let codex = try makeFolder(.userApplicationSupport, "Codex")
+        for (link, token) in [("SingletonLock", "host.local-8658"), ("RunningChromeVersion", "154.0.8037.98:1")] {
+            try FileManager.default.createSymbolicLink(atPath: codex.appendingPathComponent(link).path,
+                                                       withDestinationPath: token)
+        }
+        let stray = root.url(for: .userApplicationSupport).appendingPathComponent("SingletonCookie")
+        try FileManager.default.createSymbolicLink(atPath: stray.path, withDestinationPath: "1365608545")
+
+        let leftovers = try await LeftoversScanner(root: root).scanLeftovers()
+        XCTAssertFalse(leftovers.contains { $0.url.path.hasPrefix(codex.path) }, "\(leftovers.map(\.url.path))")
+        XCTAssertFalse(leftovers.contains { $0.url.lastPathComponent == "SingletonCookie" && $0.category == .orphaned },
+                       "A lock link was read as a command whose app has gone")
     }
 
     func testTheICloudCacheIsInTheFootprint() throws {

@@ -30,7 +30,7 @@ public enum OnDiskName {
             let start = 4 + Int(reference.attr_dataoffset)
             let length = Int(reference.attr_length)
             guard length > 1, start >= 4, start + length <= raw.count else { return nil }
-            return String(decoding: raw[start ..< start + length - 1], as: UTF8.self)
+            return String(bytes: raw[start ..< start + length - 1], encoding: .utf8)
         }
     }
 }

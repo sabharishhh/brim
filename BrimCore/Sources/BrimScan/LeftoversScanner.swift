@@ -324,29 +324,27 @@ public actor LeftoversScanner {
 
                 // A link is judged by what it points at, never by its
                 // name, and that answer arrives before any of the rest.
+                //
+                // Only a command is a pointer whose missing target means
+                // anything. Chromium keeps its locks as links to tokens like
+                // `sabharishhh.local-8658`, and a running ChatGPT's four
+                // were listed as four removed apps.
                 switch Self.symlink(item) {
                 case .some(.resolved):
                     continue
-                case let .some(.dangling(target)):
+                case let .some(.dangling(target)) where Self.commandFolders.contains(domain):
                     leftovers.append(Self.brokenLink(item, pointingAt: target))
                     continue
-                case nil:
+                case .some(.dangling), nil:
                     break
-                }
-
-                // A developer's folder in the person's Library is judged by
-                // what it holds, as it is in /Library. `Microsoft` in
-                // Application Support was only ever looked at whole, because
-                // the one Microsoft app installed, Visual Studio Code, has a
-                // name that does not begin with the developer's.
-                if vendor == nil, signed?.identifier == nil, Self.nestable.contains(domain),
-                   !Self.systemDomains.contains(domain), vendors.claim(name) == .developer, Self.isDirectory(item) {
-                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
-                    continue
                 }
 
                 let containerOwner = containerOwnership?.identifier
 
+                // An installed app's claim comes first. Asked after the
+                // developer test below, `Application Support/Codex` was
+                // opened as a developer's folder because "Codex Computer Use"
+                // begins with it, while ChatGPT was installed and using it.
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
@@ -357,6 +355,17 @@ public actor LeftoversScanner {
                     writers: writers
                 )
                 if belongsToInstalledApp {
+                    continue
+                }
+
+                // A developer's folder in the person's Library is judged by
+                // what it holds, as it is in /Library. `Microsoft` in
+                // Application Support was only ever looked at whole, because
+                // the one Microsoft app installed, Visual Studio Code, has a
+                // name that does not begin with the developer's.
+                if vendor == nil, signed?.identifier == nil, Self.nestable.contains(domain),
+                   !Self.systemDomains.contains(domain), vendors.claim(name) == .developer, Self.isDirectory(item) {
+                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
                     continue
                 }
 
@@ -849,6 +858,11 @@ public actor LeftoversScanner {
             return Identity(bundleID: id, name: name.count >= 4 ? name : "", recordedNames: recorded)
         }
     }
+
+    /// Where a link is a command, and a missing target means it cannot run.
+    static let commandFolders: Set<FileSystemRoot.Domain> = [
+        .usrLocalBin, .usrLocalSbin, .userDotLocalBin
+    ]
 
     static let recordOnlyDomains: Set<FileSystemRoot.Domain> = [
         .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports,
