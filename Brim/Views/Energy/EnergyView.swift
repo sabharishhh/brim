@@ -41,7 +41,7 @@ struct EnergyView: View {
             Button(model.isSampling ? "Reading" : "Take a Reading") {
                 Task { await model.sample(service: service) }
             }
-            .buttonStyle(.borderedProminent)
+            .capsuleAction(prominent: true)
             .buttonBorderShape(.capsule)
             .disabled(model.isSampling)
         }

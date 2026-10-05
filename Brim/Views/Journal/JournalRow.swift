@@ -126,7 +126,7 @@ struct JournalRow: View {
                 // Only where it would do something: a disabled button on
                 // every row is thirty-nine controls that do nothing.
                 Button("Put Back", action: putBack)
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             } else if let reason = record.unavailableReason {

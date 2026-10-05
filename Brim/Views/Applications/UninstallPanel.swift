@@ -266,13 +266,13 @@ private extension UninstallPanel {
                         } label: {
                             Text("Review Again").frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .capsuleAction()
                         .help("Make a new plan from what is on the disk now")
                     }
                     Button(action: close) {
                         Text("Done").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .keyboardShortcut(.defaultAction)
                 }
             } else {
