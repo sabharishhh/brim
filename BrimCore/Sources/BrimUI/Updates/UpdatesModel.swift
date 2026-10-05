@@ -6,9 +6,8 @@ import Foundation
 /// Backs the Updates section: which applications have a newer version, and
 /// putting it in place.
 ///
-/// A check reaches the network, so it runs when the section opens and the
-/// last one is more than six hours old, and when somebody asks. Nothing
-/// runs in the background.
+/// The Updates section and Check Again request a fresh network check. Home
+/// reuses a result for up to six hours. Nothing runs in the background.
 @MainActor
 public final class UpdatesModel: ObservableObject {
     /// Where one update has got to.
