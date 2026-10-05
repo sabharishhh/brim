@@ -132,7 +132,12 @@ public struct EvidenceEngine: Sendable {
         // this is the same notion of sameness the executor holds.
         var bestEvidenceByFile = [String: Evidence]()
 
-        for e in evidence {
+        for found in evidence {
+            // Spelled as stored, whichever spelling the source asked with.
+            let spelled = OnDiskName.spelled(found.url)
+            let e = spelled == found.url ? found
+                : Evidence(url: spelled, tier: found.tier, mechanism: found.mechanism,
+                           humanSentence: found.humanSentence)
             let key = Self.identity(of: e.url)
             if let existing = bestEvidenceByFile[key] {
                 // Tier comparison: S > A > B > C

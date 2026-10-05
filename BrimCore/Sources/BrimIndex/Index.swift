@@ -277,6 +277,25 @@ public actor Index {
         }
     }
 
+    /// Every name recorded for each application, by bundle identifier,
+    /// including applications that have since been removed.
+    public nonisolated func recordedAliases() async throws -> [String: [String]] {
+        try await dbManager.dbPool.read { database in
+            let rows = try Row.fetchAll(
+                database,
+                sql: "SELECT bundle_id, names FROM identity WHERE bundle_id IS NOT NULL AND names IS NOT NULL"
+            )
+            var aliases: [String: [String]] = [:]
+            for row in rows {
+                guard let id: String = row["bundle_id"], let text: String = row["names"],
+                      let names = try? JSONDecoder().decode([String].self, from: Data(text.utf8)),
+                      !names.isEmpty else { continue }
+                aliases[id.lowercased()] = names
+            }
+            return aliases
+        }
+    }
+
     /// Reads identities asynchronously without blocking the actor's write thread.
     public nonisolated func fetchIdentity(bundleID: String) async throws -> String? {
         try await dbManager.dbPool.read { database in

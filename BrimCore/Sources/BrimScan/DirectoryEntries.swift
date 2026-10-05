@@ -13,6 +13,13 @@ enum DirectoryEntries {
         return false
     }
 
+    var isListed: Bool {
+        if case .listed = self {
+            return true
+        }
+        return false
+    }
+
     static func read(_ directory: URL, using fileManager: FileManager = .default) -> Self {
         do {
             return try .listed(fileManager.contentsOfDirectory(atPath: directory.path).sorted())

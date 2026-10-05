@@ -29,8 +29,16 @@ struct SystemVendors: Sendable {
     /// Folders a non-Apple package installed into, and the folders holding them.
     let packaged: Set<String>
     let packagedParents: Set<String>
+    /// Installed and recorded names as `NameKey` compares them.
+    let nameKeys: Set<String>
+    /// What applications, installed or gone, are themselves called,
+    /// including derived names, as `NameKey` compares them.
+    let productKeys: Set<String>
 
-    init(installed identities: [Identity], recorded: [String: String], packageFolders: [URL], root: FileSystemRoot) {
+    init(
+        installed identities: [Identity], recorded: [String: String], past: [Identity] = [],
+        packageFolders: [URL], root: FileSystemRoot
+    ) {
         func isApples(_ identifier: String?) -> Bool {
             (identifier ?? "").lowercased().hasPrefix("com.apple.")
         }
@@ -51,6 +59,9 @@ struct SystemVendors: Sendable {
         }
         packaged = own
         packagedParents = parents
+        nameKeys = Set(installed.union(self.recorded).map(NameKey.of).filter { !$0.isEmpty })
+        productKeys = Set((identities + past).flatMap { $0.ownNames + $0.derivedNames }
+            .map(NameKey.of).filter { !$0.isEmpty })
     }
 
     func claim(_ folder: String) -> Claim? {
@@ -59,12 +70,20 @@ struct SystemVendors: Sendable {
         guard !name.isEmpty, name != "apple", !apple.contains(name),
               !apple.contains(where: { $0.hasPrefix(prefix) })
         else { return nil }
+        // A folder that is itself what an application is called is that
+        // application's, even when a longer name begins with it.
+        // `Application Support/SystemEQ` was opened as though SystemEQ were
+        // a developer, because the app was called "SystemEQ for Mac", and
+        // nothing inside it was ever offered.
+        if productKeys.contains(NameKey.of(name)) {
+            return .application
+        }
         let names = installed.union(recorded)
         let hasChildren = names.contains { $0.hasPrefix(prefix) && $0.count > prefix.count }
         if packagedParents.contains(name) || hasChildren {
             return .developer
         }
-        if packaged.contains(name) || names.contains(name) {
+        if packaged.contains(name) || names.contains(name) || nameKeys.contains(NameKey.of(name)) {
             return .application
         }
         return nil

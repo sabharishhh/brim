@@ -50,6 +50,11 @@ public struct FileSystemRoot: Sendable {
         /// walks straight past.
         case userPreferencesByHost
         case userHTTPStorages
+        /// `Caches/CloudKit/<identifier>`, the cache iCloud keeps for each
+        /// application that syncs. Inside `Caches` but one level down, so
+        /// the identifier rule for `Caches` never reached it, and the WWDC
+        /// app's was still there after its removal.
+        case userCloudKitCaches
         case userCookies
         case userApplicationScripts
         case systemApplicationScripts
@@ -214,6 +219,7 @@ public struct FileSystemRoot: Sendable {
             rootURL.appendingPathComponent("Users")
         case .userPreferencesByHost: home("Library/Preferences/ByHost")
         case .userHTTPStorages: home("Library/HTTPStorages")
+        case .userCloudKitCaches: home("Library/Caches/CloudKit")
         case .userCookies: home("Library/Cookies")
         case .userApplicationScripts: home("Library/Application Scripts")
         case .systemApplicationScripts: system("Library/Application Scripts")
