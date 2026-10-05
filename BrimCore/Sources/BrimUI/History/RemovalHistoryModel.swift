@@ -117,9 +117,46 @@ public final class RemovalHistoryModel: ObservableObject {
         case failed(String)
     }
 
-    private var service: (any BrimServiceProtocol)?
+    /// Removals whose items are being deleted from the Trash.
+    @Published public private(set) var deletingPlanIds: Set<UUID> = []
+    /// Everything before this is cleared from the Journal, except removals
+    /// that can still be put back: hiding one of those would hide the only
+    /// way back to the person's files.
+    @Published public private(set) var clearedBefore: Date?
 
-    public init() {}
+    private var service: (any BrimServiceProtocol)?
+    private let defaults: UserDefaults
+    private static let clearedKey = "journal.clearedBefore"
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let stored = defaults.double(forKey: Self.clearedKey)
+        clearedBefore = stored > 0 ? Date(timeIntervalSinceReferenceDate: stored) : nil
+    }
+
+    /// The removals the Journal lists.
+    public var visibleRecords: [RemovalRecord] {
+        guard let clearedBefore else { return records }
+        return records.filter { $0.canUndo || $0.plan.createdAt > clearedBefore }
+    }
+
+    /// The installs the Journal lists.
+    public var visibleInstalls: [InstallRecord] {
+        guard let clearedBefore else { return installs }
+        return installs.filter { $0.installedAt > clearedBefore }
+    }
+
+    /// Whether clearing would take anything out of the Journal.
+    public var canClear: Bool {
+        visibleRecords.contains { !$0.canUndo } || !visibleInstalls.isEmpty
+    }
+
+    /// Clears the Journal up to now. Brim keeps its removal records, which
+    /// later checks of a removal read; they are no longer listed.
+    public func clear(now: Date = Date()) {
+        clearedBefore = now
+        defaults.set(now.timeIntervalSinceReferenceDate, forKey: Self.clearedKey)
+    }
 
     public func load(service: any BrimServiceProtocol) async {
         self.service = service
@@ -143,6 +180,29 @@ public final class RemovalHistoryModel: ObservableObject {
         records = plans
             .map { RemovalRecord(plan: $0, recoverable: byPlan[$0.planId]) }
             .sorted { $0.plan.createdAt > $1.plan.createdAt }
+    }
+
+    /// Deletes for good what these removals put in the Trash. Nothing else
+    /// in the Trash is touched.
+    public func deleteFromTrash(_ records: [RemovalRecord]) async {
+        guard let service else { return }
+        let ids = Set(records.map(\.id)).subtracting(deletingPlanIds)
+        guard !ids.isEmpty else { return }
+        deletingPlanIds.formUnion(ids)
+        defer { deletingPlanIds.subtract(ids) }
+        errorMessage = nil
+        var failures: [String] = []
+        for record in records where ids.contains(record.id) {
+            do {
+                try await service.deleteFromTrash(planId: record.plan.planId)
+            } catch {
+                failures.append(error.localizedDescription)
+            }
+        }
+        if !failures.isEmpty {
+            errorMessage = failures.joined(separator: "\n")
+        }
+        await reload()
     }
 
     /// Restores one removal. The service refuses cleanly when it cannot, and

@@ -1102,6 +1102,41 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return plans
     }
 
+    /// Deletes for good what one removal put in the Trash, and nothing
+    /// else there.
+    ///
+    /// Emptying the whole Trash would take the person's own files with
+    /// Brim's. Only the items this removal recorded, and only while they
+    /// are still in a Trash folder, are deleted, and the removal can no
+    /// longer be put back afterwards. Registrations of bundles that are now
+    /// gone are retracted, as they are when the Trash is emptied by hand.
+    public func deleteFromTrash(planId: UUID) async throws {
+        try beginOperation(planId: planId)
+        defer { activePlans.remove(planId) }
+        guard let journal = try await journalStore.load(planId: planId), journal.restoredAt == nil else {
+            throw NSError(domain: "BrimService", code: 409, userInfo: [
+                NSLocalizedDescriptionKey: "This removal has nothing left in the Trash."
+            ])
+        }
+        let trashed = (journal.stepTrashedURLs ?? [:])
+            .filter { journal.restoreOutcomes?[$0.key] != "ok" }
+            .sorted { $0.key < $1.key }
+        var failed: [String] = []
+        for (_, url) in trashed {
+            do {
+                try SafeOps.deleteFromTrash(url)
+            } catch {
+                failed.append(url.lastPathComponent)
+            }
+        }
+        await reconcileRegistrations()
+        guard failed.isEmpty else {
+            throw NSError(domain: "BrimService", code: 500, userInfo: [
+                NSLocalizedDescriptionKey: "Could not delete \(failed.joined(separator: ", ")) from the Trash."
+            ])
+        }
+    }
+
     public func undo(planId: UUID) async throws {
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }

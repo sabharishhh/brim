@@ -174,4 +174,30 @@ final class RemovalHistoryModelTests: XCTestCase {
 
         XCTAssertEqual(model.records.map(\.name), ["Newer", "Older"])
     }
+
+    /// Clearing the Journal takes out what has happened so far, but never a
+    /// removal that can still be put back: hiding it would hide the only way
+    /// back to the person's files. The clear point survives a relaunch.
+    func testClearingKeepsWhatCanStillBePutBack() async throws {
+        let suite = "brim.tests.journal.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let back = makePlan(name: "Back", disposition: .trash, createdAt: Date(timeIntervalSinceNow: -60))
+        let gone = makePlan(name: "Gone", disposition: .delete, createdAt: Date(timeIntervalSinceNow: -60))
+        let stub = HistoryStub(
+            plans: [back, gone],
+            recoverable: [RecoverableItem(planId: back.planId, name: "Back", bytes: 1, removedAt: Date())]
+        )
+        let model = RemovalHistoryModel(defaults: defaults)
+        await model.load(service: stub)
+        XCTAssertTrue(model.canClear)
+
+        model.clear()
+
+        XCTAssertEqual(model.visibleRecords.map(\.name), ["Back"])
+        XCTAssertFalse(model.canClear)
+        let relaunched = RemovalHistoryModel(defaults: defaults)
+        await relaunched.load(service: stub)
+        XCTAssertEqual(relaunched.visibleRecords.map(\.name), ["Back"])
+    }
 }
