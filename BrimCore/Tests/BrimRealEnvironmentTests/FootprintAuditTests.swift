@@ -26,13 +26,7 @@ final class FootprintAuditTests: XCTestCase {
             planStoreDirectory: support.appendingPathComponent("Plans"),
             journalStoreDirectory: support.appendingPathComponent("Journals")
         )
-        var identities: [Identity] = []
-        for folder in [root.url(for: .applications), root.url(for: .userApplications)] {
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            for name in names where name.hasSuffix(".app") {
-                await identities.append(IdentityResolver(root: root).resolve(bundleURL: folder.appendingPathComponent(name)))
-            }
-        }
+        let identities = await Self.installed(in: root)
         let tokens = Dictionary(identities.map { ($0.bundlePath ?? $0.name, Self.tokens(of: $0)) },
                                 uniquingKeysWith: { first, _ in first })
         let entries = Self.dataFolderEntries(in: root)
@@ -52,7 +46,7 @@ final class FootprintAuditTests: XCTestCase {
                 guard !claimants.values.contains(where: { $0.contains(where: key.contains) }) else { continue }
                 misses.append("\(identity.name): \(entry.path)")
             }
-            report.append(["app": identity.name, "items": footprint.items.map { $0.evidence.url.path }])
+            report.append(["app": identity.name, "items": footprint.items.map(\.evidence.url.path)])
         }
         if let out = ProcessInfo.processInfo.environment["BRIM_AUDIT_OUT"] {
             try JSONSerialization.data(withJSONObject: report, options: .prettyPrinted)
@@ -74,6 +68,18 @@ final class FootprintAuditTests: XCTestCase {
         let words = (identity.ownNames + identity.derivedNames).flatMap { $0.split(separator: " ").map(String.init) }
         let candidates = identity.ownNames + identity.derivedNames + labels + words
         return Set(candidates.filter { NameKey.of($0).count >= 5 && !NameKey.isOrdinaryWord($0) }.map(NameKey.of))
+    }
+
+    static func installed(in root: FileSystemRoot) async -> [Identity] {
+        var identities: [Identity] = []
+        for folder in [root.url(for: .applications), root.url(for: .userApplications)] {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            for name in names where name.hasSuffix(".app") {
+                let bundle = folder.appendingPathComponent(name)
+                await identities.append(IdentityResolver(root: root).resolve(bundleURL: bundle))
+            }
+        }
+        return identities
     }
 
     static func dataFolderEntries(in root: FileSystemRoot) -> [URL] {
@@ -117,19 +123,15 @@ final class LeftoversAuditTests: XCTestCase {
             .scanLeftovers(knownPastBundleIDs: Set(removed.keys), knownNames: names, knownAliases: aliases)
         let offered = leftovers.map { $0.url.standardizedFileURL.path.lowercased() }
 
-        var installed: [Identity] = []
-        for folder in [root.url(for: .applications), root.url(for: .userApplications)] {
-            for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [] where name.hasSuffix(".app") {
-                await installed.append(IdentityResolver(root: root).resolve(bundleURL: folder.appendingPathComponent(name)))
-            }
-        }
-        let claimed = installed.map(FootprintAuditTests.tokens(of:))
+        let claimed = await FootprintAuditTests.installed(in: root).map(FootprintAuditTests.tokens(of:))
+        let iCloud = root.url(for: .userCloudKitCaches)
         let entries = FootprintAuditTests.dataFolderEntries(in: root)
-            + ((try? FileManager.default.contentsOfDirectory(atPath: root.url(for: .userCloudKitCaches).path)) ?? [])
-            .map { root.url(for: .userCloudKitCaches).appendingPathComponent($0) }
+            + ((try? FileManager.default.contentsOfDirectory(atPath: iCloud.path)) ?? [])
+            .map { iCloud.appendingPathComponent($0) }
         var misses: [String] = []
         for (id, _) in removed {
-            let identity = Identity(bundleID: id, name: names[id.lowercased()] ?? "", recordedNames: aliases[id.lowercased()])
+            let identity = Identity(bundleID: id, name: names[id.lowercased()] ?? "",
+                                    recordedNames: aliases[id.lowercased()])
             let own = FootprintAuditTests.tokens(of: identity).union([NameKey.of(id)])
             for entry in entries {
                 let key = NameKey.of(entry.lastPathComponent)
