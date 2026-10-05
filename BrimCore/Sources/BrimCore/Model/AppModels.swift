@@ -26,7 +26,8 @@ public enum EvidenceTier: String, Codable, Equatable, Sendable, CaseIterable {
     case A
     /// Probable, from how the developer names things.
     case B
-    /// A heuristic. Shown, never selected by default.
+    /// A heuristic. Shown, and selected by default only when it is clearly
+    /// the application's own name in its own data folders.
     case C
 
     /// Whether this tier is a statement of confidence at all. S is not:
