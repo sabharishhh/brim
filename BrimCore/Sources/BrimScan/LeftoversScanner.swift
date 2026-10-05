@@ -338,6 +338,17 @@ public actor LeftoversScanner {
                     break
                 }
 
+                // A developer's folder in the person's Library is judged by
+                // what it holds, as it is in /Library. `Microsoft` in
+                // Application Support was only ever looked at whole, because
+                // the one Microsoft app installed, Visual Studio Code, has a
+                // name that does not begin with the developer's.
+                if vendor == nil, signed?.identifier == nil, Self.nestable.contains(domain),
+                   !Self.systemDomains.contains(domain), vendors.claim(name) == .developer, Self.isDirectory(item) {
+                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
+                    continue
+                }
+
                 let containerOwner = containerOwnership?.identifier
 
                 let belongsToInstalledApp = isItemActive(
