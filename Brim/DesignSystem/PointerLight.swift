@@ -152,24 +152,31 @@ struct PointerTracking: NSViewRepresentable {
             false
         }
 
-        /// Cards stayed lit and raised after the pointer left, and the window
-        /// looked frozen. AppKit reports leaving only an area it saw the
-        /// pointer enter, and an area rebuilt under the pointer (the card's
-        /// own lift moves this view; so does scrolling) never saw that. So
-        /// the area is rebuilt with `assumeInside` when the pointer is in it,
-        /// and every pointer move in the window is checked against this view
-        /// too, which lets the card go whatever AppKit reports.
+        /// The part of this view the pointer can be over: its bounds, cut to
+        /// what is on screen. AppKit reports the visible rect of a view
+        /// SwiftUI hosts as the whole window (an 880 by 69 point card read
+        /// 1200 by 800), so an `inVisibleRect` tracking area covered the
+        /// whole window. Every card then held the pointer wherever it was,
+        /// lit the edge nearest it, and let go only when the pointer left the
+        /// window.
+        private var area: CGRect {
+            bounds.intersection(visibleRect)
+        }
+
+        /// An area rebuilt under the pointer (the card's own lift moves this
+        /// view; so does scrolling) never saw the pointer enter, and AppKit
+        /// reports leaving only an area it saw entered, so it is rebuilt with
+        /// `assumeInside` when the pointer is in it. `PointerWatch` checks
+        /// every move as well, which lets the card go whatever AppKit reports.
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             trackingAreas.forEach(removeTrackingArea)
             let point = pointer()
-            var options: NSTrackingArea.Options = [
-                .mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect
-            ]
-            if let point, visibleRect.contains(point) {
+            var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow]
+            if let point, area.contains(point) {
                 options.insert(.assumeInside)
             }
-            addTrackingArea(NSTrackingArea(rect: .zero, options: options, owner: self))
+            addTrackingArea(NSTrackingArea(rect: area, options: options, owner: self))
             follow(point)
         }
 
@@ -192,7 +199,7 @@ struct PointerTracking: NSViewRepresentable {
         }
 
         private func follow(_ point: CGPoint?) {
-            guard let point, visibleRect.contains(point) else {
+            guard let point, area.contains(point) else {
                 leave()
                 return
             }
