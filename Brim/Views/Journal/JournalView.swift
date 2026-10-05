@@ -166,7 +166,8 @@ struct JournalView: View {
                             Text(group.title)
                                 .font(.brimDayHeader)
                                 .foregroundStyle(Palette.ink)
-                                .padding(.horizontal, 24)
+                                // 16 and the list's own 8: under the title.
+                                .padding(.horizontal, 16)
                                 .padding(.top, 14)
                                 .padding(.bottom, 4)
                                 .accessibilityAddTraits(.isHeader)
