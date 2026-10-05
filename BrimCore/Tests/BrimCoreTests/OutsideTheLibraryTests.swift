@@ -60,7 +60,7 @@ final class OutsideTheLibraryTests: XCTestCase {
         )
         XCTAssertEqual(
             LocationInventorySource.candidates(for: location, identity: identity),
-            ["visual studio code"],
+            ["visual studio code", "vscode"],
             "The candidate is not lowercased, so this only ever worked by accident."
         )
     }
@@ -76,7 +76,7 @@ final class OutsideTheLibraryTests: XCTestCase {
         )
         XCTAssertEqual(
             LocationInventorySource.candidates(for: location, identity: twoNames),
-            ["visual studio code", "code"]
+            ["visual studio code", "code", "vscode"]
         )
         let oneName = Identity(bundleID: "md.obsidian", name: "Obsidian", bundleName: "Obsidian")
         XCTAssertEqual(
