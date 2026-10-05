@@ -156,7 +156,8 @@ struct HomeView: View {
             figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
             status: volume == nil ? .checking : .neutral,
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
-            isRefreshing: storage.isLoading && volume != nil
+            isRefreshing: storage.isLoading && volume != nil,
+            subtleHover: true
         ) {
             if let volume {
                 // Three facts, never added into one: what is used, what
@@ -307,6 +308,8 @@ private struct HomeNote: View {
         }
         .padding(18)
         .card()
-        .hoverLift()
+        // A note across the whole page: a full light over its width read as
+        // the page lighting up, not the note.
+        .hoverLift(subtle: true)
     }
 }
