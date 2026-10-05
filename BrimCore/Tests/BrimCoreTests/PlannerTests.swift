@@ -234,3 +234,23 @@ struct PlannerRevalidationTests {
         #expect(rebuilt.steps.count == reviewed.steps.count)
     }
 }
+
+/// Recordly's identifier is `dev.recordly.app`, so the folders named for it
+/// end in ".app". They were planned as applications, one Launch Services
+/// step failed on removal, and re-registering one made a Put Back that had
+/// restored every file report that it could not put back.
+final class ApplicationBundleTests: XCTestCase {
+    func testAFolderNamedLikeAnIdentifierIsNotAnApplication() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("HTTPStorages/dev.recordly.app")
+        let app = root.appendingPathComponent("Applications/Recordly.app")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"),
+                                                withIntermediateDirectories: true)
+        try Data().write(to: app.appendingPathComponent("Contents/Info.plist"))
+        XCTAssertFalse(ApplicationBundle.isBundle(atPath: cache.path))
+        XCTAssertTrue(ApplicationBundle.isBundle(atPath: app.path))
+        XCTAssertFalse(ApplicationBundle.isBundle(atPath: root.appendingPathComponent("notes.txt").path))
+    }
+}

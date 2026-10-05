@@ -116,8 +116,7 @@ public struct Planner: Sendable {
                 let sizeBytes = item.footprintItem.sizeBytes
                 expectedTotalBytes += sizeBytes
 
-                let phase: ExecutionPhase = (targetPath.hasSuffix(".app") || targetPath.hasSuffix(".app/")) ?
-                    .appBundle : .auxiliary
+                let phase: ExecutionPhase = ApplicationBundle.isBundle(atPath: targetPath) ? .appBundle : .auxiliary
 
                 // A recreatable cache is deleted outright so the space really
                 // comes back; anything holding settings or user data goes to
