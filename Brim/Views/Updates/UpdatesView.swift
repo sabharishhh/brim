@@ -37,7 +37,7 @@ struct UpdatesView: View {
         .toolbar { updateAll }
         .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
             ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
-        .task { await model.loadIfNeeded(service: service) }
+        .task { await model.load(service: service) }
     }
 
     // MARK: - Header
@@ -79,8 +79,13 @@ struct UpdatesView: View {
                 EmptyState(symbol: "arrow.down.circle", title: "Not checked", message: "Check Again looks for updates.")
             }
         } else if sections.isEmpty {
-            EmptyState(symbol: "checkmark.circle", title: "0 updates available",
-                       message: "Every app Brim checked is up to date.")
+            if let check = model.check, check.checked == 0, !check.unchecked.isEmpty {
+                EmptyState(symbol: "questionmark.circle", title: "Couldn't check for updates",
+                           message: "Check Again retries the update sources.")
+            } else {
+                EmptyState(symbol: "checkmark.circle", title: "0 updates available",
+                           message: "Every app Brim checked is up to date.")
+            }
         } else {
             if model.pending?.isEmpty == true, let check = model.check {
                 upToDate(check)
@@ -99,12 +104,14 @@ struct UpdatesView: View {
     /// Nothing pending, said where the pending ones would be, so the page
     /// answers its question before the list of what already happened.
     private func upToDate(_ check: UpdateCheck) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
+        let confirmed = check.checked > 0
+        let summary = confirmed ? "Checked apps are up to date" : "No apps could be checked"
+        return HStack(spacing: 12) {
+            Image(systemName: confirmed ? "checkmark.circle.fill" : "questionmark.circle")
                 .font(.title2)
-                .foregroundStyle(Palette.success)
+                .foregroundStyle(confirmed ? Palette.success : Palette.inkSecondary)
             // How many were checked is in the line at the foot of the page.
-            Text("All apps are up to date")
+            Text(summary)
                 .font(.brimRowTitle)
                 .foregroundStyle(Palette.ink)
             Spacer()
@@ -113,7 +120,7 @@ struct UpdatesView: View {
         .padding(.vertical, 12)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel("All apps are up to date, \(check.checked) checked")
+        .accessibilityLabel("\(summary), \(check.checked) checked")
     }
 
     @ViewBuilder

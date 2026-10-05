@@ -502,6 +502,46 @@ glass never renders in them. The Home grid that repeats the sidebar, the
 empty right-hand pane at rest, and the ✕ badge on Journal install rows are
 not changed.
 
+### Update checks seeing new releases, 5 October 2026
+
+ChatGPT offered an update while Brim reported no updates. The installed
+version was 26.930.41038; the cached Homebrew catalogue, written the previous
+evening, still named that version. The [publisher's current entry](https://formulae.brew.sh/api/cask/chatgpt.json)
+named 26.930.51102. ChatGPT.app identifies as `com.openai.codex` and has
+no `SUFeedURL`, so this check uses the public catalogue. There was no
+bundle-specific matching defect.
+
+Check Again skipped contacting the catalogue publisher until the cache
+was 24 hours old. Opening Updates separately reused its last result for
+six hours. A failed download could also reuse the old catalogue and call
+an app current without fresh evidence. Each requested check now creates
+one shared catalogue request, bypasses Foundation's local response cache,
+and sends the saved ETag only with a valid saved catalogue. A conditional
+304 confirms that data; a valid 200 replaces it. Failed or malformed
+responses leave affected apps unchecked. The Updates page checks on entry;
+Home keeps its six-hour summary reuse. No timer or resident worker was added.
+The page's zero-update message now distinguishes checked apps from a check
+that could not reach any source.
+
+Verification: the first five regression tests failed against the old code
+with 13 failed assertions. Seven final tests cover a new release inside
+the old cache window, 304 validation, repeated use of a finder, missing
+ETags, invalid caches, failed responses and one request shared by concurrent
+callers. The full strict package suite passes: 920 XCTest cases, 41 existing
+skips, plus 256 Swift Testing tests. The signed Debug app builds with strict
+concurrency and warnings as errors; lint adds no findings. That build also
+caught an unused result in the window's drop handler, whose closure now
+explicitly returns Bool. Its drag interaction was not exercised here.
+
+On this Mac, the old app's Check Again began showing ChatGPT once the
+24-hour cache cutoff passed, before the fix was built. The fresh-cache miss
+is reproduced by the regression fixture. The rebuilt app shows one
+available ChatGPT update on entering Updates, checking again, and returning
+from Home, whose summary also shows one available. No app update or removal
+was performed. The test Trash and catalogue fixture folders were cleaned
+by their harnesses; this session could not read the real Trash because
+macOS refused access.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
