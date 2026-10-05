@@ -95,7 +95,7 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }
         }
-        .pageTitle(Self.macName)
+        .pageTitle(Self.macName, centredWidth: Metrics.cardPageWidth)
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }

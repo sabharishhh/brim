@@ -112,7 +112,7 @@ struct UpdatesView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 26)
+        .padding(.horizontal, Metrics.pagePadding)
         .padding(.vertical, 12)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
