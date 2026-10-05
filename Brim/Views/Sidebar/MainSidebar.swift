@@ -8,7 +8,9 @@ import SwiftUI
 /// applications. Energy is a place under Your Mac, because it is about
 /// what the Mac is doing now.
 enum Destination: String, Hashable, CaseIterable {
-    case home = "Home"
+    /// Brim's overview of this Mac, named for Brim like the app's own
+    /// first page. A saved "Home" from an earlier build falls back here.
+    case home = "Brim"
     case apps = "Apps"
     case leftovers = "Remnants"
     case background = "Background"
@@ -117,6 +119,8 @@ struct MainSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        // A little air between the window controls and the first row.
+        .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
                 if let found = release.available {
@@ -156,10 +160,11 @@ struct MainSidebar: View {
     }
 }
 
-/// A sidebar row's label. Its symbol gives one small bounce when the row
-/// becomes selected, so a click is answered by the thing clicked rather
-/// than only by the highlight moving. Never on the row being left, and
-/// never under Reduce Motion.
+/// A sidebar row's label. Its icon answers once when the row becomes
+/// selected, so a click is answered by the thing clicked rather than only by
+/// the highlight moving. Each place moves in its own way, small and short:
+/// the gears turn, the hammer swings, the remnants breathe. Never on the row
+/// being left, and never under Reduce Motion.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
@@ -170,19 +175,42 @@ private struct SidebarLabel: View {
         Label {
             Text(destination.rawValue)
         } icon: {
-            if destination == .home {
-                // Home is Brim's overview of this Mac, so it wears Brim's
-                // icon. The row says where you are; the icon says whose.
-                BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 18)
-            } else {
-                Image(systemName: destination.icon)
-                    .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
-            }
+            icon
         }
         .onChange(of: isSelected) { _, selected in
             if selected, !reduceMotion {
                 arrivals += 1
             }
+        }
+    }
+
+    @ViewBuilder private var icon: some View {
+        let symbol = Image(systemName: destination.icon)
+        switch destination {
+        case .home:
+            // An app icon carries its own margin inside the square, so it
+            // is drawn larger than a symbol to look the same size.
+            BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
+                .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    SpringKeyframe(1.12, duration: 0.14, spring: .snappy)
+                    SpringKeyframe(1.0, duration: 0.32, spring: .bouncy(extraBounce: 0.05))
+                }
+        case .apps:
+            symbol.symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+        case .leftovers:
+            symbol.symbolEffect(.breathe, options: .nonRepeating, value: arrivals)
+        case .background:
+            symbol.symbolEffect(.rotate.byLayer, options: .nonRepeating, value: arrivals)
+        case .energy:
+            symbol.symbolEffect(.bounce.up, options: .nonRepeating, value: arrivals)
+        case .space:
+            symbol.symbolEffect(.pulse, options: .nonRepeating, value: arrivals)
+        case .developer:
+            symbol.symbolEffect(.wiggle.counterClockwise, options: .nonRepeating, value: arrivals)
+        case .journal:
+            symbol.symbolEffect(.wiggle.forward, options: .nonRepeating, value: arrivals)
         }
     }
 }
