@@ -12,7 +12,9 @@
 #   scripts/stale_builds.sh <the build to keep> --remove    remove
 #
 # Build folders and test leftovers are deleted. A bundle in /Applications
-# goes to the Trash, so it can be put back.
+# goes to the Trash, so it can be put back. A record whose files are gone
+# cannot be retracted, because Launch Services has nothing to scan, so a
+# stub bundle is made at that path, retracted and deleted again.
 set -eu
 
 keep="${1:?usage: stale_builds.sh <path to the brim.app to keep> [--remove]}"
@@ -22,7 +24,7 @@ lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 records() {
     "$lsregister" -dump 2>/dev/null \
         | sed -n 's/^path: *\(.*\) (0x[0-9a-f]*)$/\1/p' \
-        | grep -iE '/(brim|BrimHarness[^/]*|BrimTestApp[^/]*)\.app$' \
+        | grep -iE '/(brim|BrimHarness[^/]*|BrimTestApp[^/]*)\.app$|brim[^/]*fixture.*\.app(ex)?$' \
         | sort -u
 }
 
@@ -37,6 +39,15 @@ printf '%s\n' "$stale" "$folders" "$leftovers" | sed '/^$/d'
 
 printf '%s\n' "$stale" | while IFS= read -r app; do
     [ -n "$app" ] || continue
+    if [ ! -e "$app" ]; then
+        mkdir -p "$app/Contents"
+        printf '<plist version="1.0"><dict><key>CFBundlePackageType</key><string>APPL</string></dict></plist>' \
+            > "$app/Contents/Info.plist"
+        "$lsregister" -u "$app" >/dev/null 2>&1 || true
+        rm -rf "$app"
+        rmdir -p "$(dirname "$app")" 2>/dev/null || true
+        continue
+    fi
     "$lsregister" -u "$app" 2>/dev/null || true
     case "$app" in
         /Applications/*) [ -e "$app" ] && /usr/bin/osascript -e \
