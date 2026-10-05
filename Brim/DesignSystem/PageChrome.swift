@@ -3,17 +3,29 @@ import SwiftUI
 // MARK: - Page title
 
 extension View {
-    /// The page's name and its one line of facts, in the window's toolbar.
+    /// The page's name, alone, in the toolbar's row.
     ///
     /// Every page used to draw its own title row under the toolbar, which
-    /// left the toolbar's row empty and put the first row of every list
-    /// half an inch lower than it needed to be. The toolbar is where a Mac
-    /// window says where you are (Mail's mailbox and message count, Finder's
-    /// folder), at the system's own size and weight, so every page now
-    /// reads the same and nothing on it has to reserve room for a heading.
-    func pageTitle(_ title: String, subtitle: String? = nil) -> some View {
+    /// left the toolbar's row empty and pushed every list down. The system's
+    /// toolbar title was tried next, with the page's facts as a subtitle:
+    /// two lines squeezed into the row made the name small and crowded, so
+    /// the name is drawn here at heading size on one line, and the facts
+    /// stay with the lists that own them. The window keeps the name as its
+    /// title for the Window menu and Mission Control.
+    func pageTitle(_ title: String) -> some View {
         navigationTitle(title)
-            .navigationSubtitle(subtitle ?? "")
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Text(title)
+                        .font(.brimToolbarTitle)
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.leading, 4)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
     }
 }
 

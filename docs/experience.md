@@ -404,13 +404,16 @@ button hover, native glass buttons included.
 
 ### Page titles, search and glass buttons, 5 October 2026
 
-Every page drew its own title row under an empty toolbar. Titles now live
-in the toolbar through `pageTitle(_:subtitle:)` (`PageChrome.swift`):
-`navigationTitle` and `navigationSubtitle`, so the name sits at the
-system's size and weight with its one line of facts under it ("Remnants",
-"1 app left traces"), and the window title says the same. Home's title is
-the Mac's name with its freshness as the subtitle; a failed or partial
-check still shows its warning on the page.
+Every page drew its own title row under an empty toolbar. The first fix
+used the system's toolbar title with the page's facts as a subtitle, and
+two lines squeezed into the toolbar row made the name small and the row
+crowded. Now `pageTitle(_:)` (`PageChrome.swift`) draws the page's name
+alone in the toolbar row at 20 point semibold (`brimToolbarTitle`), with
+no subtitle; the window keeps the name as its title. The facts stay with
+the lists that already show them in their section headers. Home's title
+is the Mac's name. The same rule now holds for the review panels: the
+Review, app removal and batch removal headers show the title alone, and
+their counts and sizes moved beside the Remove button.
 
 Page actions moved into the toolbar beside the refresh button: Update All,
 the Journal's More menu. The refresh button is now the page's own: Take a
@@ -429,7 +432,9 @@ Buttons are glass: `capsuleAction()` is `.glass` or `.glassProminent`,
 every window defaults unstyled buttons to `.glass`, and the approval
 buttons are `.glassProminent`. Rows, links and icon buttons keep their
 own styles. Button labels are title case throughout. Card pages (Home,
-Space, Energy) share `Metrics.cardSpacing` and `Metrics.cardPageWidth`.
+Space, Energy) share `Metrics.cardSpacing` and `Metrics.cardPageWidth`,
+and every card on them lifts with the pointer light as Home's do; the
+volume card, dense with figures, lifts 1 point under half the light.
 
 Verified: the build, the full suite, lint, and the layout of every page
 from Brim's own window drawn to a file. That drawing does not render

@@ -50,7 +50,7 @@ struct SpaceView: View {
                 Spacer(minLength: 0)
             }
         }
-        .pageTitle("Space", subtitle: model.startupVolume.map { "\(ByteText.short($0.freeRightNow)) free" })
+        .pageTitle("Space")
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
@@ -91,6 +91,7 @@ struct SpaceView: View {
         }
         .padding(20)
         .card()
+        .hoverLift(subtle: true)
     }
 
     private func segments(_ volume: VolumeAccount) -> [MeterSegment] {
@@ -241,6 +242,7 @@ struct SpaceView: View {
         }
         .padding(8)
         .card()
+        .hoverLift()
     }
 
     // MARK: - Other volumes
@@ -272,5 +274,6 @@ struct SpaceView: View {
         }
         .padding(20)
         .card()
+        .hoverLift()
     }
 }

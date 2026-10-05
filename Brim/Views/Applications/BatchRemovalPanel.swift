@@ -42,23 +42,16 @@ struct BatchRemovalPanel: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Remove \(model.entries.count) apps")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(model.isPreparing ? "Checking" : model.isFinished ? outcome : ByteText.short(model.totalBytes))
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
+        // The title alone on its line; how much goes is said beside the
+        // button that removes it.
+        HStack(alignment: .center) {
+            Text("Remove \(model.entries.count) Apps")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .disabled(model.isRemoving)
-            .accessibilityLabel("Close")
+            RowAction(symbol: "xmark", help: "Close", action: onClose)
+                .disabled(model.isRemoving)
         }
         .padding(20)
     }
@@ -78,7 +71,11 @@ struct BatchRemovalPanel: View {
     }
 
     private var footer: some View {
-        Group {
+        VStack(spacing: 10) {
+            Text(model.isPreparing ? "Checking" : model.isFinished ? outcome : ByteText.short(model.totalBytes))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
             if model.isFinished {
                 Button("Done", action: onFinished)
                     .buttonStyle(.glassProminent)

@@ -34,7 +34,7 @@ struct JournalView: View {
             // than in a banner above a list the person has scrolled.
             content
         }
-        .pageTitle("Journal", subtitle: model.visibleRecords.isEmpty ? nil : summary)
+        .pageTitle("Journal")
         .toolbar {
             ToolbarItem(placement: .primaryAction) { moreMenu }
         }
@@ -110,12 +110,6 @@ struct JournalView: View {
         }
         .menuIndicator(.hidden)
         .help("More")
-    }
-
-    private var summary: String {
-        let removed = "\(model.visibleRecords.count) removed"
-        let back = model.visibleRecords.filter(\.canUndo).count
-        return back == 0 ? removed : "\(removed) · \(back) can be put back"
     }
 
     /// Names one removal, counts several, and says how much goes.

@@ -47,8 +47,7 @@ struct DeveloperView: View {
         } detail: {
             inspector
         }
-        .pageTitle("Developer", subtitle: model.caches.isEmpty ? nil
-            : "\(model.visibleCaches.count) · \(DeveloperModel.sizeSummary(model.visibleCaches))")
+        .pageTitle("Developer")
         .task { await model.loadIfNeeded(service: service) }
         .onDisappear {
             cancelCleanupPlanning()

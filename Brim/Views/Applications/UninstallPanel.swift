@@ -77,17 +77,13 @@ struct UninstallPanel: View {
             // The application is the subject. "Review" above its name read
             // as the name of something, and that this is a review is what
             // the panel itself shows.
-            VStack(alignment: .leading, spacing: 2) {
-                Text(application.name)
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
+            // The name alone on its line. What the panel is doing is on its
+            // button, and how much goes is beside it.
+            Text(application.name)
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             RowAction(symbol: "xmark", help: "Close", action: close)
                 .disabled(model.phase == .executing)
@@ -97,19 +93,10 @@ struct UninstallPanel: View {
         .padding(.bottom, 10)
     }
 
-    /// What the panel is doing, in a few words.
-    private var subtitle: String {
-        switch model.phase {
-        case .preparing: return "Checking"
-        case .executing: return "Removing"
-        case .verified, .appliedButUnverified: return "Removed"
-        case .failed: return "Stopped"
-        case .ready:
-            let steps = model.removalSteps
-            let bytes = steps.reduce(0) { $0 + $1.expectedBytes }
-            let count = steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items"
-            return "\(count) · \(ByteText.short(bytes))"
-        }
+    /// "12 items", beside what they free.
+    private var itemCount: String {
+        let count = model.removalSteps.count
+        return count == 1 ? "1 item" : "\(count.formatted()) items"
     }
 
     private var isFinished: Bool {
@@ -253,8 +240,9 @@ private extension UninstallPanel {
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 } else {
-                    Text(freed(plan))
+                    Text("\(itemCount) · \(freed(plan))")
                         .font(.brimFacts)
+                        .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
                 }
             }
