@@ -227,23 +227,25 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         } catch { reply(error.localizedDescription) }
     }
 
-    /// Removes the quarantine, and nothing else.
+    /// Removes the quarantine and Brim's privacy grants, and nothing else.
     ///
     /// The one place this daemon deletes rather than sets aside, because
-    /// there is nowhere left to set anything aside to. The path is a
-    /// constant in this binary, never a parameter, so the interface still
-    /// cannot be talked into removing something else.
+    /// there is nowhere left to set anything aside to. The path and the
+    /// identifier are constants in this binary, never parameters, so the
+    /// interface still cannot be talked into removing something else.
     func uninstallSelf(withReply reply: @escaping @Sendable (String?) -> Void) {
+        // Full Disk Access lives in the system's privacy database, which only
+        // root can change, and `tccutil` finds the app through Launch
+        // Services, so this runs while the bundle is still on the disk.
+        Self.resetPrivacyGrants(of: BrimJobHelper.applicationIdentifier)
         let quarantine = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
-        guard FileManager.default.fileExists(atPath: quarantine.path) else {
-            log.info("nothing to clean up on the way out")
-            return reply(nil)
-        }
+        let parent = quarantine.deletingLastPathComponent()
         do {
-            try FileManager.default.removeItem(at: quarantine)
+            if FileManager.default.fileExists(atPath: quarantine.path) {
+                try FileManager.default.removeItem(at: quarantine)
+            }
             // The parent is Brim's own folder. Taken away only if Brim is
             // the only thing that was in it.
-            let parent = quarantine.deletingLastPathComponent()
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: parent.path),
                contents.isEmpty {
                 try? FileManager.default.removeItem(at: parent)
@@ -254,6 +256,20 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
             log.error("could not remove the quarantine: \(error.localizedDescription)")
             reply("Brim's helper could not clear the folder it kept set-aside files in: "
                 + error.localizedDescription)
+        }
+    }
+
+    static func resetPrivacyGrants(of identifier: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "All", identifier]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            log.error("could not reset privacy grants: \(error.localizedDescription)")
         }
     }
 

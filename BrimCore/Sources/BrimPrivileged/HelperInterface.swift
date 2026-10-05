@@ -106,7 +106,7 @@ public enum BrimJobHelper {
     /// `EQHXZ8M8AV`, which is Google's, and then accepted every
     /// connection anyway because the result was never checked.
     public static func clientRequirement(
-        bundleID: String = "com.sabharishhh.brim",
+        bundleID: String = applicationIdentifier,
         teamID: String = BrimJobHelper.teamID
     ) -> String {
         requirement(identifier: bundleID, teamID: teamID)
@@ -140,6 +140,9 @@ public enum BrimJobHelper {
             + " and identifier \"\(identifier)\""
             + " and certificate leaf[subject.OU] = \"\(teamID)\""
     }
+
+    /// The application this helper serves, the one identity it accepts.
+    public static let applicationIdentifier = "com.sabharishhh.brim"
 
     /// Where a removed job file is kept, so this is undoable. Root owned,
     /// and on the same volume as both launchd directories, which is what

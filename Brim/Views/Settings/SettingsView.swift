@@ -1,4 +1,5 @@
 import BrimCore
+import BrimPrivileged
 import BrimUI
 import SwiftUI
 
@@ -36,6 +37,7 @@ private struct GeneralSettings: View {
             DockSection()
             AccessSection()
             PrivacySection()
+            RemoveBrimSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -88,6 +90,47 @@ private struct AccessSection: View {
             access.startObserving()
         }
         .onDisappear { access.stopObserving() }
+    }
+}
+
+/// The way out, where people look for it: Brim removes itself and everything
+/// it wrote, and nothing is left on the Mac or in the Trash.
+private struct RemoveBrimSection: View {
+    @StateObject private var helper = PrivilegedHelperClient()
+    @State private var confirms = false
+    @State private var problem: String?
+
+    var body: some View {
+        Section {
+            LabeledContent("Remove Brim and everything it keeps") {
+                Button("Remove Brim…", role: .destructive) { confirms = true }
+            }
+        } footer: {
+            Text("Deleted permanently, not moved to the Trash")
+                .font(.caption)
+                .foregroundStyle(Palette.inkSecondary)
+        }
+        .alert(SelfRemoval.confirmationTitle, isPresented: $confirms) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove Brim", role: .destructive) {
+                Task { problem = await SelfRemoval.perform(helper: helper) }
+            }
+        } message: {
+            Text(SelfRemoval.confirmationMessage)
+        }
+        .alert("Brim has not removed itself", isPresented: showsProblem) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(problem ?? "")
+        }
+    }
+
+    private var showsProblem: Binding<Bool> {
+        Binding(get: { problem != nil }, set: { shown in
+            if !shown {
+                problem = nil
+            }
+        })
     }
 }
 
