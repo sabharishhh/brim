@@ -220,9 +220,7 @@ public struct SafeOps {
         standInTrashLock.lock()
         defer { standInTrashLock.unlock() }
         if let existing = standInTrashURL { return existing }
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("brim-test-trash-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let url = makeStandInTrash()
         standInTrashURL = url
         return url
     }
@@ -362,3 +360,40 @@ public struct SafeOps {
         throw SafeOpsError.failedToOpenParent(ELOOP)
     }
 }
+
+#if DEBUG
+    extension SafeOps {
+        /// A new stand-in Trash, emptied when the test process exits.
+        private static func makeStandInTrash() -> URL {
+            let url = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("brim-test-trash-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            atexit { SafeOps.clearStandInTrash() }
+            return url
+        }
+
+        /// Empties the stand-in Trash as the test process exits. It was left
+        /// behind for years of runs: 41 folders and 1 GB of copied bundles in
+        /// the temporary folder, every `Brim.app` in them registered with
+        /// Launch Services as another Brim. Records first, because deleting a
+        /// bundle does not unregister it.
+        static func clearStandInTrash() {
+            guard let url = standInTrashURL else { return }
+            let fileManager = FileManager.default
+            if let walk = fileManager.enumerator(at: url, includingPropertiesForKeys: nil) {
+                for case let item as URL in walk where item.pathExtension == "app" {
+                    walk.skipDescendants()
+                    let retract = Process()
+                    retract.executableURL = URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework"
+                        + "/Frameworks/LaunchServices.framework/Support/lsregister")
+                    retract.arguments = ["-u", item.path]
+                    retract.standardOutput = FileHandle.nullDevice
+                    retract.standardError = FileHandle.nullDevice
+                    try? retract.run()
+                    retract.waitUntilExit()
+                }
+            }
+            try? fileManager.removeItem(at: url)
+        }
+    }
+#endif
