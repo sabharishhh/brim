@@ -282,6 +282,30 @@ final class TrashNamingTests: XCTestCase {
         )
     }
 
+    /// Deleting a removal's items from the Trash must reach only the Trash:
+    /// a recorded URL that points anywhere else is refused and left alone.
+    func testDeletingFromTheTrashReachesOnlyTheTrash() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BrimTrashDelete-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let target = dir.appendingPathComponent("Removed.app")
+        let kept = dir.appendingPathComponent("Kept.txt")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try "x".write(to: kept, atomically: true, encoding: .utf8)
+        let attrs = try FileManager.default.attributesOfItem(atPath: target.path)
+        let dev = try XCTUnwrap(attrs[.systemNumber] as? Int32)
+        let ino = try XCTUnwrap(attrs[.systemFileNumber] as? UInt64)
+        let trashed = try XCTUnwrap(SafeOps.trashItem(targetPath: target.path, expectedDev: dev, expectedIno: ino))
+
+        try SafeOps.deleteFromTrash(trashed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: trashed.path))
+        XCTAssertNoThrow(try SafeOps.deleteFromTrash(trashed), "Already gone is not an error")
+
+        XCTAssertThrowsError(try SafeOps.deleteFromTrash(kept))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path))
+    }
+
     func testANameThatWouldEscapeTheIsolationDirectoryIsRejected() {
         // The rename back to the original name happens inside a directory we
         // control, so a basename that is not a plain name must not be used.

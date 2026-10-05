@@ -19,6 +19,9 @@ public protocol BrimServiceProtocol: Sendable {
     func recheckPendingRemovals() async
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
+    /// Deletes for good what one removal put in the Trash, leaving the rest
+    /// of the Trash alone. The removal can no longer be put back.
+    func deleteFromTrash(planId: UUID) async throws
     /// Applications installed on this machine, for the Applications view.
     func installedApplications() async throws -> [InstalledApplication]
     func leftovers() async throws -> [Leftover]
@@ -167,5 +170,10 @@ public extension BrimServiceProtocol {
 
     func installRecords() async -> [InstallRecord] {
         []
+    }
+
+    func deleteFromTrash(planId _: UUID) async throws {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
     }
 }
