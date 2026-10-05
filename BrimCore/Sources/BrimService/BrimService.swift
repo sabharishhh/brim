@@ -1212,6 +1212,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 continue
             }
             guard PathExistence.exists(atPath: step.target) else { continue }
+            // Older plans retracted folders that only had an app's name, and
+            // a folder has no registration to put back.
+            guard ApplicationBundle.isBundle(atPath: step.target) else {
+                try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
+                continue
+            }
             do {
                 try SafeOps.verifyTargetFingerprint(targetPath: bundleStep.target,
                                                     expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
