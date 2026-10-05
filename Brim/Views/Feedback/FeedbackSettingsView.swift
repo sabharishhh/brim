@@ -47,24 +47,20 @@ struct FeedbackSettingsView: View {
                     }
                     .buttonStyle(.press)
                 }
-                if !feedback.recent.isEmpty {
-                    FeedbackRecentReports(receipts: feedback.recent)
-                }
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "lock").accessibilityHidden(true)
-                    Text("Drafts are saved on this Mac.")
-                }
-                .font(.callout)
-                .foregroundStyle(Palette.inkSecondary)
-                HStack {
-                    Link(destination: FeedbackDelivery.issuesURL) {
-                        Label("Browse reports on GitHub", systemImage: "arrow.up.right")
+                Link(destination: FeedbackDelivery.issuesURL) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .foregroundStyle(.tint)
+                        Text("Browse reports on GitHub")
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .foregroundStyle(Palette.inkTertiary)
                     }
-                    Spacer()
-                    Text(feedback.environment.appLabel)
-                        .foregroundStyle(Palette.inkTertiary)
+                    .padding(12)
+                    .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
+                    .contentShape(.rect)
                 }
-                .font(.callout)
+                .buttonStyle(.press)
             }
             .padding(Metrics.pagePadding)
         }
