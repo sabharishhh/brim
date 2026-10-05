@@ -287,7 +287,7 @@ private extension UninstallPanel {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }

@@ -51,6 +51,7 @@ struct ApplicationsView: View {
             inspector
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
+        .pageTitle("Apps", subtitle: subtitle)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
         // A removal asked for by a Shortcut or Spotlight: the review opens
@@ -105,52 +106,39 @@ struct ApplicationsView: View {
 
     // MARK: - Header
 
+    /// The search and the list's controls, on one row at the top of the
+    /// list. The page's name and size are in the toolbar.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Apps")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                if !model.applications.isEmpty {
-                    Text("\(model.applications.count) · \(ByteText.short(totalBytes))")
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
+        HStack(spacing: 8) {
+            BrimSearchField(text: $model.searchText, prompt: "Search Apps")
+            if !asTable {
+                Picker("Group By", selection: $grouping) {
+                    ForEach(AppGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                if model.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Checking")
-                }
-                Spacer()
-                if !asTable {
-                    Picker("Group By", selection: $grouping) {
-                        ForEach(AppGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                }
-                // Several apps in one review. Command-click did this and
-                // nobody found it.
-                Button(model.isChoosing ? "Done" : "Select") {
-                    model.isChoosing ? model.stopChoosing() : model.startChoosing()
-                }
-                .disabled(model.applications.isEmpty)
-                Picker("View", selection: $asTable) {
-                    Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
-                    Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .pickerStyle(.menu)
                 .fixedSize()
             }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search apps")
+            // Several apps in one review. Command-click did this and
+            // nobody found it.
+            Button(model.isChoosing ? "Done" : "Select") {
+                model.isChoosing ? model.stopChoosing() : model.startChoosing()
+            }
+            .disabled(model.applications.isEmpty)
+            Picker("View", selection: $asTable) {
+                Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
+                Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
+        .padding(.horizontal, Metrics.pagePadding)
+        .padding(.top, 6)
         .padding(.bottom, 8)
+    }
+
+    private var subtitle: String? {
+        model.applications.isEmpty ? nil : "\(model.applications.count) · \(ByteText.short(totalBytes))"
     }
 
     private var totalBytes: Int64 {
@@ -299,7 +287,7 @@ private struct MarkedApps: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
             Button(apps.count == 1 ? "Review" : "Remove \(apps.count) Apps", action: review)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
         }
         .padding(24)

@@ -160,7 +160,7 @@ struct RemovalPanel: View {
                         .font(.brimFacts)
                     if let command = installation.manualCommand {
                         Text(command).font(.caption.monospaced()).textSelection(.enabled)
-                        Button("Copy uninstall command") {
+                        Button("Copy Uninstall Command") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(command, forType: .string)
                         }
@@ -271,7 +271,7 @@ extension RemovalPanel {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(!model.canAuthorize)
             }
         }

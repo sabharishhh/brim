@@ -32,7 +32,6 @@ struct LeftoversView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             content
             if !model.all.isEmpty {
                 LeftoverBatchActions(
@@ -49,6 +48,7 @@ struct LeftoversView: View {
             }
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
+        .pageTitle("Remnants", subtitle: model.checkedAt == nil ? nil : summary)
         .alert("Recovery copies could not be read", isPresented: Binding(
             get: { recoveryReadError != nil },
             set: {
@@ -91,34 +91,9 @@ struct LeftoversView: View {
         // their rows belong back in the list.
         .onChange(of: recovery.items) { _, _ in model.reconcileWithDisk() }
     }
-
-    // MARK: - Header
 }
 
 private extension LeftoversView {
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Remnants")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if model.checkedAt != nil {
-                Text(summary)
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
-            if model.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
-    }
-
     private var summary: String {
         let groups = model.orphanedGroups
         guard !groups.isEmpty else {
@@ -128,7 +103,10 @@ private extension LeftoversView {
         if groups.flatMap(\.items).contains(where: { $0.sizeIsKnown == false }) {
             return "\(apps) left traces, size not fully measured"
         }
-        return "\(apps) left \(ByteText.short(groups.reduce(0) { $0 + $1.totalBytes }))"
+        let bytes = groups.reduce(0) { $0 + $1.totalBytes }
+        // "1 app left Empty" was what a removed app with only empty
+        // folders behind it read as.
+        return bytes == 0 ? "\(apps) left traces" : "\(apps) left \(ByteText.short(bytes))"
     }
 
     // MARK: - List

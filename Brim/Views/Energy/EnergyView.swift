@@ -13,41 +13,16 @@ import SwiftUI
 /// to quit.
 ///
 /// Nothing runs between readings. No agent, no timer, no background job: a
-/// reading happens when the button is pressed and describes the seconds it
+/// reading happens when Take a Reading in the toolbar is pressed and describes the seconds it
 /// covered.
 struct EnergyView: View {
     @ObservedObject var model: EnergyModel
     @SwiftUI.Environment(\.brimService) private var service
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            content
-        }
-        .task { await model.loadIfNeeded(service: service) }
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Energy")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if model.isSampling {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Reading")
-            }
-            Spacer()
-            Button(model.isSampling ? "Reading" : "Take a Reading") {
-                Task { await model.sample(service: service) }
-            }
-            .capsuleAction(prominent: true)
-            .buttonBorderShape(.capsule)
-            .disabled(model.isSampling)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
+        content
+            .pageTitle("Energy")
+            .task { await model.loadIfNeeded(service: service) }
     }
 
     @ViewBuilder
@@ -61,16 +36,15 @@ struct EnergyView: View {
             ScrollView {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
                         conditionRow
                         if !model.appsKeepingMacAwake.isEmpty {
                             awake
                         }
                         drawing
                     }
-                    .frame(maxWidth: 820, alignment: .leading)
-                    .padding(.horizontal, Metrics.pagePadding)
-                    .padding(.bottom, Metrics.pagePadding)
+                    .frame(maxWidth: Metrics.cardPageWidth, alignment: .leading)
+                    .padding(Metrics.pagePadding)
                     Spacer(minLength: 0)
                 }
             }

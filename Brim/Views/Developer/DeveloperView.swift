@@ -37,7 +37,6 @@ struct DeveloperView: View {
             close: closeInspector
         ) {
             VStack(spacing: 0) {
-                header
                 scanScope
                 content
             }
@@ -48,6 +47,8 @@ struct DeveloperView: View {
         } detail: {
             inspector
         }
+        .pageTitle("Developer", subtitle: model.caches.isEmpty ? nil
+            : "\(model.visibleCaches.count) · \(DeveloperModel.sizeSummary(model.visibleCaches))")
         .task { await model.loadIfNeeded(service: service) }
         .onDisappear {
             cancelCleanupPlanning()
@@ -67,38 +68,6 @@ struct DeveloperView: View {
     }
 
     // MARK: - Header
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Developer")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if !model.caches.isEmpty {
-                Text("\(model.visibleCaches.count) · \(DeveloperModel.sizeSummary(model.visibleCaches))")
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
-            if model.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-            if model.isScanning {
-                Button("Stop", action: model.cancelScan)
-            } else {
-                Button("Scan Again", systemImage: "arrow.clockwise") {
-                    Task { await model.load(service: service) }
-                }
-                .labelStyle(.iconOnly)
-                .help("Scan again")
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
-    }
 
     // MARK: - List
 

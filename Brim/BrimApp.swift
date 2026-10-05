@@ -45,12 +45,14 @@ private let log = BrimLog.make("app")
         mainWindow
         Settings {
             SettingsView()
+                .buttonStyle(.glass)
                 .environment(session)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
         Window("Feedback", id: FeedbackWindow.windowID) {
             FeedbackWindow()
+                .buttonStyle(.glass)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
@@ -61,6 +63,7 @@ private let log = BrimLog.make("app")
         .windowResizability(.contentSize)
         Window("About Brim", id: AboutView.windowID) {
             AboutView()
+                .buttonStyle(.glass)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -70,6 +73,9 @@ private let log = BrimLog.make("app")
     private var mainWindow: some Scene {
         WindowGroup {
             root
+                // Every button without a style of its own is glass, as the
+                // toolbar's are. Rows, links and icon buttons keep theirs.
+                .buttonStyle(.glass)
                 .environment(\.brimService, client)
                 .environment(session)
                 .environment(feedback)
