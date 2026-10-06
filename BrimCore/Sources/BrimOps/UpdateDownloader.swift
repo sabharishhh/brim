@@ -1,3 +1,4 @@
+import BrimCore
 import CryptoKit
 import Foundation
 
@@ -61,7 +62,7 @@ final class UpdateDownloader: NSObject, URLSessionDownloadDelegate, @unchecked S
         totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
-        progress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+        progress(DownloadProgress(received: totalBytesWritten, expected: totalBytesExpectedToWrite))
     }
 
     func urlSession(_: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

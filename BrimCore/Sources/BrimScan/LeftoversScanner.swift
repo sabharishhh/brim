@@ -159,13 +159,29 @@ public actor LeftoversScanner {
                        activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames, vendors)
         }
         let found = batches.flatMap(\.self)
-        let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
+        let leftovers = Self.markingVendors(
+            Self.protectUncertainOwnership(found, complete: gathered.complete), installed: activeBundleIDs
+        )
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
         // disposable: nothing having read a file lately says nothing about
         // whether its owner is gone.
         return leftovers.sorted { $0.size > $1.size }
+    }
+
+    /// Names the developer of each unclaimed item when nothing from that
+    /// developer is installed, so their leftovers are one group rather than
+    /// a row per product too small to be listed (`Leftover.vendor`).
+    static func markingVendors(_ items: [Leftover], installed: Set<String>) -> [Leftover] {
+        let installedVendors = Set(installed.compactMap { OwnerNamespace.vendor(for: $0) })
+        return items.map { item in
+            guard item.category == .unclaimed, let vendor = OwnerNamespace.vendor(for: item.url.lastPathComponent),
+                  !installedVendors.contains(vendor) else { return item }
+            var marked = item
+            marked.vendor = vendor
+            return marked
+        }
     }
 
     private static func protectUncertainOwnership(_ items: [Leftover], complete: Bool) -> [Leftover] {
@@ -1025,7 +1041,7 @@ public actor LeftoversScanner {
         }
     }
 
-    private static func isActiveGroup(
+    static func isActiveGroup(
         _ name: String, groups: Set<String>, teams: Set<String>, bundleIDs: Set<String>, names: Set<String>
     ) -> Bool {
         if groups.contains(name) {
@@ -1035,6 +1051,16 @@ public actor LeftoversScanner {
             if name.hasPrefix(teamID + ".") {
                 let suffix = String(name.dropFirst(teamID.count + 1))
                 if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                    return true
+                }
+                // A suffix that is not a product's identifier names the
+                // developer's shared container, such as Microsoft's
+                // `UBF8T346G9.ms`, which every app of theirs can use. It
+                // stays while any of them is installed: Remnants offered it
+                // while Visual Studio Code's removal held it. A product's
+                // own container, `TEAM.com.example.app`, is still offered
+                // once that product is gone.
+                if suffix.split(separator: ".").count < 3 {
                     return true
                 }
             }

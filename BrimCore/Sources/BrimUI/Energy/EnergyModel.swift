@@ -116,6 +116,9 @@ public final class EnergyModel: ObservableObject {
 
     /// The battery and the whole Mac's draw. Nil on a Mac with no battery.
     @Published public private(set) var battery: BatteryReport?
+    /// Whether the battery has been read, so nil means "no battery" and
+    /// not "not looked yet".
+    @Published public private(set) var hasReadBattery = false
 
     // MARK: - The last few days
 
@@ -186,6 +189,15 @@ public final class EnergyModel: ObservableObject {
 
     // MARK: - Sampling
 
+    /// What Home shows: the battery, and the power log read beside it.
+    /// No sampling, which is the Energy page's to ask for.
+    public func loadOverview() async {
+        readHistory()
+        guard !hasReadBattery else { return }
+        battery = await Task.detached(priority: .utility) { BatteryReport.current() }.value
+        hasReadBattery = true
+    }
+
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         guard readings.isEmpty, !isSampling else { return }
         await sample(service: service)
@@ -207,6 +219,7 @@ public final class EnergyModel: ObservableObject {
         assertions = PowerAssertions.current()
         condition = SystemCondition.current()
         battery = await Task.detached(priority: .userInitiated) { BatteryReport.current() }.value
+        hasReadBattery = true
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so

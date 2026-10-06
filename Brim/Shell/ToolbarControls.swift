@@ -13,7 +13,9 @@ struct LensSwitch: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 2) {
+        // Room inside the outer capsule, so the selection never touches
+        // its edge, and between the two segments.
+        HStack(spacing: 4) {
             ForEach(AppsLens.allCases, id: \.self) { item in
                 Button {
                     lens = item
@@ -23,7 +25,7 @@ struct LensSwitch: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(2)
+        .padding(4)
         .animation(reduceMotion ? Motion.reduced : .spring(duration: 0.32, bounce: 0.12), value: lens)
         .accessibilityRepresentation {
             Picker("View", selection: $lens) {
@@ -35,22 +37,22 @@ struct LensSwitch: View {
 
     private func segment(_ item: AppsLens) -> some View {
         let isOn = lens == item
-        return HStack(spacing: 6) {
+        return HStack(spacing: 8) {
             Text(item.rawValue)
             if item == .updates, let count = updates.count, count > 0 {
                 Text("\(count)")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(isOn ? Palette.snow : Palette.onSnow)
-                    .padding(.horizontal, 5)
-                    .frame(minWidth: 16, minHeight: 16)
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 18, minHeight: 18)
                     .background(isOn ? Palette.onSnow : Palette.snow, in: .capsule)
             }
         }
         .font(.body.weight(.medium))
         .foregroundStyle(isOn ? Palette.onSnow : Palette.inkSecondary)
-        .padding(.horizontal, 14)
-        .frame(height: 26)
+        .padding(.horizontal, 16)
+        .frame(height: 28)
         .background {
             if isOn {
                 // The selected segment is off-white with near-black text,

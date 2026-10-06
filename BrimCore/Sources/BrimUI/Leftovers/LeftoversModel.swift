@@ -67,9 +67,7 @@ public final class LeftoversModel: ObservableObject {
 
     /// Unknown items shown for review use the same rule on Home and Remnants.
     public var unclaimedGroupsForReview: [LeftoverGroup] {
-        unclaimedGroups.filter {
-            $0.totalBytes >= 1_000_000 || $0.items.contains { $0.capability != .ok || $0.sizeIsKnown == false }
-        }
+        unclaimedGroups.filter { Self.isWorthReview($0) }
     }
 
     public var hasUnreadRecoveryCopies: Bool {
