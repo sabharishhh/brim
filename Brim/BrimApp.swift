@@ -14,7 +14,7 @@ private let log = BrimLog.make("app")
     @FocusedValue(\.shell) var shell
     @FocusedValue(\.selectedItems) var selectedItems
 
-    let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
+    let client: any BrimServiceProtocol = BrimServiceLocator.shared
     /// The Dock's menu, and apps dropped on its icon.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     /// What outlives a launch: kept items, what was seen, saved icons.
