@@ -25,6 +25,8 @@ final class SectionModels: ObservableObject {
     let energy = EnergyModel()
     let developer = DeveloperModel()
     let updates = UpdatesModel()
+    /// What each available update changes, read once per version.
+    let whatsNew = WhatsNewModel()
     let history = RemovalHistoryModel()
     /// An install being recorded, from Home, the menu bar or a preview.
     let recording = InstallRecordingModel()

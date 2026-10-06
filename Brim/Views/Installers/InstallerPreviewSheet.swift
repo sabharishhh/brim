@@ -16,6 +16,8 @@ struct InstallerPreviewSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(ShellState.self) private var shell
     @State private var phase: Phase = .reading
+    @StateObject private var scriptLines = ScriptLinesModel()
+    @SwiftUI.Environment(\.intelligence) private var intelligence
     /// What the sheet holds, measured, so a short preview is a short sheet.
     @State private var contentHeight: CGFloat = 0
     @State private var isInstalling = false
@@ -67,14 +69,14 @@ struct InstallerPreviewSheet: View {
                     // One app or package in an image is what the person
                     // is installing; the image is said in its facts.
                     InstallerHeader(preview: inner, container: preview)
-                    InstallerDetails(preview: inner)
+                    InstallerDetails(preview: inner, scriptLines: scriptLines)
                     InstallerLimits(limits: preview.limits)
                 } else if preview.kind == .diskImage {
                     InstallerHeader(preview: preview)
                     ForEach(preview.contents) { inner in
                         VStack(alignment: .leading, spacing: 16) {
                             InstallerHeader(preview: inner, compact: true)
-                            InstallerDetails(preview: inner)
+                            InstallerDetails(preview: inner, scriptLines: scriptLines)
                         }
                         .padding(16)
                         .card(radius: Metrics.cardRadius - 4)
@@ -82,7 +84,7 @@ struct InstallerPreviewSheet: View {
                     InstallerLimits(limits: preview.limits)
                 } else {
                     InstallerHeader(preview: preview)
-                    InstallerDetails(preview: preview)
+                    InstallerDetails(preview: preview, scriptLines: scriptLines)
                 }
             }
         }
@@ -198,10 +200,19 @@ struct InstallerPreviewSheet: View {
 
     private func read() async {
         phase = .reading
+        // A package's scripts are described by the on-device model; it
+        // loads while the package is read, so its words are not a second
+        // wait.
+        let engine = ["pkg", "mpkg"].contains(request.url.pathExtension.lowercased()) ? intelligence : nil
+        async let warm: Void = engine?.prewarm() ?? ()
         do {
             phase = try await .read(service.previewInstaller(at: request.url))
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+        await warm
+        if case let .read(preview) = phase {
+            await scriptLines.read(preview.scripts + preview.contents.flatMap(\.scripts), engine: intelligence)
         }
     }
 }
