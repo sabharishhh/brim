@@ -9,8 +9,17 @@ import SwiftUI
 /// battery is lower than I left it, so what happened? The charge is a line
 /// on a fixed 0 to 100% scale, since the range means something, and the
 /// stretches asleep are shaded behind it, so a slope while asleep reads as
-/// what sleeping cost. One sentence beside the title says the same in words.
-/// Everything here already happened; nothing is drawn past now.
+/// what sleeping cost. Everything here already happened; nothing is drawn
+/// past now.
+///
+/// The first version drew one flat white line across the whole day on a
+/// Mac that sat at its charge limit and restarted in the morning: true, and
+/// it said nothing. Time on the adapter is now dashed, so a flat line at
+/// the limit explains itself, and the line breaks at a restart, which is
+/// marked, because the hours before one may have been spent switched off.
+/// The sentence beside the title used to read "Last asleep 1 h 3 min" for
+/// a nap the afternoon before, which sounded like the night just gone; it
+/// now says when.
 struct EnergyHistoryCard: View {
     let history: PowerHistory
     let battery: BatteryReport?
@@ -20,9 +29,19 @@ struct EnergyHistoryCard: View {
         now.addingTimeInterval(-24 * 3600)
     }
 
+    /// One stretch of the line: the same power source, no restart inside.
+    private struct Run: Identifiable {
+        let id: Int
+        let onBattery: Bool
+        var points: [PowerHistory.ChargePoint]
+    }
+
     private var points: [PowerHistory.ChargePoint] {
         var points = history.charge.filter { $0.time >= start && $0.time <= now }
-        if let earlier = history.charge.last(where: { $0.time < start }) {
+        // Carried in from before the window, unless a restart lies between.
+        let firstInside = points.first?.time ?? now
+        let carried = restarts.contains { $0 < firstInside } ? nil : history.charge.last { $0.time < start }
+        if let earlier = carried {
             let edge = PowerHistory.ChargePoint(time: start, percent: earlier.percent, onBattery: earlier.onBattery)
             points.insert(edge, at: 0)
         }
@@ -32,6 +51,32 @@ struct EnergyHistoryCard: View {
             ))
         }
         return points
+    }
+
+    private var restarts: [Date] {
+        history.restarts.filter { $0 > start && $0 <= now }
+    }
+
+    /// Splits the line where the power source changes, joining the two
+    /// pieces at the change, and leaves a gap at every restart.
+    private var runs: [Run] {
+        var runs: [Run] = []
+        var previous: PowerHistory.ChargePoint?
+        for point in points {
+            let restarted = previous.map { last in restarts.contains { $0 > last.time && $0 <= point.time } } ?? false
+            if var current = runs.last, !restarted, current.onBattery == point.onBattery {
+                current.points.append(point)
+                runs[runs.count - 1] = current
+            } else {
+                var run = Run(id: runs.count, onBattery: point.onBattery, points: [point])
+                if let previous, !restarted {
+                    run.points.insert(previous, at: 0)
+                }
+                runs.append(run)
+            }
+            previous = point
+        }
+        return runs
     }
 
     private var asleep: [DateInterval] {
@@ -56,18 +101,7 @@ struct EnergyHistoryCard: View {
             }
             chart
                 .frame(height: 140)
-            HStack(spacing: 16) {
-                legend(swatch: Capsule().fill(Palette.snow).frame(width: 14, height: 2), "Charge")
-                legend(
-                    swatch: RoundedRectangle(cornerRadius: 2)
-                        .fill(Palette.mist.opacity(0.5))
-                        .frame(width: 12, height: 10),
-                    "Asleep"
-                )
-            }
-            .font(.caption)
-            .foregroundStyle(Palette.inkSecondary)
-            .accessibilityHidden(true)
+            legend
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -88,11 +122,35 @@ struct EnergyHistoryCard: View {
                 )
                 .foregroundStyle(Palette.mist.opacity(0.5))
             }
-            ForEach(Array(points.enumerated()), id: \.offset) { _, point in
-                LineMark(x: .value("Time", point.time), y: .value("Charge", point.percent))
-                    .foregroundStyle(Palette.snow)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            ForEach(restarts, id: \.self) { restart in
+                RuleMark(x: .value("Restarted", restart))
+                    .foregroundStyle(Palette.frost)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+                    .annotation(position: .bottom, alignment: .trailing, spacing: 2) {
+                        Text("Restarted")
+                            .font(.caption2)
+                            .foregroundStyle(Palette.inkSecondary)
+                    }
+            }
+            ForEach(runs) { run in
+                ForEach(Array(run.points.enumerated()), id: \.offset) { _, point in
+                    LineMark(
+                        x: .value("Time", point.time), y: .value("Charge", point.percent),
+                        series: .value("Stretch", run.id)
+                    )
+                    .foregroundStyle(run.onBattery ? Palette.snow : Palette.frost)
+                    .lineStyle(StrokeStyle(
+                        lineWidth: 2, lineCap: .round, lineJoin: .round, dash: run.onBattery ? [] : [5, 4]
+                    ))
                     .interpolationMethod(.linear)
+                }
+            }
+            // Charge is recorded only when the Mac sleeps or wakes, so after
+            // a restart with neither there is no line, only the charge now.
+            if let battery {
+                PointMark(x: .value("Now", now), y: .value("Charge", battery.percent))
+                    .foregroundStyle(Palette.snow)
+                    .symbolSize(30)
             }
         }
         .chartXScale(domain: start ... now)
@@ -116,24 +174,57 @@ struct EnergyHistoryCard: View {
         }
     }
 
-    private func legend(swatch: some View, _ title: String) -> some View {
+    private var legend: some View {
+        HStack(spacing: 16) {
+            if runs.contains(where: \.onBattery) {
+                key(Capsule().fill(Palette.snow).frame(width: 14, height: 2), "On battery")
+            }
+            if runs.contains(where: { !$0.onBattery }) {
+                key(
+                    Line().stroke(Palette.frost, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+                        .frame(width: 14, height: 2),
+                    "On the adapter"
+                )
+            }
+            if !asleep.isEmpty {
+                key(
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Palette.mist.opacity(0.5))
+                        .frame(width: 12, height: 10),
+                    "Asleep"
+                )
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(Palette.inkSecondary)
+        .accessibilityHidden(true)
+    }
+
+    private func key(_ swatch: some View, _ title: String) -> some View {
         HStack(spacing: 6) {
             swatch
             Text(title)
         }
     }
 
-    /// The most recent sleep of half an hour or more in the last day and a
-    /// half, in a few words.
+    private static let time: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    /// The most recent sleep of half an hour or more in the last day, by
+    /// when it was, so it is never read as the night just gone.
     private var summary: String {
-        guard let sleep = history.lastSleep, sleep.span.end > now.addingTimeInterval(-36 * 3600) else {
-            return "No long sleep recorded"
+        guard let sleep = history.lastSleep, sleep.span.end > start else {
+            return "No long sleep in this time"
         }
-        let length = Self.duration(sleep.duration)
+        let when = "Asleep \(Self.time.string(from: sleep.span.start)) to \(Self.time.string(from: sleep.span.end))"
         if let used = sleep.chargeUsed {
-            return "Last asleep \(length), \(used)% used"
+            return "\(when), \(used)% used"
         }
-        return "Last asleep \(length), on the adapter"
+        return "\(when), on the adapter"
     }
 
     private var spokenSummary: String {
@@ -141,17 +232,35 @@ struct EnergyHistoryCard: View {
         if let first = points.first, let last = points.last {
             parts.append("Charge from \(first.percent) percent to \(last.percent) percent")
         }
+        if !restarts.isEmpty {
+            parts.append(restarts.count == 1 ? "Restarted once" : "Restarted \(restarts.count) times")
+        }
         parts.append(summary)
         return parts.joined(separator: ". ")
     }
 
+    /// Minutes under an hour, hours and minutes under ten hours, and whole
+    /// hours past that, where minutes are only noise.
     static func duration(_ seconds: TimeInterval) -> String {
         let minutes = Int((seconds / 60).rounded())
         if minutes < 60 {
             return "\(minutes) min"
         }
+        if minutes >= 600 {
+            return "\(Int((Double(minutes) / 60).rounded())) h"
+        }
         let hours = minutes / 60
         let rest = minutes % 60
         return rest == 0 ? "\(hours) h" : "\(hours) h \(rest) min"
+    }
+}
+
+/// A horizontal line, for the dashed legend key.
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }

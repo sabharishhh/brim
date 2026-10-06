@@ -74,6 +74,9 @@ public struct PowerHistory: Sendable, Equatable {
     public let charge: [ChargePoint]
     public let sleeps: [Sleep]
     public let requests: [Request]
+    /// When the Mac started up. Nothing in the record runs across one: the
+    /// time before it may have been spent switched off.
+    public var restarts: [Date] = []
     /// The earliest moment the log covers.
     public let since: Date?
 
@@ -179,6 +182,8 @@ struct PowerLogReader {
     private var open: [String: Open] = [:]
     private var held: [String: Held] = [:]
     private var since: Date?
+    private var lastSeen: Date?
+    private var restarts: [Date] = []
 
     mutating func read(_ entry: PowerLogEntry) {
         since = since ?? entry.time
@@ -187,8 +192,24 @@ struct PowerLogReader {
         case "DarkWake": readBriefWake(entry)
         case "Wake": readWake(entry)
         case "Assertions": readRequest(entry)
+        case "Start": readStart(entry)
         default: break
         }
+        lastSeen = entry.time
+    }
+
+    /// The Mac started up. A sleep that never woke ended when it shut down,
+    /// and so did every request: their processes are gone. Both end at the
+    /// last thing the log recorded before the restart, never at the
+    /// restart, or the hours switched off would count as hours asked.
+    private mutating func readStart(_ entry: PowerLogEntry) {
+        restarts.append(entry.time)
+        asleep = nil
+        let end = lastSeen ?? entry.time
+        for request in open.values {
+            add(request.requester, isIdentifier: request.isIdentifier, from: request.start, to: end)
+        }
+        open = [:]
     }
 
     private mutating func record(_ entry: PowerLogEntry) -> PowerLogEntry.Charge? {
@@ -254,7 +275,9 @@ struct PowerLogReader {
             .map { PowerHistory.Request(requester: $0.key, isIdentifier: $0.value.isIdentifier, spans: $0.value.spans) }
             .filter { $0.seconds >= 60 }
             .sorted { $0.seconds > $1.seconds }
-        return PowerHistory(charge: charge, sleeps: sleeps, requests: requests, since: since)
+        var history = PowerHistory(charge: charge, sleeps: sleeps, requests: requests, since: since)
+        history.restarts = restarts
+        return history
     }
 }
 
@@ -277,7 +300,7 @@ struct PowerLogEntry {
         return formatter
     }()
 
-    private static let wanted: Set<Substring> = ["Sleep", "Wake", "DarkWake", "Assertions"]
+    private static let wanted: Set<Substring> = ["Sleep", "Wake", "DarkWake", "Assertions", "Start"]
 
     init?(_ line: Substring) {
         guard line.count > 26, line.first?.isNumber == true, let tab = line.firstIndex(of: "\t") else { return nil }
