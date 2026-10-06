@@ -319,3 +319,25 @@ private extension ComparisonResult {
         }
     }
 }
+
+/// How far a download has got, in bytes, so a large update reads as moving
+/// rather than stuck. ChatGPT's is 1.3 GB, and "52%" for minutes looked
+/// like nothing was happening.
+public struct DownloadProgress: Sendable, Equatable {
+    public let received: Int64
+    /// Zero when the server did not say how large the download is.
+    public let expected: Int64
+
+    public init(received: Int64, expected: Int64) {
+        self.received = received
+        self.expected = expected
+    }
+
+    public typealias Handler = @Sendable (DownloadProgress) -> Void
+
+    public static let started = DownloadProgress(received: 0, expected: 0)
+
+    public var fraction: Double {
+        expected > 0 ? min(1, Double(received) / Double(expected)) : 0
+    }
+}
