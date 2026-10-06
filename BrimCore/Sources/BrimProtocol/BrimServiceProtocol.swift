@@ -91,6 +91,9 @@ public protocol BrimServiceProtocol: Sendable {
     /// What a package, disk image or uninstalled app would put on this Mac,
     /// read without installing it.
     func previewInstaller(at url: URL) async throws -> InstallerPreview
+    /// Copies an app the person looked inside into Applications, after
+    /// checking it is still the app the preview showed. Returns where it is.
+    func installApplication(from source: URL, identifier: String?, trusted: Bool) async throws -> URL
     /// Takes the first snapshot of an install recording and keeps it, so
     /// the recording survives Brim quitting. Returns when it was taken.
     func beginInstallRecording() async throws -> Date
@@ -213,6 +216,11 @@ public extension BrimServiceProtocol {
     }
 
     func previewInstaller(at _: URL) async throws -> InstallerPreview {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func installApplication(from _: URL, identifier _: String?, trusted _: Bool) async throws -> URL {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
     }

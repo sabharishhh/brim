@@ -664,6 +664,15 @@ previews, the recording card before and after a relaunch, an empty and a
 real result, and Home. Not seen: a Journal row that came back (no removals
 existed and the screen was locked), and Home's two-column layout.
 
+Later the same day the preview gained Install, so a recording no longer
+needs the person to start and stop it. Brim copies an app into Applications
+itself after checking it again, or opens a package in Apple's Installer,
+records around either, and finishes when the app first quits or Installer
+does, keeping what is linked without asking. Update downloads now show
+their sizes: ChatGPT's whole app is a 1.3 GB archive and its row sat on one
+percentage long enough to look stuck. The Apps switch has room inside it.
+Not seen on screen: the Install flow and the padded switch.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device

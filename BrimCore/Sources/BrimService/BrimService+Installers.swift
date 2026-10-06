@@ -1,5 +1,6 @@
 import AppKit
 import BrimCore
+import BrimOps
 import BrimScan
 import Foundation
 
@@ -17,6 +18,14 @@ public extension BrimService {
         // Off the service's actor: mounting an image or listing a large
         // package takes seconds, and every other request would wait.
         return try await Task.detached(priority: .userInitiated) { try reader.read(url) }.value
+    }
+
+    func installApplication(from source: URL, identifier: String?, trusted: Bool) async throws -> URL {
+        guard source.isFileURL, source.path.hasPrefix("/") else { throw AppInstaller.Failure.unreadable }
+        // Off the actor, like reading: mounting and copying take seconds.
+        return try await Task.detached(priority: .userInitiated) {
+            try AppInstaller.install(from: source, identifier: identifier, trusted: trusted)
+        }.value
     }
 
     /// The icon at the size the preview draws it, twice over for Retina.
