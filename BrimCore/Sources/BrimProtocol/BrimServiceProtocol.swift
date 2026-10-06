@@ -1,5 +1,5 @@
-import Foundation
 import BrimCore
+import Foundation
 
 /// The single API, behind which everything hides.
 /// All parameters and returns are value types, ready to cross a process boundary in M2.
@@ -88,6 +88,20 @@ public protocol BrimServiceProtocol: Sendable {
     func checkForUpdates() async -> UpdateCheck
     /// Puts one update in place, reporting download progress from 0 to 1.
     func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome
+    /// What a package, disk image or uninstalled app would put on this Mac,
+    /// read without installing it.
+    func previewInstaller(at url: URL) async throws -> InstallerPreview
+    /// Takes the first snapshot of an install recording and keeps it, so
+    /// the recording survives Brim quitting. Returns when it was taken.
+    func beginInstallRecording() async throws -> Date
+    /// When the recording under way began, if one is.
+    func activeInstallRecording() async -> Date?
+    func cancelInstallRecording() async
+    /// The second snapshot, subtracted and attributed. Keeps nothing.
+    func finishInstallRecording() async throws -> InstallRecordingResult
+    /// Keeps what the person chose and ends the recording.
+    func keepInstallRecording(_ recording: InstallRecording) async throws
+    func installRecordings() async -> [InstallRecording]
 }
 
 public extension BrimServiceProtocol {
@@ -122,14 +136,27 @@ public extension BrimServiceProtocol {
 
     /// A service that does not track enrolment is already past it, so
     /// nothing prompts. Keeps stubs and the XPC client conforming.
-    func isEnrolled() async -> Bool { true }
+    func isEnrolled() async -> Bool {
+        true
+    }
+
     func enroll() async throws {}
-    func registrations() async -> RegistrationReport { .empty }
-    func volumes() async -> [VolumeAccount] { [] }
+    func registrations() async -> RegistrationReport {
+        .empty
+    }
+
+    func volumes() async -> [VolumeAccount] {
+        []
+    }
+
     func sampleEnergy() async -> EnergySampleResult {
         EnergySampleResult(samples: [], coverageGaps: 0)
     }
-    func developerCaches() async -> [DeveloperCache] { [] }
+
+    func developerCaches() async -> [DeveloperCache] {
+        []
+    }
+
     func developerCacheUpdates(excluding folders: [URL]) async -> AsyncStream<[DeveloperCache]> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
@@ -144,7 +171,8 @@ public extension BrimServiceProtocol {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
-    func planToolCleanup(id: String, displayed: String) async throws -> Plan {
+
+    func planToolCleanup(id _: String, displayed _: String) async throws -> Plan {
         throw NSError(domain: "BrimService", code: 501,
                       userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
     }
@@ -160,8 +188,8 @@ public extension BrimServiceProtocol {
     }
 
     /// A service with no executor of its own has nothing to hand it to.
-    func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {}
-    func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async {}
+    func usePrivilegedRemover(_: (@Sendable (String) async -> String?)?) async {}
+    func usePrivilegedReceiptForgetter(_: (@Sendable (String) async -> String?)?) async {}
     func usePrivilegedBatch(begin _: (@Sendable () async -> String?)?,
                             end _: (@Sendable () async -> Void)?) async {}
     func useRecoveryVerifier(_: (@Sendable () async throws -> [RecoveryCopy])?) async {}
@@ -171,14 +199,46 @@ public extension BrimServiceProtocol {
     func whatChanged() async -> InstallHistory {
         InstallHistory(changes: [], snapshots: 0)
     }
+
     func checkForUpdates() async -> UpdateCheck {
         UpdateCheck(updates: [], checked: 0, unchecked: [], checkedAt: Date())
     }
-    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
+
+    func installUpdate(_: AppUpdate, progress _: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
         .failed("Not supported here.")
     }
 
     func installRecords() async -> [InstallRecord] {
+        []
+    }
+
+    func previewInstaller(at _: URL) async throws -> InstallerPreview {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func beginInstallRecording() async throws -> Date {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func activeInstallRecording() async -> Date? {
+        nil
+    }
+
+    func cancelInstallRecording() async {}
+
+    func finishInstallRecording() async throws -> InstallRecordingResult {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func keepInstallRecording(_: InstallRecording) async throws {
+        throw NSError(domain: "BrimService", code: 501,
+                      userInfo: [NSLocalizedDescriptionKey: "Not supported here."])
+    }
+
+    func installRecordings() async -> [InstallRecording] {
         []
     }
 

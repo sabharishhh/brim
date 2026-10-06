@@ -61,13 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    /// An application dropped on the Dock icon opens in Apps, as a drop on
-    /// the window does. Brim declares app bundles as a type it can view,
-    /// ranked so it never becomes the default for opening one.
+    /// An application or installer dropped on the Dock icon, or opened
+    /// with Brim from Finder, is handled as a drop on the window is. Brim
+    /// declares these as types it can view, ranked so it never becomes the
+    /// default for opening one.
     func application(_: NSApplication, open urls: [URL]) {
-        let apps = urls.filter { $0.pathExtension == "app" }
-        guard !apps.isEmpty else { return }
-        ExternalRequests.shared.send(.open(apps))
+        let opened = urls.filter { ["app", "pkg", "mpkg", "dmg"].contains($0.pathExtension.lowercased()) }
+        guard !opened.isEmpty else { return }
+        ExternalRequests.shared.send(.open(opened))
     }
 
     @objc private func open(_ sender: NSMenuItem) {

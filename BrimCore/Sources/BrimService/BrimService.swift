@@ -15,12 +15,19 @@ private let log = BrimLog.make("service")
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public let root: FileSystemRoot
     private let brimAppURL: URL
+    /// Brim's own bundle, for what a recording should not count.
+    var brimBundle: URL {
+        brimAppURL
+    }
+
     private let engine: EvidenceEngine
     private let safetyEngine: SafetyEngine
     private let planner: Planner
     public let planStore: PlanStore
     public let tokenStore: TokenStore
     let journalStore: JournalStore
+    /// Recordings of installs: one under way, and the ones kept.
+    let recordingStore: InstallRecordingStore
     var hasRecheckedPendingRemovals = false
     private let ledgerStore: LedgerStore
     let executor: Executor
@@ -72,7 +79,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
 
-        engine = .standard
+        // The production search, and what kept recordings say each app
+        // created. The recording source reads its file directly, because a
+        // search cannot wait on another actor.
+        let recordingsDirectory = journalStoreDirectory.deletingLastPathComponent()
+            .appendingPathComponent("Recordings", isDirectory: true)
+        recordingStore = InstallRecordingStore(directory: recordingsDirectory)
+        let kept = recordingsDirectory.appendingPathComponent("recordings.json")
+        engine = EvidenceEngine(sources: EvidenceEngine.standard.sources + [
+            InstallRecordingSource(recordings: { InstallRecordingStore.load(kept) })
+        ])
 
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
         let vetoEngine = TierSVetoEngine(root: root, lookup: { identifier in
@@ -1837,10 +1853,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
         }
 
-        let found = try await scanner.scanLeftovers(
+        var found = try await scanner.scanLeftovers(
             knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames, knownAliases: knownAliases,
             knownIdentities: knownIdentities
         )
+        found += await recordedRemnants(listed: Set(found.map(\.url.path)))
         return await attachingReplacements(to: found) + recoveryLeftovers()
     }
 

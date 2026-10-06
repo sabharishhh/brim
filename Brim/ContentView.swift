@@ -96,10 +96,13 @@ struct ContentView: View {
             shell.closePreview()
             return .handled
         }
-        // An application dropped anywhere on the window opens it in Apps.
+        // An application dropped anywhere on the window opens it in Apps;
+        // an installer, or an app that is not installed, opens a look
+        // inside it.
         .dropDestination(for: URL.self) { urls, _ -> Bool in
             models.openApplication(from: urls, shell: shell)
         }
+        .modifier(InstallerSheets(model: models.recording, shell: shell))
         // A minimum, and deliberately no ideal.
         //
         // This carried `idealWidth: 1200, idealHeight: 800` for the reason

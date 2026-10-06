@@ -26,6 +26,8 @@ final class SectionModels: ObservableObject {
     let developer = DeveloperModel()
     let updates = UpdatesModel()
     let history = RemovalHistoryModel()
+    /// An install being recorded, from Home, the menu bar or a preview.
+    let recording = InstallRecordingModel()
 
     /// Shared, because the Trash is one thing. Two watchers on two views
     /// would poll twice and disagree while doing it.
