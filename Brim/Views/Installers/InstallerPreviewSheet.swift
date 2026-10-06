@@ -178,6 +178,7 @@ struct InstallerPreviewSheet: View {
             case let .installed(app):
                 let name = app.deletingPathExtension().lastPathComponent
                 dismiss()
+                shell.noteInstall()
                 shell.show(ToastMessage(symbol: "checkmark.circle", text: "\(name) is in Applications",
                                         actionTitle: "Open") { NSWorkspace.shared.open(app) })
                 // After the sheet has gone, so the question has a window.

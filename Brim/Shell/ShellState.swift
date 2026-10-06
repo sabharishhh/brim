@@ -51,6 +51,14 @@ final class ShellState: Equatable {
         recordingRequests += 1
     }
 
+    /// Bumped when something was installed through Brim, so Apps lists it
+    /// without waiting for the person to check again.
+    private(set) var installs = 0
+
+    func noteInstall() {
+        installs += 1
+    }
+
     nonisolated static func == (lhs: ShellState, rhs: ShellState) -> Bool {
         lhs === rhs
     }

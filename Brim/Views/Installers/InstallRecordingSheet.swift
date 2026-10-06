@@ -195,6 +195,7 @@ struct InstallRecordingSheet: View {
 struct InstallerSheets: ViewModifier {
     @ObservedObject var model: InstallRecordingModel
     @Bindable var shell: ShellState
+    let applications: ApplicationsModel
     @SwiftUI.Environment(\.brimService) private var service
 
     func body(content: Content) -> some View {
@@ -227,6 +228,9 @@ struct InstallerSheets: ViewModifier {
             }
             .modifier(InstallNotes(model: model, shell: shell))
             .task { await model.load(service: service) }
+            // Compositor was missing from Apps after Brim installed it: the
+            // list had been read before it existed, and nothing read it again.
+            .onChange(of: shell.installs) { Task { await applications.load(service: service) } }
             .onChange(of: model.isRecording, initial: true) { _, recording in
                 shell.isRecordingInstall = recording
             }
@@ -276,6 +280,8 @@ private struct InstallNotes: ViewModifier {
             }
             .onChange(of: model.keptQuietly) { _, kept in
                 guard let kept else { return }
+                // A package's app arrives through Installer, not Brim.
+                shell.noteInstall()
                 let count = kept.items.count
                 let name = kept.apps.first?.name ?? "the app"
                 shell.show(ToastMessage(symbol: "checkmark.circle", text: count == 1
