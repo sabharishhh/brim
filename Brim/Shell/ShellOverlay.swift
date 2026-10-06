@@ -22,7 +22,7 @@ struct ShellOverlay: View {
                     }
                 )
                 .id(toast.id)
-                .transition(.brimRow(reduceMotion: reduceMotion))
+                .transition(.floating(arrival: Motion.toastArrive, reduceMotion: reduceMotion))
             }
             if let tray {
                 VStack(spacing: 6) {
@@ -36,12 +36,15 @@ struct ShellOverlay: View {
                         review: tray.review, clear: tray.clear
                     )
                 }
-                .transition(.brimRow(reduceMotion: reduceMotion))
+                .transition(.floating(arrival: Motion.trayArrive, reduceMotion: reduceMotion))
             }
         }
         .padding(.bottom, tray == nil && shell.toast == nil ? 0 : 14)
         .frame(maxWidth: .infinity)
-        .animation(Motion.resolved(Motion.emphasis, reduceMotion: reduceMotion), value: tray == nil)
-        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: shell.toast)
+        // The transitions carry their own timing: 180 ms in for a toast,
+        // 220 ms for the tray, 120 ms out for both. These only make the
+        // change animated at all.
+        .animation(Motion.resolved(Motion.trayArrive, reduceMotion: reduceMotion), value: tray == nil)
+        .animation(Motion.resolved(Motion.toastArrive, reduceMotion: reduceMotion), value: shell.toast)
     }
 }

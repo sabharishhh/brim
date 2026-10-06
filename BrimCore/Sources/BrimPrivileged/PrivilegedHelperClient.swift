@@ -1,6 +1,5 @@
 import BrimProcess
 import Foundation
-import ServiceManagement
 
 /// Protected operations share one authenticated process for a selected batch.
 /// Reading availability starts no process and registers no service.
@@ -15,7 +14,6 @@ public final class PrivilegedHelperClient: ObservableObject {
     }
 
     @Published public private(set) var state: State = .notAsked
-    @Published public private(set) var retirementProblem: String?
     private var session: TemporaryAdminSession?
     private var starting: Task<TemporaryAdminSession, Error>?
     private var batchUsers = 0
@@ -179,21 +177,12 @@ public final class PrivilegedHelperClient: ObservableObject {
         return problem
     }
 
-    /// Upgrade cleanup unregisters the earlier helper without deleting its copies.
-    /// The shipped plist is retained solely for finding the earlier service.
-    public func retireRegisteredHelper() async throws {
-        do {
-            try await SMAppService.daemon(plistName: "\(BrimJobHelper.machServiceName).plist").unregister()
-            retirementProblem = nil
-        } catch {
-            retirementProblem = "An earlier Brim background registration could not be removed. "
-                + error.localizedDescription
-            throw error
-        }
-    }
-
-    public func uninstall() async -> String? {
-        if FileManager.default.fileExists(atPath: BrimJobHelper.quarantineDirectory) {
+    /// Clears what only root can: Brim's folder in `/Library` and its grants
+    /// in the system's privacy database. Asks for an administrator only when
+    /// one of those is there.
+    public func uninstall(resettingPrivacy: Bool = false) async -> String? {
+        let folder = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory).deletingLastPathComponent()
+        if resettingPrivacy || FileManager.default.fileExists(atPath: folder.path) {
             if let problem = await beginBatch() {
                 return problem
             }

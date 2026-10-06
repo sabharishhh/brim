@@ -1,0 +1,338 @@
+import AppKit
+import SwiftUI
+
+/// A soft light along the inside edge of a card, following the pointer.
+///
+/// The cursor light from the interaction specification, shared rather than
+/// owned by one button: about a third of the card's width lit at once, a
+/// 1 point rim and a faint fill, fading in over 100 ms and out over 120 ms,
+/// following on a zero-bounce spring. A resting pointer leaves nothing
+/// moving. It is decoration only: no hit testing, nothing for VoiceOver, and
+/// the label, bounds and focus ring never move. An inactive window, a
+/// disabled control, Reduce Motion, Reduce Transparency and Increase
+/// Contrast all leave it off.
+private struct PointerLight: ViewModifier {
+    let cornerRadius: CGFloat
+    /// A third of a full light, everywhere: brighter read as the page
+    /// lighting up rather than the card answering.
+    private let strength = 0.3
+    @State private var location: UnitPoint?
+    @State private var isLit = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @SwiftUI.Environment(\.colorSchemeContrast) private var contrast
+    @SwiftUI.Environment(\.controlActiveState) private var activeState
+    @SwiftUI.Environment(\.isEnabled) private var isEnabled
+
+    private var allowed: Bool {
+        !reduceMotion && !reduceTransparency && contrast != .increased && activeState != .inactive && isEnabled
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if allowed, let location {
+                    light(at: location)
+                        .opacity(isLit ? 1 : 0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            // macOS's own tracking area, not SwiftUI's hover: where hover
+            // regions nest, SwiftUI gives the pointer to one of them, and a
+            // card tracking itself took it from the buttons on it.
+            .overlay {
+                PointerTracking { point in
+                    track(point.map(HoverPhase.active) ?? .ended)
+                }
+                .allowsHitTesting(false)
+            }
+    }
+
+    private func track(_ phase: HoverPhase) {
+        guard allowed else {
+            isLit = false
+            return
+        }
+        switch phase {
+        case let .active(point):
+            // Sizes are read from the light's own geometry, so the point is
+            // kept in points here and normalised there.
+            let next = UnitPoint(x: point.x, y: point.y)
+            if location == nil || !isLit {
+                location = next
+                withAnimation(Motion.acknowledge) { isLit = true }
+            } else {
+                withAnimation(Motion.pointerLight) { location = next }
+            }
+        case .ended:
+            withAnimation(Motion.lightExit) { isLit = false }
+        }
+    }
+
+    private func light(at point: UnitPoint) -> some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let center = UnitPoint(
+                x: min(max(point.x / max(size.width, 1), 0), 1),
+                y: min(max(point.y / max(size.height, 1), 0), 1)
+            )
+            let reach = max(size.width, size.height) * 0.35
+            let glow = RadialGradient(
+                colors: [.white.opacity(0.75), .white.opacity(0)],
+                center: center, startRadius: 0, endRadius: reach
+            )
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            ZStack {
+                shape.fill(glow).opacity(0.14 * strength)
+                shape.strokeBorder(glow, lineWidth: 1).opacity(strength)
+            }
+        }
+    }
+}
+
+/// Brim's action buttons: flat monochrome capsules.
+///
+/// They were Liquid Glass for a day, and Apple's guidance is plain that glass
+/// belongs to the controls floating above content, not to content: a glass
+/// Open Journal on a card was glass in the content layer. The main action is
+/// a snow capsule with dark text, every other one a faint white capsule, and
+/// neither takes the person's system accent, which turned them red. Hover
+/// brightens the fill, a press dims it, disabled fades it, and Increase
+/// Contrast draws an edge. The toolbar, the tray, the toast and the command
+/// bar keep the system's glass.
+struct ActionStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        ActionBody(configuration: configuration, prominent: prominent)
+    }
+}
+
+private struct ActionBody: View {
+    let configuration: ButtonStyleConfiguration
+    let prominent: Bool
+    @State private var isHovering = false
+    @SwiftUI.Environment(\.controlSize) private var controlSize
+    @SwiftUI.Environment(\.isEnabled) private var isEnabled
+    @SwiftUI.Environment(\.colorSchemeContrast) private var contrast
+
+    private var padding: (horizontal: CGFloat, vertical: CGFloat) {
+        switch controlSize {
+        case .mini, .small: (10, 3)
+        case .large, .extraLarge: (18, 7)
+        default: (13, 4)
+        }
+    }
+
+    private var fill: Color {
+        let pressed = configuration.isPressed && isEnabled
+        let hovered = isHovering && isEnabled
+        if prominent {
+            return Color(white: pressed ? 0.78 : hovered ? 0.97 : 0.9)
+        }
+        return Color.white.opacity(pressed ? 0.2 : hovered ? 0.15 : 0.1)
+    }
+
+    var body: some View {
+        configuration.label
+            .font(.body.weight(prominent ? .semibold : .regular))
+            .lineLimit(1)
+            .foregroundStyle(prominent ? Color.black : Palette.ink)
+            .padding(.horizontal, padding.horizontal)
+            .padding(.vertical, padding.vertical)
+            .background(fill, in: .capsule)
+            .overlay {
+                if contrast == .increased {
+                    Capsule().strokeBorder(Palette.ink.opacity(0.7), lineWidth: 1)
+                }
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(.capsule)
+            .onHover { isHovering = $0 }
+            .animation(Motion.quick, value: isHovering)
+            .animation(Motion.quick, value: configuration.isPressed)
+    }
+}
+
+extension View {
+    /// Brim's action button, the main one when prominent.
+    func capsuleAction(prominent: Bool = false) -> some View {
+        buttonStyle(ActionStyle(prominent: prominent))
+    }
+
+    /// The pointer light, inside a rounded card of this radius.
+    func pointerLight(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
+        modifier(PointerLight(cornerRadius: cornerRadius))
+    }
+}
+
+/// Reports where the pointer is over this view, or nil when it leaves,
+/// through an AppKit tracking area. Every tracking area hears the pointer
+/// whatever it is nested in, which SwiftUI's hover does not promise. The view
+/// takes no clicks and is invisible to accessibility.
+struct PointerTracking: NSViewRepresentable {
+    let onChange: (CGPoint?) -> Void
+
+    func makeNSView(context _: Context) -> TrackingView {
+        let view = TrackingView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ view: TrackingView, context _: Context) {
+        view.onChange = onChange
+    }
+
+    final class TrackingView: NSView {
+        var onChange: ((CGPoint?) -> Void)?
+        /// Whether the pointer was last reported inside.
+        private var isInside = false
+        private var resignObserver: NSObjectProtocol?
+
+        override var isFlipped: Bool {
+            true
+        }
+
+        override func hitTest(_: NSPoint) -> NSView? {
+            nil
+        }
+
+        override func isAccessibilityElement() -> Bool {
+            false
+        }
+
+        /// The part of this view the pointer can be over: its bounds, cut to
+        /// what is on screen. AppKit reports the visible rect of a view
+        /// SwiftUI hosts as the whole window (an 880 by 69 point card read
+        /// 1200 by 800), so an `inVisibleRect` tracking area covered the
+        /// whole window. Every card then held the pointer wherever it was,
+        /// lit the edge nearest it, and let go only when the pointer left the
+        /// window.
+        private var area: CGRect {
+            bounds.intersection(visibleRect)
+        }
+
+        /// An area rebuilt under the pointer (the card's own lift moves this
+        /// view; so does scrolling) never saw the pointer enter, and AppKit
+        /// reports leaving only an area it saw entered, so it is rebuilt with
+        /// `assumeInside` when the pointer is in it. `PointerWatch` checks
+        /// every move as well, which lets the card go whatever AppKit reports.
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            let point = pointer()
+            var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow]
+            if let point, area.contains(point) {
+                options.insert(.assumeInside)
+            }
+            addTrackingArea(NSTrackingArea(rect: area, options: options, owner: self))
+            follow(point)
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            follow(convert(event.locationInWindow, from: nil))
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            follow(convert(event.locationInWindow, from: nil))
+        }
+
+        override func mouseExited(with _: NSEvent) {
+            leave()
+        }
+
+        /// The pointer in this view's coordinates, while the window is key.
+        private func pointer() -> CGPoint? {
+            guard let window, window.isKeyWindow else { return nil }
+            return convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        }
+
+        private func follow(_ point: CGPoint?) {
+            guard let point, area.contains(point) else {
+                leave()
+                return
+            }
+            isInside = true
+            onChange?(point)
+        }
+
+        private func leave() {
+            guard isInside else { return }
+            isInside = false
+            onChange?(nil)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let resignObserver {
+                NotificationCenter.default.removeObserver(resignObserver)
+                self.resignObserver = nil
+            }
+            guard let window else {
+                PointerWatch.forget(self)
+                isInside = false
+                onChange?(nil)
+                return
+            }
+            // Pointer moves over empty canvas reach the watch only if the
+            // window asks for them.
+            window.acceptsMouseMovedEvents = true
+            PointerWatch.watch(self)
+            // A window losing focus stops its tracking areas without an exit.
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.leave() }
+            }
+        }
+
+        /// Called by `PointerWatch` for every pointer move, in this window or
+        /// outside the app, while this view thinks the pointer is inside.
+        fileprivate func recheck(_ event: NSEvent) {
+            guard isInside else { return }
+            if event.window !== window || event.type == .scrollWheel {
+                follow(pointer())
+            } else {
+                follow(convert(event.locationInWindow, from: nil))
+            }
+        }
+    }
+}
+
+/// One watch over the pointer for every tracking view: a local monitor for
+/// moves and scrolls in Brim's windows and a global one for moves outside
+/// them, which is where the pointer goes when it leaves the window and no
+/// exit arrives. Only views that think the pointer is inside do anything.
+@MainActor
+private enum PointerWatch {
+    private static let views = NSHashTable<PointerTracking.TrackingView>.weakObjects()
+    private static var monitors: [Any] = []
+
+    static func watch(_ view: PointerTracking.TrackingView) {
+        views.add(view)
+        guard monitors.isEmpty else { return }
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .scrollWheel]
+        if let local = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { event in
+            MainActor.assumeIsolated { recheck(event) }
+            return event
+        }) {
+            monitors.append(local)
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { event in
+            MainActor.assumeIsolated { recheck(event) }
+        }) {
+            monitors.append(global)
+        }
+    }
+
+    static func forget(_ view: PointerTracking.TrackingView) {
+        views.remove(view)
+    }
+
+    private static func recheck(_ event: NSEvent) {
+        for view in views.allObjects {
+            view.recheck(event)
+        }
+    }
+}

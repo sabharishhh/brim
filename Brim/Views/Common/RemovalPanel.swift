@@ -50,6 +50,12 @@ struct RemovalPanel: View {
         }
         .task(id: model.helperSteps) { await checkHelper() }
         .onChange(of: model.phase, initial: true) { _, phase in onPhase(phase) }
+        // Quitting closes the panel, except while it is removing.
+        .onChange(of: QuitRequest.shared.isQuitting) { _, quitting in
+            if quitting, model.phase != .executing {
+                close()
+            }
+        }
         .onKeyPress(.escape) {
             guard model.phase != .executing else { return .ignored }
             close()
@@ -61,15 +67,12 @@ struct RemovalPanel: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Review")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(summary)
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
+            // The title alone on its line; how many places and how much go
+            // are said beside the button that removes them.
+            Text("Review")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             RowAction(symbol: "xmark", help: "Close", action: close)
                 .disabled(model.phase == .executing)
@@ -160,7 +163,7 @@ struct RemovalPanel: View {
                         .font(.brimFacts)
                     if let command = installation.manualCommand {
                         Text(command).font(.caption.monospaced()).textSelection(.enabled)
-                        Button("Copy uninstall command") {
+                        Button("Copy Uninstall Command") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(command, forType: .string)
                         }
@@ -244,8 +247,9 @@ extension RemovalPanel {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .ready = model.phase, let plan = model.plan {
-                Text(freed(plan))
+                Text(summary.isEmpty ? freed(plan) : "\(summary) · \(freed(plan))")
                     .font(.brimFacts)
+                    .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
                 if model.helperSteps > 0 {
                     Text("macOS will request an administrator password for protected cleanup.")
@@ -257,7 +261,7 @@ extension RemovalPanel {
                 Button(action: close) {
                     Text("Done").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .keyboardShortcut(.defaultAction)
             } else {
                 Button {
@@ -265,13 +269,13 @@ extension RemovalPanel {
                 } label: {
                     HStack(spacing: 8) {
                         if model.phase == .executing {
-                            ProgressView().controlSize(.small).tint(.white)
+                            ProgressView().controlSize(.small).tint(.black)
                         }
                         Text(buttonTitle)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .disabled(!model.canAuthorize)
             }
         }
@@ -341,7 +345,7 @@ extension RemovalPanel {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Check Again") { Task { await checkHelper() } }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
             }
             .buttonBorderShape(.capsule)
             .controlSize(.small)

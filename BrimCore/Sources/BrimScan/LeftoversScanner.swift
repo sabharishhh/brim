@@ -75,7 +75,8 @@ public actor LeftoversScanner {
     }
 
     public func scanLeftovers(
-        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:]
+        knownPastBundleIDs: Set<String> = [], knownNames: [String: String] = [:],
+        knownAliases: [String: [String]] = [:], knownIdentities: [Identity] = []
     ) async throws -> [Leftover] {
         try Task.checkCancellation()
         let gathered = await gatherActiveAppIdentities()
@@ -108,14 +109,9 @@ public actor LeftoversScanner {
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
-        // With the names Brim recorded, so a folder named after the app, not
-        // its identifier, is recognised as its too. Short names say too
-        // little to match on.
-        let pastIdentities = knownPastBundleIDs.sorted { $0.count > $1.count }
-            .map { id in
-                let name = knownNames[id.lowercased()] ?? ""
-                return Identity(bundleID: id, name: name.count >= 4 ? name : "")
-            }
+        let pastIdentities = Self.pastIdentities(
+            knownPastBundleIDs, names: knownNames, aliases: knownAliases, identities: knownIdentities
+        )
 
         let search = OwnershipSearch(
             installedBundleIDs: activeBundleIDs,
@@ -154,7 +150,7 @@ public actor LeftoversScanner {
         // owner while ChatGPT was installed and using it.
         let writers = ProvenanceSource.owners(of: activeIdentities)
         let vendors = SystemVendors(
-            installed: activeIdentities, recorded: knownNames,
+            installed: activeIdentities, recorded: knownNames, past: pastIdentities,
             packageFolders: InstalledBundleInventory.packageInstallFolders(in: root), root: root
         )
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
@@ -163,13 +159,29 @@ public actor LeftoversScanner {
                        activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames, vendors)
         }
         let found = batches.flatMap(\.self)
-        let leftovers = Self.protectUncertainOwnership(found, complete: gathered.complete)
+        let leftovers = Self.markingVendors(
+            Self.protectUncertainOwnership(found, complete: gathered.complete), installed: activeBundleIDs
+        )
 
         // Sorted by size descending. Access time is carried on each item and
         // may be used to order them, but never to argue that something is
         // disposable: nothing having read a file lately says nothing about
         // whether its owner is gone.
         return leftovers.sorted { $0.size > $1.size }
+    }
+
+    /// Names the developer of each unclaimed item when nothing from that
+    /// developer is installed, so their leftovers are one group rather than
+    /// a row per product too small to be listed (`Leftover.vendor`).
+    static func markingVendors(_ items: [Leftover], installed: Set<String>) -> [Leftover] {
+        let installedVendors = Set(installed.compactMap { OwnerNamespace.vendor(for: $0) })
+        return items.map { item in
+            guard item.category == .unclaimed, let vendor = OwnerNamespace.vendor(for: item.url.lastPathComponent),
+                  !installedVendors.contains(vendor) else { return item }
+            var marked = item
+            marked.vendor = vendor
+            return marked
+        }
     }
 
     private static func protectUncertainOwnership(_ items: [Leftover], complete: Bool) -> [Leftover] {
@@ -328,18 +340,27 @@ public actor LeftoversScanner {
 
                 // A link is judged by what it points at, never by its
                 // name, and that answer arrives before any of the rest.
+                //
+                // Only a command is a pointer whose missing target means
+                // anything. Chromium keeps its locks as links to tokens like
+                // `sabharishhh.local-8658`, and a running ChatGPT's four
+                // were listed as four removed apps.
                 switch Self.symlink(item) {
                 case .some(.resolved):
                     continue
-                case let .some(.dangling(target)):
+                case let .some(.dangling(target)) where Self.commandFolders.contains(domain):
                     leftovers.append(Self.brokenLink(item, pointingAt: target))
                     continue
-                case nil:
+                case .some(.dangling), nil:
                     break
                 }
 
                 let containerOwner = containerOwnership?.identifier
 
+                // An installed app's claim comes first. Asked after the
+                // developer test below, `Application Support/Codex` was
+                // opened as a developer's folder because "Codex Computer Use"
+                // begins with it, while ChatGPT was installed and using it.
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
@@ -350,6 +371,17 @@ public actor LeftoversScanner {
                     writers: writers
                 )
                 if belongsToInstalledApp {
+                    continue
+                }
+
+                // A developer's folder in the person's Library is judged by
+                // what it holds, as it is in /Library. `Microsoft` in
+                // Application Support was only ever looked at whole, because
+                // the one Microsoft app installed, Visual Studio Code, has a
+                // name that does not begin with the developer's.
+                if vendor == nil, signed?.identifier == nil, Self.nestable.contains(domain),
+                   !Self.systemDomains.contains(domain), vendors.claim(name) == .developer, Self.isDirectory(item) {
+                    queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
                     continue
                 }
 
@@ -407,6 +439,12 @@ public actor LeftoversScanner {
                 // a folder out; it never argues that one is a leftover.
                 if owner.category == .unclaimed, let window = inUseWithin,
                    Self.newestWrite(in: item).map({ Date().timeIntervalSince($0) < window }) == true {
+                    continue
+                }
+
+                // macOS protects it for itself, so it is nobody's leftover
+                // and nobody can remove it.
+                if RemovalCapability.isProtectedBySystem(item.path) {
                     continue
                 }
 
@@ -815,8 +853,38 @@ public actor LeftoversScanner {
         .userCaches, .userApplicationSupport, .userLogs
     ]
 
+    /// Removed applications as the sweep knows them, longest identifier
+    /// first. An app Brim removed itself left its whole identity in the
+    /// plan, helpers included, which says more than any name history kept.
+    /// Any other keeps every name Brim recorded, so a folder named after the
+    /// app, not its identifier, is recognised as its too. Short names say
+    /// too little to match on.
+    static func pastIdentities(
+        _ identifiers: Set<String>, names: [String: String], aliases: [String: [String]], identities: [Identity]
+    ) -> [Identity] {
+        let full = Dictionary(identities.compactMap { identity in
+            identity.bundleID.map { ($0.lowercased(), identity) }
+        }, uniquingKeysWith: { first, _ in first })
+        return identifiers.sorted { $0.count > $1.count }.map { id in
+            if let identity = full[id.lowercased()] {
+                return identity
+            }
+            let name = names[id.lowercased()] ?? ""
+            let recorded = (aliases[id.lowercased()] ?? []).filter { NameKey.of($0).count >= 4 }
+            return Identity(bundleID: id, name: name.count >= 4 ? name : "", recordedNames: recorded)
+        }
+    }
+
+    /// Where a link is a command, and a missing target means it cannot run.
+    static let commandFolders: Set<FileSystemRoot.Domain> = [
+        .usrLocalBin, .usrLocalSbin, .userDotLocalBin
+    ]
+
     static let recordOnlyDomains: Set<FileSystemRoot.Domain> = [
-        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports
+        .userHomeDotFolders, .userDiagnosticReports, .systemDiagnosticReports,
+        // iCloud keeps its own databases beside each application's folder,
+        // and nothing names those.
+        .userCloudKitCaches
     ]
 
     static let commandLineDataDomains: Set<FileSystemRoot.Domain> = [
@@ -973,7 +1041,7 @@ public actor LeftoversScanner {
         }
     }
 
-    private static func isActiveGroup(
+    static func isActiveGroup(
         _ name: String, groups: Set<String>, teams: Set<String>, bundleIDs: Set<String>, names: Set<String>
     ) -> Bool {
         if groups.contains(name) {
@@ -983,6 +1051,16 @@ public actor LeftoversScanner {
             if name.hasPrefix(teamID + ".") {
                 let suffix = String(name.dropFirst(teamID.count + 1))
                 if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
+                    return true
+                }
+                // A suffix that is not a product's identifier names the
+                // developer's shared container, such as Microsoft's
+                // `UBF8T346G9.ms`, which every app of theirs can use. It
+                // stays while any of them is installed: Remnants offered it
+                // while Visual Studio Code's removal held it. A product's
+                // own container, `TEAM.com.example.app`, is still offered
+                // once that product is gone.
+                if suffix.split(separator: ".").count < 3 {
                     return true
                 }
             }

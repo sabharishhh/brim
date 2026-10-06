@@ -20,10 +20,14 @@ final class SectionModels: ObservableObject {
     let leftovers = LeftoversModel()
     let background = BackgroundModel()
     let storage = StorageModel()
+    /// Every installed app's data, for Space.
+    let appData = AppDataModel()
     let energy = EnergyModel()
     let developer = DeveloperModel()
     let updates = UpdatesModel()
     let history = RemovalHistoryModel()
+    /// An install being recorded, from Home, the menu bar or a preview.
+    let recording = InstallRecordingModel()
 
     /// Shared, because the Trash is one thing. Two watchers on two views
     /// would poll twice and disagree while doing it.

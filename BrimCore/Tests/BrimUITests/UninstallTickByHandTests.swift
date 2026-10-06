@@ -176,7 +176,8 @@ final class UninstallTickByHandTests: XCTestCase {
         let stub = TickingStub(offered: [code])
         let model = await prepared(stub)
         XCTAssertEqual(model.rowsToOffer.map(\.target), [code])
-        XCTAssertEqual(model.offerGroups.first { $0.title == "App data" }?.rows.map(\.target), [code])
+        // Offered inside the same Data group the inspector uses.
+        XCTAssertEqual(model.reviewGroups.first { $0.loss == .data }?.offers.map(\.target), [code])
 
         await model.setTicked(true, path: code)
 
@@ -184,7 +185,7 @@ final class UninstallTickByHandTests: XCTestCase {
         XCTAssertEqual(last?.tickedByHand, [code], "The choice did not reach the intent.")
         XCTAssertTrue(model.removalSteps.contains { $0.target == code })
         XCTAssertTrue(model.reviewGroups.contains {
-            $0.title == "App data" && $0.steps.contains { $0.target == code }
+            $0.loss == .data && $0.steps.contains { $0.target == code } && $0.offers.isEmpty
         })
         XCTAssertTrue(model.rowsToOffer.isEmpty, "A row being removed is still offered.")
         XCTAssertTrue(model.isTickedByHand(code))

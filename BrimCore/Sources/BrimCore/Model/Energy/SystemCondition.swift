@@ -48,13 +48,13 @@ public struct SystemCondition: Sendable, Equatable {
         public var meaning: String {
             switch self {
             case .normal:
-                return "The Mac is running at full speed with room to spare."
+                return "Running at full speed."
             case .slightlyElevated:
-                return "A little warm. Nothing is being slowed down yet."
+                return "A little warm. No slowdown yet."
             case .hot:
-                return "The Mac is throttling itself to cool down, so things will feel slower."
+                return "The Mac is slowing down to cool off."
             case .tooHot:
-                return "The Mac is very hot and is cutting performance hard to protect itself."
+                return "Very hot. The Mac is slowing down sharply to cool off."
             }
         }
 
@@ -159,10 +159,10 @@ public struct SystemCondition: Sendable, Equatable {
     public var note: String? {
         if thermal.isNoteworthy { return thermal.meaning }
         if lowPowerMode {
-            return "Low Power Mode is on, so the Mac is deliberately running slower to last longer."
+            return "Low Power Mode is on. The Mac runs slower to save battery."
         }
         if case .battery(let percent) = power, percent <= 20 {
-            return "Running low, so what is drawing power matters more than usual."
+            return "The battery is running low."
         }
         return nil
     }

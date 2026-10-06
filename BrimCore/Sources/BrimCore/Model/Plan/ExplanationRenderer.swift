@@ -42,7 +42,7 @@ public struct ExplanationRenderer: Sendable {
         // reporting it as a refusal reads as a failure of the thing the
         // person just asked for.
         if reason.contains("Preserved main application bundle") {
-            return "Kept, so the application still runs."
+            return "Kept. The app needs it to run."
         }
         // The claimant's name is the evidence, so it stays. ChatGPT's app
         // group was kept from its removal as "shared with other installed

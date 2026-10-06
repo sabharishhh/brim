@@ -24,7 +24,7 @@ struct BackgroundInspector: View {
                 header
                 switch entry.state {
                 case .gone:
-                    Label("Points at nothing", systemImage: "exclamationmark.triangle")
+                    Label("App not found", systemImage: "exclamationmark.triangle")
                         .font(.brimFacts)
                         .foregroundStyle(Palette.caution)
                 case .clearing:
@@ -86,14 +86,14 @@ struct BackgroundInspector: View {
             HStack(spacing: 8) {
                 if entry.state == .gone {
                     Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                        .buttonStyle(.borderedProminent)
+                        .capsuleAction(prominent: true)
                         .disabled(!canPick)
                 }
                 if !urls.isEmpty {
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting(urls)
                     }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                 }
             }
             .buttonBorderShape(.capsule)
@@ -101,7 +101,7 @@ struct BackgroundInspector: View {
         if entry.group.items.contains(where: { $0.isStale && $0.loginItemsFollowUp != nil }),
            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
             Link("Open Login Items", destination: url)
-                .buttonStyle(.bordered)
+                .capsuleAction()
         }
     }
 }
@@ -167,7 +167,7 @@ private struct RecordRow: View {
             }
             if let url = reveals[registration.id] {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Reveal target in Finder") {
+                    RowAction(symbol: "arrow.up.forward.app", help: "Show Target in Finder") {
                         shell.reveal([url])
                     }
                 }
@@ -203,6 +203,9 @@ private struct RecordRow: View {
         }
         if registration.kind == .firewallEntry {
             return "Review this entry in System Settings > Network > Firewall > Options."
+        }
+        if registration.kind == .privacyGrant {
+            return "Remove it in System Settings > Privacy & Security: select it and click the minus button."
         }
         guard registration.isActionableStale else { return nil }
         if helperIsReady, BackgroundModel.needsTheHelper(registration) {

@@ -3,25 +3,31 @@ import SwiftUI
 
 /// Brim's colours.
 ///
-/// Surfaces come from the asset catalog (`Canvas`, `Surface`), each with
-/// dark and increased contrast variants, and text and fills are the
-/// system's own semantic colours, so Increase Contrast, Reduce
-/// Transparency and desktop tinting all reach them the way they reach any
-/// Mac app. The colour on screen comes from the person's app icons and one
-/// accent, the `AccentColor` asset, which follows their System Settings
-/// choice.
+/// Brim is dark only (`AppDelegate` sets the appearance at launch). The
+/// canvas is the system's own dark window background, and cards sit one
+/// step up from it the way grouped rows do in System Settings, so Brim
+/// looks like the Mac it runs on. It used to draw its own near-black canvas,
+/// `#0F0F11` against the system's `#1E1E1E`, which made every page darker
+/// than any app beside it. Text, fills and the group colours are the
+/// system's semantic colours, so Increase Contrast and dark mode reach them
+/// the way they reach any Mac app. The colour on screen comes from the
+/// person's app icons and one accent.
 ///
 /// Regions are told apart by shade, never by a line: the canvas, cards one
 /// step up from it, and the system sidebar.
 enum Palette {
     /// The window's one background, under the toolbar, every page and
     /// every side pane alike.
-    static let canvas = Color("Canvas")
+    static let canvas = Color(nsColor: .windowBackgroundColor)
     /// Cards and floating panels, one step up from the canvas.
     static let surface = Color("Surface")
     static let ink = Color(nsColor: .labelColor)
     static let inkSecondary = Color(nsColor: .secondaryLabelColor)
-    static let inkTertiary = Color(nsColor: .tertiaryLabelColor)
+    /// The faintest text. The system's tertiary label measured 2.3:1 on
+    /// the canvas and on cards, under the 4.5:1 text needs, and it carried
+    /// the Journal's times and reasons and every section count. Nine tenths
+    /// of the secondary label is 4.6:1 on a card and still a step quieter.
+    static let inkTertiary = Color(nsColor: .secondaryLabelColor).opacity(0.9)
     /// Fills behind bars, meters, chips and placeholders.
     static let well = Color(nsColor: .tertiarySystemFill)
 
@@ -31,27 +37,68 @@ enum Palette {
     /// so a click is felt before anything else changes.
     static let pressed = Color(nsColor: .tertiarySystemFill)
     /// The row the inspector is showing, or the highlighted result.
-    static let selected = Color.accentColor.opacity(0.18)
+    static let selected = Color.white.opacity(0.1)
+
+    // Brim is monochrome. Its accent was the person's system accent, and a
+    // red accent turned the Space meter, Energy's bars, the selected row and
+    // the put-back icon red, so ordinary facts read as errors and clashed
+    // with the red that means a permanent deletion. Measures and selection
+    // are shades of white instead, and colour is left to status alone.
+
+    /// The tint for controls Brim does not draw itself: checkboxes,
+    /// switches, the sidebar's selection. Mid grey, so a white checkmark on
+    /// it still reads.
+    static let tint = Color(white: 0.5)
+    /// Off-white: the first thing a measure shows, icons, and what is
+    /// selected. A step down from pure white so it is not sharp on the
+    /// eyes, and never grey: at 90% it read as grey beside white text.
+    static let snow = Color(white: 0.93)
+    /// Text and symbols on `snow`, near black rather than black.
+    static let onSnow = Color(red: 0x1E / 255, green: 0x1E / 255, blue: 0x1E / 255)
+    /// The second: what macOS holds, the other part of a pair.
+    static let frost = Color(white: 0.6)
+    /// A third, where a measure has one.
+    static let mist = Color(white: 0.4)
 
     /// The light that sweeps across loading placeholders.
     static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.06)
-    /// Staying, needs a look.
-    static let caution = Color.orange
-    /// Permanent deletion, and nothing else.
-    static let destructive = Color.red
+    // Status colours: the Okabe–Ito palette (Okabe and Ito, Color Universal
+    // Design; Wong, "Points of view: Color blindness", Nature Methods 2011),
+    // chosen because its hues stay apart under protanopia, deuteranopia and
+    // tritanopia, where the usual green and red collapse into one. They
+    // differ in lightness too, so they survive greyscale. Each is checked
+    // against the dark canvas (#1E1E1E) and cards (#2A2A2C): 4.5:1 or more
+    // wherever it can colour text, 3:1 or more for marks. Colour is never
+    // the only signal; every status also has a word or a symbol.
+    //
+    // Accent, selection and progress use the person's own system accent
+    // (`Palette.tint` and the shades below), never one of these.
 
-    /// Eight muted hues for monograms and symbol tiles, in the order
-    /// `Monogram.hue` indexes them. Spaced around the wheel and kept away
-    /// from red, which in this product means something.
+    /// Done and checked. Okabe–Ito bluish green #009E73, lifted 6% toward
+    /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
+    static let success = Color(light: 0x0FA47B, dark: 0x0FA47B)
+    /// Staying, needs a look. Okabe–Ito orange #E69F00 (6.4:1 on a card).
+    static let caution = Color(light: 0xE69F00, dark: 0xE69F00)
+    /// Permanent deletion, stopped work and errors, as a mark only.
+    /// Okabe–Ito vermilion #D55E00 (3.7:1 on a card), so never body text:
+    /// the words beside it carry the meaning.
+    static let destructive = Color(light: 0xD55E00, dark: 0xD55E00)
+    /// Neutral information. Okabe–Ito sky blue #56B4E9 (6.2:1 on a card).
+    static let info = Color(light: 0x56B4E9, dark: 0x56B4E9)
+
+    /// Greys for monograms and symbol tiles, in the order `Monogram.hue`
+    /// indexes them. They were eight system colours, and a column of
+    /// letters in teal, pink and indigo read as decoration; neighbouring
+    /// tiles still differ by a shade.
     static let hues: [Color] = [
-        Color(light: 0x6F9A8B, dark: 0x86B3A3), // sage
-        Color(light: 0x5E8FA8, dark: 0x78A9C2), // steel
-        Color(light: 0x7C83B8, dark: 0x979DD0), // periwinkle
-        Color(light: 0x9A7BB0, dark: 0xB396C8), // lavender
-        Color(light: 0xB07A93, dark: 0xC894AC), // mauve
-        Color(light: 0xC08A64, dark: 0xD6A17D), // clay
-        Color(light: 0xB59A55, dark: 0xCBB16E), // ochre
-        Color(light: 0x8C9A5B, dark: 0xA4B274) // olive
+        Color(white: 0.34),
+        Color(white: 0.42),
+        Color(white: 0.3),
+        Color(white: 0.38),
+        Color(white: 0.46),
+        Color(white: 0.32),
+        Color(white: 0.4),
+        Color(white: 0.36)
     ]
 
     static func hue(_ index: Int) -> Color {
@@ -68,6 +115,11 @@ enum Metrics {
     static let rowRadius: CGFloat = 10
     static let cardPadding: CGFloat = 8
     static let pagePadding: CGFloat = 24
+    /// Space between the cards of a card page (Home, Space, Energy).
+    static let cardSpacing: CGFloat = 16
+    /// The widest a card page grows, so a full screen window keeps its
+    /// cards at a readable width rather than stretching figures apart.
+    static let cardPageWidth: CGFloat = 880
 
     static let rowIcon: CGFloat = 32
     static let compactRowIcon: CGFloat = 24
@@ -86,12 +138,18 @@ enum Metrics {
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7
 
-    /// The smallest window the three columns fit in: sidebar 200, list
-    /// 440, review pane 440, dividers. Below this the layout overlaps.
-    static let windowMinWidth: CGFloat = 1100
+    /// The smallest window. A list and its pane need 860 points side by
+    /// side; narrower than that the pane floats over the list
+    /// (`AdaptivePanes`), so every page still works at 900.
+    static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 640
     /// A list column never narrower than this.
     static let listMinWidth: CGFloat = 440
+    /// The inspector or review beside a list. One width for both: the
+    /// pane used to widen from 360 to 440 when a review opened, and the
+    /// review's list re-measured at every step of the animation, which is
+    /// the hitch halfway through the swap.
+    static let detailWidth: CGFloat = 420
 }
 
 /// Type styles. No serif anywhere. SF Pro for everything read in lists,
@@ -103,6 +161,9 @@ extension Font {
     static let brimHeadline = Font.system(size: 26, weight: .semibold, design: .rounded)
     static let brimDayHeader = Font.system(.title3, design: .rounded, weight: .semibold)
     static let brimPageTitle = Font.system(.title2, design: .rounded, weight: .semibold)
+    /// A page's name in the toolbar's row: one line, and the largest text
+    /// in the window's chrome.
+    static let brimToolbarTitle = Font.system(size: 20, weight: .semibold, design: .rounded)
     static let brimGroupTitle = Font.system(.headline)
     static let brimRowTitle = Font.system(.body, weight: .medium)
     static let brimFacts = Font.system(.subheadline)

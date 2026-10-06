@@ -84,7 +84,7 @@ struct AppStacks: View {
     private func header(_ group: ItemGroup<InstalledApplication>) -> some View {
         let bytes = group.items.reduce(0) { $0 + $1.bundleSizeBytes }
         return Button {
-            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                 flipped.formSymmetricDifference([group.id])
             }
         } label: {
@@ -114,13 +114,13 @@ struct AppStacks: View {
 
     private func showAll(_ group: ItemGroup<InstalledApplication>) -> some View {
         Button {
-            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                 expanded.formSymmetricDifference([group.id])
             }
         } label: {
             Text(expanded.contains(group.id) ? "Show fewer" : "Show all \(group.items.count)")
                 .font(.brimFacts.weight(.medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 34)
         }
@@ -139,7 +139,13 @@ struct AppStacks: View {
         let order = shown.filter { !isCollapsed($0) }.flatMap(visibleRows)
         guard !order.isEmpty else { return .ignored }
         let current = order.firstIndex { $0.id == model.selected?.id }
-        model.select(order[current.map { min(max($0 + step, 0), order.count - 1) } ?? 0])
+        // From the keyboard the next app is simply there: no crossfade to
+        // overlap with the next press of the arrow key.
+        var immediate = Transaction()
+        immediate.disablesAnimations = true
+        withTransaction(immediate) {
+            model.select(order[current.map { min(max($0 + step, 0), order.count - 1) } ?? 0])
+        }
         return .handled
     }
 }

@@ -42,7 +42,17 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// proven. See `Replacement`. Information only: it selects nothing.
     public var replacedBy: Replacement?
 
-    public var id: String { url.path }
+    /// The developer's namespace, set on an unclaimed item only when
+    /// nothing from that developer is installed. Seven of Adobe's folders
+    /// were seven rows called "Adobe accmac", "Adobe ccd" and so on, each
+    /// too small to be listed, while nothing of Adobe's was left on the Mac.
+    /// With nothing of theirs installed, a developer's leftovers are one
+    /// thing. While anything is, a namespace is not an application.
+    public var vendor: String?
+
+    public var id: String {
+        url.path
+    }
 
     /// Whether Brim can take this away, itself or through its helper.
     ///

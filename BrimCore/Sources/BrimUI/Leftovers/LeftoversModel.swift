@@ -2,6 +2,7 @@ import BrimCore
 import BrimProtocol
 import Combine
 import Foundation
+import os
 
 /// Backs the Leftovers view.
 ///
@@ -66,9 +67,7 @@ public final class LeftoversModel: ObservableObject {
 
     /// Unknown items shown for review use the same rule on Home and Remnants.
     public var unclaimedGroupsForReview: [LeftoverGroup] {
-        unclaimedGroups.filter {
-            $0.totalBytes >= 1_000_000 || $0.items.contains { $0.capability != .ok || $0.sizeIsKnown == false }
-        }
+        unclaimedGroups.filter { Self.isWorthReview($0) }
     }
 
     public var hasUnreadRecoveryCopies: Bool {
@@ -124,16 +123,6 @@ public final class LeftoversModel: ObservableObject {
 
     public func deselectAll(groups: [LeftoverGroup]) {
         selection.subtract(groups.flatMap(\.items).map(\.id))
-        settle()
-    }
-
-    /// Puts a selection back, for undo and for clearing the Tray.
-    ///
-    /// Only what is still here and still Brim's to remove: between a pick
-    /// and its undo, a removal or a rescan can take items away, and undo
-    /// must not put a removed item back into a plan.
-    public func restoreSelection(_ ids: Set<String>) {
-        selection = ids.intersection(all.filter(\.canBeRemovedByBrim).map(\.id))
         settle()
     }
 
@@ -309,7 +298,11 @@ public final class LeftoversModel: ObservableObject {
         guard !isScanning else { return }
         self.service = service
         isScanning = true
-        defer { isScanning = false }
+        let interval = BrimLog.signposter.beginInterval("Remnants scan")
+        defer {
+            isScanning = false
+            BrimLog.signposter.endInterval("Remnants scan", interval)
+        }
 
         do {
             let found = try await service.leftovers()
@@ -390,7 +383,7 @@ public final class LeftoversModel: ObservableObject {
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
             type: .uninstall,
-            subjectIdentity: Identity(bundleID: nil, name: "Leftovers"),
+            subjectIdentity: Identity(bundleID: nil, name: "Remnants"),
             requesterKind: "ui",
             requesterIdentity: requesterIdentity,
             specificTargets: targets

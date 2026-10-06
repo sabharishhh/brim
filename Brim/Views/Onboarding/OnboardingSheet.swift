@@ -35,10 +35,13 @@ struct OnboardingSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The next step replaces this one where it stands: a short fade
+            // with at most 4 points of travel, and under Reduce Motion an
+            // immediate change. Next is never held up by it.
             content
                 .id(step)
                 .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : 16)),
+                    insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : 4)),
                     removal: .opacity
                 ))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -50,10 +53,11 @@ struct OnboardingSheet: View {
         .frame(width: 560, height: 470)
         .onAppear { access.startObserving() }
         .onDisappear { access.stopObserving() }
+        .closesForQuit()
     }
 
     private func go(to next: Step) {
-        withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+        withAnimation(reduceMotion ? nil : Motion.openEvidence) {
             savedStep = next.rawValue
         }
     }
@@ -77,7 +81,14 @@ struct OnboardingSheet: View {
 
     private var whatBrimDoes: some View {
         VStack(alignment: .leading, spacing: 22) {
-            title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
+            HStack(alignment: .top) {
+                title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
+                Spacer(minLength: 12)
+                // The character beside the welcome, not above it, so the
+                // fixed-size sheet keeps its room for the steps below.
+                CharacterArtwork(size: 80)
+                    .padding(.top, -20)
+            }
             VStack(alignment: .leading, spacing: 16) {
                 point(
                     "magnifyingglass", "Looks where uninstalls miss", "Login items, background jobs, settings, caches"
@@ -92,7 +103,7 @@ struct OnboardingSheet: View {
         VStack(alignment: .leading, spacing: 22) {
             title("Full Disk Access", "The one setting Brim asks for")
             if access.isGranted {
-                status("checkmark.circle.fill", .accentColor, "On", "Everything Brim needs can be read")
+                status("checkmark.circle.fill", Palette.success, "On", "Everything Brim needs can be read")
             } else {
                 status("lock.fill", Palette.caution, "Off", "Containers and login items stay hidden until it is on")
                 Button {
@@ -100,14 +111,20 @@ struct OnboardingSheet: View {
                 } label: {
                     Label("Open System Settings", systemImage: "arrow.up.forward.app")
                 }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
                 if access.hasRequested {
-                    Text("Switch Brim on. Setup carries on here when macOS reopens it.")
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // macOS offers Quit and Reopen, or Later. Either way
+                    // setup carries on from this step.
+                    HStack(spacing: 12) {
+                        Text("Switched Brim on? Setup carries on here after it reopens.")
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Reopen Brim") { AccessRelaunch.reopen() }
+                            .capsuleAction()
+                    }
                 }
             }
             administratorNotice
@@ -135,8 +152,9 @@ struct OnboardingSheet: View {
             Spacer(minLength: 0)
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 56))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.success)
                 .symbolEffect(.bounce, options: .nonRepeating, value: step)
+                .symbolEffectsRemoved(reduceMotion)
             Text("Ready")
                 .font(.brimHeadline)
                 .foregroundStyle(Palette.ink)
@@ -172,7 +190,7 @@ struct OnboardingSheet: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(heading)
@@ -237,7 +255,13 @@ extension OnboardingSheet {
                         .frame(width: each == step ? 16 : 6, height: 6)
                 }
             }
-            .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: step)
+            .animation(reduceMotion ? nil : Motion.quick, value: step)
+            .transaction { transaction in
+                if reduceMotion {
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Step \((Step.allCases.firstIndex(of: step) ?? 0) + 1) of \(Step.allCases.count)")
 
@@ -276,7 +300,7 @@ extension OnboardingSheet {
             }
         case .confirm:
             Button("Not Now") { go(to: .ready) }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(isWorking)
             primary("Confirm") { Task { await enroll() } }
                 .disabled(isWorking)
@@ -287,13 +311,13 @@ extension OnboardingSheet {
 
     private func primary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.borderedProminent)
+            .capsuleAction(prominent: true)
             .keyboardShortcut(.defaultAction)
     }
 
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.bordered)
+            .capsuleAction()
             .keyboardShortcut(.defaultAction)
     }
 }

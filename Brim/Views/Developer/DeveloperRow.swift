@@ -23,10 +23,13 @@ extension DeveloperCache {
     /// What clearing it costs, in a few words.
     var consequence: String {
         if cost == .configured {
-            return "Holds your setup"
+            return "Keeps your settings"
         }
+        // Where the project is. Two worktrees of one project read as two
+        // identical rows; what restoring costs is in the details.
         if cost == .restored, isProject {
-            return "To the Trash, restore dependencies before building"
+            let project = url.deletingLastPathComponent().path
+            return "In " + (project as NSString).abbreviatingWithTildeInPath
         }
         if cost == .refetched, manualCleanupReason != nil {
             return "Review with \(tool)"
@@ -42,10 +45,10 @@ extension DeveloperCache {
             return "Not used · runs \(versionInUse)"
         }
         return switch cost {
-        case .rebuilt: "Costs one slow build"
+        case .rebuilt: "Rebuilt on the next build"
         case .refetched: "Downloaded again when needed"
-        case .restored: "To the Trash, restore dependencies before building"
-        case .configured: "Holds your setup"
+        case .restored: "Reinstall dependencies before the next build"
+        case .configured: "Keeps your settings"
         }
     }
 
@@ -165,7 +168,7 @@ struct DeveloperRow: View {
             .accessibilityAction { inspect() }
             Spacer(minLength: 8)
             HoverActions {
-                RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") {
+                RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([cache.url])
                 }
             }
@@ -240,7 +243,7 @@ struct DeveloperInspector: View {
         switch cache.cost {
         case .rebuilt, .restored:
             Button(isPicked ? "Remove from Tray" : "Add to Tray", action: pick)
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .buttonBorderShape(.capsule)
         case .refetched:
             // The exact command, shown before anything is approved:
@@ -252,7 +255,7 @@ struct DeveloperInspector: View {
                         .foregroundStyle(Palette.inkSecondary)
                     Button("Clean Up Downloads", action: cleanUp)
                         .disabled(!canCleanUp)
-                        .buttonStyle(.borderedProminent)
+                        .capsuleAction(prominent: true)
                         .buttonBorderShape(.capsule)
                 }
             } else if cache.cleanupID == "uv.cache" {
@@ -278,7 +281,7 @@ struct DeveloperInspector: View {
                     } else if cache.cleanupID != nil {
                         Button("Clean Up with \(cache.tool)", action: cleanUp)
                             .disabled(!canCleanUp)
-                            .buttonStyle(.borderedProminent)
+                            .capsuleAction(prominent: true)
                             .buttonBorderShape(.capsule)
                     }
                 }
@@ -301,7 +304,7 @@ struct DeveloperInspector: View {
                 .lineLimit(2)
                 .truncationMode(.middle)
             Spacer(minLength: 4)
-            RowAction(symbol: "arrow.up.forward.app", help: "Reveal in Finder") { shell.reveal([cache.url]) }
+            RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") { shell.reveal([cache.url]) }
         }
         .padding(8)
         .background(Palette.well, in: .rect(cornerRadius: 10))

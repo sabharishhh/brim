@@ -19,6 +19,9 @@ struct UninstallPanel: View {
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var showingSearchDetails = false
+    /// Something was removed in this panel, possibly before a Review Again
+    /// that the person then closed without removing anything more.
+    @State private var removedSomething = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -33,18 +36,38 @@ struct UninstallPanel: View {
             close()
             return .handled
         }
-        .task {
-            // Identity only — no specific targets. This is the difference
-            // between uninstalling an application and tidying a folder.
-            await model.prepare(
-                intent: PlanIntent(
-                    type: .uninstall,
-                    subjectIdentity: application.identity,
-                    requesterKind: "ui",
-                    requesterIdentity: NSUserName()
-                ),
-                service: service
-            )
+        .task { await startReview() }
+        .onChange(of: model.phase) { _, phase in
+            switch phase {
+            case .verified, .appliedButUnverified: removedSomething = true
+            default: break
+            }
+        }
+    }
+
+    /// A fresh plan from what is on the disk now. Identity only, no
+    /// specific targets: the difference between uninstalling an application
+    /// and tidying a folder. Review Again comes here too, so a retry is a
+    /// new plan with its own approval, never the old consent reused.
+    private func startReview() async {
+        await model.prepare(
+            intent: PlanIntent(
+                type: .uninstall,
+                subjectIdentity: application.identity,
+                requesterKind: "ui",
+                requesterIdentity: NSUserName()
+            ),
+            service: service
+        )
+    }
+
+    /// Stopped, not checked, or checked with something left: the person has
+    /// a next step, and it is a new review of what is there now.
+    private var canReviewAgain: Bool {
+        switch model.phase {
+        case .failed, .appliedButUnverified: true
+        case let .verified(result): !result.success || result.report?.unknownPaths?.isEmpty == false
+        default: false
         }
     }
 
@@ -54,17 +77,13 @@ struct UninstallPanel: View {
             // The application is the subject. "Review" above its name read
             // as the name of something, and that this is a review is what
             // the panel itself shows.
-            VStack(alignment: .leading, spacing: 2) {
-                Text(application.name)
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
+            // The name alone on its line. What the panel is doing is on its
+            // button, and how much goes is beside it.
+            Text(application.name)
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             RowAction(symbol: "xmark", help: "Close", action: close)
                 .disabled(model.phase == .executing)
@@ -74,19 +93,10 @@ struct UninstallPanel: View {
         .padding(.bottom, 10)
     }
 
-    /// What the panel is doing, in a few words.
-    private var subtitle: String {
-        switch model.phase {
-        case .preparing: return "Checking"
-        case .executing: return "Removing"
-        case .verified, .appliedButUnverified: return "Removed"
-        case .failed: return "Stopped"
-        case .ready:
-            let steps = model.removalSteps
-            let bytes = steps.reduce(0) { $0 + $1.expectedBytes }
-            let count = steps.count == 1 ? "1 item" : "\(steps.count.formatted()) items"
-            return "\(count) · \(ByteText.short(bytes))"
-        }
+    /// "12 items", beside what they free.
+    private var itemCount: String {
+        let count = model.removalSteps.count
+        return count == 1 ? "1 item" : "\(count.formatted()) items"
     }
 
     private var isFinished: Bool {
@@ -96,10 +106,12 @@ struct UninstallPanel: View {
         }
     }
 
+    /// The page reads the Mac again whenever anything was removed here,
+    /// including when the last thing on screen is a Review Again that the
+    /// person closed. Checking only the current phase left the list stale.
     private func close() {
-        switch model.phase {
-        case .verified, .appliedButUnverified: onFinished()
-        default: break
+        if removedSomething {
+            onFinished()
         }
         onClose()
     }
@@ -112,13 +124,17 @@ struct UninstallPanel: View {
                 .padding(.horizontal, 8)
 
         case let .failed(reason):
-            message(title: "Stopped", detail: reason, isError: true)
+            message(
+                title: "Stopped", detail: reason,
+                next: "Review Again makes a new plan from what is on the disk now.", isError: true
+            )
 
         case let .appliedButUnverified(reason):
             message(
                 title: "Removed, not checked",
-                detail: reason,
-                isError: false
+                detail: "The removal ran, and the check afterwards could not finish: \(reason) "
+                    + "Nothing has been undone.",
+                next: "Review Again checks what is still there.", isError: false
             )
 
         case let .verified(result):
@@ -155,24 +171,15 @@ struct UninstallPanel: View {
                     }
                 }
             }
-            if model.clearsPrivacyGrants || model.clearsRegistrations {
-                Section {
-                    ReviewHeading(title: "System records", isFirst: true)
-                    if model.clearsPrivacyGrants {
-                        LabeledContent("Privacy permissions", value: "Reset")
-                    }
-                    if model.clearsRegistrations {
-                        LabeledContent("File associations", value: "Remove")
-                    }
-                }
-                .listRowSeparator(.hidden)
-                .listSectionSeparator(.hidden)
-            }
-
+            // The inspector's groups, in its order: within each, what moves,
+            // then what the person may include, then what stays and why.
             ForEach(model.reviewGroups) { group in
                 Section {
-                    ReviewHeading(title: group.title, count: group.steps.count,
-                                  bytes: group.steps.reduce(0) { $0 + $1.expectedBytes })
+                    // Counts what moves; a group with nothing moving shows
+                    // no "0" over the rows it offers or keeps.
+                    ReviewHeading(title: group.title, count: group.steps.isEmpty ? nil : group.steps.count,
+                                  bytes: group.steps.reduce(0) { $0 + $1.expectedBytes },
+                                  isFirst: group.id == model.reviewGroups.first?.id)
                     ForEach(ReviewRun.runs(of: group.steps)) { run in
                         if run.steps.count > 1 {
                             UninstallPlanRow(
@@ -191,22 +198,7 @@ struct UninstallPanel: View {
                             )
                         }
                     }
-                }
-                .listSectionSeparator(.hidden)
-            }
-
-            if !model.offerGroups.isEmpty {
-                Text("You can also include")
-                    .font(.brimGroupTitle)
-                    .foregroundStyle(Palette.ink)
-                    .padding(.top, 22)
-                    .listRowSeparator(.hidden)
-            }
-            ForEach(model.offerGroups) { group in
-                Section {
-                    ReviewHeading(title: group.title, count: group.rows.count,
-                                  bytes: group.rows.reduce(0) { $0 + ($1.sizeBytes ?? 0) })
-                    ForEach(group.rows, id: \.target) { row in
+                    ForEach(group.offers, id: \.target) { row in
                         UninstallPlanRow(
                             target: row.target, evidence: row.evidence ?? row.reason,
                             bytes: row.sizeBytes ?? 0, disposition: nil,
@@ -214,11 +206,12 @@ struct UninstallPanel: View {
                             selection: selection(for: row.target)
                         )
                     }
+                    ForEach(group.staying, id: \.target) { item in
+                        StayingRow(item: item)
+                    }
                 }
                 .listSectionSeparator(.hidden)
             }
-
-            StayingSection(items: model.staying)
 
             if model.plan?.capabilityReport != nil {
                 Button("What Brim checked") { showingSearchDetails = true }
@@ -247,30 +240,42 @@ private extension UninstallPanel {
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 } else {
-                    Text(freed(plan))
+                    Text("\(itemCount) · \(freed(plan))")
                         .font(.brimFacts)
+                        .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
                 }
             }
             if isFinished {
-                Button(action: close) {
-                    Text("Done").frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
+                    if canReviewAgain {
+                        Button {
+                            Task { await startReview() }
+                        } label: {
+                            Text("Review Again").frame(maxWidth: .infinity)
+                        }
+                        .capsuleAction()
+                        .help("Make a new plan from what is on the disk now")
+                    }
+                    Button(action: close) {
+                        Text("Done").frame(maxWidth: .infinity)
+                    }
+                    .capsuleAction()
+                    .keyboardShortcut(.defaultAction)
                 }
-                .buttonStyle(.bordered)
-                .keyboardShortcut(.defaultAction)
             } else {
                 Button {
                     Task { await model.authorize(requesterIdentity: NSUserName()) }
                 } label: {
                     HStack(spacing: 8) {
                         if model.phase == .executing || model.phase == .preparing {
-                            ProgressView().controlSize(.small).tint(.white)
+                            ProgressView().controlSize(.small).tint(.black)
                         }
                         Text(buttonTitle)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }
@@ -316,66 +321,35 @@ private extension UninstallPanel {
         )
     }
 
-    func message(title: String, detail: String, isError: Bool) -> some View {
-        VStack(spacing: 6) {
-            Text(title).font(.headline).foregroundColor(isError ? .red : .primary)
-            Text(detail).foregroundColor(.secondary).multilineTextAlignment(.center)
-        }
-        .padding()
-    }
-}
-
-/// Consecutive steps in one folder, shown as one row once there are more
-/// than five of them.
-struct ReviewRun: Identifiable {
-    let folder: String
-    let steps: [Step]
-    var id: Int {
-        steps[0].index
-    }
-
-    static func runs(of steps: [Step]) -> [ReviewRun] {
-        let byFolder = Dictionary(grouping: steps) { ($0.target as NSString).deletingLastPathComponent }
-        return steps.reduce(into: [ReviewRun]()) { runs, step in
-            let folder = (step.target as NSString).deletingLastPathComponent
-            let siblings = byFolder[folder] ?? []
-            if siblings.count > 5 {
-                guard !runs.contains(where: { $0.folder == folder && $0.steps.count > 1 }) else { return }
-                runs.append(ReviewRun(folder: folder, steps: siblings))
-            } else {
-                runs.append(ReviewRun(folder: folder, steps: [step]))
-            }
-        }
-    }
-}
-
-/// A section's title as its first row. A pinned header draws its own band
-/// and rule over the rows beneath it, and regions here are told apart by
-/// space and type, never by lines.
-struct ReviewHeading: View {
-    let title: String
-    var count: Int?
-    var bytes: Int64?
-    var isFirst = false
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            if let count {
-                Text([count.formatted(), bytes.map { ByteText.short($0) }].compactMap(\.self)
-                    .joined(separator: " · "))
+    /// A state that did not end in a verified result: what happened, in
+    /// words, and what the person can do next. Left aligned and scrolling,
+    /// like the result, so a long refusal is never cut off.
+    func message(title: String, detail: String, next: String, isError: Bool) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    // The word carries the meaning; the mark beside it is colour.
+                    Image(systemName: isError ? "xmark.octagon.fill" : "questionmark.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(isError ? Palette.destructive : Palette.caution)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(.brimPageTitle)
+                        .foregroundStyle(Palette.ink)
+                }
+                Text(detail)
                     .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkTertiary)
+                    .foregroundStyle(Palette.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                Text(next)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Space is what separates one group from the next.
-        .padding(.top, isFirst ? 2 : 16)
-        .padding(.bottom, 2)
-        .listRowSeparator(.hidden)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        .scrollBounceBehavior(.basedOnSize)
     }
 }

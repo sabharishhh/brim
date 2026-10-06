@@ -6,14 +6,13 @@ import Foundation
 /// Backs the Updates section: which applications have a newer version, and
 /// putting it in place.
 ///
-/// A check reaches the network, so it runs when the section opens and the
-/// last one is more than six hours old, and when somebody asks. Nothing
-/// runs in the background.
+/// The Updates section and Check Again request a fresh network check. Home
+/// reuses a result for up to six hours. Nothing runs in the background.
 @MainActor
 public final class UpdatesModel: ObservableObject {
     /// Where one update has got to.
     public enum InstallState: Equatable, Sendable {
-        case downloading(Double)
+        case downloading(DownloadProgress)
         case installing
         case updated(String)
         case openedInstaller
@@ -114,12 +113,12 @@ public final class UpdatesModel: ObservableObject {
 
     public func install(_ update: AppUpdate, service: any BrimServiceProtocol) async {
         guard states[update.id]?.isBusy != true else { return }
-        states[update.id] = update.download == nil ? .installing : .downloading(0)
+        states[update.id] = update.download == nil ? .installing : .downloading(.started)
         let id = update.id
-        let outcome = await service.installUpdate(update) { [weak self] fraction in
+        let outcome = await service.installUpdate(update) { [weak self] progress in
             Task { @MainActor [weak self] in
                 guard let self, case .downloading = self.states[id] else { return }
-                states[id] = fraction >= 1 ? .installing : .downloading(fraction)
+                states[id] = progress.fraction >= 1 ? .installing : .downloading(progress)
             }
         }
         switch outcome {

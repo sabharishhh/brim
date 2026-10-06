@@ -220,13 +220,13 @@ struct StackCard<Item: Identifiable, Row: View, HeaderAccessory: View>: View {
             }
             if items.count > Metrics.rowsBeforeShowAll {
                 Button {
-                    withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+                    withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                         showsAll.toggle()
                     }
                 } label: {
                     Text(showsAll ? "Show fewer" : "Show all \(items.count)")
                         .font(.brimFacts.weight(.medium))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(Palette.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
@@ -287,6 +287,7 @@ struct Tile: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -303,7 +304,7 @@ struct Tile: View {
                 Text(figure)
                     .font(.brimFigure)
                     .foregroundStyle(Palette.ink)
-                    .contentTransition(.numericText())
+                    .contentTransition(reduceMotion ? .identity : .numericText())
                 HStack(spacing: -6) {
                     ForEach(Array(icons.prefix(4).enumerated()), id: \.offset) { _, source in
                         BrimIcon(source: source, size: 26)
@@ -323,11 +324,12 @@ struct Tile: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .card()
             .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
-            .offset(y: isHovering ? -2 : 0)
+            .offset(y: isHovering && !reduceMotion ? -2 : 0)
+            .animation(nil, value: reduceMotion)
         }
         .buttonStyle(.press)
         .onHover { hovering in
-            withAnimation(Motion.quick) { isHovering = hovering }
+            withAnimation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion)) { isHovering = hovering }
         }
         .accessibilityLabel("\(title), \(figure), \(caption)")
     }

@@ -164,6 +164,43 @@ public struct SafeOps {
         return resultingURL as URL?
     }
 
+    /// Deletes for good something a removal put in the Trash.
+    ///
+    /// Only an item directly inside a Trash folder is accepted, so a
+    /// recorded URL that has been tampered with or moved cannot reach
+    /// anything else. A link is removed as a link; its target is never
+    /// followed. An item already gone is not an error.
+    public static func deleteFromTrash(_ url: URL) throws {
+        let path = url.standardizedFileURL.path
+        guard isInTrash(path) else {
+            throw NSError(domain: "SafeOps", code: Int(EPERM), userInfo: [
+                NSLocalizedDescriptionKey: "\(url.lastPathComponent) is no longer in the Trash."
+            ])
+        }
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return }
+        try FileManager.default.removeItem(atPath: path)
+    }
+
+    /// Directly inside the person's Trash, a volume's Trash, or, under
+    /// tests, the stand-in Trash a test's removals landed in.
+    static func isInTrash(_ path: String) -> Bool {
+        let parent = (path as NSString).deletingLastPathComponent
+        let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
+        if parent == home.standardizedFileURL.path || parent == home.resolvingSymlinksInPath().path {
+            return true
+        }
+        if (parent as NSString).deletingLastPathComponent.hasSuffix("/.Trashes") {
+            return true
+        }
+        #if DEBUG
+            if let stand = standInTrash()?.standardizedFileURL.path, parent.hasPrefix(stand + "/") {
+                return true
+            }
+        #endif
+        return false
+    }
+
     #if DEBUG
     /// Where a test's trashed items land instead of the user's Trash.
     ///
@@ -183,9 +220,7 @@ public struct SafeOps {
         standInTrashLock.lock()
         defer { standInTrashLock.unlock() }
         if let existing = standInTrashURL { return existing }
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("brim-test-trash-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let url = makeStandInTrash()
         standInTrashURL = url
         return url
     }
@@ -325,3 +360,40 @@ public struct SafeOps {
         throw SafeOpsError.failedToOpenParent(ELOOP)
     }
 }
+
+#if DEBUG
+    extension SafeOps {
+        /// A new stand-in Trash, emptied when the test process exits.
+        private static func makeStandInTrash() -> URL {
+            let url = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("brim-test-trash-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            atexit { SafeOps.clearStandInTrash() }
+            return url
+        }
+
+        /// Empties the stand-in Trash as the test process exits. It was left
+        /// behind for years of runs: 41 folders and 1 GB of copied bundles in
+        /// the temporary folder, every `Brim.app` in them registered with
+        /// Launch Services as another Brim. Records first, because deleting a
+        /// bundle does not unregister it.
+        static func clearStandInTrash() {
+            guard let url = standInTrashURL else { return }
+            let fileManager = FileManager.default
+            if let walk = fileManager.enumerator(at: url, includingPropertiesForKeys: nil) {
+                for case let item as URL in walk where item.pathExtension == "app" {
+                    walk.skipDescendants()
+                    let retract = Process()
+                    retract.executableURL = URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework"
+                        + "/Frameworks/LaunchServices.framework/Support/lsregister")
+                    retract.arguments = ["-u", item.path]
+                    retract.standardOutput = FileHandle.nullDevice
+                    retract.standardError = FileHandle.nullDevice
+                    try? retract.run()
+                    retract.waitUntilExit()
+                }
+            }
+            try? fileManager.removeItem(at: url)
+        }
+    }
+#endif

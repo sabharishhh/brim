@@ -102,7 +102,8 @@ public struct LocationInventory: Sendable {
         /// A bundle identifier is a reverse-DNS name nobody else uses, so
         /// a path component equal to one is strong evidence. A human name
         /// is not: two products called "Studio" are ordinary, which is
-        /// why a name match is never selected by default.
+        /// why a name match is selected only where `SafetyEngine` finds it
+        /// clearly the application's and nothing else installed shares it.
         static func tier(for rule: Rule, in domain: FileSystemRoot.Domain) -> EvidenceTier {
             if FileSystemRoot.onlyNameMatchable(domain) {
                 return .C
@@ -161,12 +162,13 @@ public struct LocationInventory: Sendable {
 
         public func matchTier(name: String, subject: Subject, declaredIdentifier: String? = nil) -> EvidenceTier? {
             switch rule {
-            case .applicationName:
-                subject.nameSet.contains(name) ? tier : nil
-            case .applicationNameLowercased:
-                subject.lowercasedNameSet.contains(name) ? tier : nil
+            // In any case and spacing: `Caches/Codex` is ChatGPT's although
+            // its identifier says `codex`, and an exact comparison found it
+            // only because the volume happened to ignore case.
+            case .applicationName, .applicationNameLowercased:
+                subject.nameKeys.contains(NameKey.of(name)) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
-                delimitedPrefixTier(name: name, prefixes: subject.names, separator: separator)
+                delimitedPrefixTier(name: name, prefixes: subject.prefixNames, separator: separator)
             case .groupContainer:
                 groupTier(name: name, subject: subject)
             case .homeDotFolder:
@@ -191,9 +193,9 @@ public struct LocationInventory: Sendable {
                 guard let matched = subject.longestIdentifier(prefixing: name) else { return nil }
                 return subject.owns(matched) ? tier : .C
             case let .bundleIdentifierDelimitedPrefix(separator):
-                return delimitedPrefixTier(
-                    name: name, prefixes: subject.identifiers, separator: separator
-                )
+                return subject.identifiers.contains(where: {
+                    name.hasPrefix($0 + separator) && name.count > $0.count + separator.count
+                }) ? .C : nil
             case .temporaryDirectory:
                 return temporaryDirectoryTier(name: name, subject: subject)
             case .clientOfService:
@@ -242,9 +244,12 @@ public struct LocationInventory: Sendable {
                 return .B
             }
             guard name.hasPrefix(".") else { return nil }
-            let bare = String(name.dropFirst())
+            let bare = String(name.dropFirst()).lowercased()
+            if subject.nameKeys.contains(NameKey.of(bare)) {
+                return .C
+            }
             return subject.lowercasedNames.contains(where: { lower in
-                bare == lower || (bare.hasPrefix(lower + "-") && bare.count > lower.count + 1)
+                bare.hasPrefix(lower + "-") && bare.count > lower.count + 1
             }) ? .C : nil
         }
 
@@ -271,9 +276,18 @@ public struct LocationInventory: Sendable {
         private func delimitedPrefixTier(
             name: String, prefixes: [String], separator: String
         ) -> EvidenceTier? {
-            prefixes.contains(where: {
-                name.hasPrefix($0 + separator) && name.count > $0.count + separator.count
-            }) ? .C : nil
+            // The part before any separator, compared as names are, so
+            // `ChatGPTHelper.binarycookies` answers to `ChatGPT Helper`.
+            let keys = Set(prefixes.map(NameKey.of).filter { !$0.isEmpty })
+            var rest = name[...]
+            while let range = rest.range(of: separator) {
+                let stem = name[..<range.lowerBound]
+                if !stem.isEmpty, range.upperBound < name.endIndex, keys.contains(NameKey.of(String(stem))) {
+                    return .C
+                }
+                rest = name[range.upperBound...]
+            }
+            return nil
         }
 
         private func groupTier(name: String, subject: Subject) -> EvidenceTier? {
@@ -297,9 +311,10 @@ public struct LocationInventory: Sendable {
         public let identifiers: [String]
         let identifierSet: Set<String>
         let names: [String]
-        let nameSet: Set<String>
         let lowercasedNames: [String]
-        let lowercasedNameSet: Set<String>
+        let nameKeys: Set<String>
+        /// The names, and `<name> Helper` for each, as the start of a name.
+        let prefixNames: [String]
         let groups: [String]
         let groupSet: Set<String>
         let homeFolders: [String]
@@ -310,10 +325,10 @@ public struct LocationInventory: Sendable {
             identifiers = identity.searchBundleIdentifiers
             identifierSet = Set(identifiers)
             names = identity.searchNames
-            nameSet = Set(names)
             var seen = Set<String>()
             lowercasedNames = names.map { $0.lowercased() }.filter { seen.insert($0).inserted }
-            lowercasedNameSet = seen
+            nameKeys = Set(names.map(NameKey.of).filter { !$0.isEmpty })
+            prefixNames = names + identity.helperNames
             groups = identity.searchGroupContainers
             groupSet = Set(groups)
             homeFolders = identity.searchHomeFolders
@@ -456,11 +471,20 @@ public struct LocationInventory: Sendable {
         // missed as never looked for. Antigravity keeps 7 MB in
         // `Caches/Antigravity` and Claude 2.8 MB in `Logs/Claude`, and
         // neither appeared in its own uninstall. A name is a name, so these
-        // are Tier C and Brim will not tick them for anybody.
+        // are Tier C, ticked only when clearly the application's own.
         Location(domain: .userCaches, rule: .applicationName,
                  describes: "caches",
                  sentence: "A cache folder named after the application rather than its "
                      + "identifier."),
+        // Beginning with the name and a hyphen, which is how an editor's
+        // extensions name theirs: `Caches/vscode-cpptools` is Visual Studio
+        // Code's C++ extension, and no rule for Caches could see it.
+        Location(domain: .userCaches, rule: .applicationNameDelimitedPrefix("-"),
+                 describes: "caches",
+                 sentence: "A cache folder beginning with the application's name."),
+        Location(domain: .userLogs, rule: .applicationNameDelimitedPrefix("-"),
+                 describes: "logs",
+                 sentence: "A log folder beginning with the application's name."),
         Location(domain: .userLogs, rule: .applicationName,
                  describes: "logs",
                  sentence: "A log folder named after the application rather than its "
@@ -499,6 +523,9 @@ public struct LocationInventory: Sendable {
         Location(domain: .userHTTPStorages, rule: .applicationNameDelimitedPrefix("."),
                  describes: "cookies",
                  sentence: "Cookies named after one of this application's processes."),
+        Location(domain: .userCloudKitCaches, rule: .bundleIdentifier,
+                 describes: "iCloud cache",
+                 sentence: "The cache iCloud keeps for this application, keyed to its identifier."),
         Location(domain: .userCookies, rule: .bundleIdentifierPrefix,
                  describes: "cookies",
                  sentence: "Cookies keyed to the bundle identifier."),
@@ -712,6 +739,12 @@ public struct LocationInventory: Sendable {
                  sentence: "Named inside the application's identifier, in the per-user folder."),
         Location(domain: .darwinUserCache, rule: .clientOfService,
                  describes: "web view caches",
+                 sentence: "Kept by a macOS service on the application's behalf, and named for it."),
+        // WebKit makes the same three folders in the temporary sibling as
+        // in the cache folder. eqMac's removal took the cache copies and
+        // left these.
+        Location(domain: .darwinUserTemp, rule: .clientOfService,
+                 describes: "web view scratch folders",
                  sentence: "Kept by a macOS service on the application's behalf, and named for it."),
         Location(domain: .darwinUserCache, rule: .temporaryDirectory,
                  describes: "scratch folders",

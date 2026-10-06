@@ -24,21 +24,30 @@ struct DeveloperView: View {
     @State private var cleanupPlanningTask: Task<Void, Never>?
     @State private var cleanupPlanningGeneration = UUID()
 
+    /// The floating pane's Close in a narrow window.
+    private func closeInspector() {
+        inspectedID = nil
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        AdaptivePanes(
+            detailWidth: Metrics.detailWidth,
+            hasDetail: reviewRequest != nil || inspectedID != nil,
+            isReviewing: reviewRequest != nil,
+            close: closeInspector
+        ) {
             VStack(spacing: 0) {
-                header
                 scanScope
                 content
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
+        } detail: {
             inspector
-                .frame(width: reviewRequest == nil ? 340 : 440)
         }
+        .pageTitle("Developer")
         .task { await model.loadIfNeeded(service: service) }
         .onDisappear {
             cancelCleanupPlanning()
@@ -58,38 +67,6 @@ struct DeveloperView: View {
     }
 
     // MARK: - Header
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Developer")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if !model.caches.isEmpty {
-                Text("\(model.visibleCaches.count) · \(DeveloperModel.sizeSummary(model.visibleCaches))")
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
-            if model.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-            if model.isScanning {
-                Button("Stop", action: model.cancelScan)
-            } else {
-                Button("Scan Again", systemImage: "arrow.clockwise") {
-                    Task { await model.load(service: service) }
-                }
-                .labelStyle(.iconOnly)
-                .help("Scan again")
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
-    }
 
     // MARK: - List
 
@@ -138,7 +115,7 @@ struct DeveloperView: View {
         } else if model.caches.isEmpty, model.excludedFolders.isEmpty {
             EmptyState(symbol: "hammer", title: "No build caches", message: "Nothing from Xcode, npm, Go or the rest.")
         } else if model.visibleCaches.isEmpty {
-            EmptyState(symbol: "line.3.horizontal.decrease", title: "No artifacts in this view",
+            EmptyState(symbol: "line.3.horizontal.decrease", title: "No caches match this filter",
                        message: "Change the age filter or reset folder exclusions to show more.")
         } else {
             GroupedStacks(
@@ -211,7 +188,7 @@ struct DeveloperView: View {
                 plan: reviewPlan
             )
             .id(intent.id)
-            .transition(.opacity)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let cache = inspected {
             DeveloperInspector(
                 cache: cache, isPicked: model.isSelected(cache),
@@ -220,7 +197,7 @@ struct DeveloperView: View {
                 canCleanUp: !model.isScanning && cleanupPlanningTask == nil
             )
             .id(cache.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: cache.id)
         } else {
             PanePlaceholder(symbol: "hammer", title: "Select a cache")

@@ -33,8 +33,15 @@ public struct NestedFolderSource: EvidenceSource {
         var search = DirectorySearch(budget: budget())
         var evidence: [Evidence] = []
         let parents = Self.parents(in: root, search: &search)
+        let caches = root.url(for: .userCaches).standardizedFileURL.path
+        let crashReporters = CrashReporterFolders(identity: identity)
         for parent in parents {
             let parentName = parent.lastPathComponent
+            let inCaches = parent.deletingLastPathComponent().standardizedFileURL.path == caches
+            if inCaches, let found = crashReporters.evidence(in: parent, search: &search) {
+                evidence += found
+                continue
+            }
             // A folder named for the application is the application's
             // already, and macOS's own folders hold nothing of anyone else's.
             let skipParent = ProvenanceSource.isNamed(parentName, identifiers: identifiers, names: names)
@@ -45,9 +52,13 @@ public struct NestedFolderSource: EvidenceSource {
             for child in search.entries(parent) {
                 guard search.canContinue(at: parent) else { break }
                 let url = parent.appendingPathComponent(child)
-                if Self.isNamedWithIdentifier(child, identifiers) {
+                if let matched = Self.identifier(naming: child, identifiers) {
+                    // An identifier in another developer's namespace ships
+                    // in other applications too, so inside a folder that is
+                    // not this one's it is a name match, as it is at the top.
                     evidence.append(Evidence(
-                        url: url, tier: .B, mechanism: "NestedFolderSource",
+                        url: url, tier: identity.ownsIdentifier(matched) ? .B : .C,
+                        mechanism: "NestedFolderSource",
                         humanSentence: "Named for \(identity.name) inside \(parentName)."
                     ))
                 } else if let stamp {
@@ -95,9 +106,14 @@ public struct NestedFolderSource: EvidenceSource {
     }
 
     static func isNamedWithIdentifier(_ name: String, _ identifiers: [String]) -> Bool {
+        identifier(naming: name, identifiers) != nil
+    }
+
+    /// The longest of the identifiers the name is, or is inside.
+    static func identifier(naming name: String, _ identifiers: [String]) -> String? {
         let lowered = name.lowercased()
         let base = lowered.hasSuffix(".plist") ? String(lowered.dropLast(6)) : lowered
-        return identifiers.contains { base == $0 || base.hasPrefix($0 + ".") }
+        return identifiers.filter { base == $0 || base.hasPrefix($0 + ".") }.max { $0.count < $1.count }
     }
 
     static func isFolder(_ url: URL) -> Bool {

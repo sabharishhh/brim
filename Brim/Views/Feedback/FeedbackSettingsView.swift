@@ -9,9 +9,9 @@ struct FeedbackSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.pagePadding) {
                 VStack(alignment: .leading, spacing: Metrics.grid) {
-                    Text("Help shape Brim")
+                    Text("Send Feedback")
                         .font(.brimHeadline)
-                    Text("Report a problem, suggest an improvement, or share a thought.")
+                    Text("Report a problem or suggest a change.")
                         .foregroundStyle(Palette.inkSecondary)
                 }
                 HStack(alignment: .top, spacing: 12) {
@@ -32,7 +32,7 @@ struct FeedbackSettingsView: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "square.and.pencil")
-                                .foregroundStyle(.tint)
+                                .foregroundStyle(Palette.ink)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Continue your draft").font(.headline)
                                 Text(feedback.draft.title.isEmpty ? feedback.draft.kind.title : feedback.draft.title)
@@ -44,27 +44,25 @@ struct FeedbackSettingsView: View {
                         }
                         .padding(16)
                         .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
+                        .hoverLift(cornerRadius: Metrics.rowRadius)
                     }
                     .buttonStyle(.press)
                 }
-                if !feedback.recent.isEmpty {
-                    FeedbackRecentReports(receipts: feedback.recent)
-                }
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "lock").accessibilityHidden(true)
-                    Text("Drafts are saved on this Mac.")
-                }
-                .font(.callout)
-                .foregroundStyle(Palette.inkSecondary)
-                HStack {
-                    Link(destination: FeedbackDelivery.issuesURL) {
-                        Label("Browse reports on GitHub", systemImage: "arrow.up.right")
+                Link(destination: FeedbackDelivery.issuesURL) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .foregroundStyle(Palette.ink)
+                        Text("Browse reports on GitHub")
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .foregroundStyle(Palette.inkTertiary)
                     }
-                    Spacer()
-                    Text(feedback.environment.appLabel)
-                        .foregroundStyle(Palette.inkTertiary)
+                    .padding(12)
+                    .background(Palette.surface, in: .rect(cornerRadius: Metrics.rowRadius))
+                    .hoverLift(cornerRadius: Metrics.rowRadius)
+                    .contentShape(.rect)
                 }
-                .font(.callout)
+                .buttonStyle(.press)
             }
             .padding(Metrics.pagePadding)
         }

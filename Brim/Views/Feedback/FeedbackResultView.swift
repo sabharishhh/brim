@@ -11,7 +11,9 @@ struct FeedbackResultView: View {
             Spacer()
             Image(systemName: feedback.receipt == nil ? "arrow.up.right.square" : "checkmark.seal.fill")
                 .font(.system(size: 52, weight: .light))
-                .foregroundStyle(.tint)
+                // Green only once GitHub confirms the report; the handoff
+                // before that is a next step, in the accent.
+                .foregroundStyle(feedback.receipt == nil ? Palette.ink : Palette.success)
                 .symbolEffect(.bounce, options: .nonRepeating, isActive: !reduceMotion && feedback.receipt != nil)
                 .accessibilityHidden(true)
             VStack(spacing: 10) {
@@ -26,15 +28,15 @@ struct FeedbackResultView: View {
             }
             if let receipt = feedback.receipt {
                 Link(destination: receipt.url) {
-                    Label("View report #\(receipt.number)", systemImage: "arrow.up.right")
+                    Label("View Report #\(receipt.number)", systemImage: "arrow.up.right")
                 }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .controlSize(.large)
             }
             HStack(spacing: 12) {
-                Button(feedback.receipt == nil ? "Back to draft" : "Write another") { feedback.editAgain() }
+                Button(feedback.receipt == nil ? "Back to Draft" : "Write Another") { feedback.editAgain() }
                 Button("Done") { dismissWindow(id: FeedbackWindow.windowID) }
-                    .buttonStyle(.borderedProminent)
+                    .capsuleAction(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
             Spacer()

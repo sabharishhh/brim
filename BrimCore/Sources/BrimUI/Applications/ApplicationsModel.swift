@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Combine
 import BrimCore
 import BrimProtocol
@@ -89,7 +90,10 @@ public final class ApplicationsModel: ObservableObject {
     /// least two: a single mark is just a selection.
     @Published public private(set) var marked: [InstalledApplication] = []
     @Published public private(set) var footprint: Footprint? {
-        didSet { footprintGroups = makeFootprintGroups() }
+        didSet {
+            footprintGroups = makeFootprintGroups()
+            footprintSections = footprint.map(FootprintSection.arrange) ?? []
+        }
     }
 
     @Published public private(set) var isInspecting = false
@@ -130,6 +134,9 @@ public final class ApplicationsModel: ObservableObject {
     /// Groups the selected app's footprint by what Brim can say about each
     /// item and how sure it is, strongest evidence first.
     @Published public private(set) var footprintGroups: [FootprintGroup] = []
+
+    /// Cached once per inspection, rather than regrouped during hover or disclosure.
+    @Published public private(set) var footprintSections: [FootprintSection] = []
 
     private func makeFootprintGroups() -> [FootprintGroup] {
         guard let footprint else { return [] }
@@ -186,13 +193,28 @@ public final class ApplicationsModel: ObservableObject {
         guard !isLoading else { return }
         self.service = service
         isLoading = true
-        defer { isLoading = false }
+        let interval = BrimLog.signposter.beginInterval("Apps listing")
+        defer {
+            isLoading = false
+            BrimLog.signposter.endInterval("Apps listing", interval)
+        }
 
         do {
             let found = try await service.installedApplications()
             try Task.checkCancellation()
             applications = found
             errorMessage = nil
+            // A selection outlives the panel that removed its app, so the
+            // inspector went on offering eqMac's old footprint and a Remove
+            // button after the app was gone. The fresh list is the record.
+            let listed = Set(found.map(\.id))
+            marked.removeAll { !listed.contains($0.id) }
+            if let selected, !listed.contains(selected.id) {
+                inspectionTask?.cancel()
+                self.selected = nil
+                footprint = nil
+                isInspecting = false
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -330,6 +352,8 @@ public final class ApplicationsModel: ObservableObject {
 
         isInspecting = true
         inspectionTask = Task { [service] in
+            let interval = BrimLog.signposter.beginInterval("Inspection")
+            defer { BrimLog.signposter.endInterval("Inspection", interval) }
             do {
                 let discovered = try await service.inspect(identity: application.identity)
                 guard !Task.isCancelled, self.selected?.id == application.id else { return }

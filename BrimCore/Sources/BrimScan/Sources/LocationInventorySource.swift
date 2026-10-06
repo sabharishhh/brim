@@ -71,7 +71,7 @@ public struct LocationInventorySource: EvidenceSource {
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
                  .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService,
-                 .homeDotFolder, .diagnosticReport:
+                 .homeDotFolder, .diagnosticReport, .applicationName, .applicationNameLowercased:
                 true
             default:
                 false
@@ -81,7 +81,11 @@ public struct LocationInventorySource: EvidenceSource {
             if case .refused = read, !needsListing {
                 unreadable.append(directory.path)
             }
-            for candidate in candidates {
+            // A listing gives each entry as it is spelled on disk. Asking for
+            // a candidate by name answers yes for `codex` when the folder is
+            // `Codex`, and the row then names a path that is not there.
+            let listed = needsListing && read.isListed
+            for candidate in candidates where !listed {
                 let url = directory.appendingPathComponent(candidate)
                 guard fm.fileExists(atPath: url.path),
                       let tier = location.matchTier(name: candidate, subject: subject) else { continue }

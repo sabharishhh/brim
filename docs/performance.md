@@ -129,3 +129,31 @@ verification passed. The built app loaded Home, the application list, an
 associated-file inspector and a removal review. The review was closed without
 approval. No real removal or registration lifecycle experiment was performed.
 Hosted CI results are recorded in the pull request.
+
+## Launch and app listing, 4 October 2026
+
+Points of Interest signposts now mark launch to the first usable window,
+listing apps, inspecting one, planning a review and scanning for remnants.
+They cost nothing unless a trace is recording.
+
+Ten warm launches of the Release build per configuration, recorded with
+`xctrace` Time Profiler on this MacBook Air, macOS 27, 88 listed apps, Full
+Disk Access granted, screen locked for the whole run:
+
+| Interval | Before | Parallel sizing | Parallel `fts` sizing |
+| --- | ---: | ---: | ---: |
+| Launch to shell | 150 to 156 ms | 149 to 158 ms | 150 to 154 ms |
+| Apps listing | 2.86 to 3.13 s | 2.45 to 2.60 s | 2.04 to 2.23 s |
+| Remnants scan | 3.49 to 3.95 s | 3.67 to 3.91 s | 3.65 to 3.82 s |
+
+The listing was nearly all bundle sizing: every file of every bundle, one
+bundle after another, through `FileManager`'s enumerator. Bundles are now
+measured four at a time with an `fts` walk reading the same logical size
+from `lstat`; a fixture test holds the totals to the old walker, and on this
+Mac the two agreed byte for byte on Xcode, Visual Studio Code, Claude and
+Music. The remaining floor is one walk of Xcode's ten gigabyte bundle while
+the remnants scan runs alongside it. Nothing is cached between launches.
+
+These are local warm-launch figures with the screen locked, not a cold-disk
+or frontmost benchmark. Frontmost idle CPU and frame timing were not
+measured in this session.

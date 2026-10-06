@@ -139,7 +139,7 @@ struct EmptyState: View {
                 .frame(maxWidth: 320)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .padding(.top, 4)
             }
@@ -204,41 +204,42 @@ struct TrayBar: View {
     let review: () -> Void
     let clear: () -> Void
 
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
-        GlassEffectContainer {
+        GlassEffectContainer(spacing: 8) {
             HStack(spacing: 12) {
-                Image(systemName: "tray.full")
-                    .foregroundStyle(.tint)
-                Text(count == 1 ? "1 item" : "\(count) items")
-                    .contentTransition(.numericText(value: Double(count)))
-                if let bytes {
-                    Text(ByteText.short(bytes))
+                HStack(spacing: 12) {
+                    Image(systemName: "tray.full")
+                        .foregroundStyle(Palette.ink)
+                    Text(count == 1 ? "1 item" : "\(count) items")
+                        .contentTransition(.identity)
+                    if let bytes {
+                        Text(ByteText.short(bytes))
+                            .foregroundStyle(Palette.inkSecondary)
+                            .contentTransition(.identity)
+                    }
+                    Button("Clear", action: clear)
+                        .buttonStyle(.borderless)
                         .foregroundStyle(Palette.inkSecondary)
-                        .contentTransition(.numericText(value: Double(bytes)))
                 }
-                Button("Clear", action: clear)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(Palette.inkSecondary)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .glassEffect(.regular, in: .capsule)
                 Button("Review") {
                     BrimTips.learned(TrayTip())
                     review()
                 }
                 .buttonStyle(.glassProminent)
-                // A capsule inside a capsule, so the ends nest.
                 .buttonBorderShape(.capsule)
+                .controlSize(.large)
                 .disabled(!canReview)
                 .popoverTip(TrayTip(), arrowEdge: .bottom)
             }
             .font(.body.weight(.medium))
             .monospacedDigit()
-            .padding(.leading, 18)
-            .padding(.trailing, 8)
-            .padding(.vertical, 8)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            // Count updates must not inherit the overlay's arrival spring.
+            .animation(nil, value: count)
+            .animation(nil, value: bytes)
         }
-        .animation(Motion.resolved(Motion.emphasis, reduceMotion: reduceMotion), value: count)
     }
 }
 
@@ -252,22 +253,35 @@ struct Toast: View {
     var actionTitle: String?
     var action: (() -> Void)?
 
+    /// A done mark in the status green, a problem in the status orange,
+    /// anything else in the accent. Every toast's symbol is Brim's own, so
+    /// the mark says which it is; the message still says it in words.
+    private var symbolStyle: Color {
+        if symbol.hasPrefix("checkmark") {
+            return Palette.success
+        }
+        if symbol.hasPrefix("exclamationmark") || symbol.hasPrefix("xmark") {
+            return Palette.caution
+        }
+        return Palette.ink
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
+                .foregroundStyle(symbolStyle)
             Text(message)
                 .foregroundStyle(Palette.ink)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Palette.ink)
             }
         }
         .font(.body)
         .padding(.leading, 16)
-        .padding(.trailing, actionTitle == nil ? 16 : 6)
+        .padding(.trailing, 16)
         .padding(.vertical, 8)
         .glassEffect(in: .capsule)
         .accessibilityElement(children: .combine)
