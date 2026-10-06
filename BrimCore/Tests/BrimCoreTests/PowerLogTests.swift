@@ -64,6 +64,20 @@ final class PowerLogTests: XCTestCase {
         XCTAssertEqual(requests[2].seconds, 10 * 60, "Still held, so counted up to now")
     }
 
+    /// A request still open when the Mac shut down ended then, not at the
+    /// next start and never now: the hours switched off were not asked for.
+    func testARestartEndsWhatWasStillHeld() {
+        let log = [
+            request("01:00:00", "57895(Claude) Created NoIdleSleepAssertion \"Electron\" 00:00:00", id: 9),
+            request("02:00:00", "2158(ChatGPT) Released NoIdleSleepAssertion \"Electron\" 00:10:00", id: 10),
+            line("2026-10-06 08:37:10", "Start", "powerd process is started")
+        ].joined(separator: "\n")
+        let history = PowerHistory.parse(log, now: now)
+        XCTAssertEqual(history.restarts, [Self.date("2026-10-06 08:37:10")])
+        let claude = history.requests.first { $0.requester == "Claude" }
+        XCTAssertEqual(claude?.seconds, 3600, "Held from 01:00 to the last record at 02:00, not to 09:30")
+    }
+
     func testOneAppAskingForItselfAndThroughABrokerCountsOnce() {
         let log = [
             request("08:00:00", "41278(Safari) Created PreventUserIdleSystemSleep \"Playback\" 00:00:00", id: 7),
