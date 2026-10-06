@@ -18,10 +18,13 @@ struct SpaceSoftwareCard: View {
     @ObservedObject var applications: ApplicationsModel
     @ObservedObject var developer: DeveloperModel
     @ObservedObject var history: RemovalHistoryModel
+    @ObservedObject var appData: AppDataModel
     @SwiftUI.Environment(ShellState.self) private var shell
 
     var body: some View {
-        let rows = softwareRows
+        let rows = Self.rows(
+            storage: storage, applications: applications, developer: developer, history: history, appData: appData
+        )
         let used = storage.startupVolume?.used
         let counted = rows.compactMap(\.bytes).reduce(0, +)
         let scale = max(1, used ?? rows.compactMap(\.bytes).max() ?? 1)
@@ -46,7 +49,8 @@ struct SpaceSoftwareCard: View {
                 softwareRow(row, scale: scale)
             }
             if let used, everythingKnown, used > counted {
-                Text("Everything else: app data, your files and macOS, \(ByteText.short(used - counted))")
+                // Apple's own apps are not measured, so their data is here.
+                Text("Everything else: your files, macOS and its apps, \(ByteText.short(used - counted))")
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -59,7 +63,7 @@ struct SpaceSoftwareCard: View {
         .hoverLift()
     }
 
-    private struct SoftwareRow: Identifiable {
+    struct SoftwareRow: Identifiable {
         let title: String
         /// Nil while it is still being measured.
         let bytes: Int64?
@@ -71,13 +75,26 @@ struct SpaceSoftwareCard: View {
         }
     }
 
-    private var softwareRows: [SoftwareRow] {
+    /// The rows, shared with the snapshot `SpaceView` records, so what is
+    /// compared next visit is exactly what was shown.
+    @MainActor
+    static func rows(
+        storage: StorageModel, applications: ApplicationsModel, developer: DeveloperModel,
+        history: RemovalHistoryModel, appData: AppDataModel
+    ) -> [SoftwareRow] {
         // Apps on another disk take nothing from this one.
         let apps = applications.applications.filter { !$0.isSystemProtected && !$0.url.path.hasPrefix("/Volumes/") }
+        let measuring = appData.isMeasuring ? "Measuring \(appData.measured) of \(appData.toMeasure)" : nil
         var rows = [
             SoftwareRow(
                 title: "Apps",
                 bytes: apps.isEmpty && applications.isLoading ? nil : apps.reduce(0) { $0 + $1.bundleSizeBytes },
+                destination: .apps
+            ),
+            SoftwareRow(
+                title: "App data",
+                bytes: appData.hasMeasured && !appData.isMeasuring ? appData.dataBytes : nil,
+                figure: measuring ?? (appData.isIncomplete ? "At least " + ByteText.short(appData.dataBytes) : nil),
                 destination: .apps
             ),
             SoftwareRow(

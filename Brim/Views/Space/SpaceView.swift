@@ -16,7 +16,12 @@ struct SpaceView: View {
     @ObservedObject var applications: ApplicationsModel
     @ObservedObject var developer: DeveloperModel
     @ObservedObject var history: RemovalHistoryModel
+    @ObservedObject var appData: AppDataModel
     @SwiftUI.Environment(\.brimService) private var service
+    /// The visit before this one, read when the page opens.
+    @State private var previous: SpaceSnapshot?
+    /// This visit, once everything on the page is measured.
+    @State private var current: SpaceSnapshot?
     @SwiftUI.Environment(ShellState.self) private var shell
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -34,11 +39,13 @@ struct SpaceView: View {
                         placeholder
                     }
                     SpaceSoftwareCard(
-                        storage: model, applications: applications, developer: developer, history: history
+                        storage: model, applications: applications, developer: developer, history: history,
+                        appData: appData
                     )
-                    if !largest.isEmpty {
-                        largestApps
+                    if let current {
+                        SpaceChangesCard(previous: previous, current: current)
                     }
+                    SpaceLargestApps(applications: applications, appData: appData)
                     let others = model.volumes.filter { $0.id != model.startupVolume?.id }
                     if !others.isEmpty {
                         otherVolumes(others)
@@ -59,6 +66,57 @@ struct SpaceView: View {
                 await history.load(service: service)
             }
         }
+        .task { previous = SpaceHistory.previous(to: Date(), in: SpaceHistory.load()) }
+        // App data needs the app list, and the developer caches to leave out.
+        .task(id: "\(applications.applications.count)|\(developer.isScanning)") {
+            guard !applications.applications.isEmpty, !developer.isScanning,
+                  !appData.hasMeasured, !appData.isMeasuring else { return }
+            await appData.measure(
+                service: service, applications: applications.applications, developer: developer.caches
+            )
+        }
+        .onChange(of: isMeasured) { _, measured in
+            if measured {
+                recordVisit()
+            }
+        }
+        .onAppear {
+            if isMeasured {
+                recordVisit()
+            }
+        }
+    }
+
+    // MARK: - This visit
+
+    /// Everything on the page has a figure.
+    private var isMeasured: Bool {
+        model.startupVolume != nil && model.hasEstimate && !model.isLoading
+            && appData.hasMeasured && !appData.isMeasuring && !developer.isScanning
+            && !history.isLoading && !applications.isLoading
+    }
+
+    /// Records the figures this visit showed, for the next one to subtract.
+    private func recordVisit() {
+        guard let volume = model.startupVolume else { return }
+        let rows = SpaceSoftwareCard.rows(
+            storage: model, applications: applications, developer: developer, history: history, appData: appData
+        )
+        var named: [String: Int64] = [:]
+        for row in rows {
+            if let bytes = row.bytes {
+                named[row.title] = bytes
+            }
+        }
+        var apps: [String: Int64] = [:]
+        for app in appData.apps where app.totalBytes > 0 {
+            apps[app.name, default: 0] += app.totalBytes
+        }
+        let snapshot = SpaceSnapshot(
+            date: Date(), used: volume.used, free: volume.freeRightNow, rows: named, apps: apps
+        )
+        SpaceHistory.record(snapshot)
+        current = snapshot
     }
 
     // MARK: - Startup volume
@@ -165,57 +223,6 @@ struct SpaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
         .accessibilityLabel("Checking")
-    }
-
-    // MARK: - Largest apps
-
-    private var largest: [InstalledApplication] {
-        Array(applications.applications.filter { !$0.isSystemProtected }
-            .sorted { $0.bundleSizeBytes > $1.bundleSizeBytes }
-            .prefix(5))
-    }
-
-    private var largestApps: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Largest apps")
-                    .font(.brimGroupTitle)
-                    .foregroundStyle(Palette.ink)
-                Spacer()
-                Button("Show All") { shell.go(to: .apps, lens: .all) }
-                    .buttonStyle(.borderless)
-                    .font(.brimFacts)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
-            ForEach(largest) { app in
-                Button {
-                    shell.go(to: .apps, lens: .all)
-                    _ = applications.selectApplication(at: app.url)
-                } label: {
-                    HStack(spacing: 12) {
-                        BrimIcon(source: .bundle(app.url), size: Metrics.compactRowIcon)
-                        Text(app.name)
-                            .font(.brimRowTitle)
-                            .foregroundStyle(Palette.ink)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(ByteText.short(app.bundleSizeBytes))
-                            .font(.brimFacts)
-                            .monospacedDigit()
-                            .foregroundStyle(Palette.inkSecondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 40)
-                    .rowHighlight(isInspected: false)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(app.name), \(ByteText.short(app.bundleSizeBytes))")
-            }
-        }
-        .padding(8)
-        .card()
-        .hoverLift()
     }
 
     // MARK: - Other volumes
