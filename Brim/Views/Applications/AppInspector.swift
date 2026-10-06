@@ -18,6 +18,7 @@ struct AppInspector: View {
     let app: InstalledApplication
     @ObservedObject var model: ApplicationsModel
     @ObservedObject var access: FullDiskAccessModel
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     let opened: String?
     let remove: () -> Void
 
@@ -230,7 +231,8 @@ struct AppInspector: View {
             .font(.caption)
             .foregroundStyle(Palette.caution)
             if !access.isGranted {
-                Button("Open Settings") { FullDiskAccess.openSettings() }
+                let offer = AccessOffer.current(requestedAt: accessRequestedAt)
+                Button(offer.title, action: offer.action)
                     .buttonStyle(.link)
                     .font(.caption)
             }

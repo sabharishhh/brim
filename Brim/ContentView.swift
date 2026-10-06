@@ -11,6 +11,13 @@ struct ContentView: View {
     /// Saved with the window, so it reopens where it was left.
     @SceneStorage("destination") private var savedDestination = Destination.home.rawValue
     @SceneStorage("appsLens") private var savedLens = AppsLens.all.rawValue
+    /// The same place, kept outside the window's saved state. Granting Full
+    /// Disk Access makes macOS quit and reopen Brim, and a window that is
+    /// not restored (with "Close windows when quitting" on, or when Brim
+    /// reopens itself) loses its scene storage. See `resumeAfterAccess`.
+    @AppStorage("place.destination") private var lastDestination = Destination.home.rawValue
+    @AppStorage("place.appsLens") private var lastLens = AppsLens.all.rawValue
+    @SwiftUI.Environment(\.openSettings) private var openSettings
     /// Owned here so a section change does not throw away a scan. See
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
@@ -126,9 +133,22 @@ struct ContentView: View {
         .onAppear {
             shell.restore(Destination(rawValue: savedDestination) ?? .home)
             shell.appsLens = AppsLens(rawValue: savedLens) ?? .all
+            resumeAfterAccess()
+            models.fullDiskAccess.startObserving()
         }
-        .onChange(of: shell.selection) { _, destination in savedDestination = destination.rawValue }
-        .onChange(of: shell.appsLens) { _, lens in savedLens = lens.rawValue }
+        .onChange(of: shell.selection) { _, destination in
+            savedDestination = destination.rawValue
+            lastDestination = destination.rawValue
+        }
+        .onChange(of: shell.appsLens) { _, lens in
+            savedLens = lens.rawValue
+            lastLens = lens.rawValue
+        }
+        .onChange(of: models.fullDiskAccess.isGranted) { wasGranted, isGranted in
+            if !wasGranted, isGranted {
+                Task { await readAgainWithAccess() }
+            }
+        }
         .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
         // Once, for every section. Asks macOS nothing until a removal
         // needs the helper; see `HelperRoute`.
@@ -247,6 +267,44 @@ struct ContentView: View {
                 activity: models.activity, destination: shell.selection, presses: shell.checkRequests,
                 check: { shell.requestCheck() }, stop: models.developer.cancelScan
             )
+        }
+    }
+
+    // MARK: - Full Disk Access
+
+    /// The launch after a request for Full Disk Access goes back to where
+    /// the request was made: the same page, and the Settings window if it
+    /// was asked from there. Setup keeps its own step. Once, per launch.
+    private func resumeAfterAccess() {
+        guard !Self.resumed, let origin = FullDiskAccess.pendingRequest else { return }
+        Self.resumed = true
+        shell.restore(Destination(rawValue: lastDestination) ?? .home)
+        shell.appsLens = AppsLens(rawValue: lastLens) ?? .all
+        if origin == .settings {
+            openSettings()
+        }
+        // A fresh launch either has access or the switch was not turned on.
+        // Either way the request is answered, and the pages go back to
+        // offering System Settings rather than another reopen.
+        FullDiskAccess.clearRequest()
+        models.fullDiskAccess.recheck()
+    }
+
+    @MainActor private static var resumed = false
+
+    /// Access arrived while Brim was running, which macOS often allows
+    /// without the reopen it offers. Everything read without it is read
+    /// again, so no page keeps saying Library could not be read.
+    private func readAgainWithAccess() async {
+        shell.show(ToastMessage(symbol: "checkmark.circle", text: "Full Disk Access is on"))
+        async let leftovers: Void = models.leftovers.load(service: service)
+        async let background: Void = models.background.load(service: service)
+        async let storage: Void = models.storage.load(service: service)
+        async let recovery: Void = models.recovery.refresh(service: service)
+        _ = await (leftovers, background, storage, recovery)
+        // The inspector's "behind Full Disk Access, not counted" too.
+        if let selected = models.applications.selected {
+            models.applications.select(selected)
         }
     }
 
