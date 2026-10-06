@@ -140,7 +140,11 @@ struct UpdatesView: View {
 
     private func facts(_ update: AppUpdate) -> String {
         switch model.states[update.id] {
-        case let .downloading(fraction): return "Downloading \(Int(fraction * 100))%"
+        case let .downloading(progress):
+            // Sizes, not a percentage: a 1.3 GB download sat at one figure
+            // long enough to look stuck.
+            guard progress.expected > 0 else { return "Downloading" }
+            return "Downloading \(ByteText.short(progress.received)) of \(ByteText.short(progress.expected))"
         case .installing: return "Installing"
         // A handoff, not an installation: Installer still has to finish.
         case .openedInstaller: return "Finish in Installer"
@@ -179,8 +183,8 @@ struct UpdatesView: View {
     @ViewBuilder
     private func action(_ update: AppUpdate) -> some View {
         switch model.states[update.id] {
-        case let .downloading(fraction):
-            ProgressView(value: fraction)
+        case let .downloading(progress):
+            ProgressView(value: progress.fraction)
                 .progressViewStyle(.circular)
                 .controlSize(.small)
                 .accessibilityLabel("Downloading")
