@@ -31,7 +31,7 @@ final class RefusalCopyTests: XCTestCase {
 
     func testOneReasonIsGivenOnceHoweverManyThingsShareIt() {
         let text = explanation(fourteenInOneFolder())
-        let sentence = "belongs to the system, so removing anything in it needs an administrator"
+        let sentence = "belongs to the system. Removing anything in it needs an administrator"
         XCTAssertEqual(
             text.components(separatedBy: sentence).count - 1, 1,
             "The reason holds for all fourteen and is worth saying once:\n\(text)"

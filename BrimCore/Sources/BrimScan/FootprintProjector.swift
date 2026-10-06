@@ -45,6 +45,11 @@ public struct FootprintProjector: Sendable {
             if lstat(evidence.url.path, &information) != 0, errno == ENOENT || errno == ENOTDIR {
                 return nil
             }
+            // Protected by macOS for itself: named for the app, perhaps,
+            // but never the app's to remove, and never removable by anyone.
+            if RemovalCapability.isProtectedBySystem(evidence.url.path) {
+                return nil
+            }
             let measured = ArtifactSizer.measure(at: evidence.url)
             try Task.checkCancellation()
             return FootprintItem(

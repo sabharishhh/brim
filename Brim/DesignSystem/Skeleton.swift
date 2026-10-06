@@ -7,6 +7,27 @@ extension View {
     func shimmer() -> some View {
         modifier(Shimmer())
     }
+
+    /// Shown only once a wait has lasted 150 ms. A result that arrives
+    /// sooner replaces nothing, so a fast load never flashes placeholders.
+    /// The words saying what is happening are elsewhere and immediate.
+    func appearsAfterBriefWait() -> some View {
+        modifier(BriefWait())
+    }
+}
+
+private struct BriefWait: ViewModifier {
+    @State private var waited = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(waited ? 1 : 0)
+            .task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                waited = true
+            }
+    }
 }
 
 private struct Shimmer: ViewModifier {
@@ -74,6 +95,7 @@ struct SkeletonRows: View {
             }
         }
         .shimmer()
+        .appearsAfterBriefWait()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Checking")
     }
@@ -91,21 +113,56 @@ extension View {
     func refreshing(_ isRefreshing: Bool) -> some View {
         modifier(Refreshing(isRefreshing: isRefreshing))
     }
+
+    /// The same results, still usable while a new read runs: scrolling,
+    /// searching, selecting and inspecting stay available, lightly dimmed.
+    /// Only for a page where no action trusts the old rows. In Apps every
+    /// removal builds a fresh plan from the disk with its own approval, and
+    /// each inspection checks its answer still belongs to the selection.
+    func refreshingBrowsable(_ isRefreshing: Bool) -> some View {
+        modifier(BrowsableRefresh(isRefreshing: isRefreshing))
+    }
 }
 
-private struct Refreshing: ViewModifier {
+extension View {
+    /// Shared visual treatment, separate from whether old results are actionable.
+    func refreshAppearance(_ isRefreshing: Bool) -> some View {
+        modifier(RefreshAppearance(isRefreshing: isRefreshing))
+    }
+}
+
+private struct RefreshAppearance: ViewModifier {
     let isRefreshing: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .saturation(isRefreshing ? 0 : 1)
+            .animation(reduceMotion ? nil : Motion.refresh(isRefreshing, reduceMotion: false), value: isRefreshing)
             .opacity(isRefreshing ? 0.4 : 1)
+            .animation(Motion.refresh(isRefreshing, reduceMotion: reduceMotion), value: isRefreshing)
+            .animation(nil, value: reduceMotion)
+    }
+}
+
+private struct BrowsableRefresh: ViewModifier {
+    let isRefreshing: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isRefreshing ? 0.7 : 1)
+            .animation(Motion.refresh(isRefreshing, reduceMotion: reduceMotion), value: isRefreshing)
+    }
+}
+
+private struct Refreshing: ViewModifier {
+    let isRefreshing: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .refreshAppearance(isRefreshing)
             .disabled(isRefreshing)
             .allowsHitTesting(!isRefreshing)
-            .animation(
-                reduceMotion ? Motion.reduced : .smooth(duration: isRefreshing ? 0.25 : 0.6),
-                value: isRefreshing
-            )
     }
 }

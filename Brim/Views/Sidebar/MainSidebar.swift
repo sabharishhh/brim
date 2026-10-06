@@ -8,6 +8,8 @@ import SwiftUI
 /// applications. Energy is a place under Your Mac, because it is about
 /// what the Mac is doing now.
 enum Destination: String, Hashable, CaseIterable {
+    /// Brim's overview of this Mac, named for Brim like the app's own
+    /// first page. A saved "Home" from an earlier build falls back here.
     case home = "Home"
     case apps = "Apps"
     case leftovers = "Remnants"
@@ -24,18 +26,13 @@ enum Destination: String, Hashable, CaseIterable {
     ///
     /// The sidebar once listed these in one order and the menu numbered
     /// them from `allCases`, which was a different one, so the shortcuts
-    /// opened the wrong rows. Both read from this. It is also the vertical
-    /// space page changes move through (`AnyTransition.brimPage`).
+    /// opened the wrong rows. Both read from this.
     static let displayOrder: [Destination] = brim + yourMac + [.journal]
 
     /// The number a person types with Command to get here.
     var keyboardDigit: Character? {
         guard let index = Self.displayOrder.firstIndex(of: self), index < 9 else { return nil }
         return Character("\(index + 1)")
-    }
-
-    var position: Int {
-        Self.displayOrder.firstIndex(of: self) ?? 0
     }
 
     var icon: String {
@@ -89,10 +86,23 @@ struct RemoveSelectedActionKey: FocusedValueKey {
     typealias Value = FocusedAction<Void>
 }
 
+/// The commands a page shows in its toolbar, offered to the Action menu as
+/// well. Apple's guidance is that a toolbar item must also be a menu
+/// command, because a toolbar can be hidden or customised; Update All,
+/// emptying the Trash and clearing the Journal were in the toolbar only.
+struct PageActionsKey: FocusedValueKey {
+    typealias Value = [FocusedAction<Void>]
+}
+
 extension FocusedValues {
     var removeSelectedAction: FocusedAction<Void>? {
         get { self[RemoveSelectedActionKey.self] }
         set { self[RemoveSelectedActionKey.self] = newValue }
+    }
+
+    var pageActions: [FocusedAction<Void>]? {
+        get { self[PageActionsKey.self] }
+        set { self[PageActionsKey.self] = newValue }
     }
 }
 
@@ -101,15 +111,20 @@ struct MainSidebar: View {
     /// Which places are still scanning, shown as a spinner on their row.
     @ObservedObject var activity: ScanActivity
     @EnvironmentObject private var release: BrimReleaseCheck
+    @State private var hovered: Destination?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // `.tag` rather than `NavigationLink(value:)`. The link form belongs
-        // to a NavigationStack path; inside a List driven by a selection
-        // binding it produces rows that expose as AXUnknown and ignore an
-        // accessibility press, so the sidebar looked operable to VoiceOver
-        // and to automation while doing nothing.
-        List(selection: $selection) {
-            Section("Brim") {
+        // Rows are buttons, and the selection is drawn here: an off-white
+        // row with near-black text. A list selection is drawn by AppKit in
+        // the accent, which Brim sets to Graphite, so it could only ever be
+        // grey. Buttons expose as buttons, with the selected trait, so the
+        // sidebar stays operable to VoiceOver; the arrow keys move through
+        // it as a list's would.
+        List {
+            // Home carries Brim's own icon, so a header naming Brim above it
+            // said the same thing twice.
+            Section {
                 rows(Destination.brim)
             }
             Section("Your Mac") {
@@ -120,6 +135,16 @@ struct MainSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        // A sidebar draws its symbols in the system accent, and the window's
+        // own tint does not reach them: with a red accent every icon here
+        // was red. Each row now colours its own symbol.
+        .listItemTint(.fixed(Palette.snow))
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.downArrow) { move(by: 1) }
+        .onKeyPress(.upArrow) { move(by: -1) }
+        // A little air between the window controls and the first row.
+        .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
                 if let found = release.available {
@@ -143,43 +168,100 @@ struct MainSidebar: View {
 
     private func rows(_ destinations: [Destination]) -> some View {
         ForEach(destinations, id: \.self) { destination in
-            HStack {
-                SidebarLabel(destination: destination, isSelected: selection == destination)
-                Spacer()
-                if activity.busy.contains(destination) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .transition(.opacity)
-                        .accessibilityLabel("Checking")
+            let isSelected = selection == destination
+            Button {
+                selection = destination
+            } label: {
+                HStack {
+                    SidebarLabel(destination: destination, isSelected: isSelected)
+                    Spacer()
+                    if activity.busy.contains(destination) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .transition(.opacity)
+                            .accessibilityLabel("Checking")
+                    }
                 }
+                .padding(.horizontal, 8)
+                .frame(height: 30)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isSelected ? Palette.snow : (hovered == destination ? Palette.selected : .clear))
+                }
+                // The selection and the hover wash fade rather than snap;
+                // under Reduce Motion they change at once.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isSelected)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered == destination)
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .onHover { inside in
+                hovered = inside ? destination : (hovered == destination ? nil : hovered)
+            }
+            .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .animation(.easeInOut(duration: 0.2), value: activity.busy.contains(destination))
-            .tag(destination)
         }
+    }
+
+    private static let order: [Destination] = Destination.brim + Destination.yourMac + [.journal]
+
+    private func move(by step: Int) -> KeyPress.Result {
+        let order = Self.order
+        guard let current = selection, let index = order.firstIndex(of: current) else { return .ignored }
+        let next = index + step
+        guard order.indices.contains(next) else { return .handled }
+        selection = order[next]
+        return .handled
     }
 }
 
-/// A sidebar row's label. Its symbol gives one small bounce when the row
-/// becomes selected, so a click is answered by the thing clicked rather
-/// than only by the highlight moving. Never on the row being left, and
-/// never under Reduce Motion.
+/// A sidebar row's label. The icon does not move when the row is chosen:
+/// the selection is the answer to the click. Each icon once bounced, then
+/// turned, swung or breathed, on every change of page, and Apple's guidance
+/// is to keep motion off things people do constantly.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
+    /// Counts arrivals at this page, so the icon answers each one once.
     @State private var arrivals = 0
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Label {
             Text(destination.rawValue)
+                .foregroundStyle(isSelected ? Palette.onSnow : Palette.ink)
+                .fontWeight(isSelected ? .medium : .regular)
         } icon: {
-            Image(systemName: destination.icon)
-                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+            icon
         }
         .onChange(of: isSelected) { _, selected in
             if selected, !reduceMotion {
                 arrivals += 1
             }
+        }
+    }
+
+    /// A small press when the page is chosen: down a little, then settle
+    /// without overshoot. It was taken out in a pass that trimmed motion,
+    /// which left the sidebar feeling inert, and is back as it was.
+    @ViewBuilder private var icon: some View {
+        switch destination {
+        case .home:
+            // An app icon carries its own margin inside the square, so it
+            // is drawn larger than a symbol to look the same size. It is an
+            // image, not a symbol, so the same press is drawn by hand.
+            BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
+                .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    CubicKeyframe(0.9, duration: 0.1)
+                    SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
+                }
+        default:
+            Image(systemName: destination.icon)
+                .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
+                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
         }
     }
 }
@@ -192,7 +274,7 @@ private struct NewReleaseNotice: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
             Text("Brim \(release.version) is out")
                 .font(.callout)
             Spacer(minLength: 4)

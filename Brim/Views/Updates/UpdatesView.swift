@@ -29,46 +29,29 @@ struct UpdatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             content
             footer
         }
         .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
-        .task { await model.loadIfNeeded(service: service) }
+        .pageTitle("Updates", shown: false)
+        .toolbar { updateAll }
+        .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
+            ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
+        .task { await model.load(service: service) }
     }
 
     // MARK: - Header
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Updates")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            Text(summary)
-                .font(.brimFacts)
-                .monospacedDigit()
-                .foregroundStyle(Palette.inkSecondary)
-            if model.isChecking {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
-            }
-            Spacer()
-            if model.installableHere.count > 1 {
+    /// Update All sits in the toolbar beside Check Again once there is
+    /// more than one update to install here.
+    @ToolbarContentBuilder
+    private var updateAll: some ToolbarContent {
+        if model.installableHere.count > 1 {
+            ToolbarItem(placement: .primaryAction) {
                 Button("Update All") { Task { await model.installAll(service: service) } }
-                    .buttonStyle(.borderedProminent)
                     .disabled(model.isInstalling || model.isChecking)
             }
         }
-        .buttonBorderShape(.capsule)
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
-    }
-
-    private var summary: String {
-        guard let count = model.count else { return model.isChecking ? "Checking" : "" }
-        return count == 1 ? "1 update available" : "\(count) updates available"
     }
 
     // MARK: - Lists
@@ -96,8 +79,13 @@ struct UpdatesView: View {
                 EmptyState(symbol: "arrow.down.circle", title: "Not checked", message: "Check Again looks for updates.")
             }
         } else if sections.isEmpty {
-            EmptyState(symbol: "checkmark.circle", title: "0 updates available",
-                       message: "Every app Brim checked is up to date.")
+            if let check = model.check, check.checked == 0, !check.unchecked.isEmpty {
+                EmptyState(symbol: "questionmark.circle", title: "Couldn't check for updates",
+                           message: "Check Again retries the update sources.")
+            } else {
+                EmptyState(symbol: "checkmark.circle", title: "0 updates available",
+                           message: "Every app Brim checked is up to date.")
+            }
         } else {
             if model.pending?.isEmpty == true, let check = model.check {
                 upToDate(check)
@@ -116,25 +104,23 @@ struct UpdatesView: View {
     /// Nothing pending, said where the pending ones would be, so the page
     /// answers its question before the list of what already happened.
     private func upToDate(_ check: UpdateCheck) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
+        let confirmed = check.checked > 0
+        let summary = confirmed ? "Checked apps are up to date" : "No apps could be checked"
+        return HStack(spacing: 12) {
+            Image(systemName: confirmed ? "checkmark.circle.fill" : "questionmark.circle")
                 .font(.title2)
-                .foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("All apps are up to date")
-                    .font(.brimRowTitle)
-                    .foregroundStyle(Palette.ink)
-                Text("\(check.checked) \(check.checked == 1 ? "app" : "apps") checked")
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-            }
+                .foregroundStyle(confirmed ? Palette.success : Palette.inkSecondary)
+            // How many were checked is in the line at the foot of the page.
+            Text(summary)
+                .font(.brimRowTitle)
+                .foregroundStyle(Palette.ink)
             Spacer()
         }
-        .padding(.horizontal, 26)
+        .padding(.horizontal, Metrics.pagePadding)
         .padding(.vertical, 12)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel("All apps are up to date, \(check.checked) checked")
+        .accessibilityLabel("\(summary), \(check.checked) checked")
     }
 
     @ViewBuilder
@@ -147,17 +133,25 @@ struct UpdatesView: View {
         case let .recent(recent):
             UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
                 Button("Open") { NSWorkspace.shared.open(recent.appURL) }
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
             }
         }
     }
 
     private func facts(_ update: AppUpdate) -> String {
         switch model.states[update.id] {
-        case let .downloading(fraction): return "Downloading \(Int(fraction * 100))%"
+        case let .downloading(progress):
+            // Sizes, not a percentage: a 1.3 GB download sat at one figure
+            // long enough to look stuck.
+            guard progress.expected > 0 else { return "Downloading" }
+            return "Downloading \(ByteText.short(progress.received)) of \(ByteText.short(progress.expected))"
         case .installing: return "Installing"
-        case .openedInstaller: return "Opened in Installer"
-        case .failed: return "Failed"
+        // A handoff, not an installation: Installer still has to finish.
+        case .openedInstaller: return "Finish in Installer"
+        // Also set when the app turned out to be current already, so it
+        // says where the app is now, not that an update happened.
+        case let .updated(version): return "Now \(version)"
+        case .failed, .stillOpen: return "Update failed"
         case .notAllowed: return "Needs App Management"
         default:
             let versions = "\(update.installedVersion) → \(update.latestVersion)"
@@ -169,12 +163,12 @@ struct UpdatesView: View {
     static let appManagementSettings =
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
 
-    /// Why it failed, for the pointer to find. The row itself only says so.
+    /// Why it failed, behind the row's Details button.
     private func failure(_ update: AppUpdate) -> String? {
-        if case let .failed(why) = model.states[update.id] {
-            return why
+        switch model.states[update.id] {
+        case let .failed(why), let .stillOpen(why): why
+        default: nil
         }
-        return nil
     }
 
     private static func facts(_ recent: RecentUpdate) -> String {
@@ -189,27 +183,36 @@ struct UpdatesView: View {
     @ViewBuilder
     private func action(_ update: AppUpdate) -> some View {
         switch model.states[update.id] {
-        case let .downloading(fraction):
-            ProgressView(value: fraction)
+        case let .downloading(progress):
+            ProgressView(value: progress.fraction)
                 .progressViewStyle(.circular)
                 .controlSize(.small)
                 .accessibilityLabel("Downloading")
         case .installing:
             ProgressView().controlSize(.small).accessibilityLabel("Installing")
-        case .openedInstaller, .updated:
-            Image(systemName: "checkmark.circle.fill")
+        case .openedInstaller:
+            // Opening Installer is the next step, never the result, so it
+            // gets no verified mark.
+            Image(systemName: "arrow.up.forward.app")
                 .foregroundStyle(Palette.inkSecondary)
-                .accessibilityLabel("Done")
+                .accessibilityLabel("Opened in Installer")
+        case .updated:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Palette.success)
+                .accessibilityLabel("Updated")
         case .notAllowed:
             Button("Open Settings") {
                 open(Self.appManagementSettings)
                 model.clearState(of: update)
             }
-            .buttonStyle(.bordered)
+            .capsuleAction()
         case .failed, .stillOpen:
-            Button("Retry") { Task { await model.install(update, service: service) } }
-                .buttonStyle(.bordered)
-                .disabled(model.isChecking)
+            HStack(spacing: 6) {
+                FailureDetails(reason: failure(update) ?? "")
+                Button("Try Again") { Task { await model.install(update, service: service) } }
+                    .capsuleAction()
+                    .disabled(model.isChecking)
+            }
         case nil:
             primaryButton(update)
         }
@@ -220,15 +223,15 @@ struct UpdatesView: View {
         switch update.route {
         case .replace, .homebrew, .installer:
             Button("Update") { Task { await model.install(update, service: service) } }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(model.isChecking)
         case .appStore:
             Button("App Store") { open(update.pageURL) }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(update.pageURL == nil)
         case .website:
             Button("Website") { open(update.pageURL ?? update.releaseNotesURL) }
-                .buttonStyle(.bordered)
+                .capsuleAction()
                 .disabled(update.pageURL == nil && update.releaseNotesURL == nil)
         }
     }
@@ -280,8 +283,8 @@ struct UpdatesView: View {
 }
 
 /// One app in either list: icon, name, one line of facts, one control. A
-/// failure is a mark and the word, with the reason on the pointer for the
-/// few who want it.
+/// failure is a mark and the word, with the reason behind a Details button
+/// a keyboard can reach; it used to be hover help only.
 private struct UpdateRow<Action: View>: View {
     let url: URL
     let name: String
@@ -308,16 +311,41 @@ private struct UpdateRow<Action: View>: View {
                 .foregroundStyle(failed == nil ? Palette.inkSecondary : Palette.caution)
             }
             .lineLimit(1)
-            .help(failed ?? "")
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? ""))
             Spacer(minLength: 8)
+            // A fixed place for the control, so Update, its progress, the
+            // result and Retry take turns without moving anything else.
             action()
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
+                .frame(minWidth: 120, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .frame(height: Metrics.rowHeight)
+    }
+}
+
+/// The reason an update failed, in a popover from a real button.
+private struct FailureDetails: View {
+    let reason: String
+    @State private var shows = false
+
+    var body: some View {
+        Button("Details", systemImage: "info.circle") { shows = true }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.inkSecondary)
+            .help(reason)
+            .accessibilityLabel("Why the update failed")
+            .popover(isPresented: $shows, arrowEdge: .bottom) {
+                Text(reason)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(14)
+                    .frame(width: 300, alignment: .leading)
+            }
     }
 }

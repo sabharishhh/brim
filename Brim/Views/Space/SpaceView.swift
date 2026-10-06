@@ -15,7 +15,13 @@ struct SpaceView: View {
     @ObservedObject var model: StorageModel
     @ObservedObject var applications: ApplicationsModel
     @ObservedObject var developer: DeveloperModel
+    @ObservedObject var history: RemovalHistoryModel
+    @ObservedObject var appData: AppDataModel
     @SwiftUI.Environment(\.brimService) private var service
+    /// The visit before this one, read when the page opens.
+    @State private var previous: SpaceSnapshot?
+    /// This visit, once everything on the page is measured.
+    @State private var current: SpaceSnapshot?
     @SwiftUI.Environment(ShellState.self) private var shell
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -25,49 +31,92 @@ struct SpaceView: View {
             // its width without asking the window for more.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+                VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
                     if let volume = model.startupVolume {
                         startup(volume)
                             .refreshing(model.isLoading)
                     } else if model.isLoading {
                         placeholder
                     }
-                    HStack(alignment: .top, spacing: 16) {
-                        leftoversCard
-                        developerCard
+                    SpaceSoftwareCard(
+                        storage: model, applications: applications, developer: developer, history: history,
+                        appData: appData
+                    )
+                    if let current {
+                        SpaceChangesCard(previous: previous, current: current)
                     }
-                    if !largest.isEmpty {
-                        largestApps
-                    }
+                    SpaceLargestApps(applications: applications, appData: appData)
                     let others = model.volumes.filter { $0.id != model.startupVolume?.id }
                     if !others.isEmpty {
                         otherVolumes(others)
                             .refreshing(model.isLoading)
                     }
                 }
-                .frame(maxWidth: 820, alignment: .leading)
+                .frame(maxWidth: Metrics.cardPageWidth, alignment: .leading)
                 .padding(Metrics.pagePadding)
                 Spacer(minLength: 0)
             }
         }
+        .pageTitle("Space", centredWidth: Metrics.cardPageWidth)
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
+        .task {
+            if history.records.isEmpty {
+                await history.load(service: service)
+            }
+        }
+        .task { previous = SpaceHistory.previous(to: Date(), in: SpaceHistory.load()) }
+        // App data needs the app list, and the developer caches to leave out.
+        .task(id: "\(applications.applications.count)|\(developer.isScanning)") {
+            guard !applications.applications.isEmpty, !developer.isScanning,
+                  !appData.hasMeasured, !appData.isMeasuring else { return }
+            await appData.measure(
+                service: service, applications: applications.applications, developer: developer.caches
+            )
+        }
+        .onChange(of: isMeasured) { _, measured in
+            if measured {
+                recordVisit()
+            }
+        }
+        .onAppear {
+            if isMeasured {
+                recordVisit()
+            }
+        }
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Space")
-                .font(.brimPageTitle)
-                .foregroundStyle(Palette.ink)
-            if model.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking")
+    // MARK: - This visit
+
+    /// Everything on the page has a figure.
+    private var isMeasured: Bool {
+        model.startupVolume != nil && model.hasEstimate && !model.isLoading
+            && appData.hasMeasured && !appData.isMeasuring && !developer.isScanning
+            && !history.isLoading && !applications.isLoading
+    }
+
+    /// Records the figures this visit showed, for the next one to subtract.
+    private func recordVisit() {
+        guard let volume = model.startupVolume else { return }
+        let rows = SpaceSoftwareCard.rows(
+            storage: model, applications: applications, developer: developer, history: history, appData: appData
+        )
+        var named: [String: Int64] = [:]
+        for row in rows {
+            if let bytes = row.bytes {
+                named[row.title] = bytes
             }
-            Spacer()
         }
+        var apps: [String: Int64] = [:]
+        for app in appData.apps where app.totalBytes > 0 {
+            apps[app.name, default: 0] += app.totalBytes
+        }
+        let snapshot = SpaceSnapshot(
+            date: Date(), used: volume.used, free: volume.freeRightNow, rows: named, apps: apps
+        )
+        SpaceHistory.record(snapshot)
+        current = snapshot
     }
 
     // MARK: - Startup volume
@@ -87,10 +136,10 @@ struct SpaceView: View {
             MeterBar(segments: segments(volume), showsLegend: false)
             // Three facts, never added into one.
             HStack(alignment: .top, spacing: 12) {
-                figure("Used", volume.used, "Files and apps", Palette.hue(1))
+                figure("Used", volume.used, "Files and apps", Palette.snow)
                 figure(
                     "Held by macOS", volume.reclaimableByTheSystem, "Released when needed",
-                    Palette.hue(1).opacity(0.4)
+                    Palette.frost
                 )
                 figure("Free", volume.freeRightNow, "Available now", Palette.inkTertiary)
             }
@@ -105,13 +154,14 @@ struct SpaceView: View {
         }
         .padding(20)
         .card()
+        .hoverLift()
     }
 
     private func segments(_ volume: VolumeAccount) -> [MeterSegment] {
         [
-            MeterSegment(label: "Used", value: volume.used, color: Palette.hue(1)),
+            MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
             MeterSegment(
-                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Palette.hue(1).opacity(0.4)
+                label: "Held by macOS", value: volume.reclaimableByTheSystem, color: Palette.frost
             ),
             MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
         ]
@@ -152,7 +202,7 @@ struct SpaceView: View {
                 .foregroundStyle(Palette.inkSecondary)
             if pinning > 0 {
                 Text("·").foregroundStyle(Palette.inkTertiary)
-                Text("\(pinning) kept until removed, so deleting may free nothing")
+                Text("\(pinning) holding deleted files. Deleting may free less.")
                     .foregroundStyle(Palette.caution)
             }
         }
@@ -173,88 +223,6 @@ struct SpaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
         .accessibilityLabel("Checking")
-    }
-
-    // MARK: - What can be cleared
-
-    private var leftoversCard: some View {
-        let status: CardStatus = !model.hasEstimate
-            ? .checking : (model.estimateUnavailable ? .partial : (model.brimCanClear > 0 ? .attention : .clear))
-        let phrase = if !model.hasEstimate {
-            "Checking"
-        } else if model.estimateUnavailable {
-            "Could not read"
-        } else if model.brimCanClearCount == 0 {
-            "Nothing found"
-        } else {
-            model.brimCanClearCount == 1 ? "From 1 removed app" : "From \(model.brimCanClearCount) removed apps"
-        }
-        return StatCard(
-            title: "Remnants", symbol: "app.dashed",
-            figure: model.brimCanClearFigure, status: status, phrase: phrase,
-            isRefreshing: model.isLoading && model.hasEstimate
-        ) { shell.go(to: .leftovers) }
-    }
-
-    private var developerCard: some View {
-        let checked = !developer.caches.isEmpty || !developer.isScanning
-        return StatCard(
-            title: "Developer", symbol: "hammer",
-            figure: ByteText.short(developer.totalBytes),
-            status: checked ? .neutral : .checking,
-            phrase: developer.caches.count == 1 ? "1 build cache" : "\(developer.caches.count) build caches",
-            isRefreshing: developer.isScanning && !developer.caches.isEmpty
-        ) { shell.go(to: .developer) }
-    }
-
-    // MARK: - Largest apps
-
-    private var largest: [InstalledApplication] {
-        Array(applications.applications.filter { !$0.isSystemProtected }
-            .sorted { $0.bundleSizeBytes > $1.bundleSizeBytes }
-            .prefix(5))
-    }
-
-    private var largestApps: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Largest apps")
-                    .font(.brimGroupTitle)
-                    .foregroundStyle(Palette.ink)
-                Spacer()
-                Button("Show All") { shell.go(to: .apps, lens: .all) }
-                    .buttonStyle(.borderless)
-                    .font(.brimFacts)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
-            ForEach(largest) { app in
-                Button {
-                    shell.go(to: .apps, lens: .all)
-                    _ = applications.selectApplication(at: app.url)
-                } label: {
-                    HStack(spacing: 12) {
-                        BrimIcon(source: .bundle(app.url), size: Metrics.compactRowIcon)
-                        Text(app.name)
-                            .font(.brimRowTitle)
-                            .foregroundStyle(Palette.ink)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(ByteText.short(app.bundleSizeBytes))
-                            .font(.brimFacts)
-                            .monospacedDigit()
-                            .foregroundStyle(Palette.inkSecondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 40)
-                    .rowHighlight(isInspected: false)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(app.name), \(ByteText.short(app.bundleSizeBytes))")
-            }
-        }
-        .padding(8)
-        .card()
     }
 
     // MARK: - Other volumes
@@ -286,5 +254,6 @@ struct SpaceView: View {
         }
         .padding(20)
         .card()
+        .hoverLift()
     }
 }

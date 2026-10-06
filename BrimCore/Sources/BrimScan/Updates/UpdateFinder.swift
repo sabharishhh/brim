@@ -19,7 +19,7 @@ public struct UpdateFinder: Sendable {
     public typealias Fetch = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     private let fetch: Fetch
-    private let catalogue: CatalogueCache
+    private let catalogueDirectory: URL
     private let platform: UpdatePlatform
     private let region: String
     private let installedCasks: HomebrewCaskInventory
@@ -33,7 +33,7 @@ public struct UpdateFinder: Sendable {
         caskInventory: HomebrewCaskInventory? = nil
     ) {
         self.fetch = fetch
-        catalogue = CatalogueCache(directory: catalogueDirectory, fetch: fetch)
+        self.catalogueDirectory = catalogueDirectory
         self.platform = platform
         self.region = region
         let inventory = caskInventory ??
@@ -70,6 +70,7 @@ public struct UpdateFinder: Sendable {
     }
 
     public func check(_ applications: [InstalledApplication], now: Date = Date()) async -> UpdateCheck {
+        let catalogue = CatalogueCache(directory: catalogueDirectory, fetch: fetch)
         let candidates = applications.compactMap { application in
             Self.candidate(application, among: applications)
         }
@@ -77,7 +78,7 @@ public struct UpdateFinder: Sendable {
         let listings = await storeListings(storeBundles)
 
         let answers = await (try? BoundedTasks.map(candidates, limit: 6) { candidate in
-            await (candidate, answer(for: candidate, listings: listings))
+            await (candidate, answer(for: candidate, listings: listings, catalogue: catalogue))
         }) ?? []
 
         var updates: [AppUpdate] = []
@@ -89,7 +90,7 @@ public struct UpdateFinder: Sendable {
             case .noAnswer:
                 unchecked.append(UncheckedApp(
                     name: candidate.name, appURL: candidate.url,
-                    reason: candidate.hasOwnSource ? "Its update source did not answer." : "No update source."
+                    reason: candidate.hasOwnSource ? "Its update source did not answer." : "No update source answered."
                 ))
             }
         }
@@ -168,12 +169,16 @@ public struct UpdateFinder: Sendable {
 extension UpdateFinder {
     // MARK: - Asking
 
-    private func answer(for candidate: Candidate, listings: [String: AppStoreCatalog.Listing]?) async -> Answer {
+    private func answer(
+        for candidate: Candidate,
+        listings: [String: AppStoreCatalog.Listing]?,
+        catalogue: CatalogueCache
+    ) async -> Answer {
         if candidate.hasReceipt {
             return await appStore(candidate, listings: listings)
         }
         let cask = UpdateSourceScanner.matchingCask(for: candidate.application, among: installedCasks)
-        if let cask, case let answer = await homebrew(candidate, cask: cask), !answer.isSilent {
+        if let cask, case let answer = await homebrew(candidate, cask: cask, catalogue: catalogue), !answer.isSilent {
             return answer
         }
         for answer in await [sparkle(candidate), electron(candidate)] where !answer.isSilent {
@@ -183,7 +188,7 @@ extension UpdateFinder {
             guard let cask, case let .update(update) = answer else { return answer }
             return .update(update.handled(by: .homebrew, cask: cask))
         }
-        return cask == nil ? await catalogueAnswer(candidate) : .noAnswer
+        return cask == nil ? await catalogueAnswer(candidate, catalogue: catalogue) : .noAnswer
     }
 
     private func storeListings(_ bundleIDs: [String]) async -> [String: AppStoreCatalog.Listing]? {
@@ -285,7 +290,7 @@ extension UpdateFinder {
         ))
     }
 
-    private func catalogueAnswer(_ candidate: Candidate) async -> Answer {
+    private func catalogueAnswer(_ candidate: Candidate, catalogue: CatalogueCache) async -> Answer {
         guard let casks = await catalogue.casks(),
               let cask = HomebrewCatalog.match(fileName: candidate.url.lastPathComponent,
                                                bundleID: candidate.bundleID, in: casks)
@@ -293,7 +298,7 @@ extension UpdateFinder {
         return update(candidate, from: cask, origin: .catalog(cask: cask.token))
     }
 
-    private func homebrew(_ candidate: Candidate, cask token: String) async -> Answer {
+    private func homebrew(_ candidate: Candidate, cask token: String, catalogue: CatalogueCache) async -> Answer {
         guard let casks = await catalogue.casks(), let cask = casks.first(where: { $0.token == token }) else {
             return .noAnswer
         }
@@ -341,60 +346,5 @@ extension UpdateFinder {
               )
         else { return html }
         return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-/// Homebrew's catalogue, fetched at most once a day and only when an
-/// application needs it. The response carries an ETag, so a fetch when
-/// nothing changed costs a few hundred bytes.
-actor CatalogueCache {
-    private let directory: URL
-    private let fetch: UpdateFinder.Fetch
-    private var loading: Task<[CatalogCask]?, Never>?
-    static let source = URL(string: "https://formulae.brew.sh/api/cask.json")!
-
-    init(directory: URL, fetch: @escaping UpdateFinder.Fetch) {
-        self.directory = directory
-        self.fetch = fetch
-    }
-
-    /// One load, shared. Applications ask at the same time, and an actor
-    /// lets the second one in while the first is waiting on the network:
-    /// a flag set before the download told every other application there
-    /// was no catalogue.
-    func casks() async -> [CatalogCask]? {
-        if let loading {
-            return await loading.value
-        }
-        let task = Task { await load() }
-        loading = task
-        return await task.value
-    }
-
-    private func load() async -> [CatalogCask]? {
-        let file = directory.appendingPathComponent("cask.json")
-        let tag = directory.appendingPathComponent("cask.etag")
-        let age = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-            .map { Date().timeIntervalSince($0) } ?? .infinity
-        if age > 24 * 3600 {
-            var request = URLRequest(url: Self.source)
-            if age.isFinite, let etag = try? String(contentsOf: tag, encoding: .utf8) {
-                request.setValue(etag, forHTTPHeaderField: "If-None-Match")
-            }
-            if let (data, response) = try? await fetch(request) {
-                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                if response.statusCode == 200, !data.isEmpty {
-                    try? data.write(to: file, options: .atomic)
-                    if let etag = response.value(forHTTPHeaderField: "ETag") {
-                        try? etag.write(to: tag, atomically: true, encoding: .utf8)
-                    }
-                } else if response.statusCode == 304 {
-                    try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
-                }
-            }
-        }
-        guard let data = try? Data(contentsOf: file) else { return nil }
-        let casks = HomebrewCatalog.casks(from: data)
-        return casks.isEmpty ? nil : casks
     }
 }

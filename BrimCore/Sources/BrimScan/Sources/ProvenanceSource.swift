@@ -95,32 +95,33 @@ public struct ProvenanceSource: EvidenceSource {
             .map { (library.appendingPathComponent($0), false) }
     }
 
-    /// The application's names as a folder would spell them: its own name,
-    /// the bundle's names, and the last label of its identifier, which is
-    /// usually the product (`codex` in `com.openai.codex`). Component names
-    /// are left out: Sparkle's `Updater` is in half the applications here.
+    /// The application's names as a folder would spell them: its own names
+    /// and the ones worked out from them, such as the last label of its
+    /// identifier, which is usually the product (`codex` in
+    /// `com.openai.codex`). Component names are left out: Sparkle's
+    /// `Updater` is in half the applications here.
     static func names(for identity: Identity) -> [String] {
         let generic: Set = [
             "client", "desktop", "macos", "application", "helper", "agent", "launcher",
             "service", "electron", "main", "native", "mac", "app"
         ]
-        let lastLabel = identity.bundleID?.split(separator: ".").last.map(String.init)
-        let candidates = [identity.name, identity.bundleName, lastLabel].compactMap(\.self)
         var seen = Set<String>()
-        return candidates.map { $0.lowercased() }
+        return (identity.ownNames + identity.derivedNames).map { $0.lowercased() }
             .filter { $0.count >= 4 && !generic.contains($0) && seen.insert($0).inserted }
     }
 
-    /// Named for the application: an identifier, or a name followed by a
-    /// separator, as in `codex-runtimes` or `.codex`.
+    /// Named for the application: an identifier, the name in any case or
+    /// spacing, or a name followed by a separator, as in `codex-runtimes`
+    /// or `.codex`.
     static func isNamed(_ entry: String, identifiers: [String], names: [String]) -> Bool {
         let lowered = entry.lowercased()
         let visible = lowered.hasPrefix(".") ? String(lowered.dropFirst()) : lowered
         if identifiers.contains(where: { visible == $0 || visible.hasPrefix($0 + ".") }) {
             return true
         }
+        let key = NameKey.of(visible)
         return names.contains { name in
-            visible == name || ["-", "_", ".", " "].contains { visible.hasPrefix(name + $0) }
+            key == NameKey.of(name) || ["-", "_", ".", " "].contains { visible.hasPrefix(name + $0) }
         }
     }
 

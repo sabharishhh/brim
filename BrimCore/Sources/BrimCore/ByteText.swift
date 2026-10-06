@@ -13,14 +13,17 @@ import Foundation
 /// formatter reappears anywhere else.
 public enum ByteText {
 
-    /// For a size shown on its own, in a column or beside a name.
+    /// For a size shown on its own, in a column or beside a name. Zero is
+    /// "0 KB", a number among numbers. It was "Empty", which said nothing was
+    /// there: a removed app whose folders took no space read "Empty" beside
+    /// a Finish Removal button, and Home showed "Empty" over "From 1 removed
+    /// app".
     public static func short(_ bytes: Int64) -> String {
-        guard bytes > 0 else { return "Empty" }
+        guard bytes > 0 else { return "0 KB" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
-    /// For a size inside a sentence, where "Empty" would not fit the
-    /// grammar and "nothing" reads properly.
+    /// For a size inside a sentence, where "nothing" reads properly.
     public static func inSentence(_ bytes: Int64) -> String {
         guard bytes > 0 else { return "nothing" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)

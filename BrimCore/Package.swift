@@ -52,7 +52,7 @@ let package = Package(
         // Exercises the real machine. Opt-in via BRIM_REAL_ENV=1; skips otherwise.
         .testTarget(
             name: "BrimRealEnvironmentTests",
-            dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan", "BrimOps"]
+            dependencies: ["BrimService", "BrimCore", "BrimProtocol", "BrimScan", "BrimOps", "BrimIndex"]
         )
     ]
 )

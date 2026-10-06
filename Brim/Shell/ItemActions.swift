@@ -9,7 +9,7 @@ struct ItemMenuItems: View {
     @Environment(ShellState.self) private var shell
 
     var body: some View {
-        Button("Reveal in Finder") { shell.reveal(urls) }
+        Button("Show in Finder") { shell.reveal(urls) }
         Button("Quick Look") { shell.quickLook(urls) }
         Button(urls.count == 1 ? "Copy Path" : "Copy Paths") { shell.copyPaths(urls) }
     }
@@ -51,24 +51,5 @@ struct TrayContents: Equatable {
 
     static func == (lhs: TrayContents, rhs: TrayContents) -> Bool {
         (lhs.count, lhs.bytes, lhs.canReview, lhs.note) == (rhs.count, rhs.bytes, rhs.canReview, rhs.note)
-    }
-}
-
-/// Undo for a change of what is picked, with redo, registered once per
-/// change so ⌘Z steps back through them one at a time.
-@MainActor
-enum PickUndo {
-    static func register(
-        _ undoManager: UndoManager?, on model: LeftoversModel, name: String,
-        from before: Set<String>, to after: Set<String>
-    ) {
-        guard before != after, let undoManager else { return }
-        undoManager.registerUndo(withTarget: model) { model in
-            MainActor.assumeIsolated {
-                model.restoreSelection(before)
-                register(undoManager, on: model, name: name, from: after, to: before)
-            }
-        }
-        undoManager.setActionName(name)
     }
 }

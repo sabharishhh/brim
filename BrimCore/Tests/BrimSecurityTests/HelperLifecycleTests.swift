@@ -41,6 +41,46 @@ final class HelperLifecycleTests: XCTestCase {
         )
     }
 
+    /// Brim declares nothing that can run in the background, and never asks
+    /// Service Management about anything of its own.
+    ///
+    /// The root daemon was replaced by a temporary administrator process on
+    /// 3 October, but the app kept shipping the daemon's launchd plist in
+    /// `Contents/Library/LaunchDaemons` and called `SMAppService.unregister`
+    /// on every launch to retire the old registration. Each call made macOS
+    /// evaluate that plist again, and on 6 October System Settings still
+    /// listed Brim under Background App Activity, switched on, its record
+    /// pointing at a build made two days after the daemon was gone. A plist
+    /// in the bundle is a declaration, whatever the code does with it.
+    func testBrimDeclaresAndRegistersNothingInTheBackground() throws {
+        let root = Self.repositoryRoot()
+        let project = try String(
+            contentsOf: root.appendingPathComponent("Brim.xcodeproj/project.pbxproj"), encoding: .utf8
+        )
+        for folder in ["LaunchDaemons", "LaunchAgents", "LoginItems"] {
+            XCTAssertFalse(project.contains("Contents/Library/\(folder)"),
+                           "The app bundle embeds something in Contents/Library/\(folder)")
+        }
+        XCTAssertFalse(project.contains("jobhelper.plist in "),
+                       "The helper's launchd plist is a build input again")
+
+        let calls = ["import ServiceManagement", "SMAppService.", "SMLoginItemSetEnabled"]
+        for directory in ["Brim", "BrimCore/Sources"] {
+            let walker = FileManager.default.enumerator(
+                at: root.appendingPathComponent(directory), includingPropertiesForKeys: nil
+            )
+            while let file = walker?.nextObject() as? URL {
+                guard file.pathExtension == "swift" else { continue }
+                let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n")
+                for line in lines where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                    for call in calls where line.contains(call) {
+                        XCTFail("\(file.lastPathComponent) uses \(call)")
+                    }
+                }
+            }
+        }
+    }
+
     func testTheInterfaceCanAskTheDaemonToCleanUpAfterItself() {
         // `uninstallSelf` has to be on the protocol for the app to be able
         // to call it at all. A protocol method is a small thing to assert,

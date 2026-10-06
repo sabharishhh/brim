@@ -9,6 +9,7 @@ struct RevealButton: View {
     let urls: [URL]
     var title: String?
     @State private var pressed = 0
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button {
@@ -25,6 +26,7 @@ struct RevealButton: View {
             }
         }
         .symbolEffect(.bounce, value: pressed)
+        .symbolEffectsRemoved(reduceMotion)
         .foregroundStyle(Palette.inkSecondary)
         .help(urls.count == 1 ? "Show in Finder" : "Show all in Finder")
         .accessibilityLabel(urls.count == 1 ? "Show in Finder" : "Show all in Finder")

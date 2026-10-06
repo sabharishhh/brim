@@ -15,12 +15,19 @@ private let log = BrimLog.make("service")
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public let root: FileSystemRoot
     private let brimAppURL: URL
+    /// Brim's own bundle, for what a recording should not count.
+    var brimBundle: URL {
+        brimAppURL
+    }
+
     private let engine: EvidenceEngine
     private let safetyEngine: SafetyEngine
     private let planner: Planner
     public let planStore: PlanStore
     public let tokenStore: TokenStore
     let journalStore: JournalStore
+    /// Recordings of installs: one under way, and the ones kept.
+    let recordingStore: InstallRecordingStore
     var hasRecheckedPendingRemovals = false
     private let ledgerStore: LedgerStore
     let executor: Executor
@@ -33,6 +40,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private var applicationInventoryReader: (@Sendable () async -> [InstalledApplication])?
     private var updateRecoveryReader: (@Sendable () async -> [String: String])?
     private var activePlans = Set<UUID>()
+
+    /// Whether a removal, restoration or check is changing this plan now.
+    func isOperating(on planId: UUID) -> Bool {
+        activePlans.contains(planId)
+    }
 
     private func beginOperation(planId: UUID) throws {
         guard activePlans.insert(planId).inserted else {
@@ -67,7 +79,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
 
-        engine = .standard
+        // The production search, and what kept recordings say each app
+        // created. The recording source reads its file directly, because a
+        // search cannot wait on another actor.
+        let recordingsDirectory = journalStoreDirectory.deletingLastPathComponent()
+            .appendingPathComponent("Recordings", isDirectory: true)
+        recordingStore = InstallRecordingStore(directory: recordingsDirectory)
+        let kept = recordingsDirectory.appendingPathComponent("recordings.json")
+        engine = EvidenceEngine(sources: EvidenceEngine.standard.sources + [
+            InstallRecordingSource(recordings: { InstallRecordingStore.load(kept) })
+        ])
 
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
         let vetoEngine = TierSVetoEngine(root: root, lookup: { identifier in
@@ -816,7 +837,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let success = targetsRemaining == 0 && staleRegistrations.isEmpty
             && !privacyResetFailed && !otherActionsFailed && !executionEvidenceUnavailable
-            && !postChecks.contains(where: { !$0.remaining.isEmpty || $0.couldNotCheck })
+            && !postChecks.contains(where: { !$0.remaining.isEmpty })
+            && RemovalReport.unansweredChecks(postChecks, declaredNone: RemovalReport.declaredNone(in: plan)).isEmpty
         let recorded = Self.recordedOutcomes(plan: plan, journal: journal, remaining: pathsRemaining)
         let observedReason = Self.verificationReason(
             pathsRemaining: pathsRemaining,
@@ -1101,6 +1123,41 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return plans
     }
 
+    /// Deletes for good what one removal put in the Trash, and nothing
+    /// else there.
+    ///
+    /// Emptying the whole Trash would take the person's own files with
+    /// Brim's. Only the items this removal recorded, and only while they
+    /// are still in a Trash folder, are deleted, and the removal can no
+    /// longer be put back afterwards. Registrations of bundles that are now
+    /// gone are retracted, as they are when the Trash is emptied by hand.
+    public func deleteFromTrash(planId: UUID) async throws {
+        try beginOperation(planId: planId)
+        defer { activePlans.remove(planId) }
+        guard let journal = try await journalStore.load(planId: planId), journal.restoredAt == nil else {
+            throw NSError(domain: "BrimService", code: 409, userInfo: [
+                NSLocalizedDescriptionKey: "This removal has nothing left in the Trash."
+            ])
+        }
+        let trashed = (journal.stepTrashedURLs ?? [:])
+            .filter { journal.restoreOutcomes?[$0.key] != "ok" }
+            .sorted { $0.key < $1.key }
+        var failed: [String] = []
+        for (_, url) in trashed {
+            do {
+                try SafeOps.deleteFromTrash(url)
+            } catch {
+                failed.append(url.lastPathComponent)
+            }
+        }
+        await reconcileRegistrations()
+        guard failed.isEmpty else {
+            throw NSError(domain: "BrimService", code: 500, userInfo: [
+                NSLocalizedDescriptionKey: "Could not delete \(failed.joined(separator: ", ")) from the Trash."
+            ])
+        }
+    }
+
     public func undo(planId: UUID) async throws {
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }
@@ -1211,6 +1268,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 continue
             }
             guard PathExistence.exists(atPath: step.target) else { continue }
+            // Older plans retracted folders that only had an app's name, and
+            // a folder has no registration to put back.
+            guard ApplicationBundle.isBundle(atPath: step.target) else {
+                try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
+                continue
+            }
             do {
                 try SafeOps.verifyTargetFingerprint(targetPath: bundleStep.target,
                                                     expectedDev: fingerprint.dev, expectedIno: fingerprint.ino)
@@ -1280,7 +1343,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         PrivilegedHelperToolSurface(),
         BundlePluginSurface(),
         ShellProfileSurface(),
-        KeychainSurface()
+        KeychainSurface(),
+        PrivacyGrantSurface()
     ]
 
     public func registrations() async -> RegistrationReport {
@@ -1482,6 +1546,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return await withInstallDates(applications)
     }
 
+    public func installRecords() async -> [InstallRecord] {
+        await (try? index?.installRecords()) ?? []
+    }
+
     /// Apps and Updates can open together. Share their active read, then drop
     /// it so a later check always describes the filesystem again. The service
     /// owns the task; cancelling one waiter cannot stop the other one's read.
@@ -1568,7 +1636,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 bundlePath: application.url.path,
                 sizeBytes: application.bundleSizeBytes,
                 addedAt: application.addedAt,
-                lastUsedAt: application.lastOpened
+                lastUsedAt: application.lastOpened,
+                names: application.identity.ownNames + application.identity.derivedNames
             )
         }
         do {
@@ -1584,7 +1653,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Whether each application has a newer version, from its own source.
     ///
     /// Reaches the network: Apple's catalogue, the feeds applications read
-    /// themselves, and Homebrew's public catalogue at most once a day.
+    /// themselves, and Homebrew's public catalogue revalidated for this check.
     public func checkForUpdates() async -> UpdateCheck {
         let applications = await applicationInventoryRead().value
         let interrupted = pendingInterruptedUpdates
@@ -1629,7 +1698,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Puts one update in place. Homebrew updates what it installed; the
     /// rest Brim downloads, checks and swaps, or hands to Installer.
     public func installUpdate(
-        _ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void
+        _ update: AppUpdate, progress: @escaping @Sendable (DownloadProgress) -> Void
     ) async -> UpdateOutcome {
         switch update.route {
         case .homebrew:
@@ -1767,17 +1836,28 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // was named from its identifier alone, so Teams' would read "Teams2"
         // although Brim had recorded "Microsoft Teams" for weeks.
         var knownNames = await (try? index?.recordedNames()) ?? [:]
+        var knownAliases = await (try? index?.recordedAliases()) ?? [:]
+        var knownIdentities: [Identity] = []
         let entries = try await ledgerStore.allEntries()
         for entry in entries {
             if let plan = try? await planStore.load(planId: entry.planId) {
-                if let bid = plan.intent.subjectIdentity.bundleID {
+                let subject = plan.intent.subjectIdentity
+                if let bid = subject.bundleID {
                     knownPastBundleIDs.insert(bid)
-                    knownNames[bid.lowercased()] = plan.intent.subjectIdentity.name
+                    knownNames[bid.lowercased()] = subject.name
+                    knownAliases[bid.lowercased(), default: []] += subject.ownNames + subject.derivedNames
+                    if plan.intent.type == .uninstall, subject.identitySurface != nil {
+                        knownIdentities.append(subject)
+                    }
                 }
             }
         }
 
-        let found = try await scanner.scanLeftovers(knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames)
+        var found = try await scanner.scanLeftovers(
+            knownPastBundleIDs: knownPastBundleIDs, knownNames: knownNames, knownAliases: knownAliases,
+            knownIdentities: knownIdentities
+        )
+        found += await recordedRemnants(listed: Set(found.map(\.url.path)))
         return await attachingReplacements(to: found) + recoveryLeftovers()
     }
 

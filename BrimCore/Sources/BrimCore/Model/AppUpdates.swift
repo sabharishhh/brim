@@ -48,7 +48,7 @@ public enum UpdateRoute: String, Codable, Equatable, Sendable {
         switch self {
         case .replace:
             "Brim downloads it, checks it is signed by the same developer, "
-                + "and replaces the app. The old version goes to the Trash."
+                + "and replaces the app. The old version is deleted."
         case .appStore: "The App Store installs this update."
         case .installer: "Brim checks the package's signature, then opens it in Installer."
         case .homebrew: "Homebrew installed this app, so Homebrew updates it."
@@ -317,5 +317,27 @@ private extension ComparisonResult {
         case .orderedDescending: .orderedAscending
         case .orderedSame: .orderedSame
         }
+    }
+}
+
+/// How far a download has got, in bytes, so a large update reads as moving
+/// rather than stuck. ChatGPT's is 1.3 GB, and "52%" for minutes looked
+/// like nothing was happening.
+public struct DownloadProgress: Sendable, Equatable {
+    public let received: Int64
+    /// Zero when the server did not say how large the download is.
+    public let expected: Int64
+
+    public init(received: Int64, expected: Int64) {
+        self.received = received
+        self.expected = expected
+    }
+
+    public typealias Handler = @Sendable (DownloadProgress) -> Void
+
+    public static let started = DownloadProgress(received: 0, expected: 0)
+
+    public var fraction: Double {
+        expected > 0 ? min(1, Double(received) / Double(expected)) : 0
     }
 }

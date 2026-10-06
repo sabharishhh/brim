@@ -15,6 +15,18 @@ import Foundation
 /// jobs, an authorization, and then "2 targets still remain" with no reason
 /// given.
 public enum RemovalCapability {
+    /// Flags only macOS can set, under System Integrity Protection. WebKit
+    /// makes its per-app folders in the per-user temporary folder with
+    /// `SF_NOUNLINK`, and eqMac's removal planned three of them and had all
+    /// three refused. Nobody can remove such an item, root included.
+    static let systemProtectionFlags = UInt32(SF_RESTRICTED) | UInt32(SF_NOUNLINK)
+
+    /// Something macOS protects for itself. It is never an app's to remove,
+    /// so it is not part of any app's footprint.
+    public static func isProtectedBySystem(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && (info.st_flags & systemProtectionFlags) != 0
+    }
 
     /// What it would take to remove this path.
     public static func forDeleting(_ path: String) -> Capability {
@@ -31,7 +43,7 @@ public enum RemovalCapability {
             // outright and skipped this check entirely.
             var info = stat()
             let described = lstat(path, &info) == 0
-            if described, (info.st_flags & UInt32(SF_RESTRICTED)) != 0 {
+            if described, (info.st_flags & systemProtectionFlags) != 0 {
                 return .refusedByOS
             }
             // A folder is moved, not unlinked, and moving one to another
@@ -77,11 +89,19 @@ public enum RemovalCapability {
         case .ok:
             return nil
         case .needsHelper:
-            return "\(folder) belongs to the system, so removing anything in it needs an "
-                 + "administrator."
+            // In a person's own Library the folder is theirs; an installer
+            // that ran as an administrator left the item owned by root.
+            // Adobe's setup did this in HTTPStorages, and the sentence said
+            // the person's own folder belonged to the system.
+            if folder.hasPrefix("/Users/") || folder.hasPrefix("~/") {
+                return "An installer left this owned by an administrator. Finder can move it to the Trash "
+                    + "and asks for your password."
+            }
+            return "\(folder) belongs to the system. Removing anything in it needs an "
+                + "administrator."
         case .needsFullDiskAccess:
             return "\(folder) is one macOS keeps private. Brim needs Full Disk Access to "
-                 + "change what is in it."
+                + "change what is in it."
         case .refusedByOS:
             return nil
         }
@@ -91,14 +111,14 @@ public enum RemovalCapability {
     public static func explanation(_ capability: Capability) -> String? {
         switch capability {
         case .ok:
-            return nil
+            nil
         case .needsHelper:
-            return "This sits in a folder that belongs to the system, so removing it needs an "
-                 + "administrator."
+            "This is in a folder that belongs to the system. Removing it needs an "
+                + "administrator."
         case .needsFullDiskAccess:
-            return "Needs Full Disk Access."
+            "Needs Full Disk Access."
         case .refusedByOS:
-            return "macOS protects this one and will not let anything remove it."
+            "macOS protects this one and will not let anything remove it."
         }
     }
 }

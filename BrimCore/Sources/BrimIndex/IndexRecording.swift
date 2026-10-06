@@ -61,11 +61,13 @@ public extension Index {
             for application in applications {
                 try database.execute(
                     sql: """
-                    INSERT INTO identity (id, bundle_id, name)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET name = excluded.name
+                    INSERT INTO identity (id, bundle_id, name, names)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+                        names = COALESCE(excluded.names, identity.names)
                     """,
-                    arguments: [application.bundleID, application.bundleID, application.name]
+                    arguments: [application.bundleID, application.bundleID, application.name,
+                                Self.encodedNames(application.names)]
                 )
                 try database.execute(
                     sql: """
@@ -83,5 +85,12 @@ public extension Index {
             }
         }
         return scanID
+    }
+
+    /// The names as one JSON array, or nothing when there are none, so a
+    /// snapshot that learned nothing new keeps what was recorded before.
+    internal static func encodedNames(_ names: [String]) -> String? {
+        guard !names.isEmpty, let data = try? JSONEncoder().encode(names) else { return nil }
+        return String(bytes: data, encoding: .utf8)
     }
 }

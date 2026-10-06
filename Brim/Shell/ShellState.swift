@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// What the window's chrome knows: where it is, where it has been, what
 /// Quick Look is showing, and the note at the bottom.
@@ -14,9 +15,10 @@ import SwiftUI
 final class ShellState: Equatable {
     private(set) var selection: Destination = .home
     var appsLens: AppsLens = .all
-    /// Which way the last page change went through the sidebar, so the
-    /// arriving page drifts in from the right side.
-    private(set) var movedDown = true
+    /// The last page change came from the keyboard: arrow keys in the
+    /// sidebar, a Command-digit or Back and Forward from the menu. Those are
+    /// immediate; only a change made with the pointer fades.
+    private(set) var navigatedByKeyboard = false
     private var back: [Destination] = []
     private var forward: [Destination] = []
 
@@ -36,9 +38,56 @@ final class ShellState: Equatable {
     /// Shortcut or Spotlight. Apps opens its review and clears this. The
     /// review is all it opens: approval still comes from this window.
     var pendingRemoval: URL?
+    /// An installer to look inside, shown as a sheet over any page.
+    var installerToRead: InstallerRequest?
+    /// Whether an install is being recorded, mirrored from the recording
+    /// model for the menu bar, which cannot observe it.
+    var isRecordingInstall = false
+    /// Bumped by the menu's Record an Install and Finish Recording; the
+    /// window starts or finishes the recording.
+    private(set) var recordingRequests = 0
+
+    func toggleRecording() {
+        recordingRequests += 1
+    }
+
+    /// Bumped when something was installed through Brim, so Apps lists it
+    /// without waiting for the person to check again.
+    private(set) var installs = 0
+
+    func noteInstall() {
+        installs += 1
+    }
 
     nonisolated static func == (lhs: ShellState, rhs: ShellState) -> Bool {
         lhs === rhs
+    }
+
+    // MARK: - Installers
+
+    /// Opens the sheet for a package, disk image or app that is not
+    /// installed. Nothing is installed or opened.
+    func lookInside(_ url: URL) {
+        installerToRead = InstallerRequest(url: url)
+    }
+
+    /// File › Look Inside an Installer.
+    func chooseInstaller() {
+        let panel = NSOpenPanel()
+        panel.title = "Look Inside an Installer"
+        panel.prompt = "Look Inside"
+        // `.package` is any bundle Finder shows as one file; an installer
+        // package has its own type.
+        panel.allowedContentTypes = [
+            UTType("com.apple.installer-package-archive"), UTType("com.apple.installer-meta-package"),
+            .diskImage, .applicationBundle
+        ].compactMap(\.self)
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        if panel.runModal() == .OK, let url = panel.url {
+            lookInside(url)
+        }
     }
 
     // MARK: - Navigation
@@ -81,7 +130,7 @@ final class ShellState: Equatable {
     private func move(to destination: Destination) {
         // A preview belongs to the page that asked for it.
         previewURL = nil
-        movedDown = destination.position >= selection.position
+        navigatedByKeyboard = NSApp.currentEvent?.type == .keyDown
         selection = destination
     }
 
@@ -187,4 +236,11 @@ extension FocusedValues {
         get { self[SelectedItemsKey.self] }
         set { self[SelectedItemsKey.self] = newValue }
     }
+}
+
+/// One request to look inside an installer. A new one each time, so asking
+/// about the same file twice opens the sheet twice.
+struct InstallerRequest: Identifiable, Equatable {
+    let id = UUID()
+    let url: URL
 }

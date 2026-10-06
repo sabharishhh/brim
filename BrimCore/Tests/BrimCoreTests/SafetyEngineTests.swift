@@ -61,8 +61,10 @@ final class SafetyEngineTests: XCTestCase {
         XCTAssertEqual(evaluated.items[2].selection, .selected)
         XCTAssertEqual(evaluated.items[2].costOfError, .medium)
         
-        // 3: A cache-shaped path alone does not prove its contents are disposable.
-        XCTAssertEqual(evaluated.items[3].selection, .unselected)
+        // 3: A cache folder named for the application is its own. The same
+        // name outside its data folders stays a suggestion, which
+        // `NameMatchingTests` holds.
+        XCTAssertEqual(evaluated.items[3].selection, .selected)
         XCTAssertEqual(evaluated.items[3].costOfError, .medium)
     }
 }

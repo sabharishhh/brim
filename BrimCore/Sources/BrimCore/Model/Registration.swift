@@ -167,6 +167,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
             || kind == .firewallEntry || kind == .systemExtension || kind == .legacyLoginItem
             || kind == .appExtension
             || kind == .configurationProfile
+            // macOS's privacy database, which Brim reads and never edits.
+            || kind == .privacyGrant
     }
 
     /// A report-only entry is never a thing to sweep, however stale it

@@ -116,7 +116,7 @@ final class PlannerTests: XCTestCase {
         
         XCTAssertEqual(plan.excludedItems.count, 2)
         XCTAssertEqual(plan.excludedItems[0].reason, "Brim refused to modify this item to ensure system stability.")
-        XCTAssertEqual(plan.excludedItems[1].reason, "You opted to keep this item, or it was unselected by default due to low confidence.")
+        XCTAssertEqual(plan.excludedItems[1].reason, "Not ticked. Brim ticks only what it is sure belongs to the app.")
         
         XCTAssertEqual(plan.expectedTotalBytes, 1024)
     }
@@ -232,5 +232,25 @@ struct PlannerRevalidationTests {
         #expect(reviewedTargets == ([appPath] + helperPaths).sorted())
         #expect(rebuiltTargets == reviewedTargets)
         #expect(rebuilt.steps.count == reviewed.steps.count)
+    }
+}
+
+/// Recordly's identifier is `dev.recordly.app`, so the folders named for it
+/// end in ".app". They were planned as applications, one Launch Services
+/// step failed on removal, and re-registering one made a Put Back that had
+/// restored every file report that it could not put back.
+final class ApplicationBundleTests: XCTestCase {
+    func testAFolderNamedLikeAnIdentifierIsNotAnApplication() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("HTTPStorages/dev.recordly.app")
+        let app = root.appendingPathComponent("Applications/Recordly.app")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"),
+                                                withIntermediateDirectories: true)
+        try Data().write(to: app.appendingPathComponent("Contents/Info.plist"))
+        XCTAssertFalse(ApplicationBundle.isBundle(atPath: cache.path))
+        XCTAssertTrue(ApplicationBundle.isBundle(atPath: app.path))
+        XCTAssertFalse(ApplicationBundle.isBundle(atPath: root.appendingPathComponent("notes.txt").path))
     }
 }

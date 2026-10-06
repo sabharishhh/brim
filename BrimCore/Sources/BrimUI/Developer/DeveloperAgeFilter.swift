@@ -14,7 +14,7 @@ public enum DeveloperAgeFilter: String, CaseIterable, Identifiable, Sendable {
 
     public var title: String {
         switch self {
-        case .all: "All artifacts"
+        case .all: "All caches"
         case .olderThan30Days: "Project builds older than 30 days"
         case .olderThan90Days: "Project builds older than 90 days"
         }
