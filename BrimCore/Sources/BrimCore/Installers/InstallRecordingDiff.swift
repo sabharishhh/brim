@@ -110,15 +110,12 @@ public enum InstallRecordingDiff {
         return names.contains { NameKey.of($0) == key }
     }
 
-    /// The first two labels of an identifier, the developer's namespace.
-    /// Apple's is everyone's, and a code host's is every project it hosts,
-    /// so neither says who made something.
+    /// The first two labels of an identifier, the developer's namespace,
+    /// unless everyone shares it (`OwnerNamespace.sharedVendors`).
     static func vendor(of bundleID: String?) -> String? {
         guard let labels = bundleID?.lowercased().split(separator: "."), labels.count >= 3 else { return nil }
         let vendor = labels.prefix(2).joined(separator: ".")
-        let shared: Set = ["com.apple", "io.github", "com.github", "org.gitlab", "io.gitlab", "net.sourceforge",
-                           "com.electron", "org.example", "com.example"]
-        return shared.contains(vendor) ? nil : vendor
+        return OwnerNamespace.sharedVendors.contains(vendor) ? nil : vendor
     }
 
     static func registered(_ mark: InstallSnapshot.BackgroundMark, by app: RecordedApp) -> Bool {

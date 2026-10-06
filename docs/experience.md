@@ -673,6 +673,20 @@ their sizes: ChatGPT's whole app is a 1.3 GB archive and its row sat on one
 percentage long enough to look stuck. The Apps switch has room inside it.
 Not seen on screen: the Install flow and the padded switch.
 
+Remnants missed six of seven Adobe folders in `HTTPStorages` with nothing of
+Adobe's installed. The sweep found all seven, but grouped them by product
+into rows of a few kilobytes, under the megabyte line for unclaimed groups;
+only the one Adobe's installer left owned by root was listed, because it
+could not be removed, and its reason called the person's own folder the
+system's. With nothing of a developer's installed, their leftovers are now
+one group, listed however small when there are several, and a root-owned
+item at home says Finder can move it with a password. Brim's administrator
+process is not widened into the home folder for it. The real-environment
+ownership audit also caught Microsoft's shared `UBF8T346G9.ms` container
+offered while Visual Studio Code's removal held it (the same before this
+branch); a team's shared container now stays while any of its apps is
+installed. All three audits pass.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
