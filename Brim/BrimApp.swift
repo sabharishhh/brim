@@ -197,6 +197,13 @@ private let log = BrimLog.make("app")
                 Divider()
             }
             CommandGroup(after: .newItem) {
+                Button("Look Inside an Installer…") { shell?.chooseInstaller() }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .disabled(shell == nil)
+                Button(shell?.isRecordingInstall == true ? "Finish Recording" : "Record an Install") {
+                    shell?.toggleRecording()
+                }
+                .disabled(shell == nil)
                 Divider()
                 Button("Show in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
                     .keyboardShortcut("r", modifiers: [.command, .option])
