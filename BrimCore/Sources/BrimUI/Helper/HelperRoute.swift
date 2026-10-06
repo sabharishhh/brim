@@ -13,17 +13,6 @@ public enum HelperRoute {
 
     public static func connect(_ helper: PrivilegedHelperClient, to service: any BrimServiceProtocol) async {
         connected = helper
-        // Read the existing store first. Calling Service Management on a fresh
-        // installation can itself announce a background item.
-        let previous = await BackgroundItemSurface().registrations(in: FileSystemRoot())
-        if previous.contains(where: { registration in
-            let parts = registration.identifier.split(separator: ".", maxSplits: 1)
-            let identifier = parts.count == 2 && parts[0].allSatisfy(\.isNumber)
-                ? String(parts[1]) : registration.identifier
-            return identifier == BrimJobHelper.machServiceName
-        }) {
-            try? await helper.retireRegisteredHelper()
-        }
         await service.usePrivilegedBatch(begin: { await helper.beginBatch() },
                                          end: { await helper.endBatch() })
         await service.usePrivilegedRemover { path in
