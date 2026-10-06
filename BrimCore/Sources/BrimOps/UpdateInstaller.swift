@@ -15,7 +15,7 @@ import Security
 /// newer, and run on this Mac, and all of that is settled before the
 /// installed application is asked to quit.
 public struct UpdateInstaller: Sendable {
-    public typealias Progress = @Sendable (Double) -> Void
+    public typealias Progress = @Sendable (DownloadProgress) -> Void
     /// Moves something only root can move, as the helper does for removals.
     public typealias PrivilegedRemover = @Sendable (String) async -> String?
 

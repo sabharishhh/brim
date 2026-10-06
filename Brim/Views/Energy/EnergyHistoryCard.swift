@@ -256,7 +256,7 @@ struct EnergyHistoryCard: View {
 }
 
 /// A horizontal line, for the dashed legend key.
-nonisolated private struct Line: Shape {
+private nonisolated struct Line: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         path.move(to: CGPoint(x: rect.minX, y: rect.midY))
