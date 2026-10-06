@@ -202,7 +202,7 @@ struct ContentView: View {
         case .apps:
             switch shell.appsLens {
             case .all: ApplicationsView(model: models.applications, access: models.fullDiskAccess)
-            case .updates: UpdatesView(model: models.updates)
+            case .updates: UpdatesView(model: models.updates, whatsNew: models.whatsNew)
             }
         case .leftovers:
             LeftoversView(model: models.leftovers, recovery: models.recovery)
