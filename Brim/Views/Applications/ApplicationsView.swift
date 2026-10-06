@@ -124,13 +124,7 @@ struct ApplicationsView: View {
                 model.isChoosing ? model.stopChoosing() : model.startChoosing()
             }
             .disabled(model.applications.isEmpty)
-            Picker("View", selection: $asTable) {
-                Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
-                Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            ViewToggle(asTable: $asTable)
         }
         .padding(.horizontal, Metrics.pagePadding)
         .padding(.top, 6)
@@ -288,5 +282,42 @@ private struct MarkedApps: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Groups or table, drawn by Brim. The system's segmented control fills
+/// the chosen segment with the accent, which Brim keeps grey; the chosen
+/// one is off-white with a near-black symbol, as the Apps and Updates
+/// switch is.
+private struct ViewToggle: View {
+    @Binding var asTable: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            option("list.bullet.indent", "Groups", table: false)
+            option("tablecells", "Table", table: true)
+        }
+        .padding(2)
+        .background(Color.white.opacity(0.07), in: .rect(cornerRadius: 7, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("View")
+    }
+
+    private func option(_ symbol: String, _ label: String, table: Bool) -> some View {
+        let isOn = asTable == table
+        return Button {
+            asTable = table
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isOn ? Palette.onSnow : Palette.inkSecondary)
+                .frame(width: 28, height: 22)
+                .background(isOn ? Palette.snow : .clear, in: .rect(cornerRadius: 5, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
