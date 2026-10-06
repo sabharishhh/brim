@@ -69,6 +69,7 @@ private struct DockSection: View {
 
 private struct AccessSection: View {
     @StateObject private var access = FullDiskAccessModel()
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
 
     var body: some View {
         Section {
@@ -77,7 +78,9 @@ private struct AccessSection: View {
                     StatusDot(status: access.isGranted ? .clear : .attention)
                     Text(access.isGranted ? "On" : "Off")
                     if !access.isGranted {
-                        Button("Open Settings") { access.requestAccess() }
+                        // Asked from here, so a reopen comes back to here.
+                        let offer = AccessOffer.current(requestedAt: accessRequestedAt, from: .settings)
+                        Button(offer.title, action: offer.action)
                     }
                 }
             }

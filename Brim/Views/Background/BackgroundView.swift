@@ -17,6 +17,7 @@ import SwiftUI
 /// them could be removed or was worth reading. `BackgroundModel` holds the
 /// measurement.
 struct BackgroundView: View {
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @ObservedObject var model: BackgroundModel
     @ObservedObject private var helper: PrivilegedHelperClient
     @SwiftUI.Environment(\.brimService) private var service
@@ -234,12 +235,13 @@ extension BackgroundView {
         let waiting = !model.waitingOnHelper.isEmpty && !helper.state.canRemove
         if !faults.isEmpty || waiting {
             VStack(alignment: .leading, spacing: 8) {
+                let offer = AccessOffer.current(requestedAt: accessRequestedAt)
                 ForEach(faults, id: \.kind) { gap in
                     Notice(
                         symbol: "eye.slash", title: "\(gap.kind.displayName)s not read",
                         detail: gap.limitation,
-                        actionTitle: gap.isFixableByTheUser ? "Open Settings" : nil,
-                        action: FullDiskAccess.openSettings
+                        actionTitle: gap.isFixableByTheUser ? offer.title : nil,
+                        action: offer.action
                     )
                 }
                 if waiting {
