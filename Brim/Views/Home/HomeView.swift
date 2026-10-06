@@ -2,11 +2,15 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
+// swiftformat:disable wrapMultilineStatementBraces
 /// The first page: this Mac at a glance, then in depth one click away.
 ///
-/// The Mac's name, cards for Space, Leftovers, Background and Developer,
-/// recently installed apps, and a place to drop an app. Short phrases only, and no
-/// number that was not measured: every figure waits for its scan.
+/// A grid of four columns. Space and Energy share the top row at two
+/// columns each, the four counts follow one column each, then installing
+/// and the Journal at two each, then recently installed apps across. A
+/// narrow window has two columns, so nothing is squeezed and no card grows
+/// tall. Short phrases only, and no number that was not measured: every
+/// figure waits for its scan.
 struct HomeView: View {
     // Each model observed directly. Nested `ObservableObject`s do not
     // propagate, so observing `SectionModels` alone would never redraw.
@@ -19,7 +23,11 @@ struct HomeView: View {
     @ObservedObject private var storage: StorageModel
     @ObservedObject private var developer: DeveloperModel
     @ObservedObject private var updates: UpdatesModel
+    @ObservedObject private var energy: EnergyModel
+    @ObservedObject private var history: RemovalHistoryModel
     private let models: SectionModels
+    /// The last two times Space measured, for what grew between them.
+    @State private var spaceLooks: [SpaceSnapshot] = []
 
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
@@ -34,10 +42,13 @@ struct HomeView: View {
         storage = models.storage
         developer = models.developer
         updates = models.updates
+        energy = models.energy
+        history = models.history
     }
 
-    /// The summary cards are too narrow for a row of four.
-    @State private var cardsWrap = false
+    /// Below this the grid has two columns rather than four.
+    @State private var isNarrow = false
+    private static let spacing: CGFloat = 20
 
     var body: some View {
         ScrollView {
@@ -46,7 +57,7 @@ struct HomeView: View {
             // the window open at half the display.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
+                VStack(alignment: .leading, spacing: Self.spacing) {
                     if case .failed = freshness {
                         FreshnessLabel(freshness: freshness)
                     } else if case .partial = freshness {
@@ -58,31 +69,8 @@ struct HomeView: View {
                     if recovery.isAvailable, !recovery.isEmpty {
                         recoveryNote
                     }
-                    spaceCard
-                    // Four in a row while each keeps room for its figure,
-                    // two by two in a narrow window.
-                    Group {
-                        if cardsWrap {
-                            Grid(horizontalSpacing: 16, verticalSpacing: 16) {
-                                GridRow(alignment: .top) {
-                                    leftoversCard
-                                    backgroundCard
-                                }
-                                GridRow(alignment: .top) {
-                                    developerCard
-                                    updatesCard
-                                }
-                            }
-                        } else {
-                            HStack(alignment: .top, spacing: 16) {
-                                leftoversCard
-                                backgroundCard
-                                developerCard
-                                updatesCard
-                            }
-                        }
-                    }
-                    .onGeometryChange(for: Bool.self, of: { $0.size.width < 680 }, action: { cardsWrap = $0 })
+                    grid
+                        .onGeometryChange(for: Bool.self, of: { $0.size.width < 720 }, action: { isNarrow = $0 })
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         let recent = applications.recentlyInstalled(now: context.date)
                         if !recent.isEmpty {
@@ -90,12 +78,13 @@ struct HomeView: View {
                         }
                     }
                 }
-                .frame(maxWidth: Metrics.cardPageWidth, alignment: .leading)
-                .padding(Metrics.pagePadding)
+                .frame(maxWidth: Self.pageWidth, alignment: .leading)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 28)
                 Spacer(minLength: 0)
             }
         }
-        .pageTitle("Home", centredWidth: Metrics.cardPageWidth)
+        .pageTitle("Home", centredWidth: Self.pageWidth)
         .task { await leftovers.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await recovery.start(service: service) }
@@ -103,6 +92,13 @@ struct HomeView: View {
         .task { await storage.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
         .task { await updates.loadIfNeeded(service: service) }
+        .task { await energy.loadOverview() }
+        .task {
+            await history.load(service: service)
+            await applications.loadIfNeeded(service: service)
+            await history.recheck(installed: Set(applications.applications.compactMap(\.identity.bundleID)))
+        }
+        .task { spaceLooks = SpaceHistory.load() }
         .onAppear { fullDiskAccess.startObserving() }
     }
 
@@ -118,6 +114,9 @@ struct HomeView: View {
         }
         return .notChecked
     }
+
+    /// Wider than a reading page: Home is a dashboard of cards.
+    private static let pageWidth: CGFloat = 1000
 
     // MARK: - Notes
 
@@ -154,19 +153,27 @@ struct HomeView: View {
             figure: volume.map { ByteText.short($0.freeRightNow) + " free" } ?? "…",
             status: volume == nil ? .checking : .neutral,
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
-            isRefreshing: storage.isLoading && volume != nil
+            isRefreshing: storage.isLoading && volume != nil, fillsRow: true
         ) {
             if let volume {
-                // Three facts, never added into one: what is used, what
-                // macOS will release when it needs to, and what is free.
-                MeterBar(segments: [
-                    MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
-                    MeterSegment(
-                        label: "Held by macOS", value: volume.reclaimableByTheSystem,
-                        color: Palette.frost
-                    ),
-                    MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
-                ])
+                VStack(alignment: .leading, spacing: 10) {
+                    // Three facts, never added into one: what is used, what
+                    // macOS will release when it needs to, and what is free.
+                    MeterBar(segments: [
+                        MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
+                        MeterSegment(
+                            label: "Held by macOS", value: volume.reclaimableByTheSystem,
+                            color: Palette.frost
+                        ),
+                        MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
+                    ])
+                    ForEach(spaceNotes, id: \.self) { note in
+                        Text(note)
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.inkSecondary)
+                            .lineLimit(1)
+                    }
+                }
             }
         } action: { shell.go(to: .space) }
     }
@@ -189,7 +196,7 @@ struct HomeView: View {
             status: failed || !size.isComplete ? .partial : summary.status,
             phrase: failed ? "Could not check remnants"
                 : (size.isComplete ? summary.phrase : "Some locations could not be measured"),
-            isRefreshing: leftovers.isScanning && checked
+            isRefreshing: leftovers.isScanning && checked, fillsRow: true
         ) {
             if checked, size.isComplete, rebuilds + data > 0 {
                 MeterBar(segments: [
@@ -209,7 +216,8 @@ struct HomeView: View {
         return StatCard(
             title: "Background", symbol: "gearshape.2",
             figure: "\(background.live.count) listed",
-            status: summary.status, phrase: summary.phrase, isRefreshing: background.isLoading && hasData
+            status: summary.status, phrase: summary.phrase, isRefreshing: background.isLoading && hasData,
+            fillsRow: true
         ) { shell.go(to: .background) }
     }
 
@@ -221,7 +229,7 @@ struct HomeView: View {
             figure: ByteText.short(developer.totalBytes),
             status: firstLoad ? .checking : .neutral,
             phrase: count == 1 ? "1 build cache" : "\(count) build caches",
-            isRefreshing: developer.isScanning && !firstLoad
+            isRefreshing: developer.isScanning && !firstLoad, fillsRow: true
         ) { shell.go(to: .developer) }
     }
 
@@ -232,7 +240,7 @@ struct HomeView: View {
             figure: count.map { "\($0) available" } ?? "…",
             status: count == nil ? .checking : (count == 0 ? .clear : .attention),
             phrase: updates.check.map { "Checked \($0.checked) apps" } ?? "Checking",
-            isRefreshing: updates.isChecking && count != nil
+            isRefreshing: updates.isChecking && count != nil, fillsRow: true
         ) { shell.go(to: .apps, lens: .updates) }
     }
 
@@ -273,6 +281,84 @@ struct HomeView: View {
         .card()
         .hoverLift()
     }
+}
+
+// MARK: - Layout
+
+extension HomeView {
+    /// Rows of equally wide cards, each row as tall as its tallest card.
+    /// A `Grid` divided its columns by what each card asked for, so the
+    /// counts were squeezed until "Updates" broke across two lines.
+    private var grid: some View {
+        VStack(spacing: Self.spacing) {
+            if isNarrow {
+                row { spaceCard }
+                row { energyCard }
+                row {
+                    leftoversCard
+                    backgroundCard
+                }
+                row {
+                    developerCard
+                    updatesCard
+                }
+                row { InstallCard(recording: models.recording) }
+                row { journalCard }
+            } else {
+                row {
+                    spaceCard
+                    energyCard
+                }
+                row {
+                    leftoversCard
+                    backgroundCard
+                    developerCard
+                    updatesCard
+                }
+                row {
+                    InstallCard(recording: models.recording)
+                    journalCard
+                }
+            }
+        }
+    }
+
+    /// Cards share the row's width equally; measured at their tallest, then
+    /// each is offered that height.
+    private func row(@ViewBuilder _ cards: () -> some View) -> some View {
+        HStack(alignment: .top, spacing: Self.spacing) {
+            cards()
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var energyCard: some View {
+        HomeEnergyCard(energy: energy) { shell.go(to: .energy) }
+    }
+
+    private var journalCard: some View {
+        HomeJournalCard(history: history) { shell.go(to: .journal) }
+    }
+
+    /// From what Space measured on its last two visits, dated, because
+    /// Home does not measure them itself.
+    private var spaceNotes: [String] {
+        guard let latest = spaceLooks.last else { return [] }
+        var notes: [String] = []
+        if let previous = SpaceHistory.previous(to: latest.date, in: spaceLooks),
+           let change = SpaceHistory.changes(from: previous, to: latest, limit: 1).first {
+            let sign = change.bytes > 0 ? "+" : "−"
+            notes.append("\(change.title) \(sign)\(ByteText.short(abs(change.bytes))) between "
+                + "\(Self.day.format(previous.date)) and \(Self.day.format(latest.date))")
+        }
+        if let largest = latest.apps.max(by: { $0.value < $1.value }) {
+            notes.append("Largest app \(largest.key), \(ByteText.short(largest.value)) on "
+                + Self.day.format(latest.date))
+        }
+        return notes
+    }
+
+    private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 }
 
 /// A note that needs the person, above the cards: Full Disk Access, or
