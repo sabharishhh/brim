@@ -122,9 +122,8 @@ struct ContentView: View {
         // containing any of Brim's own code: no view body was running,
         // SwiftUI was re-measuring everything. Every panel had it, which is
         // why removing an HSplitView here and a ScrollView there each
-        // helped a little and none of it fixed the feel.
-        //
-        // A minimum is a constant and costs nothing to answer.
+        // helped a little and none of it fixed the feel. A minimum is a
+        // constant and costs nothing to answer.
         // The narrowest the layout holds together: the sidebar (200), a
         // list column (440) and a review pane (440), with room to spare.
         // Every column's minimum must add up to less than this, or a column
@@ -138,6 +137,7 @@ struct ContentView: View {
             shell.appsLens = AppsLens(rawValue: savedLens) ?? .all
             resumeAfterAccess()
             models.fullDiskAccess.startObserving()
+            IntentSources.shared.attach(models: models, shell: shell)
         }
         .onChange(of: shell.selection) { _, destination in
             savedDestination = destination.rawValue
@@ -163,7 +163,7 @@ struct ContentView: View {
         }
         // Every installed app's icon, saved while the app is here to ask,
         // so its leftovers keep its face after it is removed.
-        .onReceive(models.applications.$applications) { session.icons.remember($0) }
+        .onReceive(models.applications.$applications) { session.icons.remember($0); IntentSources.shared.index($0) }
         // Asked from the Dock, a Shortcut or Spotlight, possibly before
         // this window existed.
         .task(id: requests.pending.count) { answerExternalRequests() }
