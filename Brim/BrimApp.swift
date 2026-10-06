@@ -93,6 +93,9 @@ private let log = BrimLog.make("app")
     private var mainWindow: some Scene {
         WindowGroup {
             root
+                // Opening an installer with Brim while it ran made a second
+                // window for it. The open window takes every external event.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 // Monochrome: the person's system accent would colour
                 // checkboxes, switches and the sidebar selection.
                 .tint(Palette.tint)
@@ -156,6 +159,7 @@ private let log = BrimLog.make("app")
         // the content reporting an infinite width. Left in place because it
         // is correct, and noted because it is not yet taking effect.
         .defaultSize(width: 1200, height: 800)
+        .handlesExternalEvents(matching: ["*"])
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .help) {

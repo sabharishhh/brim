@@ -175,6 +175,10 @@ struct JournalView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .frame(maxHeight: .infinity, alignment: .top)
+        } else if groups.isEmpty, !model.visibleRecords.isEmpty || !model.visibleInstalls.isEmpty {
+            // The rows are built a moment after the page opens. Until then
+            // there is something to show, so "Nothing yet" would be untrue.
+            Color.clear
         } else if groups.isEmpty {
             EmptyState(symbol: "book.closed", title: "Nothing yet", message: "Removals and installs appear here.")
         } else {

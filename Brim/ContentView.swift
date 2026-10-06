@@ -102,7 +102,7 @@ struct ContentView: View {
         .dropDestination(for: URL.self) { urls, _ -> Bool in
             models.openApplication(from: urls, shell: shell)
         }
-        .modifier(InstallerSheets(model: models.recording, shell: shell))
+        .modifier(InstallerSheets(model: models.recording, shell: shell, applications: models.applications))
         // A minimum, and deliberately no ideal.
         //
         // This carried `idealWidth: 1200, idealHeight: 800` for the reason
