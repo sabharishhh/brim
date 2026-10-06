@@ -20,6 +20,8 @@ final class SectionModels: ObservableObject {
     let leftovers = LeftoversModel()
     let background = BackgroundModel()
     let storage = StorageModel()
+    /// Every installed app's data, for Space.
+    let appData = AppDataModel()
     let energy = EnergyModel()
     let developer = DeveloperModel()
     let updates = UpdatesModel()
