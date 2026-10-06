@@ -87,7 +87,7 @@ public protocol BrimServiceProtocol: Sendable {
     /// Checks every application for a newer version. Reaches the network.
     func checkForUpdates() async -> UpdateCheck
     /// Puts one update in place, reporting download progress from 0 to 1.
-    func installUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome
+    func installUpdate(_ update: AppUpdate, progress: @escaping DownloadProgress.Handler) async -> UpdateOutcome
     /// What a package, disk image or uninstalled app would put on this Mac,
     /// read without installing it.
     func previewInstaller(at url: URL) async throws -> InstallerPreview
@@ -204,7 +204,7 @@ public extension BrimServiceProtocol {
         UpdateCheck(updates: [], checked: 0, unchecked: [], checkedAt: Date())
     }
 
-    func installUpdate(_: AppUpdate, progress _: @escaping @Sendable (Double) -> Void) async -> UpdateOutcome {
+    func installUpdate(_: AppUpdate, progress _: @escaping DownloadProgress.Handler) async -> UpdateOutcome {
         .failed("Not supported here.")
     }
 

@@ -1698,7 +1698,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// Puts one update in place. Homebrew updates what it installed; the
     /// rest Brim downloads, checks and swaps, or hands to Installer.
     public func installUpdate(
-        _ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void
+        _ update: AppUpdate, progress: @escaping @Sendable (DownloadProgress) -> Void
     ) async -> UpdateOutcome {
         switch update.route {
         case .homebrew:
