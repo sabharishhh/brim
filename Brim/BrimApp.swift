@@ -26,7 +26,26 @@ private let log = BrimLog.make("app")
 
     init() {
         LaunchSignpost.begin()
+        Self.useGraphiteAccent()
         BrimTips.configure()
+    }
+
+    /// Brim has no accent colour, whatever the Mac's is.
+    ///
+    /// Tinting each control did not reach them all: with a red accent the
+    /// sidebar's icons and the Settings window's tabs were still red, drawn
+    /// by AppKit from the system accent that a SwiftUI tint never touches.
+    /// macOS reads the accent from the `AppleAccentColor` default, and an
+    /// app's own domain wins over the global one, so Brim sets Graphite
+    /// (-1) and the grey selection highlight in its own domain. Every
+    /// control AppKit draws for Brim is then grey, and the rest of the Mac
+    /// keeps the person's colour.
+    private static func useGraphiteAccent() {
+        let defaults = UserDefaults.standard
+        if defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleAccentColor"] as? Int != -1 {
+            defaults.set(-1, forKey: "AppleAccentColor")
+        }
+        defaults.set("0.847059 0.847059 0.862745 Graphite", forKey: "AppleHighlightColor")
     }
 
     @State private var showSelfUninstall = false
