@@ -631,6 +631,39 @@ sleep sentence names its times. Brim keeps the system accent out entirely
 with #1E1E1E text, Settings tabs by colour alone). Full Disk Access
 requests are remembered so a relaunch returns to the same page.
 
+## Before and after an install (6 October, plan 009)
+
+Three features carry Brim's evidence to the moments it did not cover.
+Looking inside an installer reads a package's own file list (`pkgutil
+--expand`, `lsbom`), scripts and declared bundles, a disk image mounted
+read-only and hidden, or an app's bundle, and installs nothing. Recording an
+install takes two snapshots of every place software hides, 0.09 s each, and
+attributes what is new by name, developer or registration; what only
+appeared during the recording is shown unticked. A kept recording becomes
+Tier B evidence for the removal and is offered in Remnants once the app has
+gone. Rechecks look again, by path, at every confirmed removal when the
+Journal or Home opens.
+
+Found by looking: the snapshot missed new apps because the Applications
+folders are not in the location table; a new developer folder
+(`Application Support/VendorCo`) was not linked to `com.vendorco.demo`; Brim's
+own root-owned folder was reported as unreadable and its own folders would
+have appeared as noise. All fixed, and Brim's names are read from its bundle,
+not listed. Package sizes under a megabyte said nothing beside a launch job
+and are hidden.
+
+Home is now four equal columns with level rows: Space (with the largest app
+and the change between Space's last two looks), Energy (charge, charging,
+health, cycles, the last long sleep named by its day), the four counts,
+Installing, and the Journal (removals, and whether they are still gone). A
+`Grid` divided its columns by what each card asked for and broke "Updates"
+across two lines; rows are equal-width stacks measured at their tallest.
+
+Seen on screen through a temporary capture hook, since removed: both
+previews, the recording card before and after a relaunch, an empty and a
+real result, and Home. Not seen: a Journal row that came back (no removals
+existed and the screen was locked), and Home's two-column layout.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
@@ -638,7 +671,8 @@ walkthroughs with Reduce Motion, Reduce Transparency, Increase Contrast and
 VoiceOver (macOS offers no per-app override, and system settings were not
 changed); 120 Hz frame captures of pointer tracking and scrolling; frontmost
 idle CPU with the screen unlocked; the formative usability study; and
-Developer ID notarisation, which needs the paid programme.
+Developer ID notarisation, which needs the paid programme and is not
+planned: Brim ships as an open source DMG signed with the free certificate.
 
 Deferred deliberately: a toolbar search field (the existing field is
 already visible and keyboard reachable, and no improvement was shown); a
