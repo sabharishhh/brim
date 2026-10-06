@@ -203,6 +203,7 @@ struct InstallerSheets: ViewModifier {
             .sheet(item: $shell.installerToRead) { request in
                 InstallerPreviewSheet(request: request, recording: model)
                     .environment(shell)
+                    .closesForQuit()
             }
             .sheet(isPresented: Binding(get: { isShowingResult }, set: { shown in
                 // Closed some other way than its buttons: the recording
@@ -213,6 +214,7 @@ struct InstallerSheets: ViewModifier {
             })) {
                 if case let .found(result) = model.phase {
                     InstallRecordingSheet(result: result, model: model)
+                        .closesForQuit()
                 }
             }
             .alert("Could not record the install", isPresented: Binding(
