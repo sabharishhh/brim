@@ -8,7 +8,11 @@ struct JournalRow: View {
     let entry: JournalEntry
     let isPuttingBack: Bool
     let outcome: RemovalHistoryModel.PutBackOutcome?
+    /// What a second look at a confirmed removal found, if it was looked at.
+    let recheck: RemovalRecheck.State?
     let putBack: () -> Void
+    /// Opens the full check of a removal whose files came back.
+    let review: () -> Void
     @State private var showsFailure = false
     /// Denser rows, from View ▸ Compact Rows.
     @SwiftUI.Environment(\.compactRows) private var compact
@@ -21,7 +25,7 @@ struct JournalRow: View {
                     .font(.brimRowTitle)
                     .foregroundStyle(Palette.ink)
                 if !compact {
-                    Text(facts)
+                    Text("\(Text(facts))\(secondLook)")
                         .font(.brimFacts)
                         .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
@@ -88,6 +92,44 @@ struct JournalRow: View {
         }
     }
 
+    /// The second look, after the facts: quiet when nothing changed, in
+    /// the caution colour with a symbol when files came back.
+    private var secondLook: Text {
+        switch recheck {
+        case nil:
+            return Text(verbatim: "")
+        case .stillGone:
+            return Text(verbatim: " · Still gone")
+        case .installedAgain:
+            return Text(verbatim: " · Installed again")
+        case let .cameBack(paths):
+            let symbol = Image(systemName: "exclamationmark.triangle.fill")
+            let warning = Text("\(symbol) \(Self.cameBackPhrase(paths.count))").foregroundStyle(Palette.caution)
+            return Text(" · \(warning)")
+        }
+    }
+
+    static func cameBackPhrase(_ count: Int) -> String {
+        count == 1 ? "1 item came back" : "\(count) items came back"
+    }
+
+    /// Said once, in the row's sentence.
+    private var spokenSecondLook: String {
+        switch recheck {
+        case nil: ""
+        case .stillGone: "still gone"
+        case .installedAgain: "installed again"
+        case let .cameBack(paths): Self.cameBackPhrase(paths.count)
+        }
+    }
+
+    private var cameBack: Bool {
+        if case .cameBack = recheck {
+            return true
+        }
+        return false
+    }
+
     @ViewBuilder
     private var trailing: some View {
         if case let .removed(record) = entry.event {
@@ -129,6 +171,14 @@ struct JournalRow: View {
                     .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
+            } else if cameBack {
+                // What came back is shown by the full check, which names
+                // each path and offers what Remnants would.
+                Button("Review", action: review)
+                    .capsuleAction()
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .help("Check this removal again")
             } else if let reason = record.unavailableReason {
                 Text(reason)
                     .font(.caption)
@@ -150,7 +200,8 @@ struct JournalRow: View {
             case let .failed(reason): "could not put back. \(reason)"
             case nil: record.canUndo ? "can be put back" : (record.unavailableReason ?? "")
             }
-            return [entry.name, facts, state, entry.time].filter { !$0.isEmpty }.joined(separator: ", ")
+            return [entry.name, facts, spokenSecondLook, state, entry.time].filter { !$0.isEmpty }
+                .joined(separator: ", ")
         }
     }
 }

@@ -17,6 +17,11 @@ public protocol BrimServiceProtocol: Sendable {
     /// Re-observe a bounded set of unfinished removals once when the app opens.
     /// This never repeats an execution or obtains approval.
     func recheckPendingRemovals() async
+    /// Looks again, by path only, at recent removals that were confirmed,
+    /// and says whether what they took is still gone. `installed` is the
+    /// identifiers of the applications on the Mac now, so a reinstall is
+    /// recognised rather than reported as files coming back.
+    func recheckRemovals(installed: Set<String>) async -> [RemovalRecheck]
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
     /// Deletes for good what one removal put in the Trash, leaving the rest
@@ -87,6 +92,11 @@ public protocol BrimServiceProtocol: Sendable {
 
 public extension BrimServiceProtocol {
     func recheckPendingRemovals() async {}
+
+    /// A service with no journal has no removals to look at again.
+    func recheckRemovals(installed _: Set<String>) async -> [RemovalRecheck] {
+        []
+    }
 
     /// Ask, wait for the answer, then act on it.
     ///

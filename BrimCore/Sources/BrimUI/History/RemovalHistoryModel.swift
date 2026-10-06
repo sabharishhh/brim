@@ -122,6 +122,20 @@ public final class RemovalHistoryModel: ObservableObject {
 
     /// Removals whose items are being deleted from the Trash.
     @Published public private(set) var deletingPlanIds: Set<UUID> = []
+    /// Each confirmed removal looked at again, by plan. Empty until the
+    /// Journal asks, and never saved.
+    @Published public private(set) var rechecks: [UUID: RemovalRecheck.State] = [:]
+
+    /// How many confirmed removals have files on the disk again.
+    public var cameBackCount: Int {
+        rechecks.values.filter {
+            if case .cameBack = $0 {
+                return true
+            }
+            return false
+        }.count
+    }
+
     /// Everything before this is cleared from the Journal, except removals
     /// that can still be put back: hiding one of those would hide the only
     /// way back to the person's files.
@@ -173,6 +187,14 @@ public final class RemovalHistoryModel: ObservableObject {
         isLoading = records.isEmpty
         defer { isLoading = false }
         await reload()
+    }
+
+    /// Looks again at every confirmed removal. `installed` is the
+    /// identifiers on the Mac now, so a reinstall reads as one.
+    public func recheck(installed: Set<String>) async {
+        guard let service else { return }
+        let found = await service.recheckRemovals(installed: installed)
+        rechecks = Dictionary(found.map { ($0.planId, $0.state) }, uniquingKeysWith: { _, latest in latest })
     }
 
     /// Recompute from the service. Cheap enough to call on every Trash change.
