@@ -111,14 +111,16 @@ struct MainSidebar: View {
     /// Which places are still scanning, shown as a spinner on their row.
     @ObservedObject var activity: ScanActivity
     @EnvironmentObject private var release: BrimReleaseCheck
+    @State private var hovered: Destination?
 
     var body: some View {
-        // `.tag` rather than `NavigationLink(value:)`. The link form belongs
-        // to a NavigationStack path; inside a List driven by a selection
-        // binding it produces rows that expose as AXUnknown and ignore an
-        // accessibility press, so the sidebar looked operable to VoiceOver
-        // and to automation while doing nothing.
-        List(selection: $selection) {
+        // Rows are buttons, and the selection is drawn here: an off-white
+        // row with near-black text. A list selection is drawn by AppKit in
+        // the accent, which Brim sets to Graphite, so it could only ever be
+        // grey. Buttons expose as buttons, with the selected trait, so the
+        // sidebar stays operable to VoiceOver; the arrow keys move through
+        // it as a list's would.
+        List {
             // Home carries Brim's own icon, so a header naming Brim above it
             // said the same thing twice.
             Section {
@@ -134,9 +136,12 @@ struct MainSidebar: View {
         .listStyle(.sidebar)
         // A sidebar draws its symbols in the system accent, and the window's
         // own tint does not reach them: with a red accent every icon here
-        // was red while the rest of Brim was white and grey. Monochrome made
-        // them a dull grey, so they are Brim's own off-white.
+        // was red. Each row now colours its own symbol.
         .listItemTint(.fixed(Palette.snow))
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.downArrow) { move(by: 1) }
+        .onKeyPress(.upArrow) { move(by: -1) }
         // A little air between the window controls and the first row.
         .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
@@ -162,19 +167,47 @@ struct MainSidebar: View {
 
     private func rows(_ destinations: [Destination]) -> some View {
         ForEach(destinations, id: \.self) { destination in
-            HStack {
-                SidebarLabel(destination: destination, isSelected: selection == destination)
-                Spacer()
-                if activity.busy.contains(destination) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .transition(.opacity)
-                        .accessibilityLabel("Checking")
+            let isSelected = selection == destination
+            Button {
+                selection = destination
+            } label: {
+                HStack {
+                    SidebarLabel(destination: destination, isSelected: isSelected)
+                    Spacer()
+                    if activity.busy.contains(destination) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .transition(.opacity)
+                            .accessibilityLabel("Checking")
+                    }
                 }
+                .padding(.horizontal, 8)
+                .frame(height: 30)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isSelected ? Palette.snow : (hovered == destination ? Palette.selected : .clear))
+                }
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .onHover { inside in
+                hovered = inside ? destination : (hovered == destination ? nil : hovered)
+            }
+            .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .animation(.easeInOut(duration: 0.2), value: activity.busy.contains(destination))
-            .tag(destination)
         }
+    }
+
+    private static let order: [Destination] = Destination.brim + Destination.yourMac + [.journal]
+
+    private func move(by step: Int) -> KeyPress.Result {
+        let order = Self.order
+        guard let current = selection, let index = order.firstIndex(of: current) else { return .ignored }
+        let next = index + step
+        guard order.indices.contains(next) else { return .handled }
+        selection = order[next]
+        return .handled
     }
 }
 
@@ -189,6 +222,8 @@ private struct SidebarLabel: View {
     var body: some View {
         Label {
             Text(destination.rawValue)
+                .foregroundStyle(isSelected ? Palette.onSnow : Palette.ink)
+                .fontWeight(isSelected ? .medium : .regular)
         } icon: {
             switch destination {
             case .home:
@@ -197,6 +232,7 @@ private struct SidebarLabel: View {
                 BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
             default:
                 Image(systemName: destination.icon)
+                    .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
             }
         }
     }

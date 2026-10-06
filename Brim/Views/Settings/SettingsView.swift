@@ -12,7 +12,8 @@ import SwiftUI
 /// The two tabs are drawn here rather than by a `TabView`. AppKit draws a
 /// settings toolbar's icons in the system accent, so with a red accent they
 /// were red, and the closest Brim can set for itself is Graphite, which made
-/// them a dull grey beside the off-white of everything else.
+/// them a dull grey beside the off-white of everything else. The selected
+/// tab is off-white with near-black text, as a selected sidebar row is.
 struct SettingsView: View {
     @AppStorage("settings.tab") private var selection = SettingsTab.general
 
@@ -47,9 +48,9 @@ struct SettingsView: View {
                 Text(tab.title)
                     .font(.caption)
             }
-            .foregroundStyle(Palette.snow)
+            .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
             .frame(width: 72, height: 50)
-            .background(isSelected ? Palette.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+            .background(isSelected ? Palette.snow : .clear, in: .rect(cornerRadius: 8, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

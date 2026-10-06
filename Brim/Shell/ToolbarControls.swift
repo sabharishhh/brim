@@ -41,20 +41,22 @@ struct LensSwitch: View {
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
                     .monospacedDigit()
-                    .foregroundStyle(.black)
+                    .foregroundStyle(isOn ? Palette.snow : Palette.onSnow)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 16, minHeight: 16)
-                    .background(Palette.snow, in: .capsule)
+                    .background(isOn ? Palette.onSnow : Palette.snow, in: .capsule)
             }
         }
         .font(.body.weight(.medium))
-        .foregroundStyle(isOn ? Palette.ink : Palette.inkSecondary)
+        .foregroundStyle(isOn ? Palette.onSnow : Palette.inkSecondary)
         .padding(.horizontal, 14)
         .frame(height: 26)
         .background {
             if isOn {
+                // The selected segment is off-white with near-black text,
+                // as a selected sidebar row is.
                 Capsule()
-                    .fill(.white.opacity(0.16))
+                    .fill(Palette.snow)
                     .matchedGeometryEffect(id: "light", in: light)
             }
         }

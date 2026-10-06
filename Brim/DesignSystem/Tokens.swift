@@ -49,8 +49,12 @@ enum Palette {
     /// switches, the sidebar's selection. Mid grey, so a white checkmark on
     /// it still reads.
     static let tint = Color(white: 0.5)
-    /// The first thing a measure shows: used space, the biggest draw.
-    static let snow = Color(white: 0.9)
+    /// Off-white: the first thing a measure shows, icons, and what is
+    /// selected. A step down from pure white so it is not sharp on the
+    /// eyes, and never grey: at 90% it read as grey beside white text.
+    static let snow = Color(white: 0.93)
+    /// Text and symbols on `snow`, near black rather than black.
+    static let onSnow = Color(red: 0x1E / 255, green: 0x1E / 255, blue: 0x1E / 255)
     /// The second: what macOS holds, the other part of a pair.
     static let frost = Color(white: 0.6)
     /// A third, where a measure has one.
