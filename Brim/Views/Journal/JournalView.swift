@@ -63,11 +63,15 @@ struct JournalView: View {
         .task {
             await applications.loadIfNeeded(service: service)
             await model.reload()
+            await recheckRemovals()
         }
         // Whether something can be put back changes when the Trash does.
         .task { await recovery.start(service: service) }
         .onChange(of: recovery.items) { _, _ in
-            Task { await model.reload() }
+            Task {
+                await model.reload()
+                await recheckRemovals()
+            }
         }
         .task(id: Signature(model.visibleRecords, installs: model.visibleInstalls.count)) {
             let entries = JournalTimeline.entries(records: model.visibleRecords, installs: model.visibleInstalls)
@@ -198,7 +202,9 @@ struct JournalView: View {
                                 entry: entry,
                                 isPuttingBack: isPuttingBack(entry),
                                 outcome: outcome(entry),
-                                putBack: { putBack(entry) }
+                                recheck: secondLook(entry),
+                                putBack: { putBack(entry) },
+                                review: { review(entry) }
                             )
                             .contextMenu {
                                 if case let .removed(record) = entry.event {
@@ -242,6 +248,24 @@ struct JournalView: View {
                 showsCheckError = true
             }
         }
+    }
+
+    /// Every confirmed removal, looked at again by path. Cheap: the last
+    /// hundred removals are a few thousand `lstat` calls.
+    private func recheckRemovals() async {
+        let installed = Set(applications.applications.compactMap(\.identity.bundleID))
+        await model.recheck(installed: installed)
+    }
+
+    /// What the second look found, unless a Put Back just changed it.
+    private func secondLook(_ entry: JournalEntry) -> RemovalRecheck.State? {
+        guard case let .removed(record) = entry.event, model.putBackOutcomes[record.id] == nil else { return nil }
+        return model.rechecks[record.id]
+    }
+
+    private func review(_ entry: JournalEntry) {
+        guard case let .removed(record) = entry.event else { return }
+        recheck(record.plan)
     }
 
     private func isPuttingBack(_ entry: JournalEntry) -> Bool {
