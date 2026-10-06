@@ -542,6 +542,40 @@ was performed. The test Trash and catalogue fixture folders were cleaned
 by their harnesses; this session could not read the real Trash because
 macOS refused access.
 
+## No background registration (6 October)
+
+System Settings listed Brim under Background App Activity, switched on and
+"last ran in background 3 days ago", although protected work had moved to
+the temporary administrator process on 3 October. The bundle still carried
+the old daemon's launchd plist, and every launch called
+`SMAppService.unregister` to retire it; each Service Management call makes
+macOS evaluate that plist again, so the record followed every new build.
+The plist is no longer embedded, Brim makes no Service Management call, and
+`HelperLifecycleTests` fails if either returns. A clean build has no
+`Contents/Library`. The record macOS already held stayed after every Brim
+build, test leftover and data folder was removed from this Mac; it can only
+be switched off in Settings, since erasing it would need a global reset.
+
+## Energy and Space, first phase (6 October)
+
+Plan in `plans/008-energy-and-space.md`. Energy's two condition cards are
+one status card: charge with a meter, the whole Mac's draw from the battery
+controller's telemetry, the adapter's rating, and the temperature, with a
+line of battery health read from `system_profiler` so it matches Settings
+(the registry's own capacities give 98.5% where Settings shows 100%). The
+power list measures each app against the total rather than the busiest,
+folds everything past six rows into one, and offers Quit on hover, in the
+context menu and as an accessibility action; it is a polite quit and never
+Brim itself. Space's Remnants and Developer cards became one card of bars
+on the used space: apps, developer caches, Brim's removals still in the
+Trash, and remnants, with the rest stated as a subtraction.
+
+Verified: the readings against this MacBook Air (80%, 35 W adapter, 17 W
+draw, Good, 100%, 55 cycles) in `BatteryReportTests`; the full package
+suite (518 XCTest cases, 1 skipped, plus the Swift Testing suites); the app
+build; no added lint. Not verified: the pages on screen, the draw figure on
+battery power, Quit with a real pointer, and a Mac without a battery.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device

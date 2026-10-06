@@ -1,0 +1,147 @@
+import BrimCore
+import BrimUI
+import SwiftUI
+
+/// One figure for each kind of space software takes, on one scale.
+///
+/// Remnants and Developer had a card each, side by side, with figures
+/// that could not be compared with anything: 1.2 GB beside 27 GB, and
+/// nothing to say what either was against the disk. Here every row is
+/// a bar against the same used space, so the apps' share and a
+/// removal's leftovers read as the sizes they are. What no row covers
+/// is said as the subtraction it is, never estimated.
+///
+/// Removed items still in the Trash have their own row because Brim
+/// put them there and they free nothing until the Trash is emptied.
+struct SpaceSoftwareCard: View {
+    @ObservedObject var storage: StorageModel
+    @ObservedObject var applications: ApplicationsModel
+    @ObservedObject var developer: DeveloperModel
+    @ObservedObject var history: RemovalHistoryModel
+    @SwiftUI.Environment(ShellState.self) private var shell
+
+    var body: some View {
+        let rows = softwareRows
+        let used = storage.startupVolume?.used
+        let counted = rows.compactMap(\.bytes).reduce(0, +)
+        let scale = max(1, used ?? rows.compactMap(\.bytes).max() ?? 1)
+        let everythingKnown = rows.allSatisfy { $0.bytes != nil }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("What software takes")
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.ink)
+                Spacer()
+                if let used {
+                    Text("Of \(ByteText.short(used)) used")
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkSecondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            ForEach(rows) { row in
+                softwareRow(row, scale: scale)
+            }
+            if let used, everythingKnown, used > counted {
+                Text("Everything else: app data, your files and macOS, \(ByteText.short(used - counted))")
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.inkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+        }
+        .padding(8)
+        .card()
+        .hoverLift()
+    }
+
+    private struct SoftwareRow: Identifiable {
+        let title: String
+        /// Nil while it is still being measured.
+        let bytes: Int64?
+        /// Shown instead of a size when there is one to say.
+        var figure: String?
+        let destination: Destination
+        var id: String {
+            title
+        }
+    }
+
+    private var softwareRows: [SoftwareRow] {
+        // Apps on another disk take nothing from this one.
+        let apps = applications.applications.filter { !$0.isSystemProtected && !$0.url.path.hasPrefix("/Volumes/") }
+        var rows = [
+            SoftwareRow(
+                title: "Apps",
+                bytes: apps.isEmpty && applications.isLoading ? nil : apps.reduce(0) { $0 + $1.bundleSizeBytes },
+                destination: .apps
+            ),
+            SoftwareRow(
+                title: "Developer caches",
+                bytes: developer.caches.isEmpty && developer.isScanning ? nil : developer.totalBytes,
+                destination: .developer
+            )
+        ]
+        if history.isLoading || history.bytesInTrash > 0 {
+            rows.append(SoftwareRow(
+                title: "Removed, in the Trash",
+                bytes: history.isLoading ? nil : history.bytesInTrash,
+                destination: .journal
+            ))
+        }
+        rows.append(SoftwareRow(
+            title: "Remnants",
+            bytes: storage.hasEstimate ? storage.brimCanClear : nil,
+            figure: storage.hasEstimate && storage.estimateUnavailable ? storage.brimCanClearFigure : nil,
+            destination: .leftovers
+        ))
+        return rows
+    }
+
+    private func softwareRow(_ row: SoftwareRow, scale: Int64) -> some View {
+        let figure = row.figure ?? row.bytes.map(ByteText.short) ?? "Checking"
+        return Button {
+            shell.go(to: row.destination)
+        } label: {
+            HStack(spacing: 12) {
+                Text(row.title)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .frame(width: 170, alignment: .leading)
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Palette.well)
+                        if let bytes = row.bytes, bytes > 0 {
+                            Capsule()
+                                .fill(Palette.snow)
+                                .frame(width: max(3, proxy.size.width * min(1, Double(bytes) / Double(scale))))
+                        }
+                    }
+                }
+                .frame(height: 6)
+                .brimAnimation(Motion.data, value: row.bytes)
+                Text(figure)
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(row.bytes == nil ? Palette.inkTertiary : Palette.ink)
+                    .frame(width: 92, alignment: .trailing)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.inkTertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .contentShape(.rect)
+            .rowHighlight(isInspected: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(row.title), \(figure)")
+        .accessibilityHint("Opens \(row.destination.rawValue)")
+    }
+}

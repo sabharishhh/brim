@@ -188,7 +188,10 @@ struct ContentView: View {
         case .energy:
             EnergyView(model: models.energy)
         case .space:
-            SpaceView(model: models.storage, applications: models.applications, developer: models.developer)
+            SpaceView(
+                model: models.storage, applications: models.applications,
+                developer: models.developer, history: models.history
+            )
         case .developer:
             DeveloperView(model: models.developer)
         case .journal:

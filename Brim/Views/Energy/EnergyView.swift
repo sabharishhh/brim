@@ -1,3 +1,4 @@
+import AppKit
 import BrimCore
 import BrimProtocol
 import BrimUI
@@ -18,6 +19,8 @@ import SwiftUI
 struct EnergyView: View {
     @ObservedObject var model: EnergyModel
     @SwiftUI.Environment(\.brimService) private var service
+    /// The row the pointer is over, which shows its Quit button.
+    @State private var hovered: String?
 
     var body: some View {
         content
@@ -37,7 +40,7 @@ struct EnergyView: View {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
-                        conditionRow
+                        EnergyStatusCard(battery: model.battery, condition: model.condition)
                         if !model.appsKeepingMacAwake.isEmpty {
                             awake
                         }
@@ -50,61 +53,6 @@ struct EnergyView: View {
             }
             .refreshing(model.isSampling)
         }
-    }
-
-    // MARK: - How the Mac is coping
-
-    /// From interfaces Apple publishes. Deliberately not a temperature in
-    /// degrees: there is no public API for one, and `thermalState` answers
-    /// the question somebody has, which is whether the Mac is slowing down
-    /// to cool itself.
-    private var conditionRow: some View {
-        HStack(alignment: .top, spacing: 16) {
-            conditionCard(
-                symbol: model.condition.thermal.symbolName,
-                status: model.condition.thermal.isNoteworthy ? .attention : .clear,
-                caption: "Temperature", title: model.condition.thermal.title,
-                phrase: model.condition.thermal.isNoteworthy ? "Slowing down to cool" : "No slowdown"
-            )
-            if let power = model.condition.power {
-                conditionCard(
-                    symbol: power.symbolName, status: .neutral, caption: "Power", title: power.title,
-                    phrase: model.condition.lowPowerMode ? "Low Power Mode on"
-                        : (power.isOnBattery ? "On battery" : "On the adapter")
-                )
-            }
-        }
-    }
-
-    private func conditionCard(
-        symbol: String, status: CardStatus, caption: String, title: String, phrase: String? = nil
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(caption, systemImage: symbol)
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            Text(title)
-                .font(.brimFigure)
-                .foregroundStyle(Palette.ink)
-            if let phrase {
-                HStack(spacing: 6) {
-                    StatusDot(status: status)
-                    Text(phrase)
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                }
-            } else {
-                StatusDot(status: status)
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
-        .card()
-        .hoverLift()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel([caption, title, phrase].compactMap(\.self).joined(separator: ", "))
-        // A label with no role exposes as AXUnknown (`CLAUDE.md`).
-        .accessibilityAddTraits(.isStaticText)
     }
 
     // MARK: - Keeping the Mac awake
@@ -142,8 +90,9 @@ struct EnergyView: View {
     private var drawing: some View {
         VStack(alignment: .leading, spacing: 4) {
             sectionTitle(
-                "Drawing power now",
-                trailing: model.applications.count > 1 ? model.busiest.map { "\($0.name) most" } : nil
+                "Using power now",
+                trailing: model.applications.isEmpty ? nil
+                    : "\(rate(milliwatts: model.milliwatts(of: model.applications))) in all"
             )
             if model.applications.isEmpty {
                 Label("Nothing open is drawing much", systemImage: "leaf")
@@ -151,8 +100,11 @@ struct EnergyView: View {
                     .foregroundStyle(Palette.inkSecondary)
                     .padding(12)
             } else {
-                ForEach(model.applications) { reading in
+                ForEach(model.shownApplications) { reading in
                     row(reading)
+                }
+                if let others = model.others {
+                    othersRow(others)
                 }
             }
             if let note = model.condition.note {
@@ -177,6 +129,7 @@ struct EnergyView: View {
             if let trailing {
                 Text(trailing)
                     .font(.brimFacts)
+                    .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
             }
         }
@@ -186,34 +139,92 @@ struct EnergyView: View {
     }
 
     private func row(_ reading: EnergyModel.Reading) -> some View {
-        HStack(spacing: 12) {
+        let quittable = reading.bundlePath != nil
+        return HStack(spacing: 12) {
             BrimIcon(source: icon(bundlePath: reading.bundlePath, name: reading.name))
+            rowFacts(reading, showsQuit: quittable && hovered == reading.id)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: Metrics.rowHeight)
+        .contentShape(.rect)
+        .onHover { inside in
+            if inside {
+                hovered = reading.id
+            } else if hovered == reading.id {
+                hovered = nil
+            }
+        }
+        .contextMenu {
+            if quittable {
+                Button("Quit \(reading.name)") { quit(reading) }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(reading.name)
+        .accessibilityValue(
+            "\(rate(milliwatts: reading.milliwatts(over: model.window))), "
+                + "\(Int((model.share(of: reading) * 100).rounded())) percent of the total, "
+                + reading.dominantCost(over: model.window).sentence
+        )
+        .accessibilityActions {
+            if quittable {
+                Button("Quit \(reading.name)") { quit(reading) }
+            }
+        }
+    }
+
+    private func rowFacts(_ reading: EnergyModel.Reading, showsQuit: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(reading.name)
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                Spacer()
+                if showsQuit {
+                    Button("Quit") { quit(reading) }
+                        .capsuleAction()
+                        .controlSize(.small)
+                        .help("Quit \(reading.name)")
+                }
+                Text(rate(milliwatts: reading.milliwatts(over: model.window)))
+                    .font(.brimFacts)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.ink)
+            }
+            HStack(spacing: 10) {
+                shareBar(model.share(of: reading), color: Palette.snow)
+                Text(reading.dominantCost(over: model.window).sentence)
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSecondary)
+                    .frame(width: 180, alignment: .trailing)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    /// The rest, as one row, so a long tail of small numbers does not
+    /// push the apps that matter out of the card.
+    private func othersRow(_ others: (count: Int, nanojoules: UInt64)) -> some View {
+        let label = others.count == 1 ? "1 other app" : "\(others.count) other apps"
+        let watts = rate(milliwatts: model.milliwatts(nanojoules: others.nanojoules))
+        return HStack(spacing: 12) {
+            Color.clear.frame(width: Metrics.rowIcon, height: 1)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(reading.name)
+                HStack {
+                    Text(label)
                         .font(.brimRowTitle)
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1)
+                        .foregroundStyle(Palette.inkSecondary)
                     Spacer()
-                    Text(rate(reading))
+                    Text(watts)
                         .font(.brimFacts)
                         .monospacedDigit()
-                        .foregroundStyle(Palette.ink)
+                        .foregroundStyle(Palette.inkSecondary)
                 }
                 HStack(spacing: 10) {
-                    // Against the busiest app, so rows compare as a shape.
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(Palette.snow)
-                            .frame(width: max(3, proxy.size.width * model.share(of: reading)))
-                            .frame(maxHeight: .infinity, alignment: .center)
-                    }
-                    .frame(height: 5)
-                    Text(reading.dominantCost(over: model.window).sentence)
-                        .font(.caption)
-                        .foregroundStyle(Palette.inkSecondary)
-                        .frame(width: 180, alignment: .trailing)
-                        .lineLimit(1)
+                    shareBar(model.share(of: others.nanojoules), color: Palette.mist)
+                    Color.clear.frame(width: 180, height: 1)
                 }
             }
         }
@@ -221,8 +232,39 @@ struct EnergyView: View {
         .frame(height: Metrics.rowHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(reading.name)
-        .accessibilityValue("\(rate(reading)), \(reading.dominantCost(over: model.window).sentence)")
+        .accessibilityLabel(label)
+        .accessibilityValue(watts)
+    }
+
+    private func shareBar(_ share: Double, color: Color) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.well)
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(3, proxy.size.width * share))
+            }
+        }
+        .frame(height: 5)
+    }
+
+    /// Asks the app to quit, the way the Dock does. Never a force quit: an
+    /// app with unsaved work gets to ask about it. A fresh reading follows,
+    /// so the row goes once the app has.
+    private func quit(_ reading: EnergyModel.Reading) {
+        guard let path = reading.bundlePath else { return }
+        let target = URL(fileURLWithPath: path).standardizedFileURL
+        // Never Brim itself, which is told apart by where it lives.
+        guard target != Bundle.main.bundleURL.standardizedFileURL else { return }
+        let running = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleURL?.standardizedFileURL == target
+        }
+        guard !running.isEmpty else { return }
+        running.forEach { $0.terminate() }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            await model.sample(service: service)
+        }
     }
 
     private func icon(bundlePath: String?, name: String) -> IconSource {
@@ -231,8 +273,7 @@ struct EnergyView: View {
 
     /// Watts once there is a watt to show. People have a feel for watts,
     /// and nobody has one for 1053 milliwatts.
-    private func rate(_ reading: EnergyModel.Reading) -> String {
-        let value = reading.milliwatts(over: model.window)
+    private func rate(milliwatts value: Double) -> String {
         if value < 0.5 {
             return "Under 1 mW"
         }
