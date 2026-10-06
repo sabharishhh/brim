@@ -14,6 +14,7 @@ struct HomeView: View {
     @ObservedObject private var applications: ApplicationsModel
     @ObservedObject private var recovery: RecoveryStatusModel
     @ObservedObject private var fullDiskAccess: FullDiskAccessModel
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @ObservedObject private var background: BackgroundModel
     @ObservedObject private var storage: StorageModel
     @ObservedObject private var developer: DeveloperModel
@@ -121,12 +122,16 @@ struct HomeView: View {
     // MARK: - Notes
 
     private var accessNote: some View {
-        HomeNote(
+        let offer = AccessOffer.current(requestedAt: accessRequestedAt)
+        return HomeNote(
             symbol: "lock", tint: Palette.caution,
             title: "Full Disk Access is off",
-            detail: "Brim cannot see most of Library. Counts are low.",
-            actionTitle: "Open Settings"
-        ) { FullDiskAccess.openSettings() }
+            detail: FullDiskAccess.isRecent(accessRequestedAt)
+                ? "Switched Brim on? Reopen Brim to use it."
+                : "Brim cannot see most of Library. Counts are low.",
+            actionTitle: offer.title,
+            action: offer.action
+        )
     }
 
     private var recoveryNote: some View {

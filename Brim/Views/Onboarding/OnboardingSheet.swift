@@ -114,10 +114,16 @@ struct OnboardingSheet: View {
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
                 if access.hasRequested {
-                    Text("Switch Brim on. Setup carries on here when macOS reopens it.")
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // macOS offers Quit and Reopen, or Later. Either way
+                    // setup carries on from this step.
+                    HStack(spacing: 12) {
+                        Text("Switched Brim on? Setup carries on here after it reopens.")
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Reopen Brim") { AccessRelaunch.reopen() }
+                            .capsuleAction()
+                    }
                 }
             }
             administratorNotice
