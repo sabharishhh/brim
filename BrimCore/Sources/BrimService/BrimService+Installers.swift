@@ -1,0 +1,38 @@
+import AppKit
+import BrimCore
+import BrimScan
+import Foundation
+
+public extension BrimService {
+    func previewInstaller(at url: URL) async throws -> InstallerPreview {
+        // Nothing but a local file is read. `hdiutil` would also take a web
+        // address, and a preview must never reach for one.
+        guard url.isFileURL, url.path.hasPrefix("/") else { throw InstallerReadError.notAnInstaller }
+        var installed: [String: InstallerReader.Installed] = [:]
+        for app in await applicationInventoryRead().value {
+            guard let identifier = app.identity.bundleID?.lowercased(), installed[identifier] == nil else { continue }
+            installed[identifier] = .init(version: app.version, path: app.url.path)
+        }
+        let reader = InstallerReader(installed: installed, root: root, icon: Self.iconPNG)
+        // Off the service's actor: mounting an image or listing a large
+        // package takes seconds, and every other request would wait.
+        return try await Task.detached(priority: .userInitiated) { try reader.read(url) }.value
+    }
+
+    /// The icon at the size the preview draws it, twice over for Retina.
+    /// Drawn into a bitmap of that size: an icon's TIFF carries every size
+    /// up to 1024 pixels, and its first is not the one wanted.
+    private static let iconPNG: @Sendable (URL) -> Data? = { url in
+        let image = NSWorkspace.shared.icon(forFile: url.path)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 128, pixelsHigh: 128, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+        bitmap.size = NSSize(width: 64, height: 64)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: 64, height: 64))
+        NSGraphicsContext.restoreGraphicsState()
+        return bitmap.representation(using: .png, properties: [:])
+    }
+}
