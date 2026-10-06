@@ -12,7 +12,6 @@
 		3064DD1BD3140349FB3A588A /* BrimUI in Frameworks */ = {isa = PBXBuildFile; productRef = BE99E99C82216B5E641BB52D /* BrimUI */; };
 		3BDB12959F52922B97001549 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8804B4FC58AC1DE26BB847B8 /* main.swift */; };
 		5FFE01FA8BF0C0898EE2B422 /* BrimService in Frameworks */ = {isa = PBXBuildFile; productRef = 0174E8AA4613EA6B84753F4E /* BrimService */; };
-		DEC2463C7961F62E26ADDD19 /* com.sabharishhh.brim.jobhelper.plist in Embed the daemon launchd plist */ = {isa = PBXBuildFile; fileRef = 5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */; };
 		DEE7C907306120B600245421 /* BrimPrivileged in Frameworks */ = {isa = PBXBuildFile; productRef = 56C0EC2028F3846A221B6EC8 /* BrimPrivileged */; };
 		E07015045BD21105F60039C6 /* BrimCore in Frameworks */ = {isa = PBXBuildFile; productRef = EC0D03B715BEB2FE71B3ED57 /* BrimCore */; };
 		FDE2DBCA62CA0977E28DC5C8 /* BrimJobHelper in Embed the privileged daemon */ = {isa = PBXBuildFile; fileRef = 04F873C06CC7334CB88BFF2B /* BrimJobHelper */; };
@@ -29,15 +28,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		03C5393EE1F4043B2A958E9D /* Embed the daemon launchd plist */ = {
-			isa = PBXCopyFilesBuildPhase;
-			dstPath = Contents/Library/LaunchDaemons;
-			dstSubfolder = Wrapper;
-			files = (
-				DEC2463C7961F62E26ADDD19 /* com.sabharishhh.brim.jobhelper.plist in Embed the daemon launchd plist */,
-			);
-			name = "Embed the daemon launchd plist";
-		};
 		8B0D1156B82F21301405D850 /* Embed the privileged daemon */ = {
 			isa = PBXCopyFilesBuildPhase;
 			dstPath = "";
@@ -53,7 +43,6 @@
 		000000000000000000000120 /* brim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = brim.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04F873C06CC7334CB88BFF2B /* BrimJobHelper */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = BrimJobHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		2361A3605B5F0DA1399BCC22 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
-		5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = com.sabharishhh.brim.jobhelper.plist; sourceTree = "<group>"; };
 		8804B4FC58AC1DE26BB847B8 /* main.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -108,7 +97,6 @@
 			isa = PBXGroup;
 			children = (
 				8804B4FC58AC1DE26BB847B8 /* main.swift */,
-				5DDB38265DEB2F238657EFFF /* com.sabharishhh.brim.jobhelper.plist */,
 			);
 			path = Helper;
 			sourceTree = SOURCE_ROOT;
@@ -140,7 +128,6 @@
 				000000000000000130000000 /* Frameworks */,
 				000000000000000140000000 /* Resources */,
 				8B0D1156B82F21301405D850 /* Embed the privileged daemon */,
-				03C5393EE1F4043B2A958E9D /* Embed the daemon launchd plist */,
 			);
 			buildRules = (
 			);

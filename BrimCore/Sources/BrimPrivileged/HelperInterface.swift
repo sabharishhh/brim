@@ -75,10 +75,8 @@ import Security
 
     /// Clears up what only root can, on the way out.
     ///
-    /// `SMAppService.unregister` is the application's call and takes the
-    /// daemon away, but it cannot touch the quarantine: that directory is
-    /// root owned and holds the job files Brim set aside, so an uninstall
-    /// without this leaves a root-owned folder behind. A product whose
+    /// The quarantine is root owned and holds the job files Brim set aside,
+    /// so an uninstall without this leaves a root-owned folder behind. A product whose
     /// argument is that it removes every trace does not get to make an
     /// exception for its own.
     ///
@@ -88,8 +86,8 @@ import Security
 }
 
 public enum BrimJobHelper {
-    /// Must match the daemon's launchd plist and the bundle identifier
-    /// prefix, or `SMAppService` refuses to register it.
+    /// The temporary administrator process's identifier. Brim registers
+    /// nothing with launchd or Background Task Management under it.
     public static let machServiceName = "com.sabharishhh.brim.jobhelper"
 
     /// Bumped whenever the daemon's behaviour changes, so the app can

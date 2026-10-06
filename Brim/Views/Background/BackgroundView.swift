@@ -232,7 +232,7 @@ extension BackgroundView {
     private var notices: some View {
         let faults = model.faults
         let waiting = !model.waitingOnHelper.isEmpty && !helper.state.canRemove
-        if !faults.isEmpty || waiting || helper.retirementProblem != nil {
+        if !faults.isEmpty || waiting {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(faults, id: \.kind) { gap in
                     Notice(
@@ -241,10 +241,6 @@ extension BackgroundView {
                         actionTitle: gap.isFixableByTheUser ? "Open Settings" : nil,
                         action: FullDiskAccess.openSettings
                     )
-                }
-                if let problem = helper.retirementProblem {
-                    Notice(symbol: "exclamationmark.triangle", title: "Earlier background registration remains",
-                           detail: problem)
                 }
                 if waiting {
                     helperNotice

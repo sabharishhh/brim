@@ -1,6 +1,5 @@
 import BrimProcess
 import Foundation
-import ServiceManagement
 
 /// Protected operations share one authenticated process for a selected batch.
 /// Reading availability starts no process and registers no service.
@@ -15,7 +14,6 @@ public final class PrivilegedHelperClient: ObservableObject {
     }
 
     @Published public private(set) var state: State = .notAsked
-    @Published public private(set) var retirementProblem: String?
     private var session: TemporaryAdminSession?
     private var starting: Task<TemporaryAdminSession, Error>?
     private var batchUsers = 0
@@ -177,19 +175,6 @@ public final class PrivilegedHelperClient: ObservableObject {
             recoverySnapshot = try? await readRecoveryItems()
         }
         return problem
-    }
-
-    /// Upgrade cleanup unregisters the earlier helper without deleting its copies.
-    /// The shipped plist is retained solely for finding the earlier service.
-    public func retireRegisteredHelper() async throws {
-        do {
-            try await SMAppService.daemon(plistName: "\(BrimJobHelper.machServiceName).plist").unregister()
-            retirementProblem = nil
-        } catch {
-            retirementProblem = "An earlier Brim background registration could not be removed. "
-                + error.localizedDescription
-            throw error
-        }
     }
 
     /// Clears what only root can: Brim's folder in `/Library` and its grants
