@@ -118,11 +118,11 @@ struct SymbolTile: View {
     var body: some View {
         let hue = Palette.hue(ItemKind.allCases.firstIndex(of: kind) ?? 0)
         RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
-            .fill(hue.opacity(0.16))
+            .fill(hue.opacity(0.6))
             .overlay {
                 Image(systemName: kind.symbolName)
                     .font(.system(size: size * 0.44, weight: .medium))
-                    .foregroundStyle(hue)
+                    .foregroundStyle(Palette.snow)
             }
             .overlay {
                 if kind == .commandLink {

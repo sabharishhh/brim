@@ -18,6 +18,12 @@ enum BackgroundScope {
         })
         return records.filter { record in
             guard !record.isSystemOwned, record.kind != .shellProfileLine else { return false }
+            // A permission held for a program that is gone has no app to
+            // belong to, which is exactly why it has to be shown: Full Disk
+            // Access kept Microsoft AutoUpdate's helper long after it went.
+            if record.kind == .privacyGrant, record.isStale {
+                return true
+            }
             if hasApplicationPath(record) {
                 return true
             }
@@ -102,7 +108,7 @@ public enum BackgroundGrouper {
         return Grouping.assign(
             entries,
             rules: [
-                GroupRule(id: "gone", title: "Points at nothing", matches: { $0.state == .gone }, order: byName),
+                GroupRule(id: "gone", title: "App not found", matches: { $0.state == .gone }, order: byName),
                 GroupRule(
                     id: "clearing", title: "Still listed", collapsed: true,
                     matches: { $0.state == .clearing || $0.group.items.allSatisfy { $0.isStale && $0.isReportOnly } },

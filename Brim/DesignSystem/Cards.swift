@@ -3,7 +3,7 @@ import BrimUI
 import SwiftUI
 
 /// A dot for a card's state. The only colour on Home that is not an app
-/// icon: the accent when all is well, orange when something wants a look.
+/// icon: green when all is well, orange when something wants a look.
 struct StatusDot: View {
     let status: CardStatus
 
@@ -12,7 +12,7 @@ struct StatusDot: View {
         case .checking:
             ProgressView().controlSize(.mini)
         case .clear:
-            dot(AnyShapeStyle(.tint))
+            dot(AnyShapeStyle(Palette.success))
         case .attention, .partial:
             dot(AnyShapeStyle(Palette.caution))
         case .neutral:
@@ -77,6 +77,7 @@ struct MeterBar: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(segments.map { "\($0.label) \(ByteText.short($0.value))" }.joined(separator: ", "))
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -92,10 +93,13 @@ struct StatCard<Detail: View>: View {
     /// Showing the last scan's figures while a new scan runs: they go grey
     /// until the new ones arrive. The card still opens its page.
     var isRefreshing = false
+    /// Takes the height of the grid row it sits in, so cards side by side
+    /// end level.
+    var fillsRow = false
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
-    @State private var isHovering = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -127,7 +131,7 @@ struct StatCard<Detail: View>: View {
                         Text(figure)
                             .font(.brimFigure)
                             .foregroundStyle(Palette.ink)
-                            .contentTransition(.numericText())
+                            .contentTransition(reduceMotion ? .identity : .numericText())
                         HStack(spacing: 6) {
                             StatusDot(status: status)
                             Text(phrase)
@@ -136,14 +140,12 @@ struct StatCard<Detail: View>: View {
                                 .lineLimit(1)
                         }
                     }
-                    .saturation(isRefreshing ? 0 : 1)
-                    .opacity(isRefreshing ? 0.4 : 1)
+                    .refreshAppearance(isRefreshing)
                     .transition(.opacity)
                 }
                 if status != .checking {
                     detail
-                        .saturation(isRefreshing ? 0 : 1)
-                        .opacity(isRefreshing ? 0.4 : 1)
+                        .refreshAppearance(isRefreshing)
                 }
             }
             .padding(20)
@@ -151,16 +153,12 @@ struct StatCard<Detail: View>: View {
             // Keep the card's full height, including its padding, when
             // its meter legend needs more room than the minimum allows.
             .fixedSize(horizontal: false, vertical: true)
-            .animation(Motion.standard, value: status == .checking)
-            .animation(.smooth(duration: isRefreshing ? 0.25 : 0.6), value: isRefreshing)
+            .frame(maxHeight: fillsRow ? .infinity : nil, alignment: .topLeading)
+            .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
-            .shadow(color: .black.opacity(isHovering ? 0.08 : 0), radius: 12, y: 4)
-            .offset(y: isHovering ? -2 : 0)
+            .hoverLift()
         }
         .buttonStyle(.press)
-        .onHover { hovering in
-            withAnimation(Motion.quick) { isHovering = hovering }
-        }
         .accessibilityLabel("\(title), \(figure), \(phrase)")
     }
 }
@@ -168,11 +166,11 @@ struct StatCard<Detail: View>: View {
 extension StatCard where Detail == EmptyView {
     init(
         title: String, symbol: String, figure: String, status: CardStatus, phrase: String,
-        isRefreshing: Bool = false, action: @escaping () -> Void
+        isRefreshing: Bool = false, fillsRow: Bool = false, action: @escaping () -> Void
     ) {
         self.init(
             title: title, symbol: symbol, figure: figure, status: status, phrase: phrase,
-            isRefreshing: isRefreshing, detail: { EmptyView() }, action: action
+            isRefreshing: isRefreshing, fillsRow: fillsRow, detail: { EmptyView() }, action: action
         )
     }
 }
@@ -227,5 +225,25 @@ struct FlowLayout: Layout {
             rows.append(current)
         }
         return rows
+    }
+}
+
+/// How a card answers the pointer: a third of the pointer light along its
+/// edge, and nothing else. One modifier, so the cards on Home, Space and
+/// Energy answer alike. A full light read as the page lighting up rather
+/// than the card answering; a rise and a shadow on every card under the
+/// pointer was motion on something people do constantly, which Apple's
+/// guidance keeps off.
+private struct HoverLift: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content.pointerLight(cornerRadius: cornerRadius)
+    }
+}
+
+extension View {
+    func hoverLift(cornerRadius: CGFloat = Metrics.cardRadius) -> some View {
+        modifier(HoverLift(cornerRadius: cornerRadius))
     }
 }

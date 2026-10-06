@@ -148,6 +148,16 @@ public struct DatabaseManager: Sendable {
             )
         }
 
+        // Every name an application answered to, not just the one on its
+        // icon. Once the bundle is gone these are all Brim has: SystemEQ for
+        // Mac kept `Application Support/SystemEQ`, and with only its display
+        // name recorded the sweep could not tell whose that was.
+        migrator.registerMigration("v3-recorded-names") { database in
+            try database.alter(table: "identity") { table in
+                table.add(column: "names", .text)
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 

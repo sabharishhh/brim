@@ -31,22 +31,27 @@ struct ApplicationsView: View {
     var body: some View {
         // Fixed panes rather than an HSplitView, which relaid out the whole
         // window on every scroll (`CLAUDE.md`).
-        HStack(spacing: 0) {
+        AdaptivePanes(
+            detailWidth: Metrics.detailWidth,
+            hasDetail: review != nil || batch != nil || model.isChoosing
+                || model.marked.count >= 2 || model.selected != nil,
+            isReviewing: review != nil || batch != nil,
+            close: closeDetail
+        ) {
             VStack(spacing: 0) {
                 header
                 content
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: nil) }
             // Held still while a review is open, and dimmed a little so the
             // review reads as the focus.
             .opacity(review == nil ? 1 : 0.55)
             .allowsHitTesting(review == nil)
+        } detail: {
             inspector
-                // Wider for a review, whose rows carry more.
-                .frame(width: review == nil ? 360 : 440)
         }
         .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: review?.id)
+        .pageTitle("Apps", shown: false)
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.applications) { opened = Self.openedText(model.applications) }
         // A removal asked for by a Shortcut or Spotlight: the review opens
@@ -72,6 +77,16 @@ struct ApplicationsView: View {
         review = AppReview(app: removalTarget(app))
     }
 
+    /// The floating pane's Close, in a narrow window: ends choosing, or
+    /// clears the selection it was showing.
+    private func closeDetail() {
+        if model.isChoosing {
+            model.stopChoosing()
+        } else {
+            model.select(nil)
+        }
+    }
+
     /// What removing an app removes. An app shipped inside another cannot
     /// be taken out of it without breaking the host's signature, so its
     /// removal is the host's, and the review says so by showing the host.
@@ -91,51 +106,28 @@ struct ApplicationsView: View {
 
     // MARK: - Header
 
+    /// The search and the list's controls, on one row at the top of the
+    /// list. The page's name and size are in the toolbar.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Apps")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                if !model.applications.isEmpty {
-                    Text("\(model.applications.count) · \(ByteText.short(totalBytes))")
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
+        HStack(spacing: 8) {
+            BrimSearchField(text: $model.searchText, prompt: "Search Apps")
+            if !asTable {
+                Picker("Group By", selection: $grouping) {
+                    ForEach(AppGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                if model.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Checking")
-                }
-                Spacer()
-                if !asTable {
-                    Picker("Group By", selection: $grouping) {
-                        ForEach(AppGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                }
-                // Several apps in one review. Command-click did this and
-                // nobody found it.
-                Button(model.isChoosing ? "Done" : "Select") {
-                    model.isChoosing ? model.stopChoosing() : model.startChoosing()
-                }
-                .disabled(model.applications.isEmpty)
-                Picker("View", selection: $asTable) {
-                    Image(systemName: "list.bullet.indent").tag(false).accessibilityLabel("Groups")
-                    Image(systemName: "tablecells").tag(true).accessibilityLabel("Table")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .pickerStyle(.menu)
                 .fixedSize()
             }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search apps")
+            // Several apps in one review. Command-click did this and
+            // nobody found it.
+            Button(model.isChoosing ? "Done" : "Select") {
+                model.isChoosing ? model.stopChoosing() : model.startChoosing()
+            }
+            .disabled(model.applications.isEmpty)
+            ViewToggle(asTable: $asTable)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
+        .padding(.horizontal, Metrics.pagePadding)
+        .padding(.top, 6)
         .padding(.bottom, 8)
     }
 
@@ -172,7 +164,7 @@ struct ApplicationsView: View {
                     .id(grouping)
                 }
             }
-            .refreshing(model.isLoading)
+            .refreshingBrowsable(model.isLoading)
         }
     }
 
@@ -187,7 +179,7 @@ struct ApplicationsView: View {
                 onClose: { self.review = nil }
             )
             .id(review.id)
-            .transition(.opacity)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let batch {
             BatchRemovalPanel(
                 apps: batch, service: service,
@@ -204,7 +196,7 @@ struct ApplicationsView: View {
                 onClose: { self.batch = nil }
             )
             .id(batch.map(\.id).joined(separator: ","))
-            .transition(.opacity)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if model.marked.count >= 2 || model.isChoosing {
             MarkedApps(apps: model.marked) {
                 if model.marked.count == 1, let app = model.marked.first {
@@ -214,17 +206,17 @@ struct ApplicationsView: View {
                     batch = model.marked.map(removalTarget)
                 }
             }
-            .transition(.opacity)
+            .transition(.replacement)
         } else if let app = model.selected {
             AppInspector(
                 app: app, model: model, access: access, opened: opened[app.id],
                 remove: { review = AppReview(app: removalTarget(app)) }
             )
-            .refreshing(model.isLoading)
+            .refreshingBrowsable(model.isLoading)
             // Keyed on the app and a crossfade only, so arrowing through
             // the list does not make the pane swim.
             .id(app.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.inspector, value: app.id)
         } else {
             PanePlaceholder(symbol: "square.grid.2x2", title: "Select an app")
@@ -285,10 +277,47 @@ private struct MarkedApps: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
             Button(apps.count == 1 ? "Review" : "Remove \(apps.count) Apps", action: review)
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .controlSize(.large)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Groups or table, drawn by Brim. The system's segmented control fills
+/// the chosen segment with the accent, which Brim keeps grey; the chosen
+/// one is off-white with a near-black symbol, as the Apps and Updates
+/// switch is.
+private struct ViewToggle: View {
+    @Binding var asTable: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            option("list.bullet.indent", "Groups", table: false)
+            option("tablecells", "Table", table: true)
+        }
+        .padding(2)
+        .background(Color.white.opacity(0.07), in: .rect(cornerRadius: 7, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("View")
+    }
+
+    private func option(_ symbol: String, _ label: String, table: Bool) -> some View {
+        let isOn = asTable == table
+        return Button {
+            asTable = table
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isOn ? Palette.onSnow : Palette.inkSecondary)
+                .frame(width: 28, height: 22)
+                .background(isOn ? Palette.snow : .clear, in: .rect(cornerRadius: 5, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

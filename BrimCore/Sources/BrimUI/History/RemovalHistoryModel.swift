@@ -13,8 +13,11 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         plan.planId
     }
 
+    /// Removals from Remnants were recorded under its old name, Leftovers,
+    /// and the Journal showed a page that no longer exists.
     public var name: String {
-        plan.intent.subjectIdentity.name
+        let recorded = plan.intent.subjectIdentity.name
+        return recorded == "Leftovers" ? "Remnants" : recorded
     }
 
     public var itemCount: Int {
@@ -39,10 +42,10 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
             return nil
         }
         if plan.steps.contains(where: { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }) {
-            return "Set aside by the helper; restore is unavailable in Brim"
+            return "Set aside. Brim cannot put this back."
         }
         if plan.steps.contains(where: { $0.kind == .delegateToolCleanup }) {
-            return "Run by the tool; cannot be undone"
+            return "Run by the tool. Cannot be undone."
         }
         return plan.isReversible ? "No longer in the Trash" : "Deleted permanently"
     }
@@ -101,13 +104,83 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
 @MainActor
 public final class RemovalHistoryModel: ObservableObject {
     @Published public private(set) var records: [RemovalRecord] = []
+    /// Every installation the snapshots record, for the Journal.
+    @Published public private(set) var installs: [InstallRecord] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var undoingPlanIds: Set<UUID> = []
     @Published public var errorMessage: String?
+    /// What the last Put Back of each record did, shown beside that record.
+    /// After a restore the record can no longer be undone, and without this
+    /// its row read "No longer in the Trash", which is true and says nothing
+    /// about the person's files having just come back.
+    @Published public private(set) var putBackOutcomes: [UUID: PutBackOutcome] = [:]
+
+    public enum PutBackOutcome: Equatable, Sendable {
+        case restored
+        case failed(String)
+    }
+
+    /// Removals whose items are being deleted from the Trash.
+    @Published public private(set) var deletingPlanIds: Set<UUID> = []
+    /// Each confirmed removal looked at again, by plan. Empty until the
+    /// Journal asks, and never saved.
+    @Published public private(set) var rechecks: [UUID: RemovalRecheck.State] = [:]
+
+    /// How many confirmed removals have files on the disk again.
+    public var cameBackCount: Int {
+        rechecks.values.filter {
+            if case .cameBack = $0 {
+                return true
+            }
+            return false
+        }.count
+    }
+
+    /// Everything before this is cleared from the Journal, except removals
+    /// that can still be put back: hiding one of those would hide the only
+    /// way back to the person's files.
+    @Published public private(set) var clearedBefore: Date?
 
     private var service: (any BrimServiceProtocol)?
+    private let defaults: UserDefaults
+    private static let clearedKey = "journal.clearedBefore"
 
-    public init() {}
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let stored = defaults.double(forKey: Self.clearedKey)
+        clearedBefore = stored > 0 ? Date(timeIntervalSinceReferenceDate: stored) : nil
+    }
+
+    /// The removals the Journal lists.
+    public var visibleRecords: [RemovalRecord] {
+        guard let clearedBefore else { return records }
+        return records.filter { $0.canUndo || $0.plan.createdAt > clearedBefore }
+    }
+
+    /// The installs the Journal lists.
+    public var visibleInstalls: [InstallRecord] {
+        guard let clearedBefore else { return installs }
+        return installs.filter { $0.installedAt > clearedBefore }
+    }
+
+    /// What Brim's removals still hold in the Trash. None of it comes back
+    /// to the disk until the Trash is emptied, which is why Space shows it
+    /// apart from everything else.
+    public var bytesInTrash: Int64 {
+        records.reduce(0) { $0 + ($1.recoverable?.bytes ?? 0) }
+    }
+
+    /// Whether clearing would take anything out of the Journal.
+    public var canClear: Bool {
+        visibleRecords.contains { !$0.canUndo } || !visibleInstalls.isEmpty
+    }
+
+    /// Clears the Journal up to now. Brim keeps its removal records, which
+    /// later checks of a removal read; they are no longer listed.
+    public func clear(now: Date = Date()) {
+        clearedBefore = now
+        defaults.set(now.timeIntervalSinceReferenceDate, forKey: Self.clearedKey)
+    }
 
     public func load(service: any BrimServiceProtocol) async {
         self.service = service
@@ -116,19 +189,52 @@ public final class RemovalHistoryModel: ObservableObject {
         await reload()
     }
 
+    /// Looks again at every confirmed removal. `installed` is the
+    /// identifiers on the Mac now, so a reinstall reads as one.
+    public func recheck(installed: Set<String>) async {
+        guard let service else { return }
+        let found = await service.recheckRemovals(installed: installed)
+        rechecks = Dictionary(found.map { ($0.planId, $0.state) }, uniquingKeysWith: { _, latest in latest })
+    }
+
     /// Recompute from the service. Cheap enough to call on every Trash change.
     public func reload() async {
         guard let service else { return }
 
         async let plansTask = try? await service.history()
         async let recoverableTask = try? await service.recoverableItems()
+        async let installsTask = service.installRecords()
         let plans = await plansTask ?? []
         let recoverable = await recoverableTask ?? []
+        installs = await installsTask
 
         let byPlan = Dictionary(uniqueKeysWithValues: recoverable.map { ($0.planId, $0) })
         records = plans
             .map { RemovalRecord(plan: $0, recoverable: byPlan[$0.planId]) }
             .sorted { $0.plan.createdAt > $1.plan.createdAt }
+    }
+
+    /// Deletes for good what these removals put in the Trash. Nothing else
+    /// in the Trash is touched.
+    public func deleteFromTrash(_ records: [RemovalRecord]) async {
+        guard let service else { return }
+        let ids = Set(records.map(\.id)).subtracting(deletingPlanIds)
+        guard !ids.isEmpty else { return }
+        deletingPlanIds.formUnion(ids)
+        defer { deletingPlanIds.subtract(ids) }
+        errorMessage = nil
+        var failures: [String] = []
+        for record in records where ids.contains(record.id) {
+            do {
+                try await service.deleteFromTrash(planId: record.plan.planId)
+            } catch {
+                failures.append(error.localizedDescription)
+            }
+        }
+        if !failures.isEmpty {
+            errorMessage = failures.joined(separator: "\n")
+        }
+        await reload()
     }
 
     /// Restores one removal. The service refuses cleanly when it cannot, and
@@ -139,11 +245,14 @@ public final class RemovalHistoryModel: ObservableObject {
         undoingPlanIds.insert(record.id)
         defer { undoingPlanIds.remove(record.id) }
         errorMessage = nil
+        putBackOutcomes[record.id] = nil
 
         do {
             try await service.undo(planId: record.plan.planId)
+            putBackOutcomes[record.id] = .restored
         } catch {
             errorMessage = error.localizedDescription
+            putBackOutcomes[record.id] = .failed(error.localizedDescription)
         }
 
         // Reload either way: a failed undo usually means the world moved, and

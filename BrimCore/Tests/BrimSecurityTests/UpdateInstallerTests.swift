@@ -127,6 +127,33 @@ final class UpdateInstallerTests: XCTestCase {
             .contains { $0.hasPrefix("intent-") })
     }
 
+    /// The version an update replaced is deleted, not trashed: ChatGPT's
+    /// old 1.6 GB copy sat in the Trash after an update that nobody was
+    /// ever going to roll back from.
+    func testTheReplacedVersionIsDeletedRatherThanTrashed() throws {
+        let old = try bundle("Old", "com.example.app", "1.0")
+        let trash = try XCTUnwrap(SafeOps.standInTrash())
+        let trashed = { (try? FileManager.default.contentsOfDirectory(atPath: trash.path)) ?? [] }
+        let before = trashed()
+        UpdateInstaller.removeOldVersion(old)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertEqual(trashed(), before, "nothing went to the Trash")
+    }
+
+    /// Every update that went through Installer left its package in Brim's
+    /// cache. They go once Installer has quit, and never while it is open.
+    func testPackagesKeptForInstallerAreClearedOnceItHasQuit() throws {
+        let workspace = folder.appendingPathComponent("workspace")
+        let packages = workspace.appendingPathComponent("Packages")
+        try FileManager.default.createDirectory(at: packages, withIntermediateDirectories: true)
+        try Data("pkg".utf8).write(to: packages.appendingPathComponent("Demo.pkg"))
+
+        UpdateInstaller.clearPackages(in: workspace, installerIsOpen: true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: packages.appendingPathComponent("Demo.pkg").path))
+        UpdateInstaller.clearPackages(in: workspace, installerIsOpen: false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: packages.path))
+    }
+
     private func bundle(_ name: String, _ identifier: String, _ version: String) throws -> URL {
         let url = folder.appendingPathComponent("\(name).app")
         let contents = url.appendingPathComponent("Contents")

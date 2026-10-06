@@ -23,13 +23,52 @@ public enum FullDiskAccess {
         FullDiskAccessProbe.isGranted(probing: url)
     }
 
-    /// Opens System Settings at Privacy & Security › Full Disk Access.
-    /// Granting it there restarts Brim, which macOS requires for the change
-    /// to take effect.
-    public static func openSettings() {
+    /// Opens System Settings at Privacy & Security › Full Disk Access, and
+    /// remembers that it did and from where.
+    ///
+    /// Switching Brim on there makes macOS offer to quit and reopen it. Brim
+    /// used to come back on whatever page window restoration chose, with the
+    /// Settings window gone, so the person had to find their way back to
+    /// what they were doing. The request is remembered so the next launch
+    /// can return them to it, and so a Brim still running can offer to
+    /// reopen itself when the person chose Later.
+    public static func openSettings(from origin: Origin = .window) {
+        let defaults = UserDefaults.standard
+        defaults.set(Date().timeIntervalSinceReferenceDate, forKey: requestedKey)
+        defaults.set(origin.rawValue, forKey: originKey)
         let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
         guard let url = URL(string: pane) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Where the person was when Brim sent them to System Settings.
+    public enum Origin: String, Sendable {
+        case window, settings
+    }
+
+    /// When Brim last sent the person to System Settings, as seconds since
+    /// the reference date. Views read it with `@AppStorage` so a request
+    /// made anywhere updates every place that offers to reopen.
+    public static let requestedKey = "access.requestedAt"
+    public static let originKey = "access.requestedFrom"
+
+    /// A request counts for half an hour. Past that, a launch is an
+    /// ordinary launch and not the second half of granting access.
+    public static func isRecent(_ requestedAt: Double, now: Date = Date()) -> Bool {
+        requestedAt > 0 && now.timeIntervalSinceReferenceDate - requestedAt < 30 * 60
+    }
+
+    /// The pending request, if one was made recently.
+    public static var pendingRequest: Origin? {
+        let defaults = UserDefaults.standard
+        guard isRecent(defaults.double(forKey: requestedKey)) else { return nil }
+        return Origin(rawValue: defaults.string(forKey: originKey) ?? "") ?? .window
+    }
+
+    /// Forgets the request, once access is on or a relaunch did not bring it.
+    public static func clearRequest() {
+        UserDefaults.standard.removeObject(forKey: requestedKey)
+        UserDefaults.standard.removeObject(forKey: originKey)
     }
 }
 
@@ -41,8 +80,9 @@ public final class FullDiskAccessModel: ObservableObject {
     @Published public private(set) var isGranted: Bool
 
     /// Set once the user has been sent to System Settings, so the prompt can
-    /// explain that Brim must be reopened rather than repeating itself.
-    @Published public private(set) var hasRequested = false
+    /// offer to reopen Brim rather than repeating itself. Read from the
+    /// remembered request, so it holds across the models that ask.
+    @Published public private(set) var hasRequested = FullDiskAccess.pendingRequest != nil
 
     private var observer: NSObjectProtocol?
     private let probe: @Sendable () -> Bool
@@ -76,11 +116,20 @@ public final class FullDiskAccessModel: ObservableObject {
     }
 
     public func recheck() {
-        isGranted = probe()
+        let granted = probe()
+        if granted {
+            FullDiskAccess.clearRequest()
+            hasRequested = false
+        } else {
+            hasRequested = FullDiskAccess.pendingRequest != nil
+        }
+        if granted != isGranted {
+            isGranted = granted
+        }
     }
 
-    public func requestAccess() {
+    public func requestAccess(from origin: FullDiskAccess.Origin = .window) {
         hasRequested = true
-        FullDiskAccess.openSettings()
+        FullDiskAccess.openSettings(from: origin)
     }
 }

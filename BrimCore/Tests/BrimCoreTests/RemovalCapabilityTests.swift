@@ -43,6 +43,18 @@ final class RemovalCapabilityTests: XCTestCase {
         XCTAssertEqual(RemovalCapability.forDeleting(mine.path), .ok)
     }
 
+    /// WebKit's folders in the per-user temporary folder carry
+    /// `SF_NOUNLINK`, and eqMac's removal planned three and had all three
+    /// refused. A test cannot set that flag without root, so the check is
+    /// held against `/System`, which carries its sibling `SF_RESTRICTED`.
+    func testWhatMacOSProtectsForItselfIsNeverAnAppsToRemove() throws {
+        XCTAssertTrue(RemovalCapability.isProtectedBySystem("/System"))
+        let mine = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data([1]).write(to: mine)
+        defer { try? FileManager.default.removeItem(at: mine) }
+        XCTAssertFalse(RemovalCapability.isProtectedBySystem(mine.path))
+    }
+
     func testEveryRefusalSaysWhyAndSuccessSaysNothing() {
         XCTAssertNil(RemovalCapability.explanation(.ok))
         for blocked: Capability in [.needsHelper, .needsFullDiskAccess, .refusedByOS] {

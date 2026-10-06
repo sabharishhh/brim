@@ -182,8 +182,11 @@ final class FootprintCoverageTests: XCTestCase {
             guard FileManager.default.fileExists(atPath: record) else { continue }
             guard let paths = try await footprintPaths(ofAppNamed: name) else { continue }
             checked += 1
+            // Compared without case: macOS writes Visual Studio Code's as
+            // `com.microsoft.vscode.sfl4`, and the footprint names files as
+            // they are spelled on disk.
             XCTAssertTrue(
-                paths.contains(record),
+                paths.contains { $0.lowercased() == record.lowercased() },
                 "\(bundleID).sfl4 is \(name)'s own record and is not in its footprint."
             )
         }

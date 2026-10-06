@@ -354,3 +354,19 @@ final class UninstallCompletenessTests: XCTestCase {
         )
     }
 }
+
+extension UninstallCompletenessTests {
+    /// The framework is the library's as much as its helpers are. Removing
+    /// eqMac took `Caches/com.openai.codex/org.sparkle-project.Sparkle`,
+    /// the update cache Sparkle keeps for Codex.
+    func testALibraryFrameworkIsNotTheApplications() {
+        let framework = "/Applications/Test.app/Contents/Frameworks"
+        let surface = IdentitySurface(bundlePath: "/Applications/Test.app", components: [
+            component("/Applications/Test.app", "com.test.app"),
+            component("\(framework)/Sparkle.framework", "org.sparkle-project.Sparkle"),
+            component("\(framework)/TestKit.framework", "com.test.kit")
+        ])
+        XCTAssertFalse(surface.searchableBundleIdentifiers.contains("org.sparkle-project.Sparkle"))
+        XCTAssertTrue(surface.searchableBundleIdentifiers.contains("com.test.kit"))
+    }
+}

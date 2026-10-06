@@ -177,9 +177,9 @@ import Testing
     @Test func helperQuarantineAndToolRunsDoNotPretendToBePermanentFileDeletion() {
         let helper = removal(kind: .trashPathPrivileged)
         let native = removal(kind: .delegateToolCleanup)
-        #expect(helper.unavailableReason?.contains("restore is unavailable") == true)
+        #expect(helper.unavailableReason?.contains("cannot put this back") == true)
         #expect(!helper.spoken.contains("Deleted permanently"))
-        #expect(native.unavailableReason == "Run by the tool; cannot be undone")
+        #expect(native.unavailableReason == "Run by the tool. Cannot be undone.")
     }
 
     private func cache(_ tool: String, size: ArtifactSize? = nil, lastBuilt: Date? = nil) -> DeveloperCache {

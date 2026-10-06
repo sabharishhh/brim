@@ -63,13 +63,19 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         .scrollContentBackground(.hidden)
         .onKeyPress(.downArrow) { move(by: 1) }
         .onKeyPress(.upArrow) { move(by: -1) }
-        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: revision)
+        .animation(reduceMotion ? nil : Motion.standard, value: revision)
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     private func header(_ section: ItemGroup<Item>) -> some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+                withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                     flipped.formSymmetricDifference([section.id])
                 }
             } label: {
@@ -102,13 +108,13 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
 
     private func showAll(_ section: ItemGroup<Item>) -> some View {
         Button {
-            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+            withAnimation(reduceMotion ? nil : Motion.openEvidence) {
                 expanded.formSymmetricDifference([section.id])
             }
         } label: {
             Text(expanded.contains(section.id) ? "Show fewer" : "Show all \(section.items.count)")
                 .font(.brimFacts.weight(.medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 34)
         }
@@ -129,7 +135,10 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
         guard !order.isEmpty else { return .ignored }
         let current = order.firstIndex { $0.id == inspected }
         let next = current.map { min(max($0 + step, 0), order.count - 1) } ?? 0
-        inspect(order[next])
+        // Immediate from the keyboard; only a pointer selection crossfades.
+        var immediate = Transaction()
+        immediate.disablesAnimations = true
+        withTransaction(immediate) { inspect(order[next]) }
         return .handled
     }
 }

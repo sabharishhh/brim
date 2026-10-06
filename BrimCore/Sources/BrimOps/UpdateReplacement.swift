@@ -37,9 +37,9 @@ extension UpdateInstaller {
         defer { try? FileManager.default.removeItem(at: intentFile) }
 
         if renamex_np(staged.path, installed.path, UInt32(RENAME_SWAP)) == 0 {
-            // The old version is now at the staged path. The Trash keeps it
-            // restorable; failing that it is removed, since the new one is in.
-            Self.trashOrRemove(staged)
+            // The old version is now at the staged path, and the new one is
+            // in, so the old one is deleted.
+            Self.removeOldVersion(staged)
         } else {
             let swapError = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM)
             try await replaceWithoutExchange(
@@ -90,14 +90,17 @@ extension UpdateInstaller {
         }
     }
 
-    /// The Trash keeps an old version restorable, through `SafeOps` so a
-    /// test never reaches the real one.
-    static func trashOrRemove(_ url: URL) {
+    /// Deletes the version an update replaced. It used to go to the Trash,
+    /// where a 1.6 GB copy of an app sat until someone emptied it, to keep
+    /// a rollback nobody was offered. If something inside cannot be
+    /// deleted, an installer having left it owned by root, what remains
+    /// goes to the Trash rather than staying hidden beside the new version.
+    static func removeOldVersion(_ url: URL) {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { return }
-        if (try? SafeOps.trashItem(targetPath: url.path, expectedDev: info.st_dev, expectedIno: info.st_ino)) == nil {
-            try? FileManager.default.removeItem(at: url)
-        }
+        guard (try? FileManager.default.removeItem(at: url)) == nil else { return }
+        guard lstat(url.path, &info) == 0 else { return }
+        _ = try? SafeOps.trashItem(targetPath: url.path, expectedDev: info.st_dev, expectedIno: info.st_ino)
     }
 
     public static func shortVersion(of bundle: URL) -> String {
@@ -131,7 +134,7 @@ extension UpdateInstaller {
     /// - The app is there and the staged copy too: the exchange either
     ///   never happened, and the staged copy is the unused download, or it
     ///   did, and the staged copy is the old version. Either way the staged
-    ///   copy goes, to the Trash when it is the old version.
+    ///   copy is deleted.
     /// - The app is missing and the staged copy is there: the old version
     ///   went to the Trash and the new one never moved in. The new one,
     ///   already checked, is moved into place.
@@ -156,7 +159,7 @@ extension UpdateInstaller {
             if manager.fileExists(atPath: installed.path) {
                 if stagedExists {
                     if shortVersion(of: installed) == intent.version {
-                        trashOrRemove(staged)
+                        removeOldVersion(staged)
                     } else {
                         try? manager.removeItem(at: staged)
                         interrupted[installed.path] = "Interrupted"
@@ -178,7 +181,20 @@ extension UpdateInstaller {
                 try? manager.removeItem(at: folder)
             }
         }
+        clearPackages(in: workspace, installerIsOpen: isInstallerOpen())
         return interrupted
+    }
+
+    /// Packages are kept after an update only so Installer can read them.
+    /// Once it has quit they are finished with, and were never cleared:
+    /// every update that went through Installer left its package behind.
+    static func clearPackages(in workspace: URL, installerIsOpen: Bool) {
+        guard !installerIsOpen else { return }
+        try? FileManager.default.removeItem(at: workspace.appendingPathComponent("Packages", isDirectory: true))
+    }
+
+    private static func isInstallerOpen() -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.installer").isEmpty
     }
 
     @MainActor

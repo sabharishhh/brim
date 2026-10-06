@@ -1,6 +1,7 @@
 import BrimCore
 import BrimProtocol
 import BrimUI
+import os
 import QuickLook
 import SwiftUI
 
@@ -10,6 +11,13 @@ struct ContentView: View {
     /// Saved with the window, so it reopens where it was left.
     @SceneStorage("destination") private var savedDestination = Destination.home.rawValue
     @SceneStorage("appsLens") private var savedLens = AppsLens.all.rawValue
+    /// The same place, kept outside the window's saved state. Granting Full
+    /// Disk Access makes macOS quit and reopen Brim, and a window that is
+    /// not restored (with "Close windows when quitting" on, or when Brim
+    /// reopens itself) loses its scene storage. See `resumeAfterAccess`.
+    @AppStorage("place.destination") private var lastDestination = Destination.home.rawValue
+    @AppStorage("place.appsLens") private var lastLens = AppsLens.all.rawValue
+    @SwiftUI.Environment(\.openSettings) private var openSettings
     /// Owned here so a section change does not throw away a scan. See
     /// `SectionModels`.
     @StateObject private var models = SectionModels()
@@ -42,7 +50,7 @@ struct ContentView: View {
             ZStack {
                 page(shell.selection)
                     .id(shell.selection)
-                    .transition(.brimPage(movingDown: shell.movedDown, reduceMotion: reduceMotion))
+                    .transition(.replacement)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas)
@@ -50,7 +58,13 @@ struct ContentView: View {
             // Keyed to the page, so a change of page is animated and
             // nothing inside one inherits it: an animation over the whole
             // column would animate every scroll and every checkbox too.
-            .animation(Motion.resolved(Motion.page, reduceMotion: reduceMotion), value: shell.selection)
+            // A fade replaces the old blur, scale and drift, which made the
+            // page swim for 280 ms after every click; from the keyboard
+            // the new page is simply there.
+            .animation(
+                shell.navigatedByKeyboard ? nil : Motion.resolved(Motion.navigate, reduceMotion: reduceMotion),
+                value: shell.selection
+            )
             // Pages with a list column centre the Tray and toast on that
             // column themselves; the rest show the toast across the page.
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -70,8 +84,9 @@ struct ContentView: View {
         // The window's own background, so the system sidebar is the canvas
         // seen through glass: a shade apart, with no line between them.
         .containerBackground(Palette.canvas, for: .window)
-        // The page says where you are. A window titled with the app's name
-        // tells nobody anything (HIG, Toolbars).
+        .onAppear { LaunchSignpost.shellAppeared() }
+        // Each page draws its own name in the toolbar (`pageTitle`); the
+        // system's title would repeat it beside a subtitle.
         .toolbar(removing: .title)
         .overlay(alignment: .top) { commandBar }
         .quickLookPreview($shell.previewURL, in: shell.previewURLs)
@@ -81,11 +96,13 @@ struct ContentView: View {
             shell.closePreview()
             return .handled
         }
-        // An application dropped anywhere on the window opens it in Apps.
-        .dropDestination(for: URL.self) { urls, _ in
-            BrimTips.learned(DropAppTip())
-            return models.openApplication(from: urls, shell: shell)
+        // An application dropped anywhere on the window opens it in Apps;
+        // an installer, or an app that is not installed, opens a look
+        // inside it.
+        .dropDestination(for: URL.self) { urls, _ -> Bool in
+            models.openApplication(from: urls, shell: shell)
         }
+        .modifier(InstallerSheets(model: models.recording, shell: shell, applications: models.applications))
         // A minimum, and deliberately no ideal.
         //
         // This carried `idealWidth: 1200, idealHeight: 800` for the reason
@@ -119,9 +136,22 @@ struct ContentView: View {
         .onAppear {
             shell.restore(Destination(rawValue: savedDestination) ?? .home)
             shell.appsLens = AppsLens(rawValue: savedLens) ?? .all
+            resumeAfterAccess()
+            models.fullDiskAccess.startObserving()
         }
-        .onChange(of: shell.selection) { _, destination in savedDestination = destination.rawValue }
-        .onChange(of: shell.appsLens) { _, lens in savedLens = lens.rawValue }
+        .onChange(of: shell.selection) { _, destination in
+            savedDestination = destination.rawValue
+            lastDestination = destination.rawValue
+        }
+        .onChange(of: shell.appsLens) { _, lens in
+            savedLens = lens.rawValue
+            lastLens = lens.rawValue
+        }
+        .onChange(of: models.fullDiskAccess.isGranted) { wasGranted, isGranted in
+            if !wasGranted, isGranted {
+                Task { await readAgainWithAccess() }
+            }
+        }
         .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
         // Once, for every section. Asks macOS nothing until a removal
         // needs the helper; see `HelperRoute`.
@@ -181,7 +211,10 @@ struct ContentView: View {
         case .energy:
             EnergyView(model: models.energy)
         case .space:
-            SpaceView(model: models.storage, applications: models.applications, developer: models.developer)
+            SpaceView(
+                model: models.storage, applications: models.applications,
+                developer: models.developer, history: models.history, appData: models.appData
+            )
         case .developer:
             DeveloperView(model: models.developer)
         case .journal:
@@ -226,28 +259,55 @@ struct ContentView: View {
     private var toolbar: some ToolbarContent {
         if shell.selection == .apps {
             ToolbarItem(placement: .principal) {
-                Picker("View", selection: $shell.appsLens) {
-                    ForEach(AppsLens.allCases, id: \.self) { lens in
-                        LensTitle(lens: lens, updates: models.updates).tag(lens)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
+                LensSwitch(lens: $shell.appsLens, updates: models.updates)
             }
         }
         // Keeps Check Again on the trailing edge on every page, including
         // those with nothing in the middle of the toolbar.
         ToolbarSpacer(.flexible)
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                shell.requestCheck()
-            } label: {
-                Label("Check Again", systemImage: "arrow.clockwise")
-                    // Turns once per press, so the click is answered even
-                    // before the check has anything to show.
-                    .symbolEffect(.rotate.clockwise, options: .nonRepeating, value: shell.checkRequests)
-            }
-            .help("Check this page again (⌘R)")
+            CheckAgainButton(
+                activity: models.activity, destination: shell.selection, presses: shell.checkRequests,
+                check: { shell.requestCheck() }, stop: models.developer.cancelScan
+            )
+        }
+    }
+
+    // MARK: - Full Disk Access
+
+    /// The launch after a request for Full Disk Access goes back to where
+    /// the request was made: the same page, and the Settings window if it
+    /// was asked from there. Setup keeps its own step. Once, per launch.
+    private func resumeAfterAccess() {
+        guard !Self.resumed, let origin = FullDiskAccess.pendingRequest else { return }
+        Self.resumed = true
+        shell.restore(Destination(rawValue: lastDestination) ?? .home)
+        shell.appsLens = AppsLens(rawValue: lastLens) ?? .all
+        if origin == .settings {
+            openSettings()
+        }
+        // A fresh launch either has access or the switch was not turned on.
+        // Either way the request is answered, and the pages go back to
+        // offering System Settings rather than another reopen.
+        FullDiskAccess.clearRequest()
+        models.fullDiskAccess.recheck()
+    }
+
+    @MainActor private static var resumed = false
+
+    /// Access arrived while Brim was running, which macOS often allows
+    /// without the reopen it offers. Everything read without it is read
+    /// again, so no page keeps saying Library could not be read.
+    private func readAgainWithAccess() async {
+        shell.show(ToastMessage(symbol: "checkmark.circle", text: "Full Disk Access is on"))
+        async let leftovers: Void = models.leftovers.load(service: service)
+        async let background: Void = models.background.load(service: service)
+        async let storage: Void = models.storage.load(service: service)
+        async let recovery: Void = models.recovery.refresh(service: service)
+        _ = await (leftovers, background, storage, recovery)
+        // The inspector's "behind Full Disk Access, not counted" too.
+        if let selected = models.applications.selected {
+            models.applications.select(selected)
         }
     }
 
@@ -266,10 +326,19 @@ struct ContentView: View {
             }
         case .leftovers: await models.leftovers.load(service: service)
         case .background: await models.background.load(service: service)
-        case .space: await models.storage.load(service: service)
+        case .space:
+            await models.storage.load(service: service)
+            await models.appData.measure(
+                service: service, applications: models.applications.applications, developer: models.developer.caches
+            )
         case .developer: await models.developer.load(service: service)
         case .energy: await models.energy.sample(service: service)
-        case .journal: await models.history.load(service: service)
+        case .journal:
+            // Installs are read from the snapshots, and listing the apps is
+            // what writes one, so an app installed since the last look
+            // appears only if the list is read first.
+            await models.applications.load(service: service)
+            await models.history.load(service: service)
         }
     }
 }
@@ -313,17 +382,19 @@ private struct DockBadge: View {
     }
 }
 
-/// A lens's name, with the number of updates beside Updates once a check
-/// has counted them.
-private struct LensTitle: View {
-    let lens: AppsLens
-    @ObservedObject var updates: UpdatesModel
+/// Launch to the first usable window, as one Points of Interest interval:
+/// begun when the app is made and ended when its window first appears.
+@MainActor
+enum LaunchSignpost {
+    private static var interval: OSSignpostIntervalState?
 
-    var body: some View {
-        if lens == .updates, let count = updates.count, count > 0 {
-            Text("\(lens.rawValue) \(count)")
-        } else {
-            Text(lens.rawValue)
-        }
+    static func begin() {
+        interval = BrimLog.signposter.beginInterval("Launch to shell")
+    }
+
+    static func shellAppeared() {
+        guard let interval else { return }
+        BrimLog.signposter.endInterval("Launch to shell", interval)
+        Self.interval = nil
     }
 }

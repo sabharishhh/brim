@@ -17,6 +17,7 @@ import SwiftUI
 /// them could be removed or was worth reading. `BackgroundModel` holds the
 /// measurement.
 struct BackgroundView: View {
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @ObservedObject var model: BackgroundModel
     @ObservedObject private var helper: PrivilegedHelperClient
     @SwiftUI.Environment(\.brimService) private var service
@@ -36,21 +37,31 @@ struct BackgroundView: View {
         helper = model.helper
     }
 
+    /// The floating pane's Close in a narrow window.
+    private func closeInspector() {
+        inspectedID = nil
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        AdaptivePanes(
+            detailWidth: Metrics.detailWidth,
+            hasDetail: reviewRequest != nil || inspectedID != nil,
+            isReviewing: reviewRequest != nil,
+            close: closeInspector
+        ) {
             VStack(spacing: 0) {
                 header
                 notices
                 content
             }
-            .frame(minWidth: Metrics.listMinWidth, maxWidth: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) { ShellOverlay(tray: trayContents) }
             .opacity(reviewRequest == nil ? 1 : 0.55)
             .allowsHitTesting(reviewRequest == nil)
             .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: reviewRequest == nil)
+        } detail: {
             inspector
-                .frame(width: reviewRequest == nil ? 340 : 440)
         }
+        .pageTitle("Background")
         .task { await model.loadIfNeeded(service: service) }
         .task(id: model.revision) {
             icons = Self.icons(for: sections)
@@ -76,42 +87,17 @@ struct BackgroundView: View {
 
     // MARK: - Header
 
+    /// The search at the top of the list. The page's name and count are in
+    /// the toolbar.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Background")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                if hasData {
-                    Text(summary)
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
-                }
-                if model.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Checking")
-                }
-                Spacer()
-            }
-            TextField("Search", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search background items")
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
+        BrimSearchField(text: $model.searchText, prompt: "Search Background Items")
+            .padding(.horizontal, Metrics.pagePadding)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
     }
 
     private var hasData: Bool {
         !model.report.registrations.isEmpty
-    }
-
-    private var summary: String {
-        let running = "\(model.live.count) listed"
-        let gone = model.stale.count
-        return gone == 0 ? running : "\(running) · \(gone) left over"
     }
 
     // MARK: - List
@@ -202,7 +188,7 @@ struct BackgroundView: View {
                 onUnverified: { Task { await model.load(service: service) } }
             )
             .id(intent.id)
-            .transition(.opacity)
+            .transition(.paneSwap(reduceMotion: reduceMotion))
         } else if let entry = inspected {
             BackgroundInspector(
                 entry: entry,
@@ -214,7 +200,7 @@ struct BackgroundView: View {
             )
             .refreshing(model.isLoading)
             .id(entry.id)
-            .transition(.opacity)
+            .transition(.replacement)
             .animation(Motion.resolved(Motion.inspector, reduceMotion: reduceMotion), value: entry.id)
         } else {
             PanePlaceholder(symbol: "gearshape.2", title: "Select an item")
@@ -247,19 +233,16 @@ extension BackgroundView {
     private var notices: some View {
         let faults = model.faults
         let waiting = !model.waitingOnHelper.isEmpty && !helper.state.canRemove
-        if !faults.isEmpty || waiting || helper.retirementProblem != nil {
+        if !faults.isEmpty || waiting {
             VStack(alignment: .leading, spacing: 8) {
+                let offer = AccessOffer.current(requestedAt: accessRequestedAt)
                 ForEach(faults, id: \.kind) { gap in
                     Notice(
                         symbol: "eye.slash", title: "\(gap.kind.displayName)s not read",
                         detail: gap.limitation,
-                        actionTitle: gap.isFixableByTheUser ? "Open Settings" : nil,
-                        action: FullDiskAccess.openSettings
+                        actionTitle: gap.isFixableByTheUser ? offer.title : nil,
+                        action: offer.action
                     )
-                }
-                if let problem = helper.retirementProblem {
-                    Notice(symbol: "exclamationmark.triangle", title: "Earlier background registration remains",
-                           detail: problem)
                 }
                 if waiting {
                     helperNotice
@@ -364,7 +347,7 @@ struct Notice: View {
             Spacer(minLength: 8)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+                    .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             }

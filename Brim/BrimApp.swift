@@ -10,6 +10,7 @@ private let log = BrimLog.make("app")
 
 @main struct BrimAppMain: App {
     @FocusedValue(\.removeSelectedAction) var removeSelectedAction
+    @FocusedValue(\.pageActions) var pageActions
     @FocusedValue(\.shell) var shell
     @FocusedValue(\.selectedItems) var selectedItems
 
@@ -24,7 +25,27 @@ private let log = BrimLog.make("app")
     @AppStorage("rows.compact") private var compactRows = false
 
     init() {
+        LaunchSignpost.begin()
+        Self.useGraphiteAccent()
         BrimTips.configure()
+    }
+
+    /// Brim has no accent colour, whatever the Mac's is.
+    ///
+    /// Tinting each control did not reach them all: with a red accent the
+    /// sidebar's icons and the Settings window's tabs were still red, drawn
+    /// by AppKit from the system accent that a SwiftUI tint never touches.
+    /// macOS reads the accent from the `AppleAccentColor` default, and an
+    /// app's own domain wins over the global one, so Brim sets Graphite
+    /// (-1) and the grey selection highlight in its own domain. Every
+    /// control AppKit draws for Brim is then grey, and the rest of the Mac
+    /// keeps the person's colour.
+    private static func useGraphiteAccent() {
+        let defaults = UserDefaults.standard
+        if defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleAccentColor"] as? Int != -1 {
+            defaults.set(-1, forKey: "AppleAccentColor")
+        }
+        defaults.set("0.847059 0.847059 0.862745 Graphite", forKey: "AppleHighlightColor")
     }
 
     @State private var showSelfUninstall = false
@@ -44,12 +65,14 @@ private let log = BrimLog.make("app")
         mainWindow
         Settings {
             SettingsView()
+                .tint(Palette.tint)
                 .environment(session)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
         Window("Feedback", id: FeedbackWindow.windowID) {
             FeedbackWindow()
+                .tint(Palette.tint)
                 .environment(feedback)
         }
         .windowResizability(.contentSize)
@@ -58,11 +81,24 @@ private let log = BrimLog.make("app")
             ShortcutsView()
         }
         .windowResizability(.contentSize)
+        Window("About Brim", id: AboutView.windowID) {
+            AboutView()
+                .tint(Palette.tint)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
     }
 
     private var mainWindow: some Scene {
         WindowGroup {
             root
+                // Opening an installer with Brim while it ran made a second
+                // window for it. The open window takes every external event.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                // Monochrome: the person's system accent would colour
+                // checkboxes, switches and the sidebar selection.
+                .tint(Palette.tint)
                 .environment(\.brimService, client)
                 .environment(session)
                 .environment(feedback)
@@ -86,16 +122,13 @@ private let log = BrimLog.make("app")
                 } message: {
                     Text(releaseMessage)
                 }
-                .alert("Uninstall Brim?", isPresented: $showSelfUninstall) {
+                .alert(SelfRemoval.confirmationTitle, isPresented: $showSelfUninstall) {
                     Button("Cancel", role: .cancel) {}
-                    Button("Uninstall", role: .destructive) {
+                    Button("Remove Brim", role: .destructive) {
                         Task { await performSelfUninstall() }
                     }
                 } message: {
-                    Text("This removes Brim, the helper that runs as an administrator, its "
-                        + "background agents and everything it has written. Any job files "
-                        + "Brim set aside for you go with it, so restore anything you still "
-                        + "want first.")
+                    Text(SelfRemoval.confirmationMessage)
                 }
                 .alert(
                     "Brim has not removed itself",
@@ -113,10 +146,11 @@ private let log = BrimLog.make("app")
                     Text(selfUninstallProblem ?? "")
                 }
         }
-        // The widest page needs the sidebar (200), a list (440) and a review
-        // pane (440), so 1100 is the floor (`Metrics.windowMinWidth`), and
-        // `.contentMinSize` stops the window being dragged below it from any
-        // edge or corner.
+        // 900 is the floor (`Metrics.windowMinWidth`), and `.contentMinSize`
+        // stops the window being dragged below it from any edge or corner.
+        // It was 1100, the sidebar plus a list plus a review pane side by
+        // side; below that width the pane now floats over the list
+        // (`AdaptivePanes`), and Home's cards wrap two by two.
         //
         // The 1200x800 default is not currently honoured on this machine:
         // the window opens at roughly half the display width whatever is
@@ -125,6 +159,7 @@ private let log = BrimLog.make("app")
         // the content reporting an infinite width. Left in place because it
         // is correct, and noted because it is not yet taking effect.
         .defaultSize(width: 1200, height: 800)
+        .handlesExternalEvents(matching: ["*"])
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .help) {
@@ -152,6 +187,9 @@ private let log = BrimLog.make("app")
                         .keyboardShortcut(KeyEquivalent(destination.keyboardDigit ?? "0"), modifiers: .command)
                         .disabled(shell == nil)
                 }
+                // The other half of the Apps and Updates switch.
+                Button("Updates") { shell?.go(to: .apps, lens: .updates) }
+                    .disabled(shell == nil)
             }
             CommandGroup(before: .sidebar) {
                 Toggle("Compact Rows", isOn: $compactRows)
@@ -163,8 +201,15 @@ private let log = BrimLog.make("app")
                 Divider()
             }
             CommandGroup(after: .newItem) {
+                Button("Look Inside an Installer…") { shell?.chooseInstaller() }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .disabled(shell == nil)
+                Button(shell?.isRecordingInstall == true ? "Finish Recording" : "Record an Install") {
+                    shell?.toggleRecording()
+                }
+                .disabled(shell == nil)
                 Divider()
-                Button("Reveal in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
+                Button("Show in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
                     .keyboardShortcut("r", modifiers: [.command, .option])
                     .disabled(selectedItems?.urls.isEmpty ?? true)
                 Button("Quick Look") { shell?.quickLook(selectedItems?.urls ?? []) }
@@ -182,17 +227,21 @@ private let log = BrimLog.make("app")
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(removeSelectedAction == nil)
+                if let pageActions, !pageActions.isEmpty {
+                    Divider()
+                    ForEach(pageActions, id: \.name) { action in
+                        Button(action.name) { action.perform(()) }
+                    }
+                }
             }
             CommandGroup(replacing: .appInfo) {
-                Button("About Brim") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(nil)
-                }
+                AboutMenuItem()
                 Button("Check for Brim Updates…") {
                     Task { releaseAnswer = await release.check() }
                 }
                 .disabled(release.isChecking)
                 Divider()
-                Button("Uninstall Brim") {
+                Button("Remove Brim…") {
                     showSelfUninstall = true
                 }
             }
@@ -229,43 +278,6 @@ private let log = BrimLog.make("app")
     @StateObject private var helper = PrivilegedHelperClient()
 
     private func performSelfUninstall() async {
-        let bundleID = Bundle.main.bundleIdentifier ?? "devplaceholder.PJ52YXEB.brim"
-        let identity = Identity(bundleID: bundleID, teamID: "PJ52YXEB", name: "Brim")
-        let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
-
-        // The daemon first, while it is still running. Its quarantine is
-        // root owned, so nothing left behind can remove it afterwards, and
-        // an uninstaller that leaves a root-owned folder on the disk is
-        // the exact failure this product exists to point at.
-        if let complaint = await helper.uninstall() {
-            log.error("the helper did not clean up after itself: \(complaint)")
-            // `uninstall` unregisters the daemon whether or not its own
-            // cleanup worked, and only the running daemon can clear a folder
-            // owned by root, so at this point the folder is there for good.
-            // Removing Brim now would take away the only thing that knows,
-            // which is the failure this product exists to point at in other
-            // people's software.
-            selfUninstallProblem =
-                "The helper that runs as an administrator could not clear its own folder "
-                    + "before it was unregistered, so \(BrimJobHelper.quarantineDirectory) is "
-                    + "still on the disk and belongs to root. Removing it now needs an "
-                    + "administrator, which Finder will ask for.\n\n"
-                    + "Brim is untouched, so nothing else has been removed. Asking again will "
-                    + "remove Brim, but it will not remove that folder.\n\n"
-                    + complaint
-            return
-        }
-
-        do {
-            let plan = try await client.plan(intent: intent)
-            try await client.approveAndApply(
-                planId: plan.planId, requesterIdentity: NSUserName()
-            )
-            // Quit immediately after applying the uninstall
-            NSApplication.shared.terminate(nil)
-        } catch {
-            log.error("could not remove Brim: \(error.localizedDescription)")
-            selfUninstallProblem = "Brim could not remove itself. \(error.localizedDescription)"
-        }
+        selfUninstallProblem = await SelfRemoval.perform(helper: helper)
     }
 }

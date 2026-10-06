@@ -20,37 +20,52 @@ struct FeedbackComposer: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Title").font(.headline)
-                        TextField("A short summary", text: $feedback.draft.title)
+                        HStack {
+                            Text("Title").font(.headline)
+                            Spacer()
+                            FeedbackCharacterCount(count: feedback.draft.title.count, limit: FeedbackDraft.Limit.title)
+                        }
+                        TextField(feedback.draft.kind.titlePrompt, text: $feedback.draft.title)
                             .textFieldStyle(.roundedBorder)
                             .controlSize(.large)
                             .focused($focusesTitle)
                             .accessibilityLabel("Report title")
-                        if feedback.draft.title.count > 100 {
-                            Text("\(feedback.draft.title.count) / 120 characters")
-                                .font(.caption)
-                                .foregroundStyle(
-                                    feedback.draft.title.count > 120 ? Palette.caution : Palette.inkSecondary
-                                )
-                        }
+                            .onChange(of: feedback.draft.title) { _, new in
+                                if new.count > FeedbackDraft.Limit.title {
+                                    feedback.draft.title = String(new.prefix(FeedbackDraft.Limit.title))
+                                }
+                            }
                     }
                     FeedbackTextInput(
                         title: "Description", prompt: feedback.draft.kind.descriptionPrompt,
-                        text: $feedback.draft.details, minimumHeight: 140, limit: 6000
+                        text: $feedback.draft.details, minimumHeight: 140, limit: FeedbackDraft.Limit.details,
+                        dictates: true
                     )
                     if feedback.draft.kind == .bug {
-                        DisclosureGroup("Steps and expected result (optional)", isExpanded: $showsSteps) {
+                        // The whole line opens it. A disclosure group's own
+                        // label answers only on its chevron.
+                        DisclosureGroup(isExpanded: $showsSteps) {
                             VStack(spacing: 16) {
                                 FeedbackTextInput(
                                     title: "Steps to reproduce", prompt: "1. Open Brim…\n2. …",
-                                    text: $feedback.draft.reproduction, minimumHeight: 90, limit: 4000
+                                    text: $feedback.draft.reproduction, minimumHeight: 90,
+                                    limit: FeedbackDraft.Limit.reproduction
                                 )
                                 FeedbackTextInput(
                                     title: "Expected result", prompt: "What should have happened?",
-                                    text: $feedback.draft.expected, minimumHeight: 60, limit: 2000
+                                    text: $feedback.draft.expected, minimumHeight: 60,
+                                    limit: FeedbackDraft.Limit.expected
                                 )
                             }
                             .padding(.top, 12)
+                        } label: {
+                            Button {
+                                showsSteps.toggle()
+                            } label: {
+                                Text("Steps and expected result (optional)")
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
                         }
                         .font(.callout)
                     }

@@ -42,23 +42,16 @@ struct BatchRemovalPanel: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Remove \(model.entries.count) apps")
-                    .font(.brimPageTitle)
-                    .foregroundStyle(Palette.ink)
-                Text(model.isPreparing ? "Checking" : model.isFinished ? outcome : ByteText.short(model.totalBytes))
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkSecondary)
-            }
+        // The title alone on its line; how much goes is said beside the
+        // button that removes it.
+        HStack(alignment: .center) {
+            Text("Remove \(model.entries.count) Apps")
+                .font(.brimPageTitle)
+                .foregroundStyle(Palette.ink)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .disabled(model.isRemoving)
-            .accessibilityLabel("Close")
+            RowAction(symbol: "xmark", help: "Close", action: onClose)
+                .disabled(model.isRemoving)
         }
         .padding(20)
     }
@@ -67,7 +60,7 @@ struct BatchRemovalPanel: View {
     private var outcome: String {
         let done = model.entries.filter {
             if case let .verified(result) = $0.removal.phase {
-                result.success
+                RemovalSummary(result: result, plan: $0.removal.plan, groups: $0.removal.reviewGroups).isDone
             } else {
                 false
             }
@@ -78,10 +71,14 @@ struct BatchRemovalPanel: View {
     }
 
     private var footer: some View {
-        Group {
+        VStack(spacing: 10) {
+            Text(model.isPreparing ? "Checking" : model.isFinished ? outcome : ByteText.short(model.totalBytes))
+                .font(.brimFacts)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkSecondary)
             if model.isFinished {
                 Button("Done", action: onFinished)
-                    .buttonStyle(.borderedProminent)
+                    .capsuleAction(prominent: true)
                     .keyboardShortcut(.defaultAction)
             } else {
                 Button(model.isRemoving ? "Removing" : "Remove \(model.ready.count) Apps") {
@@ -90,7 +87,7 @@ struct BatchRemovalPanel: View {
                         onRemoved()
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .capsuleAction(prominent: true)
                 .disabled(model.isPreparing || model.isRemoving || model.ready.isEmpty)
             }
         }
@@ -168,29 +165,10 @@ private struct BatchEntryRow: View {
             return count + " · " + ByteText.short(plan.expectedTotalBytes) + " estimated"
         case .executing: return "Removing"
         case let .verified(result):
-            guard result.success else { return "Some of it remains" }
-            if (result.report?.scanCompleteness ?? removal.plan?.scanCompleteness)?.isComplete == false {
-                return "Removed, search incomplete"
-            }
-            if let record = result.packageRecord, record.state != .absent {
-                return record.state == .present
-                    ? "Files removed, package record remains"
-                    : "Files removed, package record unchecked"
-            }
-            if result.followUpActions?.isEmpty == false {
-                return "One more step"
-            }
-            if result.report?.protectedItems.contains(where: { $0.presence == .unknown }) == true {
-                return "Removed, protected items unchecked"
-            }
-            if result.report?.keptByMacOS.isEmpty == false || result.report?.protectedItems.isEmpty == false {
-                return "Removed, protected or shared items remain"
-            }
-            if result.report?.sharedIdentityProtection != nil {
-                return "Removed, privacy permissions not reset"
-            }
-            let unticked = result.report?.leftUnticked.count ?? 0
-            return unticked == 0 ? "Nothing left" : "Removed, \(unticked) unticked stay"
+            // The same reading as the result itself: what went leads, and
+            // what Brim never had reason to check is not news.
+            let summary = RemovalSummary(result: result, plan: removal.plan, groups: removal.reviewGroups)
+            return summary.isDone ? summary.subline : summary.headline
         case .appliedButUnverified: return "Removed, not checked"
         case let .failed(why): return why
         }
@@ -199,7 +177,8 @@ private struct BatchEntryRow: View {
     private var isTrouble: Bool {
         switch removal.phase {
         case .failed, .appliedButUnverified: true
-        case let .verified(result): !result.success
+        case let .verified(result):
+            !RemovalSummary(result: result, plan: removal.plan, groups: removal.reviewGroups).isDone
         default: false
         }
     }

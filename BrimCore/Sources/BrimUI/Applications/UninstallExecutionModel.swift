@@ -2,17 +2,33 @@ import BrimCore
 import BrimProtocol
 import Combine
 import Foundation
+import os
 
+/// One footprint group in a review: what moves, what is offered for the
+/// person to tick, and what stays and why, under the same group and in the
+/// same order the inspector used. The result reports each group's outcome
+/// in that order too, so a file can be followed from evidence to outcome.
 public struct UninstallReviewGroup: Identifiable, Sendable {
-    public let id: String
-    public let title: String
+    public let loss: FootprintLoss
+    /// Steps the plan will carry out, in plan order.
     public let steps: [Step]
-}
+    /// Found, left unticked, and the person's to include.
+    public let offers: [ExcludedItem]
+    /// Kept out whatever is asked, with the reason: shared, protected, or
+    /// only finishable by the person.
+    public let staying: [ExcludedItem]
 
-public struct UninstallOfferGroup: Identifiable, Sendable {
-    public let id: String
-    public let title: String
-    public let rows: [ExcludedItem]
+    public var id: String {
+        loss.rawValue
+    }
+
+    public var title: String {
+        loss.navigationTitle
+    }
+
+    public var isEmpty: Bool {
+        steps.isEmpty && offers.isEmpty && staying.isEmpty
+    }
 }
 
 /// Drives one uninstall from plan to proof: plan, a single approval, apply,
@@ -45,7 +61,6 @@ public final class UninstallExecutionModel: ObservableObject {
     @Published public private(set) var phase: Phase = .preparing
     @Published public private(set) var plan: Plan?
     @Published public private(set) var reviewGroups: [UninstallReviewGroup] = []
-    @Published public private(set) var offerGroups: [UninstallOfferGroup] = []
 
     /// Rows the person ticked in the sheet, which Brim had found and left
     /// unticked. Held here and sent on the intent, so every change of mind
@@ -121,8 +136,7 @@ public final class UninstallExecutionModel: ObservableObject {
                 guard sheet == preparation else { return }
                 guard asked == generation else { continue }
                 plan = planned
-                reviewGroups = Self.groupedSteps(planned.steps)
-                offerGroups = Self.groupedOffers(planned.excludedItems)
+                reviewGroups = Self.grouped(planned)
                 isUpdating = false
                 return
             } catch {
@@ -138,7 +152,7 @@ public final class UninstallExecutionModel: ObservableObject {
     /// Steps that remove something, excluding the bookkeeping ones. Used for
     /// the counts the sheet shows, so "12 locations" means twelve things on
     /// disk rather than twelve plan entries.
-    private static let bookkeepingKinds: Set<StepKind> = [
+    private nonisolated static let bookkeepingKinds: Set<StepKind> = [
         .resetPrivacyGrants, .unloadLaunchdJob, .unregisterLaunchServices
     ]
 
@@ -149,7 +163,9 @@ public final class UninstallExecutionModel: ObservableObject {
     /// What the plan keeps and cannot be ticked, with the reason. Shown
     /// before approval so nothing is learned only from the result.
     public var staying: [ExcludedItem] {
-        (plan?.excludedItems ?? []).filter { $0.canBeTickedByHand == false }
+        // Nil comes from a plan saved before rows could be offered, and
+        // reads as not tickable, the same as the review groups read it.
+        (plan?.excludedItems ?? []).filter { $0.canBeTickedByHand != true }
     }
 
     /// How many removals go through Brim's helper.
@@ -157,66 +173,22 @@ public final class UninstallExecutionModel: ObservableObject {
         removalSteps.filter { $0.kind == .trashPathPrivileged }.count
     }
 
-    private static func groupedSteps(_ steps: [Step]) -> [UninstallReviewGroup] {
-        var order: [String] = []
-        var buckets: [String: [Step]] = [:]
-        for step in steps where !bookkeepingKinds.contains(step.kind) {
-            let title = groupTitle(for: step.target, kind: step.kind)
-            if buckets[title] == nil {
-                order.append(title)
-            }
-            buckets[title, default: []].append(step)
+    /// The plan by footprint group, in display order, empty groups left out.
+    /// Pure, so it can be worked out anywhere.
+    nonisolated static func grouped(_ plan: Plan) -> [UninstallReviewGroup] {
+        let shown = plan.steps.filter { !bookkeepingKinds.contains($0.kind) }
+        let steps = Dictionary(grouping: shown, by: FootprintLoss.of)
+        let rows = Dictionary(grouping: plan.excludedItems) { FootprintLoss.of(url: URL(fileURLWithPath: $0.target)) }
+        return FootprintLoss.displayOrder.compactMap { loss in
+            let excluded = rows[loss] ?? []
+            let group = UninstallReviewGroup(
+                loss: loss,
+                steps: steps[loss] ?? [],
+                offers: excluded.filter { $0.canBeTickedByHand == true },
+                staying: excluded.filter { $0.canBeTickedByHand != true }
+            )
+            return group.isEmpty ? nil : group
         }
-        if let app = order.firstIndex(of: "Application") {
-            order.remove(at: app)
-            order.insert("Application", at: 0)
-        }
-        return order.compactMap { title in
-            guard let steps = buckets[title] else { return nil }
-            return UninstallReviewGroup(id: title, title: title, steps: steps)
-        }
-    }
-
-    private static func groupedOffers(_ rows: [ExcludedItem]) -> [UninstallOfferGroup] {
-        var order: [String] = []
-        var buckets: [String: [ExcludedItem]] = [:]
-        for row in rows where row.canBeTickedByHand == true {
-            let title = groupTitle(for: row.target, kind: nil)
-            if buckets[title] == nil {
-                order.append(title)
-            }
-            buckets[title, default: []].append(row)
-        }
-        return order.compactMap { title in
-            guard let rows = buckets[title] else { return nil }
-            return UninstallOfferGroup(id: title, title: title, rows: rows)
-        }
-    }
-
-    private static func groupTitle(for target: String, kind: StepKind?) -> String {
-        switch kind {
-        case .forgetReceipt: return "Installer records"
-        case .revealVendorUninstaller: return "Vendor uninstallers"
-        default: break
-        }
-        let url = URL(fileURLWithPath: target)
-        if url.pathExtension == "app" {
-            return "Application"
-        }
-        let domain = LeftoverDomain.of(url)
-        return domain == .other ? "Other files" : domain.title
-    }
-
-    /// Whether this plan also retracts the app's Launch Services
-    /// registration — the reason a removed app stops appearing in
-    /// "Open With".
-    public var clearsRegistrations: Bool {
-        (plan?.steps ?? []).contains { $0.kind == .unregisterLaunchServices }
-    }
-
-    /// Whether this plan also clears the app's privacy permissions.
-    public var clearsPrivacyGrants: Bool {
-        (plan?.steps ?? []).contains { $0.kind == .resetPrivacyGrants }
     }
 
     public func prepare(intent: PlanIntent, service: any BrimServiceProtocol) async {
@@ -231,14 +203,14 @@ public final class UninstallExecutionModel: ObservableObject {
         isUpdating = false
         plan = nil
         reviewGroups = []
-        offerGroups = []
         phase = .preparing
+        let interval = BrimLog.signposter.beginInterval("Review plan")
+        defer { BrimLog.signposter.endInterval("Review plan", interval) }
         do {
             let planned = try await service.plan(intent: intent)
             guard asked == generation else { return }
             plan = planned
-            reviewGroups = Self.groupedSteps(planned.steps)
-            offerGroups = Self.groupedOffers(planned.excludedItems)
+            reviewGroups = Self.grouped(planned)
             phase = .ready
         } catch {
             guard asked == generation else { return }
@@ -259,8 +231,7 @@ public final class UninstallExecutionModel: ObservableObject {
         generation += 1
         isUpdating = false
         plan = adopted
-        reviewGroups = Self.groupedSteps(adopted.steps)
-        offerGroups = Self.groupedOffers(adopted.excludedItems)
+        reviewGroups = Self.grouped(adopted)
         phase = .ready
     }
 
@@ -283,8 +254,8 @@ public final class UninstallExecutionModel: ObservableObject {
         // removal, not a threshold worth tuning.
         guard result.recoveredBytes < promised / 10 else { return nil }
 
-        return "The files are gone, but little free space increased during the check. Shared blocks, "
-            + "local snapshots or other activity on this Mac can explain the difference."
+        return "The files are gone, but free space barely changed. Snapshots, shared file blocks "
+            + "or other activity on this Mac can account for it."
     }
 
     /// Told the moment a removal is proved, with the paths that went.

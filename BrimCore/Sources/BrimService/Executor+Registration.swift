@@ -17,11 +17,17 @@ extension Executor {
                     NSLocalizedDescriptionKey: "The application path is still occupied. Its registration was kept."
                 ])
             }
-            if try componentIsAlreadyUnregistered(step: step, plan: plan) {
-                return "already_gone"
+            do {
+                try await LaunchServicesRegistration.unregisterBounded(bundlePath: step.target)
+                return "ok"
+            } catch {
+                // Retracting a path Launch Services never recorded fails, as
+                // for a helper nobody opened. Only then is the database asked.
+                if try await componentIsAlreadyUnregistered(step: step) {
+                    return "already_gone"
+                }
+                throw error
             }
-            try await LaunchServicesRegistration.unregisterBounded(bundlePath: step.target)
-            return "ok"
         } catch {
             return "launch_services_registration_remains: \(error.localizedDescription)"
         }
@@ -56,12 +62,9 @@ extension Executor {
 
     /// Absence of an exact registered path is success. A failed lookup throws.
     static func componentIsAlreadyUnregistered(
-        step: Step, plan: Plan,
-        lookup: (String) throws -> [URL] = LaunchServicesRegistration.checkedApplicationURLs
-    ) throws -> Bool {
-        guard let identifier = step.registrationBundleID ?? plan.intent.subjectIdentity.identitySurface?.components
-            .first(where: { $0.path == step.target })?.bundleIdentifier else { return false }
-        return try !lookup(identifier)
-            .contains(where: { $0.standardizedFileURL.path == step.target })
+        step: Step,
+        isRecorded: (String) async throws -> Bool = { try await LaunchServicesRegistration.isRecorded(path: $0) }
+    ) async throws -> Bool {
+        try await !isRecorded(step.target)
     }
 }
