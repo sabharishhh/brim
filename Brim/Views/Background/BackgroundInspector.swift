@@ -204,6 +204,9 @@ private struct RecordRow: View {
         if registration.kind == .firewallEntry {
             return "Review this entry in System Settings > Network > Firewall > Options."
         }
+        if registration.kind == .privacyGrant {
+            return "Remove it in System Settings > Privacy & Security: select it and click the minus button."
+        }
         guard registration.isActionableStale else { return nil }
         if helperIsReady, BackgroundModel.needsTheHelper(registration) {
             return nil

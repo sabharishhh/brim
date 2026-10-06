@@ -1322,7 +1322,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         PrivilegedHelperToolSurface(),
         BundlePluginSurface(),
         ShellProfileSurface(),
-        KeychainSurface()
+        KeychainSurface(),
+        PrivacyGrantSurface()
     ]
 
     public func registrations() async -> RegistrationReport {
