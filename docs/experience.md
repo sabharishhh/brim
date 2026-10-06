@@ -604,6 +604,33 @@ filtering lines before parsing dates took the parse from about four seconds
 to under two. It runs beside the reading, behind a placeholder. Not
 verified: the two cards on screen, and a desktop Mac.
 
+## Space, third phase, and stale privacy grants (6 October)
+
+Space inspects every installed app with the Apps inspector's footprint,
+three at a time (nineteen apps, about thirteen seconds here), and shows
+their data outside the bundle as its own row and as the second tone in
+Largest apps. Claude's bundle is 0.9 GB and its data 13 GB. Shared folders
+are counted once, for the claimant with the larger bundle (the Claude Code
+URL Handler app claims the same 13 GB), nested folders once, and whatever
+the Developer caches row counts is taken out. Each finished visit records
+its figures in Brim's preferences; "Since you last looked" subtracts the
+previous visit, visits within an hour being one look. Seen on screen:
+App data 22.18 GB, everything else 88.26 GB, free space 858 MB less than
+the morning's visit, Largest apps led by Claude at 14.19 GB.
+
+Full Disk Access still listed Microsoft AutoUpdate's removed helper.
+`PrivacyGrantSurface` reads both privacy databases read only and reports
+grants to program paths no longer on disk, report only, routed to Privacy &
+Security. Background had filtered out everything not tied to an installed
+app, which hid it; it now shows under Still listed. Seen on screen. Not
+verified: removing it through Settings and the row clearing on refresh.
+
+The day chart breaks at restarts and dashes time on the adapter; the
+sleep sentence names its times. Brim keeps the system accent out entirely
+(Graphite in its own preferences, off-white icons, off-white selections
+with #1E1E1E text, Settings tabs by colour alone). Full Disk Access
+requests are remembered so a relaunch returns to the same page.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device
