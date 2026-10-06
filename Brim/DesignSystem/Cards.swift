@@ -93,6 +93,9 @@ struct StatCard<Detail: View>: View {
     /// Showing the last scan's figures while a new scan runs: they go grey
     /// until the new ones arrive. The card still opens its page.
     var isRefreshing = false
+    /// Takes the height of the grid row it sits in, so cards side by side
+    /// end level.
+    var fillsRow = false
     @ViewBuilder var detail: Detail
     let action: () -> Void
 
@@ -150,6 +153,7 @@ struct StatCard<Detail: View>: View {
             // Keep the card's full height, including its padding, when
             // its meter legend needs more room than the minimum allows.
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxHeight: fillsRow ? .infinity : nil, alignment: .topLeading)
             .animation(reduceMotion ? nil : Motion.standard, value: status == .checking)
             .card()
             .hoverLift()
@@ -162,11 +166,11 @@ struct StatCard<Detail: View>: View {
 extension StatCard where Detail == EmptyView {
     init(
         title: String, symbol: String, figure: String, status: CardStatus, phrase: String,
-        isRefreshing: Bool = false, action: @escaping () -> Void
+        isRefreshing: Bool = false, fillsRow: Bool = false, action: @escaping () -> Void
     ) {
         self.init(
             title: title, symbol: symbol, figure: figure, status: status, phrase: phrase,
-            isRefreshing: isRefreshing, detail: { EmptyView() }, action: action
+            isRefreshing: isRefreshing, fillsRow: fillsRow, detail: { EmptyView() }, action: action
         )
     }
 }
