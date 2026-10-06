@@ -149,6 +149,13 @@ public final class RemovalHistoryModel: ObservableObject {
         return installs.filter { $0.installedAt > clearedBefore }
     }
 
+    /// What Brim's removals still hold in the Trash. None of it comes back
+    /// to the disk until the Trash is emptied, which is why Space shows it
+    /// apart from everything else.
+    public var bytesInTrash: Int64 {
+        records.reduce(0) { $0 + ($1.recoverable?.bytes ?? 0) }
+    }
+
     /// Whether clearing would take anything out of the Journal.
     public var canClear: Bool {
         visibleRecords.contains { !$0.canUndo } || !visibleInstalls.isEmpty
