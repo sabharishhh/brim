@@ -1,7 +1,7 @@
-import Foundation
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
 
 /// Backs the Energy section.
 ///
@@ -18,7 +18,6 @@ import BrimProtocol
 /// for doing its job correctly.
 @MainActor
 public final class EnergyModel: ObservableObject {
-
     /// One application, measured across the gap between two samples.
     ///
     /// An application, not a process. A modern Mac app is a crowd of them:
@@ -41,11 +40,21 @@ public final class EnergyModel: ObservableObject {
         /// else, and could never become a share of a battery.
         public let nanojoules: UInt64
 
-        public var name: String { identity.displayName }
-        public var bundlePath: String? { identity.bundlePath }
-        public var executablePath: String { identity.executablePath }
+        public var name: String {
+            identity.displayName
+        }
 
-        public var milliwattHours: Double { Double(nanojoules) / 1_000_000_000 / 3.6 }
+        public var bundlePath: String? {
+            identity.bundlePath
+        }
+
+        public var executablePath: String {
+            identity.executablePath
+        }
+
+        public var milliwattHours: Double {
+            Double(nanojoules) / 1_000_000_000 / 3.6
+        }
 
         /// What it is costing right now, in milliwatts, which is the rate
         /// rather than the amount. Shown as the arithmetic it is: this
@@ -62,11 +71,15 @@ public final class EnergyModel: ObservableObject {
         /// the totals' numbers, and the bug looked like duplicated data
         /// rather than like conflated identity. The same defect had already
         /// been fixed twice elsewhere in this product.
-        public var id: String { "now:" + identity.groupKey }
+        public var id: String {
+            "now:" + identity.groupKey
+        }
 
         /// What the process actually did, which is what makes a figure
         /// checkable rather than a score to be taken on trust.
-        public var processorSeconds: Double { Double(cpuNanoseconds) / 1_000_000_000 }
+        public var processorSeconds: Double {
+            Double(cpuNanoseconds) / 1_000_000_000
+        }
 
         /// The one thing most responsible for this row's cost.
         ///
@@ -90,10 +103,18 @@ public final class EnergyModel: ObservableObject {
             let perSecond = window > 0 ? Double(wakeups) / window : 0
             let wakesOften = perSecond >= 20
 
-            if processorSeconds >= wakeupEquivalent && processorSeconds > 0.005 { return .processor }
-            if wakesOften { return .wakeups }
-            if processorSeconds > 0.001 { return .processor }
-            if bytesMoved > 0 { return .disk }
+            if processorSeconds >= wakeupEquivalent && processorSeconds > 0.005 {
+                return .processor
+            }
+            if wakesOften {
+                return .wakeups
+            }
+            if processorSeconds > 0.001 {
+                return .processor
+            }
+            if bytesMoved > 0 {
+                return .disk
+            }
             return .unclear
         }
 
@@ -127,7 +148,9 @@ public final class EnergyModel: ObservableObject {
 
     public init() {}
 
-    public var measured: Int { readings.count }
+    public var measured: Int {
+        readings.count
+    }
 
     // MARK: - What the panel is made of
 
@@ -160,17 +183,53 @@ public final class EnergyModel: ObservableObject {
     }
 
     /// The busiest application, which is the one the panel leads with.
-    public var busiest: Reading? { applications.first }
-
-    /// One application against the busiest, for the bar beside it.
-    public func share(of reading: Reading) -> Double {
-        let top = applications.first?.nanojoules ?? 0
-        return top > 0 ? Double(reading.nanojoules) / Double(top) : 0
+    public var busiest: Reading? {
+        applications.first
     }
+
+    /// One application's part of what every listed application drew, for
+    /// the bar beside it.
+    ///
+    /// It used to be measured against the busiest, so the first row was
+    /// always a full bar: on a Mac at rest, an app drawing a third of a
+    /// watt filled its row as though it were the problem. Against the total,
+    /// the bars add up to the whole and a quiet Mac looks quiet.
+    public func share(of reading: Reading) -> Double {
+        share(of: reading.nanojoules)
+    }
+
+    public func share(of nanojoules: UInt64) -> Double {
+        let total = applications.reduce(UInt64(0)) { $0 &+ $1.nanojoules }
+        return total > 0 ? Double(nanojoules) / Double(total) : 0
+    }
+
+    /// How many rows are shown before the rest fold into one.
+    public static let shownApplications = 6
+
+    /// The rows the panel lists, busiest first.
+    public var shownApplications: [Reading] {
+        Array(applications.prefix(Self.shownApplications))
+    }
+
+    /// Everything past the shown rows, as one figure.
+    public var others: (count: Int, nanojoules: UInt64)? {
+        let rest = applications.dropFirst(Self.shownApplications)
+        guard !rest.isEmpty else { return nil }
+        return (rest.count, rest.reduce(UInt64(0)) { $0 &+ $1.nanojoules })
+    }
+
+    /// Milliwatts for a number of nanojoules over this reading's window.
+    public func milliwatts(nanojoules: UInt64) -> Double {
+        guard window > 0 else { return 0 }
+        return Double(nanojoules) / 1_000_000 / window
+    }
+
+    /// The battery and the whole Mac's draw. Nil on a Mac with no battery.
+    @Published public private(set) var battery: BatteryReport?
 
     /// How the Mac is coping, from Apple's public interfaces.
     @Published public private(set) var condition: SystemCondition =
-        SystemCondition(thermal: .normal, power: nil, lowPowerMode: false)
+        .init(thermal: .normal, power: nil, lowPowerMode: false)
 
     /// Only what an application is holding. macOS holds its own whenever the
     /// screen is on or audio is routed, and those follow from whatever asked
@@ -178,7 +237,6 @@ public final class EnergyModel: ObservableObject {
     public var appsKeepingMacAwake: [PowerAssertions.Held] {
         assertions.held.filter(\.isYours)
     }
-
 
     // MARK: - Why there is no running total
 
@@ -221,6 +279,7 @@ public final class EnergyModel: ObservableObject {
         coverageGaps = second.coverageGaps
         assertions = PowerAssertions.current()
         condition = SystemCondition.current()
+        battery = await Task.detached(priority: .userInitiated) { BatteryReport.current() }.value
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so

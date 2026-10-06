@@ -15,6 +15,7 @@ struct SpaceView: View {
     @ObservedObject var model: StorageModel
     @ObservedObject var applications: ApplicationsModel
     @ObservedObject var developer: DeveloperModel
+    @ObservedObject var history: RemovalHistoryModel
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,10 +33,9 @@ struct SpaceView: View {
                     } else if model.isLoading {
                         placeholder
                     }
-                    HStack(alignment: .top, spacing: 16) {
-                        leftoversCard
-                        developerCard
-                    }
+                    SpaceSoftwareCard(
+                        storage: model, applications: applications, developer: developer, history: history
+                    )
                     if !largest.isEmpty {
                         largestApps
                     }
@@ -54,6 +54,11 @@ struct SpaceView: View {
         .task { await model.loadIfNeeded(service: service) }
         .task { await applications.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
+        .task {
+            if history.records.isEmpty {
+                await history.load(service: service)
+            }
+        }
     }
 
     // MARK: - Startup volume
@@ -160,38 +165,6 @@ struct SpaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
         .accessibilityLabel("Checking")
-    }
-
-    // MARK: - What can be cleared
-
-    private var leftoversCard: some View {
-        let status: CardStatus = !model.hasEstimate
-            ? .checking : (model.estimateUnavailable ? .partial : (model.brimCanClearCount > 0 ? .attention : .clear))
-        let phrase = if !model.hasEstimate {
-            "Checking"
-        } else if model.estimateUnavailable {
-            "Could not read"
-        } else if model.brimCanClearCount == 0 {
-            "Nothing found"
-        } else {
-            model.brimCanClearCount == 1 ? "From 1 removed app" : "From \(model.brimCanClearCount) removed apps"
-        }
-        return StatCard(
-            title: "Remnants", symbol: "app.dashed",
-            figure: model.brimCanClearFigure, status: status, phrase: phrase,
-            isRefreshing: model.isLoading && model.hasEstimate
-        ) { shell.go(to: .leftovers) }
-    }
-
-    private var developerCard: some View {
-        let checked = !developer.caches.isEmpty || !developer.isScanning
-        return StatCard(
-            title: "Developer", symbol: "hammer",
-            figure: ByteText.short(developer.totalBytes),
-            status: checked ? .neutral : .checking,
-            phrase: developer.caches.count == 1 ? "1 build cache" : "\(developer.caches.count) build caches",
-            isRefreshing: developer.isScanning && !developer.caches.isEmpty
-        ) { shell.go(to: .developer) }
     }
 
     // MARK: - Largest apps
