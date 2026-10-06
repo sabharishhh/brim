@@ -1,7 +1,7 @@
+import Foundation
 import BrimCore
 import BrimProtocol
 import BrimService
-import Foundation
 
 /// Decides which `BrimServiceProtocol` implementation the UI talks to.
 ///
@@ -16,14 +16,10 @@ import Foundation
 /// name it listens on. The flag used to hand back a client that failed
 /// every call. It now says so and stays in process.
 enum BrimServiceLocator {
-    /// The one service in the app. The window and Siri's questions share
-    /// it, so a second database writer or a second scan never exists.
-    static let shared: any BrimServiceProtocol = makeService()
-
     static func makeService() -> any BrimServiceProtocol {
         if ProcessInfo.processInfo.environment["BRIM_USE_DAEMON"] == "1" {
             NSLog("BRIM_USE_DAEMON is set, but no full-service daemon is built or "
-                + "installed. Running in process instead.")
+                  + "installed. Running in process instead.")
         }
         return makeInProcessService()
     }
