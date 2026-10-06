@@ -48,7 +48,7 @@ public enum UpdateRoute: String, Codable, Equatable, Sendable {
         switch self {
         case .replace:
             "Brim downloads it, checks it is signed by the same developer, "
-                + "and replaces the app. The old version goes to the Trash."
+                + "and replaces the app. The old version is deleted."
         case .appStore: "The App Store installs this update."
         case .installer: "Brim checks the package's signature, then opens it in Installer."
         case .homebrew: "Homebrew installed this app, so Homebrew updates it."
