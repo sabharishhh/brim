@@ -112,6 +112,7 @@ struct MainSidebar: View {
     @ObservedObject var activity: ScanActivity
     @EnvironmentObject private var release: BrimReleaseCheck
     @State private var hovered: Destination?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // Rows are buttons, and the selection is drawn here: an off-white
@@ -187,6 +188,10 @@ struct MainSidebar: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(isSelected ? Palette.snow : (hovered == destination ? Palette.selected : .clear))
                 }
+                // The selection and the hover wash fade rather than snap;
+                // under Reduce Motion they change at once.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isSelected)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered == destination)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -218,6 +223,9 @@ struct MainSidebar: View {
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
+    /// Counts arrivals at this page, so the icon answers each one once.
+    @State private var arrivals = 0
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Label {
@@ -225,15 +233,35 @@ private struct SidebarLabel: View {
                 .foregroundStyle(isSelected ? Palette.onSnow : Palette.ink)
                 .fontWeight(isSelected ? .medium : .regular)
         } icon: {
-            switch destination {
-            case .home:
-                // An app icon carries its own margin inside the square, so it
-                // is drawn larger than a symbol to look the same size.
-                BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
-            default:
-                Image(systemName: destination.icon)
-                    .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
+            icon
+        }
+        .onChange(of: isSelected) { _, selected in
+            if selected, !reduceMotion {
+                arrivals += 1
             }
+        }
+    }
+
+    /// A small press when the page is chosen: down a little, then settle
+    /// without overshoot. It was taken out in a pass that trimmed motion,
+    /// which left the sidebar feeling inert, and is back as it was.
+    @ViewBuilder private var icon: some View {
+        switch destination {
+        case .home:
+            // An app icon carries its own margin inside the square, so it
+            // is drawn larger than a symbol to look the same size. It is an
+            // image, not a symbol, so the same press is drawn by hand.
+            BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
+                .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    CubicKeyframe(0.9, duration: 0.1)
+                    SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
+                }
+        default:
+            Image(systemName: destination.icon)
+                .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
+                .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
         }
     }
 }
