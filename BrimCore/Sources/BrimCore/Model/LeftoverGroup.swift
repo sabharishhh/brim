@@ -265,16 +265,25 @@ public extension [Leftover] {
         }
 
         return order.compactMap { key -> LeftoverGroup? in
-            guard let items = buckets[key], let first = items.first else { return nil }
-            // Prefer a resolved bundle identifier for the subtitle, and the
-            // most human of the available names for the title.
-            let identifier = items.compactMap { $0.potentialOwner?.bundleID }.first
-            let name = items
-                .compactMap { $0.potentialOwner?.name }
-                .first { !$0.isEmpty } ?? first.url.deletingPathExtension().lastPathComponent
-            return LeftoverGroup(displayName: name, identifier: identifier, items: items, groupKey: key)
+            buckets[key].flatMap { Self.group(key: key, items: $0) }
         }
         .sorted { $0.totalBytes > $1.totalBytes }
+    }
+
+    /// One group: a developer's under their name, otherwise the most human
+    /// of the names the items resolved, with a bundle identifier beneath.
+    private static func group(key: String, items: [Leftover]) -> LeftoverGroup? {
+        guard let first = items.first else { return nil }
+        if key.hasPrefix("vendor:") {
+            let vendor = String(key.dropFirst("vendor:".count))
+            return LeftoverGroup(displayName: OwnerNamespace.vendorDisplayName(vendor), identifier: nil,
+                                 items: items, groupKey: key)
+        }
+        let identifier = items.compactMap { $0.potentialOwner?.bundleID }.first
+        let name = items
+            .compactMap { $0.potentialOwner?.name }
+            .first { !$0.isEmpty } ?? first.url.deletingPathExtension().lastPathComponent
+        return LeftoverGroup(displayName: name, identifier: identifier, items: items, groupKey: key)
     }
 
     /// Bucketed on the strongest shared thing Brim already knows about the
@@ -308,6 +317,11 @@ public extension [Leftover] {
         // An unclaimed identifier is only a spelling from the file name,
         // not a resolved bundle identity. Keep one product namespace
         // together without joining every vendor helper named "Helper".
+        // With nothing of the developer's installed, their leftovers are
+        // one thing, whatever product each was named for.
+        if leftover.category == .unclaimed, let vendor = leftover.vendor {
+            return ["vendor:" + vendor]
+        }
         if leftover.category == .unclaimed, let namespace = OwnerNamespace.key(for: leftover.url.lastPathComponent) {
             return [namespace]
         }

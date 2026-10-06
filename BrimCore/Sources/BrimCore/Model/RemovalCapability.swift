@@ -89,11 +89,19 @@ public enum RemovalCapability {
         case .ok:
             return nil
         case .needsHelper:
+            // In a person's own Library the folder is theirs; an installer
+            // that ran as an administrator left the item owned by root.
+            // Adobe's setup did this in HTTPStorages, and the sentence said
+            // the person's own folder belonged to the system.
+            if folder.hasPrefix("/Users/") || folder.hasPrefix("~/") {
+                return "An installer left this owned by an administrator. Finder can move it to the Trash "
+                    + "and asks for your password."
+            }
             return "\(folder) belongs to the system. Removing anything in it needs an "
-                 + "administrator."
+                + "administrator."
         case .needsFullDiskAccess:
             return "\(folder) is one macOS keeps private. Brim needs Full Disk Access to "
-                 + "change what is in it."
+                + "change what is in it."
         case .refusedByOS:
             return nil
         }
@@ -103,14 +111,14 @@ public enum RemovalCapability {
     public static func explanation(_ capability: Capability) -> String? {
         switch capability {
         case .ok:
-            return nil
+            nil
         case .needsHelper:
-            return "This is in a folder that belongs to the system. Removing it needs an "
-                 + "administrator."
+            "This is in a folder that belongs to the system. Removing it needs an "
+                + "administrator."
         case .needsFullDiskAccess:
-            return "Needs Full Disk Access."
+            "Needs Full Disk Access."
         case .refusedByOS:
-            return "macOS protects this one and will not let anything remove it."
+            "macOS protects this one and will not let anything remove it."
         }
     }
 }

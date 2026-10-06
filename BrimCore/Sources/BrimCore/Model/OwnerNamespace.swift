@@ -45,4 +45,28 @@ public enum OwnerNamespace {
         guard parts.count >= 3 else { return parts.last.map(\.capitalized) ?? key }
         return parts[parts.count - 2].capitalized + " " + parts[parts.count - 1]
     }
+
+    /// Namespaces shared by everyone who uses them: Apple's, and a code
+    /// host's, which is every project it hosts. Neither names a developer.
+    public static let sharedVendors: Set<String> = [
+        "com.apple", "io.github", "com.github", "org.gitlab", "io.gitlab", "net.sourceforge", "com.electron",
+        "org.example", "com.example"
+    ]
+
+    /// The developer's own namespace, the first two labels, when a name is
+    /// reverse DNS under a common root and the namespace is one developer's.
+    public static func vendor(for fileName: String) -> String? {
+        guard let key = key(for: fileName) else { return nil }
+        let parts = key.split(separator: ".")
+        guard parts.count >= 3, ["com", "org", "net", "io", "dev", "app"].contains(String(parts[0])) else {
+            return nil
+        }
+        let vendor = parts.prefix(2).joined(separator: ".")
+        return sharedVendors.contains(vendor) ? nil : vendor
+    }
+
+    /// The developer's name from its namespace: `com.adobe` is "Adobe".
+    public static func vendorDisplayName(_ vendor: String) -> String {
+        vendor.split(separator: ".").last.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? vendor
+    }
 }
