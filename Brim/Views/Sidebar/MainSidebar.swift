@@ -134,8 +134,9 @@ struct MainSidebar: View {
         .listStyle(.sidebar)
         // A sidebar draws its symbols in the system accent, and the window's
         // own tint does not reach them: with a red accent every icon here
-        // was red while the rest of Brim was white and grey.
-        .listItemTint(.monochrome)
+        // was red while the rest of Brim was white and grey. Monochrome made
+        // them a dull grey, so they are Brim's own off-white.
+        .listItemTint(.fixed(Palette.snow))
         // A little air between the window controls and the first row.
         .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
