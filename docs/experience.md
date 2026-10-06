@@ -576,6 +576,34 @@ suite (518 XCTest cases, 1 skipped, plus the Swift Testing suites); the app
 build; no added lint. Not verified: the pages on screen, the draw figure on
 battery power, Quit with a real pointer, and a Mac without a battery.
 
+## Energy, second phase: the last few days (6 October)
+
+Energy now reads `pmset -g log`, power management's own record, when a
+reading is taken: about a week of sleeps and wakes with the charge at each,
+and every request to keep the Mac awake with how long it was held. Nothing
+watches; macOS wrote the record whether Brim ran or not. "Last 24 hours" is
+the charge on a fixed 0 to 100% scale with the time asleep shaded behind it
+(Swift Charts, a line and rectangles) and one line naming the last sleep of
+half an hour or more and what it used, or that it was on the adapter.
+"Asked the Mac to stay awake" replaces the card that listed only what held
+the Mac at the moment of the reading: requests are added up per app over
+the days the log covers, overlaps counted once, and an app holding one now
+is marked Now. "Asked" is deliberate; a request only stops sleep while the
+Mac is idle.
+
+Attribution is by record. A process is named only when exactly one
+installed bundle has that executable; `runningboardd`'s requests count only
+when they name the application they were made for. Safari is reached
+through /Applications and through the system Cryptex, which made its
+executable look ambiguous until copies with one identifier became one app.
+
+Measured on this Mac: the log covers 29 September to now, 497 charge
+points, 27 sleeps; ChatGPT asked for 30.6 h, Claude 28.4 h, Safari 21.6 h,
+Music 6.4 h. Reading and parsing took 4.4 s, 2.5 s of it `pmset` itself;
+filtering lines before parsing dates took the parse from about four seconds
+to under two. It runs beside the reading, behind a placeholder. Not
+verified: the two cards on screen, and a desktop Mac.
+
 ## Remaining design work
 
 Needs a person or hardware this session did not have: the real-device

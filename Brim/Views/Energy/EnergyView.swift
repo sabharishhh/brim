@@ -41,8 +41,18 @@ struct EnergyView: View {
                     Spacer(minLength: 0)
                     VStack(alignment: .leading, spacing: Metrics.cardSpacing) {
                         EnergyStatusCard(battery: model.battery, condition: model.condition)
-                        if !model.appsKeepingMacAwake.isEmpty {
-                            awake
+                        if let history = model.history {
+                            if !history.charge.isEmpty || !history.sleeps.isEmpty {
+                                EnergyHistoryCard(history: history, battery: model.battery)
+                            }
+                            if !model.awakeRequests.isEmpty || !model.appsKeepingMacAwake.isEmpty {
+                                EnergyAwakeCard(
+                                    requests: model.awakeRequests, holding: model.appsKeepingMacAwake,
+                                    since: history.since
+                                )
+                            }
+                        } else if model.isReadingHistory {
+                            historyPlaceholder
                         }
                         drawing
                     }
@@ -55,34 +65,20 @@ struct EnergyView: View {
         }
     }
 
-    // MARK: - Keeping the Mac awake
+    // MARK: - The last few days
 
-    /// The one thing neither System Settings nor Activity Monitor names:
-    /// which application is holding the Mac awake.
-    private var awake: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionTitle("Keeping this Mac awake", trailing: "Quit an app to let the Mac sleep")
-            ForEach(model.appsKeepingMacAwake) { held in
-                HStack(spacing: 12) {
-                    BrimIcon(source: icon(bundlePath: held.bundlePath, name: held.owner), size: Metrics.compactRowIcon)
-                    Text(held.owner)
-                        .font(.brimRowTitle)
-                        .foregroundStyle(Palette.ink)
-                    Spacer()
-                    Label(held.kind.title, systemImage: held.kind.symbolName)
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 40)
-                .accessibilityElement(children: .ignore)
-                .accessibilityAddTraits(.isStaticText)
-                .accessibilityLabel("\(held.owner), \(held.kind.title)")
-            }
+    /// Reading power management's log takes a few seconds, so its two
+    /// cards hold their place while it does.
+    private var historyPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SkeletonBar(width: 120)
+            SkeletonBar(width: 520, height: 110)
         }
-        .padding(8)
+        .shimmer()
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .card()
-        .hoverLift()
+        .accessibilityLabel("Reading the last few days")
     }
 
     // MARK: - Drawing power

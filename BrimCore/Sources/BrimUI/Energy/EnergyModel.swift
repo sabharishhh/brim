@@ -227,6 +227,42 @@ public final class EnergyModel: ObservableObject {
     /// The battery and the whole Mac's draw. Nil on a Mac with no battery.
     @Published public private(set) var battery: BatteryReport?
 
+    // MARK: - The last few days
+
+    /// One application and how long it asked the Mac to stay awake.
+    public struct AwakeRequest: Identifiable, Sendable, Equatable {
+        public let name: String
+        public let bundlePath: String
+        public let seconds: TimeInterval
+        public var id: String {
+            bundlePath
+        }
+    }
+
+    /// Sleep, charge and stay-awake requests from power management's own
+    /// log. Read when the page asks for a reading, beside it rather than
+    /// before it, because reading the log takes a few seconds.
+    @Published public private(set) var history: PowerHistory?
+    @Published public private(set) var awakeRequests: [AwakeRequest] = []
+    @Published public private(set) var isReadingHistory = false
+    private var historyTask: Task<Void, Never>?
+
+    private func readHistory() {
+        guard historyTask == nil else { return }
+        isReadingHistory = true
+        historyTask = Task {
+            let (history, names) = await Task.detached(priority: .utility) {
+                (PowerHistory.current(), ApplicationNames.installed())
+            }.value
+            self.history = history
+            awakeRequests = history?.requestsByApplication(names).map {
+                AwakeRequest(name: $0.app.name, bundlePath: $0.app.bundlePath, seconds: $0.seconds)
+            } ?? []
+            isReadingHistory = false
+            historyTask = nil
+        }
+    }
+
     /// How the Mac is coping, from Apple's public interfaces.
     @Published public private(set) var condition: SystemCondition =
         .init(thermal: .normal, power: nil, lowPowerMode: false)
@@ -266,6 +302,7 @@ public final class EnergyModel: ObservableObject {
     }
 
     public func sample(service: any BrimServiceProtocol) async {
+        readHistory()
         isSampling = true
         defer { isSampling = false }
 
