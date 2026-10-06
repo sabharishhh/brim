@@ -1,4 +1,3 @@
-import AppIntents
 import AppKit
 import BrimCore
 import BrimUI
@@ -50,8 +49,6 @@ struct AppStacks: View {
                                 isChoosing: model.isChoosing
                             )
                             .contextMenu { menu(app) }
-                            // "Remove this" in Siri means this row.
-                            .appEntityIdentifier(EntityIdentifier(for: InstalledAppEntity.self, identifier: app.id))
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
                             .listRowSeparator(.hidden)

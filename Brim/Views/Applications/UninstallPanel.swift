@@ -276,8 +276,6 @@ private extension UninstallPanel {
                     .frame(maxWidth: .infinity)
                 }
                 .capsuleAction(prominent: true)
-                // Return removes, so a review opened by Siri is one key away.
-                .keyboardShortcut(.defaultAction)
                 .disabled(!model.canAuthorize || showingSearchDetails)
             }
         }
