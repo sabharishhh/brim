@@ -53,6 +53,7 @@ struct OnboardingSheet: View {
         .frame(width: 560, height: 470)
         .onAppear { access.startObserving() }
         .onDisappear { access.stopObserving() }
+        .closesForQuit()
     }
 
     private func go(to next: Step) {

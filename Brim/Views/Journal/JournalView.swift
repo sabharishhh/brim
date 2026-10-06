@@ -39,6 +39,7 @@ struct JournalView: View {
         .focusedSceneValue(\.pageActions, menuActions)
         .sheet(item: $checkedResult) { result in
             RemovalVerificationSheet(result: result, plan: checkedPlan)
+                .closesForQuit()
         }
         .alert("Could not check removal", isPresented: $showsCheckError) {
             Button("OK", role: .cancel) {}

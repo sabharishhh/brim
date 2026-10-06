@@ -50,6 +50,12 @@ struct RemovalPanel: View {
         }
         .task(id: model.helperSteps) { await checkHelper() }
         .onChange(of: model.phase, initial: true) { _, phase in onPhase(phase) }
+        // Quitting closes the panel, except while it is removing.
+        .onChange(of: QuitRequest.shared.isQuitting) { _, quitting in
+            if quitting, model.phase != .executing {
+                close()
+            }
+        }
         .onKeyPress(.escape) {
             guard model.phase != .executing else { return .ignored }
             close()
