@@ -210,7 +210,7 @@ struct ContentView: View {
         case .space:
             SpaceView(
                 model: models.storage, applications: models.applications,
-                developer: models.developer, history: models.history
+                developer: models.developer, history: models.history, appData: models.appData
             )
         case .developer:
             DeveloperView(model: models.developer)
@@ -323,7 +323,11 @@ struct ContentView: View {
             }
         case .leftovers: await models.leftovers.load(service: service)
         case .background: await models.background.load(service: service)
-        case .space: await models.storage.load(service: service)
+        case .space:
+            await models.storage.load(service: service)
+            await models.appData.measure(
+                service: service, applications: models.applications.applications, developer: models.developer.caches
+            )
         case .developer: await models.developer.load(service: service)
         case .energy: await models.energy.sample(service: service)
         case .journal:
