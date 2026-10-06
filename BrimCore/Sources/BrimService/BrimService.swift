@@ -34,6 +34,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private var updateRecoveryReader: (@Sendable () async -> [String: String])?
     private var activePlans = Set<UUID>()
 
+    /// Whether a removal, restoration or check is changing this plan now.
+    func isOperating(on planId: UUID) -> Bool {
+        activePlans.contains(planId)
+    }
+
     private func beginOperation(planId: UUID) throws {
         guard activePlans.insert(planId).inserted else {
             throw NSError(domain: "BrimService", code: 409, userInfo: [
