@@ -1,3 +1,4 @@
+@testable import BrimOps
 @testable import BrimScan
 import Foundation
 import XCTest
@@ -39,5 +40,37 @@ final class InstallerImageTests: XCTestCase {
         XCTAssertFalse(after.contains(image.path), "The disk image was left attached.")
         XCTAssertEqual(before.components(separatedBy: "image-path").count,
                        after.components(separatedBy: "image-path").count)
+    }
+
+    /// Installing from an image copies the app out and leaves the image
+    /// detached, as reading one does.
+    func testAnAppIsInstalledFromADiskImage() throws {
+        try RealEnvironmentFixture.requireEnabled(self)
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(RealEnvironmentFixture.marker)install-\(UUID().uuidString.prefix(8))")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let contents = folder.appendingPathComponent("source/Demo.app/Contents")
+        try FileManager.default.createDirectory(at: contents.appendingPathComponent("MacOS"),
+                                                withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: [
+            "CFBundleIdentifier": "com.example.brimharness.demo", "CFBundleExecutable": "Demo",
+            "CFBundlePackageType": "APPL"
+        ], format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
+        try Data("#!/bin/sh\n".utf8).write(to: contents.appendingPathComponent("MacOS/Demo"))
+        let image = folder.appendingPathComponent("Demo.dmg")
+        XCTAssertEqual(ToolOutput.run("/usr/bin/hdiutil", [
+            "create", "-quiet", "-srcfolder", folder.appendingPathComponent("source").path, "-volname", "Demo",
+            "-format", "UDZO", image.path
+        ], timeout: 120)?.status, 0)
+        let applications = folder.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: applications, withIntermediateDirectories: true)
+
+        let installed = try AppInstaller.install(from: image, identifier: "com.example.brimharness.demo",
+                                                 trusted: false, applications: applications)
+        XCTAssertEqual(installed.lastPathComponent, "Demo.app")
+        let info = installed.appendingPathComponent("Contents/Info.plist")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: info.path))
+        let attached = ToolOutput.run("/usr/bin/hdiutil", ["info"])?.output ?? ""
+        XCTAssertFalse(attached.contains(image.path), "The disk image was left attached.")
     }
 }

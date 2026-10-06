@@ -18,6 +18,9 @@ struct InstallerPreviewSheet: View {
     @State private var phase: Phase = .reading
     /// What the sheet holds, measured, so a short preview is a short sheet.
     @State private var contentHeight: CGFloat = 0
+    @State private var isInstalling = false
+    @State private var asksToInstallUntrusted = false
+    @State private var installProblem: String?
 
     enum Phase {
         case reading
@@ -90,26 +93,103 @@ struct InstallerPreviewSheet: View {
             Button("Show in Finder") { shell.showInFinder(request.url) }
                 .capsuleAction()
             Spacer()
-            // Looking inside says what an installer can do; recording says
-            // what it did. Offered once there is something to install.
-            if case .read = phase, !recording.isRecording {
-                Button("Record Its Install") {
-                    Task {
-                        await recording.start(service: service)
-                        if recording.isRecording {
-                            dismiss()
-                        }
+            if isInstalling {
+                ProgressView().controlSize(.small)
+                Text("Installing")
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+            } else if let item = installable {
+                Button("Done") { dismiss() }
+                    .capsuleAction()
+                Button("Install") {
+                    if item.signature.verdict.isTrusted {
+                        install()
+                    } else {
+                        asksToInstallUntrusted = true
                     }
                 }
-                .capsuleAction()
-                .help("Notes what is on this Mac now, so Brim can show what installing this adds")
-            }
-            Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
                 .capsuleAction(prominent: true)
+                .help(item.kind == .package
+                    ? "Opens it in Installer, and records what it adds"
+                    : "Copies the app into Applications, and records what it creates")
+            } else {
+                // Looking inside says what an installer can do; recording
+                // says what it did. Offered where Brim cannot install.
+                if case .read = phase, !recording.isRecording {
+                    Button("Record Its Install") {
+                        Task {
+                            await recording.start(service: service)
+                            if recording.isRecording {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .capsuleAction()
+                    .help("Notes what is on this Mac now, so Brim can show what installing this adds")
+                }
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+                    .capsuleAction(prominent: true)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
+        .alert(untrustedTitle, isPresented: $asksToInstallUntrusted) {
+            Button("Install Anyway") { install() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("macOS cannot confirm who made it. It will still check it the first time it opens.")
+        }
+        .alert("Could not install", isPresented: Binding(
+            get: { installProblem != nil }, set: {
+                if !$0 {
+                    installProblem = nil
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(installProblem ?? "")
+        }
+    }
+
+    /// What the Install button would install, once the preview is read.
+    private var installable: InstallerPreview? {
+        guard case let .read(preview) = phase else { return nil }
+        return InstallRecordingModel.installable(preview)
+    }
+
+    private var untrustedTitle: String {
+        let name = installable?.name ?? request.url.deletingPathExtension().lastPathComponent
+        return installable?.signature.verdict == .unsigned ? "Install \(name)? It is not signed."
+            : "Install \(name)? It is not notarized."
+    }
+
+    /// Installs, then closes: the Trash question and the note about the
+    /// recording are the window's, so they outlive this sheet.
+    private func install() {
+        guard case let .read(preview) = phase else { return }
+        isInstalling = true
+        Task {
+            let outcome = await recording.install(preview, service: service)
+            isInstalling = false
+            switch outcome {
+            case let .installed(app):
+                let name = app.deletingPathExtension().lastPathComponent
+                dismiss()
+                shell.show(ToastMessage(symbol: "checkmark.circle", text: "\(name) is in Applications",
+                                        actionTitle: "Open") { NSWorkspace.shared.open(app) })
+                // After the sheet has gone, so the question has a window.
+                try? await Task.sleep(for: .milliseconds(450))
+                recording.installerToTrash = request.url
+            case .openedInstaller:
+                dismiss()
+                shell.show(ToastMessage(symbol: "shippingbox", text: "Finish in Installer. Brim records what it adds."))
+            case let .failed(message):
+                installProblem = message
+            }
+        }
     }
 
     /// The footer's buttons and padding.

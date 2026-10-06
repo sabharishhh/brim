@@ -55,10 +55,14 @@ struct InstallCard: View {
     }
 
     private var title: String {
-        switch recording.phase {
-        case let .recording(since), let .finishing(since):
+        switch (recording.waiting, recording.phase) {
+        case let (.app(_, name, _), .recording):
+            "Recording \(name)'s first run"
+        case let (.installer(name), .recording):
+            "Installing \(name)"
+        case let (_, .recording(since)), let (_, .finishing(since)):
             "Recording since \(Self.time.format(since))"
-        case .starting:
+        case (_, .starting):
             "Starting to record"
         default:
             "Before you install something"
@@ -66,6 +70,14 @@ struct InstallCard: View {
     }
 
     private var phrase: String {
+        switch (recording.waiting, recording.phase) {
+        case (.app, .recording): "Open it and use it, then quit it. Brim finishes on its own."
+        case (.installer, .recording): "Finish in Installer. Brim finishes when it closes."
+        default: manualPhrase
+        }
+    }
+
+    private var manualPhrase: String {
         switch recording.phase {
         case .recording: "Install and open the app, then finish here"
         case .finishing: "Looking at what changed"
@@ -82,7 +94,11 @@ struct InstallCard: View {
                 Button("Cancel") { Task { await recording.cancel() } }
                     .capsuleAction()
                 Button("Finish") { Task { await recording.finish() } }
-                    .capsuleAction(prominent: true)
+                    .capsuleAction(prominent: !isWaitingForApp)
+                if case let .app(_, name, url) = recording.waiting {
+                    Button("Open \(name)") { NSWorkspace.shared.open(url) }
+                        .capsuleAction(prominent: true)
+                }
             }
         case .starting, .finishing:
             ProgressView().controlSize(.small)
@@ -94,6 +110,13 @@ struct InstallCard: View {
                     .capsuleAction()
             }
         }
+    }
+
+    private var isWaitingForApp: Bool {
+        if case .app = recording.waiting {
+            return true
+        }
+        return false
     }
 
     private static let time = Date.FormatStyle.dateTime.hour().minute()
