@@ -16,6 +16,8 @@ struct InstallerPreviewSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(ShellState.self) private var shell
     @State private var phase: Phase = .reading
+    /// What the sheet holds, measured, so a short preview is a short sheet.
+    @State private var contentHeight: CGFloat = 0
 
     enum Phase {
         case reading
@@ -29,12 +31,15 @@ struct InstallerPreviewSheet: View {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(24)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { contentHeight = $0 }
             }
             footer
         }
-        // Fixed, so the list's measurement never feeds the window's
-        // (`CLAUDE.md`, on scrolling sheets).
-        .frame(width: 620, height: 660)
+        // An explicit size, never an ideal one, so the list's measurement
+        // never feeds the window's (`CLAUDE.md`, on scrolling sheets). It
+        // follows what the sheet holds, up to the old fixed height: a disk
+        // image with one app sat in 660 points with most of them empty.
+        .frame(width: 620, height: min(max(contentHeight + Self.footerHeight, 300), 660))
         .task(id: request.id) { await read() }
     }
 
@@ -48,15 +53,21 @@ struct InstallerPreviewSheet: View {
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 520)
+            .frame(maxWidth: .infinity, minHeight: 200)
             .accessibilityElement(children: .combine)
         case let .failed(message):
             EmptyState(symbol: "shippingbox", title: "Could not look inside", message: message)
-                .frame(minHeight: 520)
+                .frame(minHeight: 200)
         case let .read(preview):
             VStack(alignment: .leading, spacing: 24) {
-                InstallerHeader(preview: preview)
-                if preview.kind == .diskImage {
+                if preview.kind == .diskImage, preview.contents.count == 1, let inner = preview.contents.first {
+                    // One app or package in an image is what the person
+                    // is installing; the image is said in its facts.
+                    InstallerHeader(preview: inner, container: preview)
+                    InstallerDetails(preview: inner)
+                    InstallerLimits(limits: preview.limits)
+                } else if preview.kind == .diskImage {
+                    InstallerHeader(preview: preview)
                     ForEach(preview.contents) { inner in
                         VStack(alignment: .leading, spacing: 16) {
                             InstallerHeader(preview: inner, compact: true)
@@ -67,6 +78,7 @@ struct InstallerPreviewSheet: View {
                     }
                     InstallerLimits(limits: preview.limits)
                 } else {
+                    InstallerHeader(preview: preview)
                     InstallerDetails(preview: preview)
                 }
             }
@@ -100,6 +112,9 @@ struct InstallerPreviewSheet: View {
         .padding(.vertical, 16)
     }
 
+    /// The footer's buttons and padding.
+    private static let footerHeight: CGFloat = 64
+
     private func read() async {
         phase = .reading
         do {
@@ -114,6 +129,8 @@ struct InstallerPreviewSheet: View {
 struct InstallerHeader: View {
     let preview: InstallerPreview
     var compact = false
+    /// The disk image this came in, when it is the image's only item.
+    var container: InstallerPreview?
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -131,6 +148,16 @@ struct InstallerHeader: View {
                     InstallerVerdict(signature: preview.signature)
                 }
                 .font(.brimFacts)
+                // The image is signed apart from what it holds; said only
+                // when the two verdicts differ.
+                if let container, container.signature.verdict != preview.signature.verdict {
+                    HStack(spacing: 6) {
+                        Text("The disk image")
+                            .foregroundStyle(Palette.inkSecondary)
+                        InstallerVerdict(signature: container.signature)
+                    }
+                    .font(.brimFacts)
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -151,6 +178,9 @@ struct InstallerHeader: View {
         case .package: parts.append("Installer package")
         case .diskImage: parts.append("Disk image")
         case .application: parts.append(preview.apps.first?.version.map { "App, version \($0)" } ?? "App")
+        }
+        if container != nil {
+            parts[0] += ", in a disk image"
         }
         if let total = preview.totalBytes, total > 0 {
             parts.append("Up to \(ByteText.short(total))")

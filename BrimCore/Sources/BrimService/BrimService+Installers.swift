@@ -21,18 +21,22 @@ public extension BrimService {
 
     /// The icon at the size the preview draws it, twice over for Retina.
     /// Drawn into a bitmap of that size: an icon's TIFF carries every size
-    /// up to 1024 pixels, and its first is not the one wanted.
+    /// up to 1024 pixels, and its first is not the one wanted. The context
+    /// is made before the bitmap is given a point size, so it works in
+    /// pixels and the icon fills all of them; drawing into 64 points there
+    /// filled the bottom left quarter, and the preview showed a speck.
     private static let iconPNG: @Sendable (URL) -> Data? = { url in
         let image = NSWorkspace.shared.icon(forFile: url.path)
+        let pixels = 128
         guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 128, pixelsHigh: 128, bitsPerSample: 8, samplesPerPixel: 4,
+            bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8, samplesPerPixel: 4,
             hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
         ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
-        bitmap.size = NSSize(width: 64, height: 64)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        image.draw(in: NSRect(x: 0, y: 0, width: 64, height: 64))
+        image.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels))
         NSGraphicsContext.restoreGraphicsState()
+        bitmap.size = NSSize(width: 64, height: 64)
         return bitmap.representation(using: .png, properties: [:])
     }
 }
