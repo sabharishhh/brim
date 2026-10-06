@@ -153,18 +153,25 @@ public struct InstallerPreview: Sendable, Equatable, Identifiable {
         /// What its text visibly does, as short phrases. Never a judgement:
         /// a script can do anything its text does not show.
         public let calls: [String]
+        /// The lines behind those phrases, in script order.
+        public let findings: [InstallScriptReading.Finding]
+        /// The script itself, so its findings can be described in context.
+        /// Nil when it is not text.
+        public let text: String?
         public let isText: Bool
 
         public var id: String {
             package + "/" + name
         }
 
-        public init(name: String, package: String, runsAsAdministrator: Bool, calls: [String], isText: Bool) {
+        public init(name: String, package: String, runsAsAdministrator: Bool, text: String?) {
             self.name = name
             self.package = package
             self.runsAsAdministrator = runsAsAdministrator
-            self.calls = calls
-            self.isText = isText
+            self.text = text
+            isText = text != nil
+            findings = text.map(InstallScriptReading.findings(in:)) ?? []
+            calls = text.map(InstallScriptReading.calls(in:)) ?? []
         }
     }
 }

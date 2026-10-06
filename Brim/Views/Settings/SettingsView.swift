@@ -87,6 +87,7 @@ private struct GeneralSettings: View {
         Form {
             DockSection()
             AccessSection()
+            IntelligenceSection()
             PrivacySection()
             RemoveBrimSection()
         }

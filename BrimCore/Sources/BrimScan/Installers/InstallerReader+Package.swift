@@ -147,8 +147,7 @@ extension InstallerReader {
             let isText = InstallScriptReading.isText(data)
             return InstallerPreview.Script(
                 name: script.name, package: component.identifier, runsAsAdministrator: component.runsAsRoot,
-                calls: isText ? InstallScriptReading.calls(in: String(bytes: data, encoding: .utf8) ?? "") : [],
-                isText: isText
+                text: isText ? String(bytes: data, encoding: .utf8) : nil
             )
         }
     }
