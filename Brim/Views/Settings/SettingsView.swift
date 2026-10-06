@@ -8,20 +8,71 @@ import SwiftUI
 /// General, Access and Privacy were three tabs holding one or two rows each,
 /// so most of a click was spent finding the row. As sections of one pane they
 /// read at a glance, and the window opens on whichever tab was used last.
+///
+/// The two tabs are drawn here rather than by a `TabView`. AppKit draws a
+/// settings toolbar's icons in the system accent, so with a red accent they
+/// were red, and the closest Brim can set for itself is Graphite, which made
+/// them a dull grey beside the off-white of everything else.
 struct SettingsView: View {
     @AppStorage("settings.tab") private var selection = SettingsTab.general
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("General", systemImage: "gearshape", value: .general) { GeneralSettings() }
-            Tab("Feedback", systemImage: "bubble.left.and.bubble.right", value: .feedback) { FeedbackSettingsView() }
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                ForEach(SettingsTab.allCases, id: \.self) { tab in
+                    tabButton(tab)
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+            Divider()
+            switch selection {
+            case .general: GeneralSettings()
+            case .feedback: FeedbackSettingsView()
+            }
         }
-        .frame(width: 640, height: selection == .feedback ? 400 : nil)
+        .navigationTitle(selection.title)
+        .frame(width: 640, height: selection == .feedback ? 440 : nil)
+    }
+
+    private func tabButton(_ tab: SettingsTab) -> some View {
+        let isSelected = selection == tab
+        return Button {
+            selection = tab
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: tab.symbol)
+                    .font(.system(size: 18))
+                    .frame(height: 22)
+                Text(tab.title)
+                    .font(.caption)
+            }
+            .foregroundStyle(Palette.snow)
+            .frame(width: 72, height: 50)
+            .background(isSelected ? Palette.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
-private enum SettingsTab: String {
+private enum SettingsTab: String, CaseIterable {
     case general, feedback
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .feedback: "Feedback"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .feedback: "bubble.left.and.bubble.right"
+        }
+    }
 }
 
 /// Keys shared between Settings and the window.
