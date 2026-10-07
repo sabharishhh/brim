@@ -98,6 +98,11 @@ struct BackgroundInspector: View {
             }
             .buttonBorderShape(.capsule)
         }
+        if entry.group.items.contains(where: { $0.kind == .privacyGrant }),
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            Link("Open Privacy & Security", destination: url)
+                .capsuleAction()
+        }
         if entry.group.items.contains(where: { $0.isStale && $0.loginItemsFollowUp != nil }),
            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
             Link("Open Login Items", destination: url)
@@ -205,7 +210,7 @@ private struct RecordRow: View {
             return "Review this entry in System Settings > Network > Firewall > Options."
         }
         if registration.kind == .privacyGrant {
-            return "Remove it in System Settings > Privacy & Security: select it and click the minus button."
+            return "It does nothing without the program. If System Settings lists it, you can remove it there."
         }
         guard registration.isActionableStale else { return nil }
         if helperIsReady, BackgroundModel.needsTheHelper(registration) {

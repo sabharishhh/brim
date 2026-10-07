@@ -27,7 +27,11 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: helper, isPath: true),
             .init(service: "kTCCServiceAccessibility", client: helper, isPath: true),
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/usr/local/bin/tool", isPath: true),
-            .init(service: "kTCCServiceSystemPolicyAllFiles", client: "com.binance.BinanceDesktop", isPath: false)
+            .init(service: "kTCCServiceSystemPolicyAllFiles", client: "com.binance.BinanceDesktop", isPath: false),
+            // Switched off, for a helper that is gone: grants nothing, and
+            // Settings does not list it.
+            .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/Library/PrivilegedHelperTools/gone.off",
+                  isPath: true, isAllowed: false)
         ])
     }
 
@@ -44,7 +48,7 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
         XCTAssertTrue(grant.isStale)
         XCTAssertFalse(grant.isActionable, "Brim reads the privacy database and never edits it")
         XCTAssertEqual(grant.evidence,
-                       "Accessibility and Full Disk Access still lists this program, but it is no longer on this Mac.")
+                       "Accessibility and Full Disk Access still allows this program, but it is no longer on this Mac.")
     }
 
     func testAnUnreadableDatabaseIsAGapNotAnEmptyList() async throws {
@@ -58,9 +62,11 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
         var handle: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
         defer { sqlite3_close(handle) }
-        sqlite3_exec(handle, "CREATE TABLE access (service TEXT, client TEXT, client_type INTEGER)", nil, nil, nil)
+        sqlite3_exec(handle, "CREATE TABLE access (service TEXT, client TEXT, client_type INTEGER, auth_value INTEGER)",
+                     nil, nil, nil)
         for row in rows {
-            let sql = "INSERT INTO access VALUES ('\(row.service)', '\(row.client)', \(row.isPath ? 1 : 0))"
+            let values = "'\(row.service)', '\(row.client)', \(row.isPath ? 1 : 0), \(row.isAllowed ? 2 : 0)"
+            let sql = "INSERT INTO access VALUES (\(values))"
             sqlite3_exec(handle, sql, nil, nil, nil)
         }
     }
