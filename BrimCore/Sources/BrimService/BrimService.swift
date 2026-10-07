@@ -245,11 +245,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return result
     }
 
-    public func explain(planId: UUID) async throws -> String {
-        let plan = try await planStore.load(planId: planId)
-        return "Plan \(plan.planId) targets \(plan.steps.count) items taking \(plan.expectedTotalBytes) bytes."
-    }
-
     #if DEBUG
         /// True when this process is a test run rather than the real app.
         ///

@@ -23,14 +23,7 @@ final class UIToHelperIntegrationTests: XCTestCase {
             journalStoreDirectory: journalStoreDir
         )
         
-        let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService, accepting: .sameProcessAnonymous)
-        listener.delegate = delegate
-        listener.resume()
-        
-        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        let client = try BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
+        let client: any BrimServiceProtocol = realService
         
         let identity = Identity(bundleID: "com.test.app", name: "TestApp")
         
@@ -43,16 +36,16 @@ final class UIToHelperIntegrationTests: XCTestCase {
         }
         XCTAssertEqual(plan.steps[0].target, appDir.path)
         
-        // The client asks; only the service grants. This is the whole gate
-        // in three lines: `BrimXPCClient` has no `grantApproval`, so the
-        // token can only come from the process holding the service.
+        // The protocol asks; only the service grants. This is the whole
+        // gate in three lines: `BrimServiceProtocol` has no `grantApproval`,
+        // so the token can only come from the process holding the service.
         let receipt = try await client.requestApproval(planId: plan.planId, requesterIdentity: "user")
         let token = try await realService.grantApproval(for: receipt)
         
         try await client.apply(planId: plan.planId, token: token)
         
         let verification = try await client.verify(planId: plan.planId)
-        XCTAssertTrue(verification.success, "Background deletion failed via XPC")
+        XCTAssertTrue(verification.success, "The approved removal did not finish")
         XCTAssertFalse(FileManager.default.fileExists(atPath: appDir.path))
     }
 }

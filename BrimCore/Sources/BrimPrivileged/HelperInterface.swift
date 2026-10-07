@@ -118,7 +118,7 @@ public enum BrimJobHelper {
     /// could ever satisfy. Both directions are checked, because a root
     /// service accepting whatever answers is how one gets replaced.
     public static func daemonRequirement(
-        identifier: String = "com.sabharishhh.brim.jobhelper",
+        identifier: String = machServiceName,
         teamID: String = BrimJobHelper.teamID
     ) -> String {
         requirement(identifier: identifier, teamID: teamID)
