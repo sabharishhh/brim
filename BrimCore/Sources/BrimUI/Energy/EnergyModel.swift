@@ -29,9 +29,14 @@ public final class EnergyModel: ObservableObject {
     /// How long to leave between the two samples. Long enough for a busy
     /// process to separate itself from an idle one, short enough that
     /// nobody minds waiting.
-    private let gap: Duration = .seconds(2)
+    private let gap: Duration
+    /// How often a live reading samples again.
+    private let tick: Duration
 
-    public init() {}
+    public init(gap: Duration = .seconds(2), tick: Duration = .seconds(3)) {
+        self.gap = gap
+        self.tick = tick
+    }
 
     public var measured: Int {
         readings.count
@@ -134,9 +139,14 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var awakeRequests: [AwakeRequest] = []
     @Published public private(set) var isReadingHistory = false
     private var historyTask: Task<Void, Never>?
+    private var historyReadAt: Date?
 
+    /// The log takes seconds to read and changes slowly, so it is read at
+    /// most once an hour.
     private func readHistory() {
-        guard historyTask == nil else { return }
+        guard historyTask == nil,
+              historyReadAt.map({ Date().timeIntervalSince($0) > 3600 }) ?? true else { return }
+        historyReadAt = Date()
         isReadingHistory = true
         historyTask = Task {
             let (history, names) = await Task.detached(priority: .utility) {
@@ -179,27 +189,77 @@ public final class EnergyModel: ObservableObject {
     // time, and Brim does not watch. It has no agent, no timer and no
     // background job, on purpose: a utility that exists to find software
     // running when nobody asked it to cannot leave something running when
-    // nobody asked it to. A reading is taken when a person presses the
-    // button, and it describes the seconds it was taken over.
+    // nobody asked it to. Readings are taken while the Energy page is on
+    // screen, and each describes the last few seconds it covers.
 
     // MARK: - Sampling
 
-    /// What Home shows: the battery, and the power log read beside it.
-    /// No sampling, which is the Energy page's to ask for.
-    public func loadOverview() async {
+    /// The battery, the temperature and Low Power Mode, kept current for
+    /// as long as the calling task runs: read once, then again each time
+    /// macOS says one changed. Home and Energy both follow it while shown.
+    public func followCondition() async {
         readHistory()
-        // Cheap and changes by the minute, so read on every visit.
+        await readCondition()
+        for await _ in PowerEvents.changes() {
+            await readCondition()
+        }
+    }
+
+    private func readCondition() async {
         condition = SystemCondition.current()
-        guard !hasReadBattery else { return }
         battery = await Task.detached(priority: .utility) { BatteryReport.current() }.value
         hasReadBattery = true
     }
 
-    public func loadIfNeeded(service: any BrimServiceProtocol) async {
-        guard readings.isEmpty, !isSampling else { return }
-        await sample(service: service)
+    /// How far back a live reading looks. Long enough that a row does not
+    /// jump with every tick, short enough to follow what someone just did.
+    static let span: TimeInterval = 15
+
+    /// Which apps are drawing power, kept current while the Energy page is
+    /// on screen and Brim can be seen.
+    ///
+    /// The first figure arrives after two seconds, as a single reading
+    /// always did. After that a sample is taken every three seconds (nine in
+    /// Low Power Mode), each costing under a millisecond, and every app's
+    /// draw is measured across the last fifteen of them, so the list moves
+    /// with the Mac without jittering. Nothing is sampled while the window
+    /// cannot be seen or once the page has gone, and a window that was
+    /// hidden for a while starts again from a fresh baseline rather than
+    /// averaging across the time nobody was looking.
+    public func follow(
+        service: any BrimServiceProtocol, visible: @escaping @MainActor () -> Bool = { AppVisibility.isVisible }
+    ) async {
+        readHistory()
+        var samples: [(at: Date, result: EnergySampleResult)] = []
+        isSampling = readings.isEmpty
+        defer { isSampling = false }
+        while !Task.isCancelled {
+            guard visible() else {
+                try? await Task.sleep(for: .seconds(1))
+                continue
+            }
+            if let last = samples.last, Date().timeIntervalSince(last.at) > Self.span {
+                samples = []
+            }
+            await samples.append((Date(), service.sampleEnergy()))
+            if samples.count == 1 {
+                try? await Task.sleep(for: gap)
+                continue
+            }
+            // The oldest sample kept is the newest one at least a span old.
+            let cutoff = Date().addingTimeInterval(-Self.span)
+            while samples.count > 2, samples[1].at <= cutoff {
+                samples.removeFirst()
+            }
+            if let first = samples.first, let last = samples.last {
+                await publish(from: first.result, to: last.result, over: last.at.timeIntervalSince(first.at))
+            }
+            isSampling = false
+            try? await Task.sleep(for: condition.lowPowerMode ? tick * 3 : tick)
+        }
     }
 
+    /// One reading over two seconds, for Check Again.
     public func sample(service: any BrimServiceProtocol) async {
         readHistory()
         isSampling = true
@@ -209,14 +269,16 @@ public final class EnergyModel: ObservableObject {
         let first = await service.sampleEnergy()
         try? await Task.sleep(for: gap)
         let second = await service.sampleEnergy()
-        window = Date().timeIntervalSince(started)
+        await publish(from: first, to: second, over: Date().timeIntervalSince(started))
+    }
 
+    /// What each app drew between two samples.
+    private func publish(from first: EnergySampleResult, to second: EnergySampleResult, over span: TimeInterval) async {
+        window = span
         let before = Dictionary(first.samples.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         coverageGaps = second.coverageGaps
         assertions = PowerAssertions.current()
-        condition = SystemCondition.current()
-        battery = await Task.detached(priority: .userInitiated) { BatteryReport.current() }.value
-        hasReadBattery = true
+        await readCondition()
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
             // A process that appeared between samples has no baseline, so

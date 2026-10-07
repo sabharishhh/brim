@@ -31,10 +31,25 @@ public final class LeftoversModel: ObservableObject {
     /// rather than one per item.
     @Published public private(set) var selection: Set<String> = []
 
+    /// The rows on screen are the last launch's, kept on disk, and this
+    /// launch's scan has not finished. They are shown so the page is never
+    /// empty, and none of them can be ticked or removed: a footprint is a
+    /// claim about the disk now, which a kept answer cannot support.
+    @Published public private(set) var isProvisional = false
+
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
+    private let cache: PageCache<[Leftover]>?
 
-    public init() {}
+    public init(cache: PageCache<[Leftover]>? = nil) {
+        self.cache = cache
+        guard let kept = cache?.load() else { return }
+        orphaned = kept.value.filter { $0.category == .orphaned }
+        unclaimed = kept.value.filter { $0.category == .unclaimed }
+        checkedAt = kept.savedAt
+        isProvisional = true
+        regroup()
+    }
 
     public var all: [Leftover] {
         orphaned + unclaimed
@@ -72,6 +87,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func toggle(_ group: LeftoverGroup) {
+        guard !isProvisional else { return }
         let ids = group.items.map(\.id)
         if isSelected(group) {
             selection.subtract(ids)
@@ -105,6 +121,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func selectAllRemovableOrphans() {
+        guard !isProvisional else { return }
         selection = Set(removableOrphans.map(\.id))
         settle()
     }
@@ -172,17 +189,34 @@ public final class LeftoversModel: ObservableObject {
         selectedItems = all.filter { selection.contains($0.id) }
     }
 
-    /// Scans only if there is nothing to show. Returning to a section is a
-    /// change of view, not a reason to walk the disk again; rescanning is
-    /// what Check Again is for.
+    /// Scans when there is nothing confirmed to show, or when the result
+    /// is stale. Returning to a section is a change of view, not a reason
+    /// to walk the disk again.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         // Coming back to the section is not a reason to walk the disk, but
         // it is a reason to catch up on anything restored from the Trash
         // while the person was elsewhere, which the view could not see
         // because it was not on screen to be told.
         reconcileWithDisk()
-        guard !hasLoaded, !isScanning else { return }
+        guard !hasLoaded || isStale, !isScanning else { return }
         await load(service: service)
+    }
+
+    /// Something happened that can change what is left: an app arrived or
+    /// went, or Brim was away long enough. The next look scans again.
+    public func markStale() {
+        needsScan = true
+    }
+
+    private var needsScan = false
+
+    /// How long a result is taken as current without anything saying it
+    /// changed. Apps writing into Library do not count: they write all the
+    /// time, and scanning for every write is the cost this avoids.
+    public static let freshFor: TimeInterval = 3600
+
+    public var isStale: Bool {
+        needsScan || checkedAt.map { Date().timeIntervalSince($0) > Self.freshFor } ?? true
     }
 
     private var loadTask: Task<Void, Never>?
@@ -213,13 +247,25 @@ public final class LeftoversModel: ObservableObject {
         do {
             let found = try await service.leftovers()
             try Task.checkCancellation()
+            // A scan again, not the first: what the person ticked or
+            // unticked stays as they left it, and only something new is
+            // ticked the way a first scan would.
+            let rescan = hasLoaded && !isProvisional
+            let shownBefore = Set(all.map(\.id))
+            let pickedBefore = selection
+            needsScan = false
             hasLoaded = true
+            isProvisional = false
             checkedAt = Date()
+            cache?.save(found)
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
-            selection = Set(orphaned.filter(\.canBeRemovedByBrim).map(\.id))
+            let preselected = Set(orphaned.filter(\.canBeRemovedByBrim).map(\.id))
+            selection = rescan
+                ? pickedBefore.intersection(found.map(\.id)).union(preselected.subtracting(shownBefore))
+                : preselected
             // A fresh scan is the truth, so nothing is being held back for
             // a restore that the scan itself would have found.
             removedButRecoverable = []
@@ -229,6 +275,7 @@ public final class LeftoversModel: ObservableObject {
             return
         } catch {
             hasLoaded = false
+            isProvisional = false
             checkedAt = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
@@ -244,6 +291,7 @@ public final class LeftoversModel: ObservableObject {
     /// The plan intent for one removed app's traces, named for the app so
     /// the review says whose they are.
     public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
+        guard !isProvisional else { return nil }
         let targets = group.items.filter(\.canBeRemovedByBrim).map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
@@ -263,7 +311,7 @@ public final class LeftoversModel: ObservableObject {
     /// uninstalling, which is exactly right: it must not clear privacy
     /// grants or retract registrations for an app that is already gone.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        guard !isScanning, canRemoveSelection else { return nil }
+        guard !isScanning, !isProvisional, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
