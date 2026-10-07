@@ -21,6 +21,28 @@ final class BackgroundGroupingTests: XCTestCase {
         XCTAssertEqual(BackgroundScope.registrations([exact, resemblance], applications: [application]), [exact])
     }
 
+    /// The Background page found a job's app by deleting path components
+    /// until it reached "/". A launch job's `Program` is whatever its
+    /// author wrote, and one ending in ".." never reaches "/": each step
+    /// added another "..", so the page never finished drawing.
+    func testAProgramPathThatClimbsCannotHangTheLookup() {
+        func job(_ program: String) -> Registration {
+            Registration(kind: .launchdJob, identifier: "com.example.job", label: "Job",
+                         programPath: program, targetExists: false, evidence: "fixture")
+        }
+        XCTAssertNil(job("/a/..").enclosingApplication)
+        XCTAssertNil(job("/opt/../..").enclosingApplication)
+        XCTAssertNil(job("relative/tool").enclosingApplication)
+        XCTAssertEqual(
+            job("/Applications/Sample.app/Contents/Helpers/Agent.app/Contents/MacOS/Agent").enclosingApplication?.path,
+            "/Applications/Sample.app/Contents/Helpers/Agent.app", "The innermost bundle runs it"
+        )
+        XCTAssertEqual(
+            job("/Applications/Old.app/../Sample.app/Contents/MacOS/Sample").enclosingApplication?.path,
+            "/Applications/Sample.app"
+        )
+    }
+
     func testBackgroundParentAssociationCannotCrossAccounts() {
         let parent = Registration(
             kind: .backgroundItem, identifier: "com.example.sample", label: "Sample",
