@@ -13,6 +13,7 @@ struct RemovalVerificationSheet: View {
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }
+                    .capsuleAction(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(20)

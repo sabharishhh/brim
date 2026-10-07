@@ -35,7 +35,7 @@ public struct UninstallReviewGroup: Identifiable, Sendable {
 /// and then verification.
 ///
 /// Verification is not decoration. The product's claim is that after Brim
-/// removes something, nothing is left — so the sheet re-checks and reports
+/// removes something, nothing is left, so the review checks again and reports
 /// what it found rather than declaring success because the commands ran.
 @MainActor
 public final class UninstallExecutionModel: ObservableObject {

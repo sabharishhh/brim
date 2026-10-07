@@ -9,9 +9,9 @@ import SwiftUI
 /// looks like the Mac it runs on. It used to draw its own near-black canvas,
 /// `#0F0F11` against the system's `#1E1E1E`, which made every page darker
 /// than any app beside it. Text, fills and the group colours are the
-/// system's semantic colours, so Increase Contrast and dark mode reach them
-/// the way they reach any Mac app. The colour on screen comes from the
-/// person's app icons and one accent.
+/// system's semantic colours, so Increase Contrast reaches them the way it
+/// reaches any Mac app. The colour on screen comes from the person's app
+/// icons and from status, never from an accent.
 ///
 /// Regions are told apart by shade, never by a line: the canvas, cards one
 /// step up from it, and the system sidebar.
@@ -61,8 +61,8 @@ enum Palette {
     static let mist = Color(white: 0.4)
 
     /// The light that sweeps across loading placeholders.
-    static let shimmer = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.06)
-    // Status colours: the Okabe–Ito palette (Okabe and Ito, Color Universal
+    static let shimmer = Color.white.opacity(0.06)
+    // Status colours: the Okabe-Ito palette (Okabe and Ito, Color Universal
     // Design; Wong, "Points of view: Color blindness", Nature Methods 2011),
     // chosen because its hues stay apart under protanopia, deuteranopia and
     // tritanopia, where the usual green and red collapse into one. They
@@ -71,23 +71,23 @@ enum Palette {
     // wherever it can colour text, 3:1 or more for marks. Colour is never
     // the only signal; every status also has a word or a symbol.
     //
-    // Accent, selection and progress use the person's own system accent
-    // (`Palette.tint` and the shades below), never one of these.
+    // Selection and progress are the greys above (`tint`, `snow`), never
+    // one of these and never the person's system accent.
 
-    /// Done and checked. Okabe–Ito bluish green #009E73, lifted 6% toward
+    /// Done and checked. Okabe-Ito bluish green #009E73, lifted 6% toward
     /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
-    static let success = Color(light: 0x0FA47B, dark: 0x0FA47B)
-    /// Staying, needs a look. Okabe–Ito orange #E69F00 (6.4:1 on a card).
-    static let caution = Color(light: 0xE69F00, dark: 0xE69F00)
+    static let success = Color(hex: 0x0FA47B)
+    /// Staying, needs a look. Okabe-Ito orange #E69F00 (6.4:1 on a card).
+    static let caution = Color(hex: 0xE69F00)
     /// Permanent deletion, stopped work and errors, as a mark only.
-    /// Okabe–Ito vermilion #D55E00 (3.7:1 on a card), so never body text:
+    /// Okabe-Ito vermilion #D55E00 (3.7:1 on a card), so never body text:
     /// the words beside it carry the meaning.
-    static let destructive = Color(light: 0xD55E00, dark: 0xD55E00)
-    /// Neutral information. Okabe–Ito sky blue #56B4E9 (6.2:1 on a card).
-    static let info = Color(light: 0x56B4E9, dark: 0x56B4E9)
-    /// Low Power Mode. Okabe–Ito yellow #F0E442, the colour macOS gives the
+    static let destructive = Color(hex: 0xD55E00)
+    /// Neutral information. Okabe-Ito sky blue #56B4E9 (6.2:1 on a card).
+    static let info = Color(hex: 0x56B4E9)
+    /// Low Power Mode. Okabe-Ito yellow #F0E442, the colour macOS gives the
     /// battery in that mode, and readable on the dark canvas.
-    static let lowPower = Color(light: 0xF0E442, dark: 0xF0E442)
+    static let lowPower = Color(hex: 0xF0E442)
 
     /// Greys for monograms and symbol tiles, in the order `Monogram.hue`
     /// indexes them. They were eight system colours, and a column of
@@ -173,26 +173,15 @@ extension Font {
     static let brimFigure = Font.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit()
 }
 
+/// Brim is dark only, so a status colour is one colour. These were dynamic
+/// colours with a light and a dark value, every pair identical.
 private extension Color {
-    init(light: UInt32, dark: UInt32, alpha: Double = 1) {
-        self.init(light: light, dark: dark, lightAlpha: alpha, darkAlpha: alpha)
-    }
-
-    init(light: UInt32, dark: UInt32, lightAlpha: Double, darkAlpha: Double) {
-        self.init(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return NSColor(hex: isDark ? dark : light, alpha: isDark ? darkAlpha : lightAlpha)
-        })
-    }
-}
-
-private extension NSColor {
-    convenience init(hex: UInt32, alpha: Double) {
+    init(hex: UInt32) {
         self.init(
-            srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
-            green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255,
-            alpha: alpha
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255
         )
     }
 }

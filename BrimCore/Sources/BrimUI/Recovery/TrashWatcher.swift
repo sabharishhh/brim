@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Two mechanisms, because one is not always available. Opening `~/.Trash`
 /// for event monitoring needs Full Disk Access, and without it the open fails
-/// with EPERM — so a kqueue source is used when permission allows, and
+/// with EPERM. So a kqueue source is used when permission allows, and
 /// otherwise the watcher falls back to polling. Statting a *known path inside*
 /// the Trash is allowed even when opening the directory is not, which is what
 /// makes the fallback work at all.
@@ -76,8 +76,8 @@ public actor TrashWatcher {
         handler = nil
     }
 
-    /// Polling is suspended while the app is inactive and resumed — with an
-    /// immediate check — when it becomes active again, so returning to Brim
+    /// Polling is suspended while the app is inactive and resumed, with an
+    /// immediate check, when it becomes active again, so returning to Brim
     /// after emptying the Trash in Finder is always up to date.
     public func setActive(_ active: Bool) {
         guard isActive != active else { return }

@@ -188,9 +188,12 @@ struct UpdatesView: View {
         let calendar = Calendar.current
         let when = calendar.isDateInToday(recent.updatedAt) ? "Today"
             : calendar.isDateInYesterday(recent.updatedAt) ? "Yesterday"
-            : recent.updatedAt.formatted(.dateTime.day().month(.abbreviated))
+            : day.format(recent.updatedAt)
         return versions + " · " + when
     }
+
+    /// Built once, not for every row each time it draws.
+    private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 
     @ViewBuilder
     private func action(_ update: AppUpdate) -> some View {

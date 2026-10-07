@@ -18,9 +18,9 @@ struct BatchRemovalPanel: View {
     @StateObject private var model = BatchRemovalModel()
 
     var body: some View {
+        // Regions told apart by space, never by a rule, as in the single review.
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(model.entries) { entry in
@@ -35,7 +35,6 @@ struct BatchRemovalPanel: View {
                 }
                 .padding(20)
             }
-            Divider()
             footer
         }
         .task { await model.prepare(apps, service: service) }
