@@ -3,8 +3,9 @@ import Foundation
 import Testing
 
 /// Brim puts an app into Applications only if it is still the app the
-/// preview showed, never over another, and keeps its quarantine so macOS
-/// still checks it the first time it opens.
+/// preview showed, and never over another. Its quarantine is removed only
+/// once Gatekeeper accepts it, so it opens from Applications rather than a
+/// translocated copy; an app Gatekeeper refuses keeps it.
 struct AppInstallerTests {
     private struct Fixture {
         let folder: URL
@@ -29,7 +30,8 @@ struct AppInstallerTests {
         }
     }
 
-    @Test func `an app is copied with its quarantine`() throws {
+    /// An unsigned fixture is never accepted, so macOS still checks it.
+    @Test func `an app Gatekeeper does not accept keeps its quarantine`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let quarantine = "0083;66f00000;Safari;"
@@ -42,6 +44,25 @@ struct AppInstallerTests {
         // A copy: the installer is still where it was, for the person to
         // keep or move to the Trash.
         #expect(FileManager.default.fileExists(atPath: fixture.app.path))
+    }
+
+    /// Figma's installer app, copied with its quarantine, ran from a
+    /// translocated copy, could not replace itself and asked to be moved
+    /// to Applications.
+    @Test func `an app Gatekeeper accepts loses its quarantine, inside too`() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let quarantine = "0083;66f00000;Safari;"
+        for path in [fixture.app.path, fixture.app.appendingPathComponent("Contents/MacOS/Demo").path] {
+            _ = quarantine.withCString { setxattr(path, "com.apple.quarantine", $0, strlen($0), 0, 0) }
+        }
+        let installed = try AppInstaller.install(from: fixture.app, identifier: "com.vendorco.demo", trusted: true,
+                                                 applications: fixture.applications, accepts: { _ in true })
+        #expect(getxattr(installed.path, "com.apple.quarantine", nil, 0, 0, 0) < 0)
+        let executable = installed.appendingPathComponent("Contents/MacOS/Demo").path
+        #expect(getxattr(executable, "com.apple.quarantine", nil, 0, 0, 0) < 0)
+        // The installer itself is not touched.
+        #expect(getxattr(fixture.app.path, "com.apple.quarantine", nil, 0, 0, 0) > 0)
     }
 
     @Test func `an app that changed since the preview is refused`() throws {
