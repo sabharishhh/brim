@@ -66,14 +66,19 @@ struct LensSwitch: View {
     }
 }
 
-/// The toolbar's one refresh, which is the page's own: Take a Reading on
-/// Energy, Scan Again on Developer, Check Again elsewhere. While the page
-/// is working it turns into a spinner, which replaced a spinner beside every
-/// page title and Energy's own Take a Reading button, two controls that
-/// did the same thing. A Developer scan can be stopped from it.
+/// The toolbar's sign that a page is working, and the one refresh left.
+///
+/// Every page had a refresh here (Take a Reading, Scan Again, Check Again),
+/// and pressing it was the only way a page caught up with the Mac. Pages
+/// now follow the Mac themselves (`KeepsCurrent`), so the button has gone:
+/// while a page is checking a small spinner sits here, and otherwise
+/// nothing does. Two remain because nothing on the Mac can announce them:
+/// Updates asks the network, so it keeps Check Again, and a Developer scan
+/// can be stopped. Check Again stays in the menu and the command bar (⌘R).
 struct CheckAgainButton: View {
     @ObservedObject var activity: ScanActivity
     let destination: Destination
+    let lens: AppsLens
     let presses: Int
     let check: () -> Void
     let stop: () -> Void
@@ -83,28 +88,32 @@ struct CheckAgainButton: View {
         activity.busy.contains(destination)
     }
 
-    private var title: String {
-        switch destination {
-        case .energy: isBusy ? "Reading" : "Take a Reading"
-        case .developer: isBusy ? "Stop Scanning" : "Scan Again"
-        default: isBusy ? "Checking" : "Check Again"
+    var body: some View {
+        Group {
+            if destination == .apps, lens == .updates {
+                checkUpdates
+            } else if destination == .developer, isBusy {
+                Button(action: stop) {
+                    Label("Stop Scanning", systemImage: "stop.fill")
+                }
+                .help("Stop Scanning")
+            } else if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Checking")
+                    .accessibilityLabel("Checking")
+                    .transition(.opacity)
+            }
         }
+        .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: isBusy)
     }
 
-    var body: some View {
-        Button {
-            if isBusy, destination == .developer {
-                stop()
-            } else {
-                check()
-            }
-        } label: {
+    private var checkUpdates: some View {
+        Button(action: check) {
             Label {
-                Text(title)
+                Text(isBusy ? "Checking" : "Check Again")
             } icon: {
-                if isBusy, destination == .developer {
-                    Image(systemName: "stop.fill")
-                } else if isBusy {
+                if isBusy {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -117,7 +126,7 @@ struct CheckAgainButton: View {
             }
             .contentTransition(.opacity)
         }
-        .disabled(isBusy && destination != .developer)
-        .help("\(title) (⌘R)")
+        .disabled(isBusy)
+        .help(isBusy ? "Checking" : "Check Again (⌘R)")
     }
 }
