@@ -90,7 +90,8 @@ struct HomeView: View {
         .task { await storage.loadIfNeeded(service: service) }
         .task { await developer.loadIfNeeded(service: service) }
         .task { await updates.loadIfNeeded(service: service) }
-        .task { await energy.loadOverview() }
+        // The battery and temperature follow macOS while Home is shown.
+        .task { await energy.followCondition() }
         .task {
             await history.load(service: service)
             await applications.loadIfNeeded(service: service)
