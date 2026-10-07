@@ -39,7 +39,7 @@ extension Executor {
         guard RecoveryCopy.identifier(for: step.target) != nil,
               let fingerprint = step.targetFingerprint, let remover else {
             throw NSError(domain: "BrimRecovery", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "The recovery copy could not be removed by the helper."
+                NSLocalizedDescriptionKey: "Administrator cleanup could not remove the recovery copy."
             ])
         }
         if let refusal = await remover(step.target, fingerprint) {
