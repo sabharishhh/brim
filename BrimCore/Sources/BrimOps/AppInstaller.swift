@@ -41,12 +41,14 @@ public enum AppInstaller {
     ///   - identifier: the bundle identifier the preview showed.
     ///   - trusted: the preview showed Gatekeeper accepting it, so it must
     ///     still be accepted.
+    ///   - progress: how much of the app has been copied, from 0 to 1.
     public static func install(
         from source: URL, identifier: String?, trusted: Bool,
-        applications: URL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        applications: URL = URL(fileURLWithPath: "/Applications", isDirectory: true),
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) throws -> URL {
         if source.pathExtension.lowercased() == "app" {
-            return try place(source, identifier: identifier, trusted: trusted, into: applications)
+            return try place(source, identifier: identifier, trusted: trusted, into: applications, progress: progress)
         }
         guard UpdateInstaller.kind(of: source) == .diskImage else { throw Failure.unreadable }
         guard let info = UpdateInstaller.runOutput("/usr/bin/hdiutil", ["imageinfo", "-plist", source.path]),
@@ -74,10 +76,13 @@ public enum AppInstaller {
             identifier.flatMap { UpdateInstaller.find($0, in: volume) } ?? topLevelApp(in: volume)
         }.first
         guard let app else { throw Failure.noApplication }
-        return try place(app, identifier: identifier, trusted: trusted, into: applications)
+        return try place(app, identifier: identifier, trusted: trusted, into: applications, progress: progress)
     }
 
-    static func place(_ app: URL, identifier: String?, trusted: Bool, into applications: URL) throws -> URL {
+    static func place(
+        _ app: URL, identifier: String?, trusted: Bool, into applications: URL,
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) throws -> URL {
         let found = UpdateInstaller.identifier(of: app)
         if let identifier, found?.lowercased() != identifier.lowercased() {
             throw Failure.differentApplication
@@ -90,13 +95,38 @@ public enum AppInstaller {
             throw Failure.exists(app.deletingPathExtension().lastPathComponent)
         }
         guard FileManager.default.isWritableFile(atPath: applications.path) else { throw Failure.notAllowed }
-        guard UpdateInstaller.run("/usr/bin/ditto", [app.path, destination.path]),
+        guard copy(app, to: destination, progress: progress),
               UpdateInstaller.identifier(of: destination)?.lowercased() == found?.lowercased()
         else {
             try? FileManager.default.removeItem(at: destination)
             throw Failure.copy
         }
         return destination
+    }
+
+    /// `ditto`, with how much of the app has arrived measured while it
+    /// runs: the bytes at the destination against the bytes of the app.
+    static func copy(_ app: URL, to destination: URL, progress: @escaping @Sendable (Double) -> Void) -> Bool {
+        let total = max(ArtifactSizer.measure(at: app).logicalBytes, 1)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = [app.path, destination.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        progress(0)
+        while process.isRunning {
+            Thread.sleep(forTimeInterval: 0.25)
+            let copied = ArtifactSizer.measure(at: destination).logicalBytes
+            progress(min(0.99, Double(copied) / Double(total)))
+        }
+        guard process.terminationStatus == 0 else { return false }
+        progress(1)
+        return true
     }
 
     /// The one app at the top of a volume, ignoring links such as the
