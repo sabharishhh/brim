@@ -261,13 +261,13 @@ struct ContentView: View {
                 LensSwitch(lens: $shell.appsLens, updates: models.updates)
             }
         }
-        // Keeps Check Again on the trailing edge on every page, including
-        // those with nothing in the middle of the toolbar.
+        // Keeps the trailing control on the trailing edge on every page,
+        // including those with nothing in the middle of the toolbar.
         ToolbarSpacer(.flexible)
         ToolbarItem(placement: .primaryAction) {
             CheckAgainButton(
-                activity: models.activity, destination: shell.selection, presses: shell.checkRequests,
-                check: { shell.requestCheck() }, stop: models.developer.cancelScan
+                activity: models.activity, destination: shell.selection, lens: shell.appsLens,
+                presses: shell.checkRequests, check: { shell.requestCheck() }, stop: models.developer.cancelScan
             )
         }
     }
