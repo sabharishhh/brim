@@ -124,10 +124,11 @@ public struct Planner: Sendable {
                 let disposition = StepDisposition.default(for: item.costOfError)
                 let isReversible = disposition == .trash
 
-                // Root's folders need the daemon, decided here so one selection
-                // can mix the person's files with root's in one plan and one
-                // review. Only what the daemon will take becomes a step; the
-                // rest stays out with its reason. See `HelperScope.keptOut`.
+                // Root's folders need administrator cleanup, decided here so
+                // one selection can mix the person's files with root's in one
+                // plan and one review. Only what administrator cleanup will
+                // take becomes a step; the rest stays out with its reason. See
+                // `HelperScope.keptOut`.
                 let needsPrivilege = item.footprintItem.capability == .needsHelper
                 if needsPrivilege, let kept = HelperScope.keptOut(targetPath, bytes: sizeBytes) {
                     expectedTotalBytes -= sizeBytes
@@ -173,7 +174,7 @@ public struct Planner: Sendable {
                         target: targetPath,
                         targetFingerprint: fingerprint,
                         tier: item.footprintItem.evidence.tier,
-                        evidence: "In a system folder, so the helper "
+                        evidence: "In a system folder, so administrator cleanup "
                             + "sets it aside where an administrator can still reach it.",
                         expectedBytes: sizeBytes,
                         capability: item.footprintItem.capability,
@@ -192,12 +193,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: ExplanationRenderer().render(
-                                tier: item.footprintItem.evidence.tier,
-                                capability: item.footprintItem.capability,
-                                mechanism: item.footprintItem.evidence.mechanism,
-                                found: item.footprintItem.evidence.humanSentence
-                            ),
+                            evidence: Self.explanation(of: item),
                             expectedBytes: 0,
                             capability: item.footprintItem.capability,
                             reversible: true,
@@ -213,12 +209,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: ExplanationRenderer().render(
-                                tier: item.footprintItem.evidence.tier,
-                                capability: item.footprintItem.capability,
-                                mechanism: item.footprintItem.evidence.mechanism,
-                                found: item.footprintItem.evidence.humanSentence
-                            ),
+                            evidence: Self.explanation(of: item),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
                             reversible: isReversible,
@@ -235,12 +226,7 @@ public struct Planner: Sendable {
                             target: targetPath,
                             targetFingerprint: fingerprint,
                             tier: item.footprintItem.evidence.tier,
-                            evidence: ExplanationRenderer().render(
-                                tier: item.footprintItem.evidence.tier,
-                                capability: item.footprintItem.capability,
-                                mechanism: item.footprintItem.evidence.mechanism,
-                                found: item.footprintItem.evidence.humanSentence
-                            ),
+                            evidence: Self.explanation(of: item),
                             expectedBytes: sizeBytes,
                             capability: item.footprintItem.capability,
                             reversible: isReversible,
@@ -255,16 +241,12 @@ public struct Planner: Sendable {
 
             case .unselected:
                 // Described the way a step is, because the sheet offers it
-                // beside the steps and a row a person is asked to decide on
+                // beside the steps, and a row a person is asked to decide on
+                // has to say how Brim knows.
                 excludedItems.append(ExcludedItem(
                     target: targetPath,
                     reason: "Not ticked. Brim ticks only what it is sure belongs to the app.",
-                    evidence: ExplanationRenderer().render(
-                        tier: item.footprintItem.evidence.tier,
-                        capability: item.footprintItem.capability,
-                        mechanism: item.footprintItem.evidence.mechanism,
-                        found: item.footprintItem.evidence.humanSentence
-                    ),
+                    evidence: Self.explanation(of: item),
                     sizeBytes: item.footprintItem.sizeBytes,
                     canBeTickedByHand: true,
                     tier: item.footprintItem.evidence.tier
@@ -392,6 +374,17 @@ public struct Planner: Sendable {
             survivingCopies: evaluatedFootprint.survivingCopies,
             protectedComponentIdentifiers: evaluatedFootprint.protectedComponentIdentifiers,
             receiptPayloads: receiptPayloads
+        )
+    }
+
+    /// What a found row says about itself, the same words on a step and on
+    /// a row left unticked.
+    private static func explanation(of item: EvaluatedItem) -> String {
+        ExplanationRenderer().render(
+            tier: item.footprintItem.evidence.tier,
+            capability: item.footprintItem.capability,
+            mechanism: item.footprintItem.evidence.mechanism,
+            found: item.footprintItem.evidence.humanSentence
         )
     }
 }

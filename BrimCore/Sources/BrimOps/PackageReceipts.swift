@@ -30,8 +30,8 @@ public enum PackageReceipts {
             case let .noSuchReceipt(id):
                 "There is no receipt for \(id) on this Mac."
             case .needsRoot:
-                "Receipts live in a folder that belongs to the system, so Brim's "
-                    + "helper has to do this one."
+                "Receipts live in a folder that belongs to the system, so this needs "
+                    + "administrator cleanup."
             case let .failed(id, code):
                 "The receipt for \(id) could not be forgotten (pkgutil exit \(code))."
             }

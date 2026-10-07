@@ -254,7 +254,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
             reply(nil)
         } catch {
             log.error("could not remove the quarantine: \(error.localizedDescription)")
-            reply("Brim's helper could not clear the folder it kept set-aside files in: "
+            reply("Administrator cleanup could not clear the folder it kept set-aside files in: "
                 + error.localizedDescription)
         }
     }

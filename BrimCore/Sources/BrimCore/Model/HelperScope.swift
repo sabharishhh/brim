@@ -180,8 +180,8 @@ public enum HelperScope {
         }
         let reason = access(folder, W_OK) == 0
             ? "This folder is read-only, so it cannot be moved, and it stays where it is."
-            : "\(folder) belongs to the system, and Brim's helper does not remove things "
-            + "from it, so this stays where it is."
+            : "\(folder) belongs to the system, and administrator cleanup does not remove "
+            + "things from it, so this stays where it is."
         return ExcludedItem(
             target: path,
             reason: reason,
