@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 
 public extension ToolCleanup {
-    /// Local dependencies, installed by Brim rather than supplied over XPC.
+    /// Local dependencies, installed by Brim rather than supplied by a caller.
     struct Client: Sendable {
         private let environmentSource: @Sendable () -> [String: String]
         private let query: @Sendable (String, [String], [String: String], String) async throws -> String

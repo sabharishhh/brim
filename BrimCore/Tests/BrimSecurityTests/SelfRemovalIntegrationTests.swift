@@ -54,14 +54,7 @@ final class SelfRemovalIntegrationTests: XCTestCase {
             journalStoreDirectory: journalStoreDir, launchdRuntime: .unregisteredFixture
         )
 
-        let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: realService, accepting: .sameProcessAnonymous)
-        listener.delegate = delegate
-        listener.resume()
-
-        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        let client = try BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
+        let client: any BrimServiceProtocol = realService
 
         let identity = Identity(bundleID: "devplaceholder.PJ52YXEB.brim", teamID: "PJ52YXEB", name: "Brim")
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)

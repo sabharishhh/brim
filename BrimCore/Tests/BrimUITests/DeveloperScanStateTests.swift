@@ -234,10 +234,6 @@ private actor DeveloperStreamService: BrimServiceProtocol {
         throw UnusedCall.notImplemented
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw UnusedCall.notImplemented
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw UnusedCall.notImplemented
     }

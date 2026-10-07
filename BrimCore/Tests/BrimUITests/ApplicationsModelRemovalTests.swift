@@ -98,10 +98,6 @@ private actor StubInventoryService: BrimServiceProtocol {
         throw Nope.unavailable
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw Nope.unavailable
-    }
-
     func history() async throws -> [Plan] {
         []
     }

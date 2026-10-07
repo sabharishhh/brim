@@ -9,7 +9,7 @@ import XCTest
 /// owning application: one plan against `specificTargets`, built from an
 /// identity that often has no bundle id at all, approved once and applied as
 /// a unit. That is what the Leftovers sheet sends, and it is a different
-/// shape from the XPC test, which plans from a resolved application.
+/// shape from the integration tests, which plan from a resolved application.
 ///
 /// Written against the Review queue, which has since been replaced by the
 /// Leftovers section. The name changed with it; nothing else needed to,

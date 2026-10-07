@@ -207,10 +207,6 @@ private actor BatchStub: BrimServiceProtocol, ApprovalGranting {
         throw Oops.unavailable
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw Oops.unavailable
-    }
-
     func history() async throws -> [Plan] {
         []
     }

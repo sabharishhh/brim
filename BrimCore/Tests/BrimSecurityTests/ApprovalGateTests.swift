@@ -185,24 +185,6 @@ final class ApprovalGateTests: XCTestCase {
         }
     }
 
-    func testAnXPCClientHasNoWayToApprove() throws {
-        let (service, gen, _, _) = try makeService(consent: ConsentSource { _ in true })
-        defer { gen.destroy() }
-
-        let listener = NSXPCListener.anonymous()
-        let delegate = BrimXPCListenerDelegate(service: service, accepting: .sameProcessAnonymous)
-        listener.delegate = delegate
-        listener.resume()
-        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
-        connection.remoteObjectInterface = NSXPCInterface(with: BrimXPCProtocol.self)
-        let client = try BrimXPCClient(connection: connection, expecting: .sameProcessAnonymous)
-
-        XCTAssertNil(
-            client as Any as? ApprovalGranting,
-            "Anything on the far side of a connection must have no method that mints a token"
-        )
-    }
-
     func testTheOneRouteToApplyRefusesWhenNothingCanAsk() async throws {
         let (service, gen, rootURL, _) = try makeService(consent: nil)
         defer { gen.destroy() }
@@ -333,7 +315,7 @@ final class ApprovalGateTests: XCTestCase {
 
     func testTheServiceProtocolCannotHandBackAToken() throws {
         let sources = Self.repositoryRoot().appendingPathComponent("BrimCore/Sources/BrimProtocol")
-        for name in ["BrimServiceProtocol.swift", "BrimXPCProtocol.swift"] {
+        for name in ["BrimServiceProtocol.swift"] {
             let text = try String(
                 contentsOf: sources.appendingPathComponent(name), encoding: .utf8
             )
