@@ -16,14 +16,17 @@ import SwiftUI
 /// a change of view, not a reload of the machine.
 @MainActor
 final class SectionModels: ObservableObject {
-    let applications = ApplicationsModel()
-    let leftovers = LeftoversModel()
+    /// Apps, Remnants and Developer open on what the last launch found,
+    /// kept in Brim's caches folder, while this launch checks it.
+    let applications = ApplicationsModel(cache: PageCache("applications", version: 1))
+    let leftovers = LeftoversModel(cache: PageCache("remnants", version: 1))
     let background = BackgroundModel()
-    let storage = StorageModel()
+    /// Takes its estimate from Remnants rather than scanning again.
+    let storage: StorageModel
     /// Every installed app's data, for Space.
     let appData = AppDataModel()
     let energy = EnergyModel()
-    let developer = DeveloperModel()
+    let developer = DeveloperModel(cache: PageCache("developer", version: 1))
     let updates = UpdatesModel()
     /// What each available update changes, read once per version.
     let whatsNew = WhatsNewModel()
@@ -38,6 +41,10 @@ final class SectionModels: ObservableObject {
 
     /// Which places are still working, for the sidebar and the brim line.
     lazy var activity = ScanActivity(models: self)
+
+    init() {
+        storage = StorageModel(leftovers: leftovers)
+    }
 }
 
 /// Which places are still scanning, gathered in one object.

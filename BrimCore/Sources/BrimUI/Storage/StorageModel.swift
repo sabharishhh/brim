@@ -24,7 +24,22 @@ public final class StorageModel: ObservableObject {
     /// A pending estimate must not be presented as an empty scan.
     @Published public private(set) var hasEstimate = false
 
-    public init() {}
+    /// Remnants, whose result the estimate is taken from. Space used to
+    /// run a scan of its own for the same answer, which cost a second
+    /// four-second walk whenever Space opened after Remnants had finished.
+    private weak var leftovers: LeftoversModel?
+    private var estimateWatch: AnyCancellable?
+
+    public init(leftovers: LeftoversModel? = nil) {
+        self.leftovers = leftovers
+        guard let leftovers else { return }
+        estimateWatch = leftovers.$orphaned
+            .combineLatest(leftovers.$checkedAt, leftovers.$errorMessage)
+            .sink { [weak self] orphaned, checkedAt, failure in
+                guard checkedAt != nil || failure != nil else { return }
+                self?.estimate(from: failure == nil ? orphaned : nil)
+            }
+    }
 
     public var startupVolume: VolumeAccount? {
         volumes.first { $0.url.path == "/" } ?? volumes.first
@@ -63,6 +78,16 @@ public final class StorageModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
+        if let leftovers {
+            // The estimate follows Remnants' result as it changes; this only
+            // makes sure there is one.
+            async let scan: Void = leftovers.loadIfNeeded(service: service)
+            let newVolumes = await service.volumes()
+            guard !Task.isCancelled else { return }
+            volumes = newVolumes
+            await scan
+            return
+        }
         async let accounts = service.volumes()
         async let found = try? service.leftovers()
         let newVolumes = await accounts
@@ -70,13 +95,26 @@ public final class StorageModel: ObservableObject {
         volumes = newVolumes
         let leftovers = await found
         guard !Task.isCancelled else { return }
-        // Only what a record ties to a removed app counts, in apps, the
-        // same way Home and Leftovers count. Something nobody can be
-        // named for is shown in the list and never added to a figure.
-        let orphaned = (leftovers ?? []).filter { $0.category == .orphaned }
-        estimateUnavailable = leftovers == nil || orphaned.contains { $0.sizeIsKnown == false }
-        brimCanClear = orphaned.reduce(0) { $0 + $1.size }
-        brimCanClearCount = orphaned.groupedByOwner().count
+        estimate(from: leftovers?.filter { $0.category == .orphaned })
+    }
+
+    /// Free space alone, read again: a few milliseconds, so it can follow
+    /// the disk while Space or Home is on screen.
+    public func readVolumes(service: any BrimServiceProtocol) async {
+        let newVolumes = await service.volumes()
+        if newVolumes != volumes {
+            volumes = newVolumes
+        }
+    }
+
+    /// Only what a record ties to a removed app counts, in apps, the same
+    /// way Home and Remnants count. Something nobody can be named for is
+    /// shown in the list and never added to a figure. Nil is a scan that
+    /// failed.
+    private func estimate(from orphaned: [Leftover]?) {
+        estimateUnavailable = orphaned == nil || (orphaned ?? []).contains { $0.sizeIsKnown == false }
+        brimCanClear = (orphaned ?? []).reduce(0) { $0 + $1.size }
+        brimCanClearCount = (orphaned ?? []).groupedByOwner().count
         hasEstimate = true
     }
 }

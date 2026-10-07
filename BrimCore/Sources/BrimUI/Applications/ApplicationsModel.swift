@@ -1,8 +1,8 @@
-import Foundation
-import os
-import Combine
 import BrimCore
 import BrimProtocol
+import Combine
+import Foundation
+import os
 
 extension EvidenceTier {
     /// Sort order for the footprint list. Lower comes first.
@@ -13,19 +13,19 @@ extension EvidenceTier {
     /// scale at all.
     var rank: Int {
         switch self {
-        case .S: return 0
-        case .A: return 1
-        case .B: return 2
-        case .C: return 3
+        case .S: 0
+        case .A: 1
+        case .B: 2
+        case .C: 3
         }
     }
 
     public var shortLabel: String {
         switch self {
-        case .S: return "Shared"
-        case .A: return "Direct"
-        case .B: return "Strong"
-        case .C: return "Heuristic"
+        case .S: "Shared"
+        case .A: "Direct"
+        case .B: "Strong"
+        case .C: "Heuristic"
         }
     }
 }
@@ -58,10 +58,21 @@ public final class ApplicationsModel: ObservableObject {
     /// and the pane read as an app that had put nothing on the Mac.
     @Published public private(set) var inspectionError: String?
 
+    /// When this launch last listed the apps from the disk. Nil while the
+    /// list on screen is the one kept from the last launch.
+    @Published public private(set) var listedAt: Date?
+
     private var service: (any BrimServiceProtocol)?
     private var inspectionTask: Task<Void, Never>?
+    private let cache: PageCache<[InstalledApplication]>?
 
-    public init() {}
+    /// With a cache, the list opens on what the last launch found while
+    /// this one lists the disk. Every action reads the bundle again, so a
+    /// kept row is safe to select.
+    public init(cache: PageCache<[InstalledApplication]>? = nil) {
+        self.cache = cache
+        applications = cache?.load()?.value ?? []
+    }
 
     deinit { inspectionTask?.cancel() }
 
@@ -93,11 +104,11 @@ public final class ApplicationsModel: ObservableObject {
     /// Cached once per inspection, rather than regrouped during hover or disclosure.
     @Published public private(set) var footprintSections: [FootprintSection] = []
 
-    /// Lists only if the list is empty. Enumerating and sizing every
-    /// installed bundle takes seconds, and paying that on each visit to the
-    /// section is what made switching panels feel broken.
+    /// Lists once per launch; after that the folders' own changes keep it
+    /// current. A visit to the section is a change of view, not a reason
+    /// to list again.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
-        guard applications.isEmpty, !isLoading else { return }
+        guard listedAt == nil, !isLoading else { return }
         await load(service: service)
     }
 
@@ -129,7 +140,11 @@ public final class ApplicationsModel: ObservableObject {
         do {
             let found = try await service.installedApplications()
             try Task.checkCancellation()
-            applications = found
+            if found != applications {
+                applications = found
+            }
+            listedAt = Date()
+            cache?.save(found)
             errorMessage = nil
             // A selection outlives the panel that removed its app, so the
             // inspector went on offering eqMac's old footprint and a Remove
