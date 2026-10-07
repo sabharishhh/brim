@@ -22,7 +22,9 @@ struct AppStacks: View {
         GroupedStacks(
             sections: StableOrder.apply(groups, remembered: remembered),
             summary: { group in
-                "\(group.items.count) · \(ByteText.short(group.items.reduce(0) { $0 + $1.bundleSizeBytes }))"
+                // An app inside another is already in its host's size.
+                let bytes = group.items.filter { $0.enclosingApp == nil }.reduce(0) { $0 + $1.bundleSizeBytes }
+                return "\(group.items.count) · \(ByteText.short(bytes))"
             },
             inspected: model.selected?.id,
             inspect: { model.select($0) },
