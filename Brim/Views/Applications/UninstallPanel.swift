@@ -93,12 +93,6 @@ struct UninstallPanel: View {
         .padding(.bottom, 10)
     }
 
-    /// "12 items", beside what they free.
-    private var itemCount: String {
-        let count = model.removalSteps.count
-        return count == 1 ? "1 item" : "\(count.formatted()) items"
-    }
-
     private var isFinished: Bool {
         switch model.phase {
         case .verified, .appliedButUnverified, .failed: true
@@ -240,7 +234,7 @@ private extension UninstallPanel {
                         .font(.brimFacts)
                         .foregroundStyle(Palette.inkSecondary)
                 } else {
-                    Text("\(itemCount) · \(freed(plan))")
+                    Text("\(PlanSpace.count(model.removalSteps.count)) · \(PlanSpace.phrase(plan))")
                         .font(.brimFacts)
                         .monospacedDigit()
                         .foregroundStyle(Palette.inkSecondary)
@@ -293,21 +287,6 @@ private extension UninstallPanel {
         case .executing: "Removing"
         default: model.isUpdating ? "Updating" : "Remove"
         }
-    }
-
-    /// Where the bytes go, said separately. "Frees 1.19 GB · 1.19 GB
-    /// recoverable from the Trash" promised space that only comes back when
-    /// the Trash is emptied, for items that were not going to the Trash at
-    /// all, and the result then said 6.6 MB freed.
-    func freed(_ plan: Plan) -> String {
-        let setAside = plan.steps.filter { $0.kind == .trashPathPrivileged }.reduce(0) { $0 + $1.expectedBytes }
-        let trashed = plan.trashedBytes - setAside
-        let parts = [
-            trashed > 0 ? "\(ByteText.short(trashed)) to the Trash" : nil,
-            setAside > 0 ? "\(ByteText.short(setAside)) set aside" : nil,
-            plan.immediatelyFreedBytes > 0 ? "\(ByteText.short(plan.immediatelyFreedBytes)) freed now" : nil
-        ].compactMap(\.self)
-        return parts.isEmpty ? "Nothing to free" : parts.joined(separator: " · ")
     }
 }
 
