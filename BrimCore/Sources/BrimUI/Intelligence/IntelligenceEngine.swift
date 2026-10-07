@@ -1,5 +1,7 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// Every request Brim makes of the on-device model goes through here.
 ///
 /// - One at a time, in the order asked. The model serves one request at a
@@ -37,8 +39,7 @@ public actor IntelligenceEngine {
     private var tail: Task<Void, Never>?
 
     public init(reader: any LanguageReader, cacheFile: URL?, timeout: Duration = .seconds(20),
-                retryDelays: [Duration] = [.seconds(2), .seconds(4), .seconds(8)])
-    {
+                retryDelays: [Duration] = [.seconds(2), .seconds(4), .seconds(8)]) {
         self.reader = reader
         cache = IntelligenceCache(file: cacheFile)
         self.timeout = timeout
@@ -64,7 +65,8 @@ public actor IntelligenceEngine {
     }
 
     public func describe(lines: [Int], of script: String) async -> Outcome<[Int: String]> {
-        let key = IntelligenceCache.key("script-lines", version: 1, script, lines.map(String.init).joined(separator: ","))
+        let numbers = lines.map(String.init).joined(separator: ",")
+        let key = IntelligenceCache.key("script-lines", version: 1, script, numbers)
         return await ask(key) { reader in
             try await reader.describe(lines: lines, of: script)
         }
@@ -120,8 +122,7 @@ public actor IntelligenceEngine {
     }
 
     private func perform(_ key: String, _ work: @escaping @Sendable (any LanguageReader) async throws -> Data)
-        async -> Result
-    {
+        async -> Result {
         defer { running[key] = nil }
         guard waiting[key] != nil else { return .failed }
         guard await reader.availability() == .ready else { return .unavailable }
@@ -148,8 +149,7 @@ public actor IntelligenceEngine {
     /// Runs `work`, or throws `timedOut` once `limit` has passed, cancelling
     /// whichever is left.
     private static func within(_ limit: Duration, _ work: @escaping @Sendable () async throws -> Data)
-        async throws -> Data
-    {
+        async throws -> Data {
         try await withThrowingTaskGroup(of: Data?.self) { group in
             group.addTask { try await work() }
             group.addTask {

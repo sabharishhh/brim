@@ -11,7 +11,7 @@ import Foundation
 struct IntelligenceCache {
     struct Entry: Codable {
         let value: Data
-        let at: Date
+        let storedAt: Date
     }
 
     struct Stored: Codable {
@@ -45,11 +45,11 @@ struct IntelligenceCache {
     }
 
     mutating func store(_ value: Data, for key: String, now: Date = Date()) {
-        stored.entries[key] = Entry(value: value, at: now)
+        stored.entries[key] = Entry(value: value, storedAt: now)
         stored.refusals[key] = nil
         if stored.entries.count > Self.limit {
-            let oldest = stored.entries.sorted { $0.value.at < $1.value.at }.prefix(stored.entries.count - Self.limit)
-            oldest.forEach { stored.entries[$0.key] = nil }
+            let byAge = stored.entries.sorted { $0.value.storedAt < $1.value.storedAt }
+            byAge.prefix(stored.entries.count - Self.limit).forEach { stored.entries[$0.key] = nil }
         }
         save()
     }

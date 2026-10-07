@@ -3,6 +3,8 @@ import BrimCore
 import Foundation
 import Testing
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// The queue in front of the on-device model, run against a stand-in so
 /// every path is exercised without one.
 struct IntelligenceEngineTests {
@@ -10,7 +12,9 @@ struct IntelligenceEngineTests {
         FileManager.default.temporaryDirectory.appendingPathComponent("brim-intelligence-\(UUID().uuidString).json")
     }
 
-    private func engine(_ reader: StandInReader, file: URL? = nil, timeout: Duration = .seconds(5)) -> IntelligenceEngine {
+    private func engine(
+        _ reader: StandInReader, file: URL? = nil, timeout: Duration = .seconds(5)
+    ) -> IntelligenceEngine {
         IntelligenceEngine(reader: reader, cacheFile: file, timeout: timeout, retryDelays: [.milliseconds(1)])
     }
 
@@ -78,12 +82,15 @@ struct IntelligenceEngineTests {
     @MainActor
     @Test func `short notes are shown as written without the model`() async {
         let model = WhatsNewModel()
-        let short = AppUpdate(bundleID: "com.example.demo", name: "Demo", appURL: URL(fileURLWithPath: "/Applications/Demo.app"),
-                              installedVersion: "1.0", latestVersion: "1.1", origin: .sparkle(feed: "https://example.com/appcast.xml"), route: .replace,
-                              releaseNotes: "Fixes a crash when exporting. Addresses CVE-2026-1234.")
+        let notes = "Fixes a crash when exporting. Addresses CVE-2026-1234."
+        let short = AppUpdate(bundleID: "com.example.demo", name: "Demo",
+                              appURL: URL(fileURLWithPath: "/Applications/Demo.app"),
+                              installedVersion: "1.0", latestVersion: "1.1",
+                              origin: .sparkle(feed: "https://example.com/appcast.xml"), route: .replace,
+                              releaseNotes: notes)
         await model.read(short, engine: nil)
         #expect(model.state(for: short) == .ready(WhatsNew(
-            highlights: ["Fixes a crash when exporting. Addresses CVE-2026-1234."], fixesSecurity: true, isGenerated: false
+            highlights: [notes], fixesSecurity: true, isGenerated: false
         )))
     }
 }
@@ -96,8 +103,7 @@ private actor StandInReader: LanguageReader {
     private let state: ModelAvailability
 
     init(delay: Duration = .zero, failure: ModelFailure? = nil, failures: Int = .max,
-         availability: ModelAvailability = .ready)
-    {
+         availability: ModelAvailability = .ready) {
         self.delay = delay
         self.failure = failure
         failuresLeft = failures
