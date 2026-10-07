@@ -37,7 +37,17 @@ public final class DeveloperModel: ObservableObject {
         hasLoaded = false
     }
 
-    public init() {}
+    /// The rows on screen are the last launch's, kept on disk, and this
+    /// launch's scan has not reported yet. Shown, never selectable.
+    @Published public private(set) var isProvisional = false
+    private let cache: PageCache<[DeveloperCache]>?
+
+    public init(cache: PageCache<[DeveloperCache]>? = nil) {
+        self.cache = cache
+        guard let kept = cache?.load() else { return }
+        caches = kept.value
+        isProvisional = true
+    }
 
     public var totalBytes: Int64 {
         DeveloperCache.estimatedTotal(of: caches)
@@ -115,6 +125,7 @@ public final class DeveloperModel: ObservableObject {
             // Discovery and measurement update the same identity. Selection is
             // always manual; a newly discovered row never inherits Select All.
             caches = fetched.filter { !isExcluded($0.url) }
+            isProvisional = false
             // An absent project may not have arrived yet. A present row with
             // changed eligibility must leave the selection immediately.
             selection.subtract(caches.filter { !$0.cost.isBrimRemovable }.map(\.id))
@@ -122,6 +133,8 @@ public final class DeveloperModel: ObservableObject {
         guard !Task.isCancelled, loadGeneration == generation else { return }
         selection = selection.intersection(eligibleCaches.map(\.id))
         hasLoaded = true
+        isProvisional = false
+        cache?.save(caches)
     }
 
     /// Artifacts chosen manually. Current eligibility is checked whenever
@@ -133,7 +146,7 @@ public final class DeveloperModel: ObservableObject {
     }
 
     public func toggle(_ cache: DeveloperCache) {
-        guard let current = caches.first(where: { $0.id == cache.id }),
+        guard !isProvisional, let current = caches.first(where: { $0.id == cache.id }),
               current.cost.isBrimRemovable, !isExcluded(current.url) else { return }
         if selection.contains(cache.id) {
             selection.remove(cache.id)
@@ -145,6 +158,7 @@ public final class DeveloperModel: ObservableObject {
     /// A section's Select All and Deselect All. Only what Brim may clear is
     /// ever selected, whatever the list passed in holds.
     public func setSelected(_ selected: Bool, _ caches: [DeveloperCache]) {
+        guard !isProvisional else { return }
         let ids = caches.filter { $0.cost.isBrimRemovable && !isExcluded($0.url) }.map(\.id)
         if selected {
             selection.formUnion(ids)
@@ -187,6 +201,7 @@ public final class DeveloperModel: ObservableObject {
     /// point before a plan exists, and T-5.7 turns on nothing in class
     /// three ever reaching one.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
+        guard !isProvisional else { return nil }
         let targets = selectedCaches.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
