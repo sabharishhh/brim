@@ -32,7 +32,7 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         recoverable != nil
     }
 
-    /// Why undo is unavailable, in the user's terms — nil when it is.
+    /// Why undo is unavailable, in the user's terms, or nil when it is.
     public var unavailableReason: String? {
         Self.unavailableReason(plan: plan, recoverable: recoverable)
     }
@@ -59,36 +59,11 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
     /// whole reason this panel felt heavy. A record's date does not change.
     public let occurred: String
 
-    /// What a screen reader says, also written once, for the same reason:
-    /// the row was assembling this string on every pass.
-    public let spoken: String
-
     public init(plan: Plan, recoverable: RecoverableItem?) {
         self.plan = plan
         self.recoverable = recoverable
 
         occurred = Self.dateStyle.format(plan.createdAt)
-
-        // Moved here verbatim from the view, which was assembling it on
-        // every pass. The wording is not incidental: gluing the reason on
-        // with `?? ""` once read out as "Figma, 3 items, 40 MB. , cannot be
-        // undone", and saying "items" for a removal of one disagreed with
-        // the row beside it.
-        let count = plan.steps.count
-        let items = "\(count) \(count == 1 ? "item" : "items")"
-        var parts = [
-            "\(plan.intent.subjectIdentity.name), \(items), "
-                + ByteText.short(plan.expectedTotalBytes)
-        ]
-        let reason = Self.unavailableReason(plan: plan, recoverable: recoverable)
-        if recoverable != nil {
-            parts.append("Can be undone")
-        } else if let reason, !reason.isEmpty {
-            parts.append("\(reason), so it cannot be undone")
-        } else {
-            parts.append("Cannot be undone")
-        }
-        spoken = parts.joined(separator: ". ") + "."
     }
 
     /// Built once for the whole process rather than per row. A
@@ -107,6 +82,9 @@ public final class RemovalHistoryModel: ObservableObject {
     /// Every installation the snapshots record, for the Journal.
     @Published public private(set) var installs: [InstallRecord] = []
     @Published public private(set) var isLoading = false
+    /// Why the removal history could not be read. Its own fact: a failed
+    /// read used to leave the list empty, and the Journal said "Nothing yet".
+    @Published public private(set) var loadError: String?
     @Published public private(set) var undoingPlanIds: Set<UUID> = []
     @Published public var errorMessage: String?
     /// What the last Put Back of each record did, shown beside that record.
@@ -201,10 +179,18 @@ public final class RemovalHistoryModel: ObservableObject {
     public func reload() async {
         guard let service else { return }
 
-        async let plansTask = try? await service.history()
         async let recoverableTask = try? await service.recoverableItems()
         async let installsTask = service.installRecords()
-        let plans = await plansTask ?? []
+        let plans: [Plan]
+        do {
+            plans = try await service.history()
+            loadError = nil
+        } catch {
+            // What was read before is still what is known; it is not
+            // replaced by an empty list that claims there is nothing.
+            loadError = error.localizedDescription
+            plans = records.map(\.plan)
+        }
         let recoverable = await recoverableTask ?? []
         installs = await installsTask
 

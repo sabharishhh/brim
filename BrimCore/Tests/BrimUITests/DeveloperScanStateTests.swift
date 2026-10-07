@@ -14,7 +14,7 @@ import Testing
         try await waitUntil { await service.streamCount == 1 }
         await service.publish([first])
         try await waitUntil { model.caches.count == 1 }
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         await service.publish([
             first.measured(using: ArtifactSize(logicalBytes: 10, allocatedBytes: 10, state: .complete)),
             second
@@ -39,7 +39,7 @@ import Testing
         await service.publish([spent, other])
         await service.finish()
         await first.value
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         #expect(model.selectedCount == 2 && model.selectedBytes == 200)
         let rescan = Task { await model.load(service: service) }
         try await waitUntil { await service.streamCount == 2 }
@@ -101,7 +101,7 @@ import Testing
         model.toggle(recent)
         model.ageFilter = .olderThan90Days
         #expect(model.selectedOutsideFilter == 1)
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         #expect(model.selection == [recent.id, old.id])
         #expect(!model.selection.contains(stateful.id))
         model.exclude(URL(fileURLWithPath: "/dev/recent"))
@@ -121,7 +121,7 @@ import Testing
         await service.publish([cache("previous")])
         await service.finish()
         await first.value
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         let interrupted = Task { await model.load(service: service) }
         try await waitUntil { await service.streamCount == 2 }
         await service.publish([], stream: 1)
@@ -147,7 +147,7 @@ import Testing
         await service.publish([parent, other])
         await service.finish()
         await first.value
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         let excluded = parent.url.appendingPathComponent("local-copy")
         model.exclude(excluded)
         model.toggle(parent)
@@ -178,7 +178,6 @@ import Testing
         let helper = removal(kind: .trashPathPrivileged)
         let native = removal(kind: .delegateToolCleanup)
         #expect(helper.unavailableReason?.contains("cannot put this back") == true)
-        #expect(!helper.spoken.contains("Deleted permanently"))
         #expect(native.unavailableReason == "Run by the tool. Cannot be undone.")
     }
 
