@@ -32,18 +32,18 @@ struct InstallRecordingModelTests {
         #expect(await service.kept.first?.apps == [app])
     }
 
-    @Test func `something nothing links is the person's to decide`() async {
+    /// Nobody starts a recording, so nobody is asked to judge one: what
+    /// links to the install is kept and anything else is left out.
+    @Test func `something nothing links is left out without asking`() async {
+        let linked = RecordedItem(path: "/Users/me/Library/Application Support/Demo", why: "Named for Demo",
+                                  app: app.path)
         let stray = RecordedItem(path: "/Users/me/.stray", why: "Appeared while recording", app: nil)
-        let service = RecordingStub(result: result(apps: [app], unclaimed: [stray]))
+        let service = RecordingStub(result: result(apps: [app], linked: [linked], unclaimed: [stray]))
         let model = InstallRecordingModel()
         await model.start(service: service)
         await model.finishOnItsOwn()
-        #expect(model.keptQuietly == nil)
-        #expect(await service.kept.isEmpty)
-        guard case .found = model.phase else {
-            Issue.record("The result should be shown for the person to decide")
-            return
-        }
+        #expect(model.phase == .idle)
+        #expect(await service.kept.first?.items == [linked])
     }
 
     @Test func `an install that put nothing down records nothing`() async {
