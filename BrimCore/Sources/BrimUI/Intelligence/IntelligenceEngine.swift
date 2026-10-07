@@ -64,9 +64,9 @@ public actor IntelligenceEngine {
         }
     }
 
-    public func describe(lines: [Int], of script: String) async -> Outcome<[Int: String]> {
+    public func describe(lines: [Int], of script: String) async -> Outcome<ScriptDescription> {
         let numbers = lines.map(String.init).joined(separator: ",")
-        let key = IntelligenceCache.key("script-lines", version: 1, script, numbers)
+        let key = IntelligenceCache.key("script-lines", version: 4, script, numbers)
         return await ask(key) { reader in
             try await reader.describe(lines: lines, of: script)
         }

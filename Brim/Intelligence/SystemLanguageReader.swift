@@ -1,3 +1,4 @@
+import BrimCore
 import BrimUI
 import Foundation
 import FoundationModels
@@ -64,9 +65,17 @@ nonisolated struct SystemLanguageReader: LanguageReader {
     // MARK: - Install scripts
 
     @Generable
-    struct LineDescriptions {
+    struct ScriptReading {
         @Guide(description: "One entry for each requested line, in the order asked")
         var lines: [LineDescription]
+        @Guide(description: """
+        One or two short sentences for someone who has never seen a script, saying what installing this \
+        changes on their Mac. Start with the most significant changes listed by Brim, such as anything that \
+        runs in the background, trusts a certificate, downloads files or deletes files. Everyday words. Do not \
+        say why, or whether it is good, safe or needed. No commands, file paths, variable names or words such \
+        as daemon, launchd, shell, sudo or chmod. Call a certificate a certificate. Name the app if the script does.
+        """)
+        var summary: String
     }
 
     @Generable
@@ -74,24 +83,28 @@ nonisolated struct SystemLanguageReader: LanguageReader {
         @Guide(description: "The requested line number")
         var line: Int
         @Guide(description: """
-        At most nine words saying what the line does, naming what it installs, starts, changes, downloads \
-        or deletes. Plain words for someone who does not read shell.
+        At most nine everyday words saying what the line does to the Mac. No commands, file paths, variable \
+        names or technical terms.
         """)
         var words: String
     }
 
     static let scriptInstructions = """
-    You explain lines of a macOS installer script to someone who does not read shell. Describe only what each \
-    requested line does. Use the rest of the script only to work out names, such as what a variable holds. \
-    Do not say whether anything is safe.
+    You explain what a macOS installer script does, for someone who is not technical and has never read a \
+    script. Describe only what each requested line does, in everyday words. Use the rest of the script only \
+    to work out names, such as what a variable holds. Do not say whether anything is safe.
     """
 
-    func describe(lines: [Int], of script: String) async throws -> [Int: String] {
+    func describe(lines: [Int], of script: String) async throws -> ScriptDescription {
         let numbered = try await numberedScript(script, around: lines)
         let asked = lines.map(String.init).joined(separator: ", ")
+        let changes = InstallScriptReading.consequences(of: InstallScriptReading.findings(in: script))
+            .map(\.plain).joined(separator: "; ")
         let reading = try await respond(
-            instructions: Self.scriptInstructions, prompt: "\(numbered)\n\nDescribe these lines: \(asked)",
-            generating: LineDescriptions.self, maximumTokens: 40 * lines.count + 40
+            instructions: Self.scriptInstructions,
+            prompt: "\(numbered)\n\nChanges Brim found, most significant first: \(changes)"
+                + "\n\nDescribe these lines: \(asked)",
+            generating: ScriptReading.self, maximumTokens: 40 * lines.count + 120
         )
         var described: [Int: String] = [:]
         for entry in reading.lines where lines.contains(entry.line) && described[entry.line] == nil {
@@ -99,7 +112,8 @@ nonisolated struct SystemLanguageReader: LanguageReader {
                 described[entry.line] = words
             }
         }
-        return described
+        let summary = reading.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ScriptDescription(summary: summary.isEmpty || summary.count > 280 ? nil : summary, lines: described)
     }
 
     /// The script with line numbers, whole if it fits, otherwise only the

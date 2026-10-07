@@ -126,8 +126,9 @@ private actor StandInReader: LanguageReader {
         return ReleaseHighlights(highlights: ["Adds a thing"], fixesSecurity: false)
     }
 
-    func describe(lines: [Int], of _: String) async throws -> [Int: String] {
+    func describe(lines: [Int], of _: String) async throws -> ScriptDescription {
         calls += 1
-        return Dictionary(uniqueKeysWithValues: lines.map { ($0, "Does a thing") })
+        return ScriptDescription(summary: "Sets up a thing",
+                                 lines: Dictionary(uniqueKeysWithValues: lines.map { ($0, "Does a thing") }))
     }
 }
