@@ -40,7 +40,7 @@ struct StepRow: View {
                 Text(url.lastPathComponent)
                     .font(.brimFacts)
                     .foregroundStyle(Palette.ink)
-                Text(Self.abbreviated(url.deletingLastPathComponent().path))
+                Text(PathText.abbreviated(url.deletingLastPathComponent().path))
                     .font(.caption)
                     .foregroundStyle(Palette.inkTertiary)
                     .truncationMode(.middle)
@@ -66,10 +66,5 @@ struct StepRow: View {
         .accessibilityLabel("\(url.lastPathComponent), \(sizeText)")
         .accessibilityValue(step.target)
         .accessibilityAction(named: "Show in Finder") { RevealButton.reveal([url]) }
-    }
-
-    static func abbreviated(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }

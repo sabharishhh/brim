@@ -41,7 +41,7 @@ struct UninstallPlanRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text(Self.abbreviated(count > 1 ? target : (target as NSString).deletingLastPathComponent))
+                    Text(PathText.abbreviated(count > 1 ? target : (target as NSString).deletingLastPathComponent))
                         .foregroundStyle(Palette.inkTertiary)
                         .truncationMode(.middle)
                         .lineLimit(1)
@@ -109,12 +109,6 @@ struct UninstallPlanRow: View {
         case .revealVendorUninstaller: return "Vendor uninstaller"
         default: return URL(fileURLWithPath: target).lastPathComponent
         }
-    }
-
-    /// Home written as `~`, the way the inspector and Leftovers show it.
-    static func abbreviated(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
     private var action: String? {

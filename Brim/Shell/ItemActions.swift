@@ -1,3 +1,5 @@
+import BrimCore
+import BrimProtocol
 import BrimUI
 import SwiftUI
 
@@ -6,7 +8,7 @@ import SwiftUI
 /// Finder uses. A row adds its own (Keep, Add to Tray) after a divider.
 struct ItemMenuItems: View {
     let urls: [URL]
-    @Environment(ShellState.self) private var shell
+    @SwiftUI.Environment(ShellState.self) private var shell
 
     var body: some View {
         Button("Show in Finder") { shell.reveal(urls) }
@@ -28,6 +30,42 @@ extension View {
             guard !urls.isEmpty else { return .ignored }
             shell.quickLook(urls)
             return .handled
+        }
+    }
+}
+
+// MARK: - Put Back
+
+extension ShellState {
+    /// After a removal the check proved: says how much went, and offers it
+    /// back while the Trash still holds it. Remnants and Background said
+    /// this in two copies of the same function.
+    func offerPutBack(
+        planId: UUID, count: Int, noun: (one: String, many: String), service: any BrimServiceProtocol,
+        afterPutBack: @escaping @MainActor () async -> Void
+    ) {
+        guard count > 0 else { return }
+        Task { [weak self] in
+            var toast = ToastMessage(
+                symbol: "checkmark.circle.fill",
+                text: count == 1 ? "Removed 1 \(noun.one)" : "Removed \(count) \(noun.many)"
+            )
+            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
+                toast.actionTitle = "Put Back"
+                toast.action = { [weak self] in
+                    Task {
+                        do {
+                            try await service.undo(planId: planId)
+                            await afterPutBack()
+                        } catch {
+                            self?.show(ToastMessage(
+                                symbol: "exclamationmark.triangle.fill", text: "Could not put it back"
+                            ))
+                        }
+                    }
+                }
+            }
+            self?.show(toast)
         }
     }
 }

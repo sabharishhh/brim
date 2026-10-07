@@ -292,31 +292,10 @@ extension BackgroundView {
     }
 
     private func offerPutBack(_ planId: UUID) {
-        let count = removedInReview
-        guard count > 0 else { return }
-        Task {
-            var toast = ToastMessage(
-                symbol: "checkmark.circle.fill",
-                text: count == 1 ? "Removed 1 job" : "Removed \(count) jobs"
-            )
-            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
-                toast.actionTitle = "Put Back"
-                toast.action = {
-                    Task {
-                        do {
-                            try await service.undo(planId: planId)
-                            await model.load(service: service)
-                        } catch {
-                            shell.show(ToastMessage(
-                                symbol: "exclamationmark.triangle.fill",
-                                text: "Could not put it back"
-                            ))
-                        }
-                    }
-                }
-            }
-            shell.show(toast)
-        }
+        shell.offerPutBack(
+            planId: planId, count: removedInReview, noun: ("job", "jobs"), service: service,
+            afterPutBack: { await model.load(service: service) }
+        )
     }
 }
 
