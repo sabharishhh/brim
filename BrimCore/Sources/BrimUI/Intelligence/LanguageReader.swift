@@ -12,9 +12,9 @@ public protocol LanguageReader: Sendable {
     func prewarm() async
     /// What `version` changes, from its section of the release notes.
     func highlights(notes: String, version: String) async throws -> ReleaseHighlights
-    /// A few words for each of `lines` (one-based) of an install script,
-    /// read with the rest of the script for context.
-    func describe(lines: [Int], of script: String) async throws -> [Int: String]
+    /// A plain summary of an install script, and a few plain words for each
+    /// of `lines` (one-based), read with the rest of the script for context.
+    func describe(lines: [Int], of script: String) async throws -> ScriptDescription
 }
 
 /// Whether the model can be asked, and if not, why, in the person's terms.
@@ -51,6 +51,17 @@ public enum ModelFailure: Error, Sendable, Equatable {
     case tooLong
     case timedOut
     case other
+}
+
+/// What an install script does, for someone who has never read one.
+public struct ScriptDescription: Codable, Sendable, Equatable {
+    public let summary: String?
+    public let lines: [Int: String]
+
+    public init(summary: String?, lines: [Int: String]) {
+        self.summary = summary
+        self.lines = lines
+    }
 }
 
 public struct ReleaseHighlights: Codable, Sendable, Equatable {

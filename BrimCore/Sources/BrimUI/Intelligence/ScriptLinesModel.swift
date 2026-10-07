@@ -15,6 +15,8 @@ public final class ScriptLinesModel: ObservableObject {
 
     /// Keyed by script, then by line.
     @Published public private(set) var descriptions: [String: [Int: String]] = [:]
+    /// A plain summary of each script, keyed by script.
+    @Published public private(set) var summaries: [String: String] = [:]
     @Published public private(set) var reading: Set<String> = []
 
     public init() {}
@@ -31,8 +33,9 @@ public final class ScriptLinesModel: ObservableObject {
             let lines = script.findings.prefix(Self.shown).map(\.line)
             let outcome = await engine.describe(lines: lines, of: text)
             reading.remove(script.id)
-            if case let .done(words) = outcome {
-                descriptions[script.id] = words.filter { lines.contains($0.key) }
+            if case let .done(reading) = outcome {
+                descriptions[script.id] = reading.lines.filter { lines.contains($0.key) }
+                summaries[script.id] = reading.summary
             }
         }
     }

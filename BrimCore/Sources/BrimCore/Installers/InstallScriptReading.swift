@@ -20,6 +20,11 @@ public enum InstallScriptReading {
         public let code: String
         public let phrase: String
 
+        /// The same thing in words for someone who has never seen a script.
+        public var plain: String {
+            InstallScriptReading.plainPhrases[phrase] ?? phrase
+        }
+
         public init(line: Int, code: String, phrase: String) {
             self.line = line
             self.code = code
@@ -51,6 +56,55 @@ public enum InstallScriptReading {
     }
 
     static let settingsPhrase = "Changes settings"
+
+    /// What each finding means for the person's Mac, without the commands.
+    /// The preview leads with these; the technical phrase and the line sit
+    /// behind Details.
+    static let plainPhrases: [String: String] = [
+        "Starts or stops background jobs": "Starts or stops helpers that run in the background",
+        "Installs a background service": "Adds a helper that runs in the background",
+        "Loads a kernel extension": "Adds code that runs inside macOS itself",
+        "Changes system extensions": "Adds or changes a system extension",
+        "Changes login items": "Opens something when you log in",
+        "Resets privacy permissions": "Resets what apps are allowed to access",
+        "Changes Gatekeeper settings": "Changes how your Mac checks downloaded apps",
+        "Trusts a certificate": "Tells your Mac to trust its own certificate",
+        "Installs a configuration profile": "Installs a profile that can change your Mac's settings",
+        "Changes file attributes, such as quarantine": "Removes the warning macOS shows for downloaded files",
+        "Downloads files": "Downloads more files from the internet",
+        "Runs AppleScript": "Controls other apps",
+        "Quits running programs": "Closes or restarts programs that are running",
+        "Changes users or groups": "Changes user accounts",
+        "Changes file ownership or permissions": "Changes who can open or run some files",
+        "Deletes files": "Deletes some files",
+        "Schedules a task": "Schedules something to run later",
+        settingsPhrase: "Changes settings"
+    ]
+
+    /// One thing a script changes, in Brim's technical phrase and in
+    /// plain words.
+    public struct Consequence: Sendable, Hashable {
+        public let phrase: String
+        public let plain: String
+    }
+
+    /// Each consequence once, in the order of the rules: what runs, what
+    /// changes the system, then the rest.
+    public static func consequences(of findings: [Finding]) -> [Consequence] {
+        let phrases = Set(findings.map(\.phrase))
+        var ordered: [Consequence] = []
+        // Adding a helper says it runs in the background; starting one
+        // as well is the same thing to the person reading.
+        let adds = phrases.contains("Installs a background service")
+        for rule in rules where phrases.contains(rule.phrase) {
+            guard !(adds && rule.phrase == "Starts or stops background jobs") else { continue }
+            let plain = plainPhrases[rule.phrase] ?? rule.phrase
+            if !ordered.contains(where: { $0.plain == plain }) {
+                ordered.append(Consequence(phrase: rule.phrase, plain: plain))
+            }
+        }
+        return ordered
+    }
 
     private static let rules: [Rule] = [
         Rule("Starts or stops background jobs", words: ["launchctl"]),
