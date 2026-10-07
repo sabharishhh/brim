@@ -5,7 +5,7 @@ import Foundation
 ///
 /// T-3.2. The evidence engine already finds a plist when it can guess the
 /// path from an identity; this enumerates the domains instead, which is what
-/// catches a job whose plist is named after something other than its owner —
+/// catches a job whose plist is named after something other than its owner:
 /// and a job whose program is gone entirely.
 public struct LaunchdRegistrationSurface: RegistrationSurface {
     public let kind: Registration.Kind = .launchdJob
@@ -112,7 +112,7 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
     }
 
     /// launchd labels are conventionally the bundle identifier, sometimes with
-    /// a suffix. Only an exact reverse-DNS prefix is treated as ownership —
+    /// a suffix. Only an exact reverse-DNS prefix is treated as ownership:
     /// a substring match would attribute `com.foo.bar` to `com.foo`.
     static func bundleID(fromLabel label: String) -> String? {
         let parts = label.split(separator: ".")

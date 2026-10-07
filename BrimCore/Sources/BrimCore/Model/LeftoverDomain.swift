@@ -4,7 +4,7 @@ import Foundation
 /// actually costs.
 ///
 /// This is the question the leftovers list was failing to answer. A row
-/// reading `/Users/x/Library/Caches/Codex — 118.8 MB` tells a user nothing
+/// reading `/Users/x/Library/Caches/Codex 118.8 MB` tells a user nothing
 /// they can act on: they cannot tell it apart from the `Application Support`
 /// entry beside it, and nothing on screen says one is rebuilt automatically
 /// while the other holds settings and licences.

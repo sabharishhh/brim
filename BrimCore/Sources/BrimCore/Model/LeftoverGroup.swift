@@ -2,8 +2,8 @@ import Foundation
 
 /// Everything one piece of software left behind, as a single thing.
 ///
-/// The flat list showed `Codex` twice — once for `Application Support` and
-/// once for `Caches` — with no indication they were the same software, and
+/// The flat list showed `Codex` twice, once for `Application Support` and
+/// once for `Caches`, with no indication they were the same software, and
 /// the same for every vendor with more than one directory. A user cannot
 /// reason about "is this needed" one path at a time; the question is about
 /// the application, and the answer is the set of places it touched.
@@ -21,7 +21,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// a bundle identifier strong enough to tell them apart on its own.
     /// Seven distinct broken symlinks all pointing into a removed Docker,
     /// each its own group with one item, all displaying "Docker.app", all
-    /// landing on the identical re-derived id `"docker.app"` — SwiftUI's
+    /// landing on the identical re-derived id `"docker.app"`. SwiftUI's
     /// list identity then treated all seven as one element wearing seven
     /// costumes, so ticking one toggled all seven and there was no way to
     /// tell whether they even lived in the same place. `groupKey` is the
@@ -200,7 +200,7 @@ public extension [Leftover] {
     /// Collapses leftovers into one entry per piece of software.
     ///
     /// Keyed on the bundle identifier when the scan resolved one, and on the
-    /// directory name otherwise — which is what merges
+    /// directory name otherwise, which is what merges
     /// `Application Support/Codex` with `Caches/Codex`, since neither
     /// carries an identifier and both are named for the same tool.
     func groupedByOwner() -> [LeftoverGroup] {
