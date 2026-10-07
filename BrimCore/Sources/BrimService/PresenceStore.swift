@@ -12,7 +12,7 @@ private let log = BrimLog.make("presence")
 ///   This is setup, not a gate: nothing is withheld until it happens, and it
 ///   never happens again.
 /// - **Presence.** When someone last proved they were here. Persisted across
-///   launches on purpose — `sudo` keeps its timestamp in `/var/db/sudo` for
+///   launches on purpose: `sudo` keeps its timestamp in `/var/db/sudo` for
 ///   exactly the same reason, and an in-memory version would charge a
 ///   fingerprint for the first destructive action of every session, which is
 ///   most of what made this tiring during development.
@@ -42,7 +42,7 @@ public actor PresenceStore {
 
     public var isEnrolled: Bool { record.enrolledAt != nil }
 
-    /// When presence was last proved, or nil if never — or if the record is
+    /// When presence was last proved, or nil if never, or if the record is
     /// dated in the future, which a clock change can produce and which must
     /// not be readable as an unending grace window.
     public var lastPresence: Date? {
@@ -69,17 +69,14 @@ public actor PresenceStore {
     }
 
     private func persist() {
-        let temporary = storeURL.appendingPathExtension("tmp")
         do {
             try FileManager.default.createDirectory(
                 at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            try JSONEncoder().encode(record).write(to: temporary, options: .atomic)
-            if FileManager.default.fileExists(atPath: storeURL.path) {
-                _ = try FileManager.default.replaceItemAt(storeURL, withItemAt: temporary)
-            } else {
-                try FileManager.default.moveItem(at: temporary, to: storeURL)
-            }
+            // `.atomic` already writes beside the file and renames it into
+            // place. It used to do that to a second temporary file, which
+            // was then swapped in with `replaceItemAt`: two atomic writes.
+            try JSONEncoder().encode(record).write(to: storeURL, options: .atomic)
         } catch {
             // Losing this costs one extra prompt, never correctness, so it
             // must not fail an operation the user asked for.

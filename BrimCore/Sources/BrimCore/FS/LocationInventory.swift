@@ -168,7 +168,7 @@ public struct LocationInventory: Sendable {
             case .applicationName, .applicationNameLowercased:
                 subject.nameKeys.contains(NameKey.of(name)) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
-                delimitedPrefixTier(name: name, prefixes: subject.prefixNames, separator: separator)
+                delimitedPrefixTier(name: name, keys: subject.prefixKeys, separator: separator)
             case .groupContainer:
                 groupTier(name: name, subject: subject)
             case .homeDotFolder:
@@ -274,11 +274,10 @@ public struct LocationInventory: Sendable {
         }
 
         private func delimitedPrefixTier(
-            name: String, prefixes: [String], separator: String
+            name: String, keys: Set<String>, separator: String
         ) -> EvidenceTier? {
             // The part before any separator, compared as names are, so
             // `ChatGPTHelper.binarycookies` answers to `ChatGPT Helper`.
-            let keys = Set(prefixes.map(NameKey.of).filter { !$0.isEmpty })
             var rest = name[...]
             while let range = rest.range(of: separator) {
                 let stem = name[..<range.lowerBound]
@@ -313,8 +312,9 @@ public struct LocationInventory: Sendable {
         let names: [String]
         let lowercasedNames: [String]
         let nameKeys: Set<String>
-        /// The names, and `<name> Helper` for each, as the start of a name.
-        let prefixNames: [String]
+        /// The names, and `<name> Helper` for each, as the start of a name,
+        /// compared as names are.
+        let prefixKeys: Set<String>
         let groups: [String]
         let groupSet: Set<String>
         let homeFolders: [String]
@@ -328,7 +328,7 @@ public struct LocationInventory: Sendable {
             var seen = Set<String>()
             lowercasedNames = names.map { $0.lowercased() }.filter { seen.insert($0).inserted }
             nameKeys = Set(names.map(NameKey.of).filter { !$0.isEmpty })
-            prefixNames = names + identity.helperNames
+            prefixKeys = Set((names + identity.helperNames).map(NameKey.of).filter { !$0.isEmpty })
             groups = identity.searchGroupContainers
             groupSet = Set(groups)
             homeFolders = identity.searchHomeFolders
