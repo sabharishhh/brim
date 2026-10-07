@@ -47,7 +47,7 @@ final class ApplicationInventoryTests: XCTestCase {
 
     func testUtilitiesAreFoundOneLevelDown() async throws {
         let apps = await inventory().installedApplications()
-        // /System/Applications/Utilities/Terminal.app — nested, and expected.
+        // /System/Applications/Utilities/Terminal.app, nested, and expected.
         XCTAssertTrue(
             apps.contains { $0.name == "Terminal" },
             "Applications inside Utilities should be listed"

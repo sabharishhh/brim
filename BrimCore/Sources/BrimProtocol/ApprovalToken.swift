@@ -34,7 +34,7 @@ public struct ApprovalToken: Codable, Equatable, Sendable {
 ///
 /// The receipt says a decision is pending and describes what the decision
 /// is about. It carries no authority. Turning one into an `ApprovalToken`
-/// takes a human, in Brim's own window, through `ApprovalGranting` — which
+/// takes a human, in Brim's own window, through `ApprovalGranting`, which
 /// is deliberately not part of the service protocol.
 public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
     public let requestId: UUID

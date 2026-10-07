@@ -130,7 +130,7 @@ final class LeftoversOnThisMachineTests: XCTestCase {
           needing Full Disk Access: \(leftovers.filter { $0.capability != .ok }.count)
         """)
         for item in orphaned.prefix(12) {
-            print("  ORPHAN  \(item.url.lastPathComponent) — \(item.evidence)")
+            print("  ORPHAN  \(item.url.lastPathComponent): \(item.evidence)")
         }
         if ProcessInfo.processInfo.environment["BRIM_AUDIT_LEFTOVERS"] == "1" {
             for item in leftovers {

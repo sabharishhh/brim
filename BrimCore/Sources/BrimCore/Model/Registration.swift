@@ -12,13 +12,13 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// Which macOS mechanism holds the entry. Each maps to a supported way
     /// of removing it; Brim never edits these databases directly.
     public enum Kind: String, Codable, Equatable, Sendable, CaseIterable {
-        /// Background Task Management — login items and background services.
+        /// Background Task Management: login items and background services.
         case backgroundItem
         /// A launchd agent or daemon.
         case launchdJob
         /// A TCC privacy grant: accessibility, screen recording, and so on.
         case privacyGrant
-        /// Launch Services registration — "Open With", URL schemes.
+        /// Launch Services registration: "Open With", URL schemes.
         case firewallEntry
         case configurationProfile
         case launchServices
@@ -69,8 +69,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     }
 
     public let kind: Kind
-    /// The mechanism's own identifier — a launchd label, bundle id, package
-    /// id — and what a removal is scoped to.
+    /// The mechanism's own identifier (a launchd label, bundle id, package
+    /// id) and what a removal is scoped to.
     public let identifier: String
     /// What to call this in the UI.
     public let label: String
@@ -99,7 +99,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// One sentence naming the mechanism, in the same voice as evidence.
     public let evidence: String
     /// True when macOS owns this entry. Apple ships launchd jobs whose
-    /// programs are absent — cryptex-relocated or conditionally installed —
+    /// programs are absent (cryptex-relocated or conditionally installed),
     /// and they are neither stale in any useful sense nor removable. They
     /// must never be offered as something to clean up.
     public let isSystemOwned: Bool
@@ -299,7 +299,7 @@ public extension Registration {
 }
 
 /// Whether a surface was readable, so the UI can distinguish "nothing found"
-/// from "could not look" — Milestone 5's gate requires every feature to
+/// from "could not look". Milestone 5's gate requires every feature to
 /// report its own gaps.
 public struct RegistrationCoverage: Equatable, Sendable, Codable {
     /// Why a surface is not in the list, which decides what the person is

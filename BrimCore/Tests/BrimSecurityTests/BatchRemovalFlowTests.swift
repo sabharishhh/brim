@@ -39,7 +39,7 @@ final class BatchRemovalFlowTests: XCTestCase {
     /// requestApproval skips the LAContext prompt only when it can tell it is
     /// running under a test harness. If this detection breaks, the whole suite
     /// starts demanding a fingerprint per plan on any Mac with working Touch
-    /// ID — which is what happened while it keyed off
+    /// ID, which is what happened while it keyed off
     /// XCTestConfigurationFilePath, a variable SwiftPM's runner never sets.
     func testSuiteIsRecognisableAsAnAutomatedRun() {
         XCTAssertTrue(
@@ -189,7 +189,7 @@ final class BatchRemovalFlowTests: XCTestCase {
 
     func testBatchTokenIsBoundToTheWholeSelection() async throws {
         // The single token covers every step, so its plan hash changes if the
-        // selection does — approving two items cannot authorize a third.
+        // selection does: approving two items cannot authorize a third.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }

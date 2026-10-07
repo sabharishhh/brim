@@ -25,7 +25,7 @@ extension Step {
     /// Whether this step is worth interrupting a human for.
     ///
     /// Two conditions, both required. It must destroy something nothing can
-    /// restore — and it must matter. A recreatable cache is deleted outright
+    /// restore, and it must matter. A recreatable cache is deleted outright
     /// by design, and asking for a fingerprint before clearing one is how a
     /// user learns to approve without reading.
     public var warrantsHumanPresence: Bool {
@@ -76,7 +76,7 @@ extension Plan {
 
 /// When Brim asks a human to prove they are there.
 ///
-/// Authentication is not consent — the review sheet is consent, and the user
+/// Authentication is not consent: the review sheet is consent, and the user
 /// has already read what will happen and pressed a button saying to do it.
 /// A fingerprint proves something narrower: that a person is at the machine
 /// at this moment, rather than software driving the app. That is worth one
@@ -141,7 +141,7 @@ public struct ApprovalPolicy: Sendable, Equatable {
     /// macOS renders this as "Brim is trying to _____", so it must be a
     /// lowercase verb phrase with no trailing full stop. Written as a
     /// sentence it comes out as "Brim is trying to Remove Figma, clear the
-    /// privacy permissions…." — which is how the first version read.
+    /// privacy permissions….", which is how the first version read.
     ///
     /// It names what cannot be undone, because that is the only thing the
     /// prompt is asking about.

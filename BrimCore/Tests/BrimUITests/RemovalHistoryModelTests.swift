@@ -110,7 +110,7 @@ final class RemovalHistoryModelTests: XCTestCase {
 
     func testExplainsWhyAnEmptiedTrashCannotBeUndone() async throws {
         // Trashed, so the plan is reversible in principle, but no longer
-        // listed as recoverable — the user emptied the Trash.
+        // listed as recoverable: the user emptied the Trash.
         let trashed = makePlan(name: "Settings", disposition: .trash)
         let stub = HistoryStub(plans: [trashed], recoverable: [])
 

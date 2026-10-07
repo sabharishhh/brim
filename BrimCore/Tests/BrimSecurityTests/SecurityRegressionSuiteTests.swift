@@ -245,7 +245,7 @@ final class TrashNamingTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
         XCTAssertTrue(
             trashed.lastPathComponent.hasPrefix("BrimTestApp-DELETE-ME"),
-            "Trash shows \"\(trashed.lastPathComponent)\" — a name nobody can recognise or restore"
+            "Trash shows \"\(trashed.lastPathComponent)\", a name nobody can recognise or restore"
         )
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: trashed.appendingPathComponent("marker").path),
