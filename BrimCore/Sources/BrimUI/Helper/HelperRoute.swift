@@ -81,21 +81,14 @@ public enum HelperRoute {
         if let packageID = PrivilegedPayloadRemoval.package(for: path) {
             return await helper.removeInstalledPayload(packageID: packageID, name: name)
         }
-        return "Brim's helper does not remove things from \(folder)."
+        return "Administrator cleanup does not remove things from \(folder)."
     }
 
     /// Nil when the helper can take work. Asked by a review that is about
     /// to hand it some, which is the moment the answer is needed.
     public static func problem() async -> String? {
-        guard let connected else { return "Brim's helper is not available in this window." }
+        guard let connected else { return "Administrator cleanup is unavailable in this window." }
         return await ready(connected)
-    }
-
-    /// The helper's state, read now. For a screen that is about the helper,
-    /// which is a moment somebody is about to act on the answer.
-    public static func currentState() -> PrivilegedHelperClient.State? {
-        connected?.refresh()
-        return connected?.state
     }
 
     /// Explicitly reads protected recovery copies, then stops the process.

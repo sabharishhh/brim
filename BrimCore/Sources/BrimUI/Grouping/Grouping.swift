@@ -5,18 +5,12 @@ public struct ItemGroup<Item>: Identifiable {
     public let id: String
     public let title: String
     public var items: [Item]
-    /// Groups inside this one, such as each developer inside Suites. The
-    /// group's own `items` are every item of its subgroups, in their order.
-    public var subgroups: [ItemGroup<Item>]
     public var startsCollapsed: Bool
 
-    public init(
-        id: String, title: String, items: [Item], subgroups: [ItemGroup<Item>] = [], startsCollapsed: Bool = false
-    ) {
+    public init(id: String, title: String, items: [Item], startsCollapsed: Bool = false) {
         self.id = id
         self.title = title
         self.items = items
-        self.subgroups = subgroups
         self.startsCollapsed = startsCollapsed
     }
 }
@@ -45,7 +39,7 @@ public struct GroupRule<Item> {
 /// How every collection is organised before anyone searches it.
 ///
 /// Each item lives in exactly one group, the first rule it matches, and
-/// every other fact about it is a chip on its row. The order rules are
+/// every other fact about it is said on its row. The order rules are
 /// tried in is not the order groups are shown in: macOS's own things are
 /// taken first, so nothing of Apple's is offered as unused, and shown last.
 /// Empty groups are not shown. About four groups are open at once, which
