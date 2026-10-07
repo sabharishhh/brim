@@ -24,9 +24,6 @@ struct RemovalPanel: View {
     /// A plan the service already made, reviewed as it is rather than
     /// planned again from the intent. A tool's own cleanup comes this way.
     var plan: Plan?
-    /// Told whenever the review moves between waiting, running and done,
-    /// so the page beside it knows when its own ticks may still change it.
-    var onPhase: (UninstallExecutionModel.Phase) -> Void = { _ in }
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var helperProblem: String?
@@ -49,7 +46,6 @@ struct RemovalPanel: View {
             }
         }
         .task(id: model.helperSteps) { await checkHelper() }
-        .onChange(of: model.phase, initial: true) { _, phase in onPhase(phase) }
         // Quitting closes the panel, except while it is removing.
         .onChange(of: QuitRequest.shared.isQuitting) { _, quitting in
             if quitting, model.phase != .executing {
@@ -88,21 +84,11 @@ struct RemovalPanel: View {
         return steps.allSatisfy { $0.kind == .delegateToolCleanup }
     }
 
-    private var summary: String {
-        if isToolRun {
-            return "1 command"
-        }
-        // Counted from the plan once there is one: a tool's own cleanup
-        // names no locations up front, and "0 locations" would read as
-        // nothing to do.
-        let count = model.plan == nil ? intent.explicitTargets.count : model.removalSteps.count
-        let places = count == 1 ? "1 location" : "\(count) locations"
-        guard let plan = model.plan else { return count == 0 ? "" : places }
-        if plan.steps.contains(where: { $0.sizeIsKnown == false }) {
-            return "\(places) · Size not fully measured"
-        }
-        let bytes = plan.immediatelyFreedBytes + plan.trashedBytes + plan.setAsideBytes
-        return "\(places) · \(ByteText.short(bytes)) estimated"
+    /// How many, then where their space goes. A tool's own cleanup names
+    /// no locations up front, and "0 items" would read as nothing to do.
+    private func footerLine(_ plan: Plan) -> String {
+        isToolRun ? "1 command · The tool decides what goes"
+            : "\(PlanSpace.count(model.removalSteps.count)) · \(PlanSpace.phrase(plan))"
     }
 
     // MARK: - Content
@@ -247,7 +233,7 @@ extension RemovalPanel {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .ready = model.phase, let plan = model.plan {
-                Text(summary.isEmpty ? freed(plan) : "\(summary) · \(freed(plan))")
+                Text(footerLine(plan))
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -289,28 +275,6 @@ extension RemovalPanel {
             return model.phase == .executing ? "Running" : "Run"
         }
         return model.phase == .executing ? "Removing" : "Remove"
-    }
-
-    /// Zero is a real and common answer: a set of broken links takes no
-    /// space, and saying so stops the removal looking like it will do nothing.
-    private func freed(_ plan: Plan) -> String {
-        if isToolRun {
-            return "The tool decides what goes"
-        }
-        if plan.scanCompleteness?.isComplete == false || plan.steps.contains(where: { $0.sizeIsKnown == false }) {
-            return "Size not fully measured"
-        }
-        var consequences: [String] = []
-        if plan.trashedBytes > 0 {
-            consequences.append("\(ByteText.short(plan.trashedBytes)) to the Trash, recoverable")
-        }
-        if plan.setAsideBytes > 0 {
-            consequences.append("\(ByteText.short(plan.setAsideBytes)) set aside; restore unavailable in Brim")
-        }
-        if plan.immediatelyFreedBytes > 0 {
-            consequences.append("\(ByteText.short(plan.immediatelyFreedBytes)) of files deleted. Free space may differ")
-        }
-        return consequences.isEmpty ? "Takes no space" : consequences.joined(separator: ". ")
     }
 
     private var isFinished: Bool {

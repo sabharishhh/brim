@@ -23,10 +23,33 @@ import SwiftUI
 struct EnergyHistoryCard: View {
     let history: PowerHistory
     let battery: BatteryReport?
-    var now = Date()
+    let now: Date
 
-    private var start: Date {
-        now.addingTimeInterval(-24 * 3600)
+    /// Worked out once, when the card is made. As computed properties the
+    /// line was rebuilt for the chart and twice more for its legend on
+    /// every draw, and each rebuild filtered every restart once per point.
+    private let start: Date
+    private let restarts: [Date]
+    private let points: [PowerHistory.ChargePoint]
+    private let runs: [Run]
+    private let asleep: [DateInterval]
+
+    init(history: PowerHistory, battery: BatteryReport?, now: Date = Date()) {
+        self.history = history
+        self.battery = battery
+        self.now = now
+        let start = now.addingTimeInterval(-24 * 3600)
+        let restarts = history.restarts.filter { $0 > start && $0 <= now }
+        let points = Self.points(history: history, battery: battery, from: start, to: now, restarts: restarts)
+        self.start = start
+        self.restarts = restarts
+        self.points = points
+        runs = Self.runs(points, restarts: restarts)
+        asleep = history.sleeps.compactMap { sleep in
+            let from = max(sleep.span.start, start)
+            let until = min(sleep.span.end, now)
+            return until > from ? DateInterval(start: from, end: until) : nil
+        }
     }
 
     /// One stretch of the line: the same power source, no restart inside.
@@ -36,7 +59,9 @@ struct EnergyHistoryCard: View {
         var points: [PowerHistory.ChargePoint]
     }
 
-    private var points: [PowerHistory.ChargePoint] {
+    private static func points(
+        history: PowerHistory, battery: BatteryReport?, from start: Date, to now: Date, restarts: [Date]
+    ) -> [PowerHistory.ChargePoint] {
         var points = history.charge.filter { $0.time >= start && $0.time <= now }
         // Carried in from before the window, unless a restart lies between.
         let firstInside = points.first?.time ?? now
@@ -53,13 +78,9 @@ struct EnergyHistoryCard: View {
         return points
     }
 
-    private var restarts: [Date] {
-        history.restarts.filter { $0 > start && $0 <= now }
-    }
-
     /// Splits the line where the power source changes, joining the two
     /// pieces at the change, and leaves a gap at every restart.
-    private var runs: [Run] {
+    private static func runs(_ points: [PowerHistory.ChargePoint], restarts: [Date]) -> [Run] {
         var runs: [Run] = []
         var previous: PowerHistory.ChargePoint?
         for point in points {
@@ -77,14 +98,6 @@ struct EnergyHistoryCard: View {
             previous = point
         }
         return runs
-    }
-
-    private var asleep: [DateInterval] {
-        history.sleeps.compactMap { sleep in
-            let from = max(sleep.span.start, start)
-            let until = min(sleep.span.end, now)
-            return until > from ? DateInterval(start: from, end: until) : nil
-        }
     }
 
     var body: some View {
@@ -214,15 +227,14 @@ struct EnergyHistoryCard: View {
         return formatter
     }()
 
-    /// The most recent sleep of half an hour or more in the last day, by
-    /// when it was, so it is never read as the night just gone.
-    /// What the last long sleep in this time cost the battery. A sleep on
-    /// the adapter cost nothing measurable, and the shaded band already
-    /// shows it, so it is not described.
+    /// What the most recent long sleep in the last day cost the battery,
+    /// said by when it was, so it is never read as the night just gone. A
+    /// sleep on the adapter cost nothing measurable, and the shaded band
+    /// already shows it, so it is not described.
     private var summary: String? {
         guard let sleep = history.lastSleep, sleep.span.end > start, let used = sleep.chargeUsed else { return nil }
-        let start = Self.time.string(from: sleep.span.start), end = Self.time.string(from: sleep.span.end)
-        return "Asleep \(start) to \(end), \(used)% used"
+        let from = Self.time.string(from: sleep.span.start), until = Self.time.string(from: sleep.span.end)
+        return "Asleep \(from) to \(until), \(used)% used"
     }
 
     private var spokenSummary: String {

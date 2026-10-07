@@ -25,8 +25,8 @@ struct HomeEnergyCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     MeterBar(segments: [
                         MeterSegment(label: "Charge", value: Int64(battery.percent), color: Palette.snow),
-                        MeterSegment(label: "Used", value: Int64(100 - battery.percent), color: Palette.well)
-                    ], showsLegend: false)
+                        MeterSegment(label: "Empty", value: Int64(100 - battery.percent), color: Palette.well)
+                    ], showsLegend: false, format: { "\($0) percent" })
                     lines([health(battery.health)])
                     temperature
                 }

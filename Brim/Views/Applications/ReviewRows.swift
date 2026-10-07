@@ -1,8 +1,8 @@
 import BrimCore
 import SwiftUI
 
-/// Consecutive steps in one folder, shown as one row once there are more
-/// than five of them.
+/// Steps that share a folder, shown as one row where the first of them
+/// stood once there are more than five, wherever the rest are in the plan.
 struct ReviewRun: Identifiable {
     let folder: String
     let steps: [Step]
@@ -10,18 +10,26 @@ struct ReviewRun: Identifiable {
         steps[0].index
     }
 
+    /// One pass. It asked every run so far whether its folder was already
+    /// gathered, once per step, inside the review list's body, so a plan of
+    /// a few thousand cache files did millions of string comparisons on
+    /// every redraw.
     static func runs(of steps: [Step]) -> [ReviewRun] {
         let byFolder = Dictionary(grouping: steps) { ($0.target as NSString).deletingLastPathComponent }
-        return steps.reduce(into: [ReviewRun]()) { runs, step in
+        var gathered: Set<String> = []
+        var runs: [ReviewRun] = []
+        for step in steps {
             let folder = (step.target as NSString).deletingLastPathComponent
             let siblings = byFolder[folder] ?? []
             if siblings.count > 5 {
-                guard !runs.contains(where: { $0.folder == folder && $0.steps.count > 1 }) else { return }
-                runs.append(ReviewRun(folder: folder, steps: siblings))
+                if gathered.insert(folder).inserted {
+                    runs.append(ReviewRun(folder: folder, steps: siblings))
+                }
             } else {
                 runs.append(ReviewRun(folder: folder, steps: [step]))
             }
         }
+        return runs
     }
 }
 
