@@ -5,7 +5,7 @@ import SwiftUI
 struct FootprintNavigator: View {
     let sections: [FootprintSection]
     let selected: FootprintLoss
-    let select: (FootprintLoss, Bool) -> Void
+    let select: (FootprintLoss) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -28,7 +28,7 @@ struct FootprintNavigator: View {
     private func segment(_ section: FootprintSection) -> some View {
         let isSelected = selected == section.loss
         return Button {
-            select(section.loss, true)
+            select(section.loss)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: section.loss.symbol)
@@ -69,7 +69,7 @@ struct FootprintNavigator: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("Show found locations in this group")
         .onKeyPress(keys: [.return, .space]) { _ in
-            select(section.loss, false)
+            select(section.loss)
             return .handled
         }
     }
