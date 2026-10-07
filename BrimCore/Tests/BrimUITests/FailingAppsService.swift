@@ -15,10 +15,6 @@ struct FailingAppsService: BrimServiceProtocol {
         throw ListingFailure.unavailable
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw ListingFailure.unavailable
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw ListingFailure.unavailable
     }

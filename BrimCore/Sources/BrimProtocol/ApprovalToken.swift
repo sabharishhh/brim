@@ -70,7 +70,7 @@ public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
 /// The service will not mint a token unless something inside its own
 /// process can put the decision in front of a person. Brim's app installs
 /// one of these at launch, after it has shown the review sheet. Nothing
-/// holding an XPC client ever does, so from outside the app there is no
+/// outside Brim's process can reach the service, so from outside there is no
 /// route from a plan to a token at all: not a check something might pass,
 /// an absence of the machinery.
 public struct ConsentSource: Sendable {
@@ -100,10 +100,9 @@ public struct PresenceCheck: Sendable {
 
 /// The channel a human decision travels back along.
 ///
-/// Kept off `BrimServiceProtocol` on purpose. `BrimXPCClient` does not
-/// conform, and `BrimXPCProtocol` has no matching message, so a caller on
-/// the far side of a process boundary has no method to call rather than a
-/// guard to argue with.
+/// Kept off `BrimServiceProtocol` on purpose, and the service is reachable
+/// only inside Brim's own process, so anything holding the protocol has no
+/// method to call rather than a guard to argue with.
 public protocol ApprovalGranting: Sendable {
     func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken
 }

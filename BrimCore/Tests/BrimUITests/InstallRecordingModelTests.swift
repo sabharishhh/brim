@@ -115,10 +115,6 @@ private actor RecordingStub: BrimServiceProtocol {
         throw Unused.call
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw Unused.call
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw Unused.call
     }

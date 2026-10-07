@@ -2,11 +2,10 @@ import BrimCore
 import Foundation
 
 /// The single API, behind which everything hides.
-/// All parameters and returns are value types, ready to cross a process boundary in M2.
+/// What Brim's views ask of the service, which runs in Brim's own process.
 public protocol BrimServiceProtocol: Sendable {
     func inspect(identity: Identity) async throws -> Footprint
     func plan(intent: PlanIntent) async throws -> Plan
-    func explain(planId: UUID) async throws -> String
     /// Asks for a person's approval. Returns an acknowledgement, never
     /// permission: there is deliberately no method here that produces an
     /// `ApprovalToken`. The answer comes back through `ApprovalGranting`,
@@ -140,7 +139,7 @@ public extension BrimServiceProtocol {
     func reconcileRegistrations() async {}
 
     /// A service that does not track enrolment is already past it, so
-    /// nothing prompts. Keeps stubs and the XPC client conforming.
+    /// nothing prompts. Keeps test stubs conforming.
     func isEnrolled() async -> Bool {
         true
     }

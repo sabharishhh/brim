@@ -140,10 +140,6 @@ private actor StorageReads: BrimServiceProtocol {
         throw StorageReadFailure.unused
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw StorageReadFailure.unused
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw StorageReadFailure.unused
     }

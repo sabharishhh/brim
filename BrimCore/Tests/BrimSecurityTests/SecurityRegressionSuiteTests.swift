@@ -35,11 +35,6 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         }
     }
     
-    // (b) caller impersonation with a mismatched signature
-    // This is already fully covered by XPCAuthenticationTests.testCodeSigningRejectsUnsignedTestRunner
-    // which tests that the NSXPCListenerDelegate rejects connections without the correct code signing identity.
-    
-
     func testSymlinkSwapIntermediateComponent() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -158,7 +153,7 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         }
     }
     
-    // Plus a malformed-message fuzz pass over the XPC interfaces.
+    // Plus a malformed-message fuzz pass over the service's inputs.
     func testMalformedMessageFuzzPass() async throws {
         // Send absolute garbage plan intent data
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

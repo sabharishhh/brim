@@ -117,10 +117,6 @@ private actor RecoveryStatusFixture: BrimServiceProtocol {
         throw CocoaError(.featureUnsupported)
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw CocoaError(.featureUnsupported)
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw CocoaError(.featureUnsupported)
     }

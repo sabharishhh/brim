@@ -120,7 +120,6 @@ private actor LeftoverStub: BrimServiceProtocol {
 
     func inspect(identity: Identity) async throws -> Footprint { throw No.no }
     func plan(intent: PlanIntent) async throws -> Plan { throw No.no }
-    func explain(planId: UUID) async throws -> String { throw No.no }
     func requestApproval(planId: UUID, requesterIdentity: String) async throws
         -> ApprovalRequestReceipt { throw No.no }
     func apply(planId: UUID, token: ApprovalToken) async throws { throw No.no }
