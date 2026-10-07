@@ -15,6 +15,8 @@ private let log = BrimLog.make("service")
 public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     public let root: FileSystemRoot
     private let brimAppURL: URL
+    /// Bundle sizes kept between listings, on disk only for the real Mac.
+    private let bundleSizes: BundleSizes
     /// Brim's own bundle, for what a recording should not count.
     var brimBundle: URL {
         brimAppURL
@@ -75,6 +77,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.toolCleanupClient = toolCleanupClient
         self.launchdRuntime = launchdRuntime
         self.brimAppURL = brimAppURL
+        bundleSizes = BundleSizes(file: root.rootURL.standardizedFileURL.path == "/" ? BundleSizes.standardFile : nil)
         self.consent = consent
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
@@ -1564,7 +1567,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let applications: [InstalledApplication] = if let applicationInventoryReader {
                 await applicationInventoryReader()
             } else {
-                await ApplicationInventory(root: root).installedApplications()
+                await ApplicationInventory(root: root, sizes: bundleSizes).installedApplications()
             }
             applicationInventoryTask = nil
             return applications

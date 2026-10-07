@@ -12,7 +12,7 @@ import Foundation
 /// So this is a named list rather than a pattern match on the word "cache".
 /// Each entry says what it is, what clearing it costs, and how it comes
 /// back, and anything Brim does not recognise is left alone.
-public struct DeveloperCache: Sendable, Equatable, Identifiable {
+public struct DeveloperCache: Codable, Sendable, Equatable, Identifiable {
     /// T-5.7's three classes, which decide what Brim is allowed to do.
     public enum Cost: String, Sendable, Codable {
         /// Regenerable. Brim removes these itself.

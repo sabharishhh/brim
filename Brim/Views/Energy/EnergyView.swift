@@ -13,9 +13,10 @@ import SwiftUI
 /// sleeping. The line is not who wrote it, it is whether there is a window
 /// to quit.
 ///
-/// Nothing runs between readings. No agent, no timer, no background job: a
-/// reading happens when Take a Reading in the toolbar is pressed and describes the seconds it
-/// covered.
+/// Live while it is on screen: the battery and temperature follow what
+/// macOS reports, and the apps are read every few seconds across the last
+/// fifteen. Nothing is read once the page has gone or while Brim cannot be
+/// seen, and nothing runs after Brim quits.
 struct EnergyView: View {
     @ObservedObject var model: EnergyModel
     @SwiftUI.Environment(\.brimService) private var service
@@ -25,7 +26,11 @@ struct EnergyView: View {
     var body: some View {
         content
             .pageTitle("Energy", centredWidth: Metrics.cardPageWidth)
-            .task { await model.loadIfNeeded(service: service) }
+            .task {
+                async let condition: Void = model.followCondition()
+                await model.follow(service: service)
+                await condition
+            }
     }
 
     @ViewBuilder

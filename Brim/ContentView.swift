@@ -153,6 +153,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
+        .keepsCurrent(models, shell: shell)
         // Asks macOS nothing until a removal needs administrator access;
         // see `HelperRoute`.
         .task(id: needsSetup) {
@@ -163,8 +164,7 @@ struct ContentView: View {
         // Every installed app's icon, saved while the app is here to ask,
         // so its leftovers keep its face after it is removed.
         .onReceive(models.applications.$applications) { session.icons.remember($0) }
-        // Asked from the Dock, a Shortcut or Spotlight, possibly before
-        // this window existed.
+        // Asked from the Dock, a Shortcut or Spotlight, maybe before this window.
         .task(id: requests.pending.count) { answerExternalRequests() }
         .background { DockBadge(leftovers: models.leftovers, isOn: showsDockBadge) }
         .task {
@@ -261,13 +261,13 @@ struct ContentView: View {
                 LensSwitch(lens: $shell.appsLens, updates: models.updates)
             }
         }
-        // Keeps Check Again on the trailing edge on every page, including
-        // those with nothing in the middle of the toolbar.
+        // Keeps the trailing control on the trailing edge on every page,
+        // including those with nothing in the middle of the toolbar.
         ToolbarSpacer(.flexible)
         ToolbarItem(placement: .primaryAction) {
             CheckAgainButton(
-                activity: models.activity, destination: shell.selection, presses: shell.checkRequests,
-                check: { shell.requestCheck() }, stop: models.developer.cancelScan
+                activity: models.activity, destination: shell.selection, lens: shell.appsLens,
+                presses: shell.checkRequests, check: { shell.requestCheck() }, stop: models.developer.cancelScan
             )
         }
     }
