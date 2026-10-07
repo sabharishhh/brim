@@ -18,19 +18,6 @@ extension Registration {
         }
     }
 
-    /// The application this runs, when its program sits inside one.
-    var enclosingApplication: URL? {
-        guard let programPath else { return nil }
-        var url = URL(fileURLWithPath: programPath)
-        while url.path != "/" {
-            if url.pathExtension == "app" {
-                return url
-            }
-            url.deleteLastPathComponent()
-        }
-        return nil
-    }
-
     /// An individual declaration or target, never a shared macOS store.
     var revealableURL: URL? {
         revealCandidatePaths.map { URL(fileURLWithPath: $0) }
@@ -60,12 +47,12 @@ extension BackgroundEntry {
         )
     }
 
-    /// "Background job, login item", capitalised.
     private var loneExtension: Registration? {
         guard group.items.count == 1, let only = group.items.first, only.kind == .appExtension else { return nil }
         return only.label.isEmpty || only.label == group.displayName ? nil : only
     }
 
+    /// "Background job, login item", capitalised.
     var facts: String {
         // A lone extension names itself: WhatsApp has two, and two rows of
         // "WhatsApp, App extension" could not be told apart.
@@ -106,7 +93,7 @@ struct BackgroundRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!canPick)
-                .help(canPick ? (isPicked ? "Remove from Tray" : "Add to Tray") : "Needs Brim's helper")
+                .help(canPick ? (isPicked ? "Remove from Tray" : "Add to Tray") : "Brim cannot remove this")
             }
             BrimIcon(source: icon, size: Metrics.rowIcon(compact: compact), badge: badge)
             VStack(alignment: .leading, spacing: 2) {
