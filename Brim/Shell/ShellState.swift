@@ -40,16 +40,6 @@ final class ShellState: Equatable {
     var pendingRemoval: URL?
     /// An installer to look inside, shown as a sheet over any page.
     var installerToRead: InstallerRequest?
-    /// Whether an install is being recorded, mirrored from the recording
-    /// model for the menu bar, which cannot observe it.
-    var isRecordingInstall = false
-    /// Bumped by the menu's Record an Install and Finish Recording; the
-    /// window starts or finishes the recording.
-    private(set) var recordingRequests = 0
-
-    func toggleRecording() {
-        recordingRequests += 1
-    }
 
     /// Bumped when something was installed through Brim, so Apps lists it
     /// without waiting for the person to check again.
