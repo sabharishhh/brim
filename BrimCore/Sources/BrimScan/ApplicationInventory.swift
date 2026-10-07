@@ -11,9 +11,13 @@ import Security
 public actor ApplicationInventory {
     private let root: FileSystemRoot
     private let resolver: IdentityResolver
+    private let sizes: BundleSizes?
 
-    public init(root: FileSystemRoot) {
+    /// `sizes` remembers each bundle's size between listings; without it
+    /// every bundle is measured every time.
+    public init(root: FileSystemRoot, sizes: BundleSizes? = nil) {
         self.root = root
+        self.sizes = sizes
         resolver = IdentityResolver(root: root)
     }
 
@@ -41,14 +45,16 @@ public actor ApplicationInventory {
         // Cryptex, so a check on the listed path alone would offer Safari
         // for removal and measure it as 0 bytes.
         let resolved = unique.map { $0.url.resolvingSymlinksInPath() }
-        // Measured four at a time. Walking every file of every bundle one
-        // after another was most of the three seconds the Apps list took
-        // to appear at each launch. Each size is still read fresh; nothing
-        // is remembered between launches. Only cancellation stops it, and
+        // Measured four at a time, and only where a bundle changed since it
+        // was last measured (`BundleSizes`). Only cancellation stops it, and
         // a cancelled read has nothing to publish.
-        guard let sizes = try? await BoundedTasks.map(resolved, limit: 4, operation: { Self.size(of: $0) }) else {
+        let known = sizes
+        guard let sizes = try? await BoundedTasks.map(resolved, limit: 4, operation: { bundle in
+            known?.size(of: bundle, measure: Self.size(of:)) ?? Self.size(of: bundle)
+        }) else {
             return []
         }
+        known?.keep(only: Set(resolved.map(\.path)))
 
         for (index, candidate) in unique.enumerated() {
             let (bundleURL, protected, host) = (candidate.url, candidate.protected, candidate.host)
