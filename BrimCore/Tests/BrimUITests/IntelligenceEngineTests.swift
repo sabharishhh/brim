@@ -78,6 +78,41 @@ struct IntelligenceEngineTests {
         #expect(await reader.calls == 0)
     }
 
+    /// The input is fitted by a token count that can be off. A request
+    /// that still does not fit is cut further and asked once more, and
+    /// one that does not fit even then is remembered rather than retried.
+    @Test func `too long is cut and asked once more, then remembered`() async {
+        let fits = StandInReader(tooLong: .untilTighter)
+        guard case .done = await engine(fits).highlights(notes: "Notes", version: "1") else {
+            Issue.record("A tighter second attempt should be made")
+            return
+        }
+        #expect(await fits.calls == 2)
+
+        let never = StandInReader(tooLong: .always)
+        let refused = engine(never)
+        _ = await refused.highlights(notes: "Notes", version: "1")
+        _ = await refused.highlights(notes: "Notes", version: "1")
+        #expect(await never.calls == 2)
+    }
+
+    /// Brim chooses the lines. Words the model offers for any other line
+    /// are dropped: a script could plant a description of a line Brim
+    /// never showed.
+    @MainActor
+    @Test func `words for a line Brim did not ask about are dropped`() async {
+        let script = InstallerPreview.Script(
+            name: "postinstall", package: "demo.pkg", runsAsAdministrator: true,
+            text: "#!/bin/sh\nlaunchctl load /Library/LaunchDaemons/demo.plist\nrm -rf /tmp/demo\n"
+        )
+        let asked = Set(script.findings.map(\.line))
+        let model = ScriptLinesModel()
+        await model.read([script], engine: engine(StandInReader(strayLine: 99)))
+        #expect(!asked.isEmpty)
+        #expect(model.descriptions[script.id].map { Set($0.keys) } == asked)
+        #expect(model.summaries[script.id] == "Sets up a thing")
+    }
+
     /// Short notes and a CVE need no model at all.
     @MainActor
     @Test func `short notes are shown as written without the model`() async {
@@ -96,29 +131,42 @@ struct IntelligenceEngineTests {
 }
 
 private actor StandInReader: LanguageReader {
+    enum TooLong {
+        case never
+        case untilTighter
+        case always
+    }
+
     private(set) var calls = 0
     private let delay: Duration
     private let failure: ModelFailure?
     private var failuresLeft: Int
     private let state: ModelAvailability
+    private let tooLong: TooLong
+    private let strayLine: Int?
 
     init(delay: Duration = .zero, failure: ModelFailure? = nil, failures: Int = .max,
-         availability: ModelAvailability = .ready) {
+         availability: ModelAvailability = .ready, tooLong: TooLong = .never, strayLine: Int? = nil) {
         self.delay = delay
         self.failure = failure
         failuresLeft = failures
         state = availability
+        self.tooLong = tooLong
+        self.strayLine = strayLine
     }
 
     func availability() async -> ModelAvailability {
         state
     }
 
-    func prewarm() async {}
+    func prewarm(for _: ModelQuestion) async {}
 
-    func highlights(notes _: String, version _: String) async throws -> ReleaseHighlights {
+    func highlights(notes _: String, version _: String, tighter: Bool) async throws -> ReleaseHighlights {
         calls += 1
         try await Task.sleep(for: delay)
+        if tooLong == .always || (tooLong == .untilTighter && !tighter) {
+            throw ModelFailure.tooLong
+        }
         if let failure, failuresLeft > 0 {
             failuresLeft -= 1
             throw failure
@@ -126,9 +174,12 @@ private actor StandInReader: LanguageReader {
         return ReleaseHighlights(highlights: ["Adds a thing"], fixesSecurity: false)
     }
 
-    func describe(lines: [Int], of _: String) async throws -> ScriptDescription {
+    func describe(lines: [Int], of _: String, tighter _: Bool) async throws -> ScriptDescription {
         calls += 1
-        return ScriptDescription(summary: "Sets up a thing",
-                                 lines: Dictionary(uniqueKeysWithValues: lines.map { ($0, "Does a thing") }))
+        var described = Dictionary(uniqueKeysWithValues: lines.map { ($0, "Does a thing") })
+        if let strayLine {
+            described[strayLine] = "Removes a temporary file"
+        }
+        return ScriptDescription(summary: "Sets up a thing", lines: described)
     }
 }

@@ -39,7 +39,13 @@ struct UpdatesView: View {
         .toolbar { updateAll }
         .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
             ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
-        .task { await model.load(service: service) }
+        .task {
+            // The check takes seconds; the model loads meanwhile, so long
+            // release notes are read without a second wait.
+            async let warm: Void = intelligence?.prewarm(for: .releaseNotes) ?? ()
+            await model.load(service: service)
+            await warm
+        }
     }
 
     // MARK: - Header
