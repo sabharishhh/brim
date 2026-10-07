@@ -85,6 +85,9 @@ enum Palette {
     static let destructive = Color(light: 0xD55E00, dark: 0xD55E00)
     /// Neutral information. Okabe–Ito sky blue #56B4E9 (6.2:1 on a card).
     static let info = Color(light: 0x56B4E9, dark: 0x56B4E9)
+    /// Low Power Mode. Okabe–Ito yellow #F0E442, the colour macOS gives the
+    /// battery in that mode, and readable on the dark canvas.
+    static let lowPower = Color(light: 0xF0E442, dark: 0xF0E442)
 
     /// Greys for monograms and symbol tiles, in the order `Monogram.hue`
     /// indexes them. They were eight system colours, and a column of
