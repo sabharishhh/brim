@@ -40,7 +40,6 @@ public struct DummyBrimService: BrimServiceProtocol {
 
     public func inspect(identity: Identity) async throws -> Footprint { throw notConnected }
     public func plan(intent: PlanIntent) async throws -> Plan { throw notConnected }
-    public func explain(planId: UUID) async throws -> String { throw notConnected }
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt { throw notConnected }
     public func apply(planId: UUID, token: ApprovalToken) async throws { throw notConnected }
     public func verify(planId: UUID) async throws -> VerificationResult { throw notConnected }
