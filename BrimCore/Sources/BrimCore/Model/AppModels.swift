@@ -83,12 +83,3 @@ public protocol AppArtifact: Sendable {
     var name: String { get }
     var evidence: [Evidence] { get }
 }
-
-/// The aggregated result of a filesystem scan.
-public struct ScanResult: Sendable {
-    public let apps: [any AppArtifact]
-    
-    public init(apps: [any AppArtifact]) {
-        self.apps = apps
-    }
-}
