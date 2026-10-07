@@ -29,10 +29,6 @@ private actor LeftoversStub: BrimServiceProtocol {
         throw Nope.no
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw Nope.no
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw Nope.no
     }
