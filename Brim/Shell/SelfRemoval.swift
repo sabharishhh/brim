@@ -21,6 +21,7 @@ enum SelfRemoval {
 
     /// Returns why Brim could not remove itself, or quits.
     static func perform(helper: PrivilegedHelperClient) async -> String? {
+        let process = Process()
         if let problem = await helper.uninstall(resettingPrivacy: FullDiskAccessProbe.isGranted()) {
             log.error("could not clear what root owns: \(problem)")
             return "Brim's folder in /Library could not be cleared. Nothing was removed.\n\n"
@@ -45,7 +46,6 @@ enum SelfRemoval {
         let file = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("brim-removal-\(UUID().uuidString).sh")
         do {
             try script.write(to: file, atomically: true, encoding: .utf8)
-            let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = [file.path]
             // Held until Brim's process ends; the script starts when it closes.
@@ -58,8 +58,14 @@ enum SelfRemoval {
             try? FileManager.default.removeItem(at: file)
             return "Brim could not start removing itself. \(error.localizedDescription)"
         }
-        NSApplication.shared.terminate(nil)
-        return nil
+        await QuitRequest.shared.quit()
+        // Still running: a window would not close. The script waits for
+        // Brim to quit, so left alone it would delete Brim at some later,
+        // unrelated quit. It is stopped instead, and the person told.
+        process.terminate()
+        try? FileManager.default.removeItem(at: file)
+        return "Brim could not quit while a window was open, so it is still installed. "
+            + "Close the window and try again."
     }
 
     private static var lifeline: Pipe?

@@ -5,14 +5,14 @@ import BrimCore
 /// Whether Brim can read the parts of the disk it needs.
 ///
 /// macOS gives no API to ask "do I have Full Disk Access", and none to grant
-/// it — only the user can, in System Settings. So this probes by attempting
+/// it: only the person can, in System Settings. So this probes by attempting
 /// the thing that actually fails without it, and offers to open the right
 /// settings pane.
 public enum FullDiskAccess {
 
     /// Probes by opening the user's Trash for event monitoring, which is the
     /// operation Brim genuinely needs and which returns EPERM without access.
-    /// A read-only open, immediately closed — nothing is modified.
+    /// A read-only open, immediately closed. Nothing is modified.
     ///
     /// The probe itself lives in BrimCore, because scanning needs the same
     /// answer as the UI: a leftover Brim can see but cannot remove has to
@@ -73,7 +73,7 @@ public enum FullDiskAccess {
 }
 
 /// Publishes Full Disk Access state for the UI, re-probing whenever the app
-/// comes back to the foreground — which is when the user returns from having
+/// comes back to the foreground, which is when the person returns from having
 /// changed it in System Settings.
 @MainActor
 public final class FullDiskAccessModel: ObservableObject {

@@ -69,7 +69,7 @@ public struct BTMParser: Sendable {
             } else if trimmed.starts(with: "URL:") {
                 let path = trimmed.replacingOccurrences(of: "URL:", with: "").trimmingCharacters(in: .whitespaces)
                 // sfltool prints the literal "(null)" when an item has no
-                // URL at all — a background-tasks record, for instance.
+                // URL at all, a background-tasks record, for instance.
                 // Treating that as a path invents a file that never existed
                 // and reports a healthy item as stale.
                 if !path.isEmpty && path != "(null)" {

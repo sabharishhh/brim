@@ -29,7 +29,7 @@ extension DeveloperCache {
         // identical rows; what restoring costs is in the details.
         if cost == .restored, isProject {
             let project = url.deletingLastPathComponent().path
-            return "In " + (project as NSString).abbreviatingWithTildeInPath
+            return "In " + PathText.abbreviated(project)
         }
         if cost == .refetched, manualCleanupReason != nil {
             return "Review with \(tool)"
@@ -298,7 +298,7 @@ struct DeveloperInspector: View {
     private var location: some View {
         HStack(alignment: .top, spacing: 10) {
             BrimIcon(source: .finder(cache.url), size: 20)
-            Text(Self.abbreviated(cache.url.path))
+            Text(PathText.abbreviated(cache.url.path))
                 .font(.caption)
                 .foregroundStyle(Palette.inkTertiary)
                 .lineLimit(2)
@@ -311,10 +311,5 @@ struct DeveloperInspector: View {
         .contentShape(.rect)
         .onTapGesture(count: 2) { shell.showInFinder(cache.url) }
         .accessibilityElement(children: .combine)
-    }
-
-    static func abbreviated(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }

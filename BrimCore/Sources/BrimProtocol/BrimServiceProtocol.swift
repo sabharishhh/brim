@@ -32,8 +32,8 @@ public protocol BrimServiceProtocol: Sendable {
     func leftovers() async throws -> [Leftover]
     /// Past removals whose contents are still in the Trash, so still restorable.
     func recoverableItems() async throws -> [RecoverableItem]
-    /// Clears registrations that became stale since the last look — chiefly
-    /// when the user empties the Trash. Cheap, idempotent, and safe to call
+    /// Clears registrations that became stale since the last look, chiefly
+    /// when the person empties the Trash. Cheap, idempotent, and safe to call
     /// on every Trash change.
     func reconcileRegistrations() async
     /// Whether the owner has completed first-run setup.
@@ -66,11 +66,12 @@ public protocol BrimServiceProtocol: Sendable {
     func planToolCleanup(id: String, cachePath: URL) async throws -> Plan
     func planHomebrewDownloads(cachePath: URL, excluding folders: [URL]) async throws -> Plan
     /// Hands the service a way to remove something in a folder that
-    /// belongs to root, once Brim's privileged daemon is set up.
+    /// belongs to root, through administrator cleanup.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
     /// Hands the service a way to forget an installer receipt. Receipts
-    /// live in a folder that belongs to root, so without the daemon the
-    /// step records that the record remains rather than half succeeding.
+    /// live in a folder that belongs to root, so without administrator
+    /// cleanup the step records that the record remains rather than half
+    /// succeeding.
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
     /// Starts protected work after approval and stops it on every exit path.
     func usePrivilegedBatch(begin: (@Sendable () async -> String?)?,
@@ -135,8 +136,7 @@ public extension BrimServiceProtocol {
     }
 
     /// Nothing to reconcile by default, so a service that does not track
-    /// registrations — a test stub, or the XPC client until the daemon
-    /// carries this — is not forced to implement it.
+    /// registrations, such as a test stub, is not forced to implement it.
     func reconcileRegistrations() async {}
 
     /// A service that does not track enrolment is already past it, so

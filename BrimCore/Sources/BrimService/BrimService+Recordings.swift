@@ -20,7 +20,7 @@ public extension BrimService {
     }
 
     /// Takes the second snapshot and attributes what is new. Nothing is
-    /// kept until the person says so, and the recording stays open until
+    /// kept until `keepInstallRecording`, and the recording stays open until
     /// then, so quitting here loses nothing.
     func finishInstallRecording() async throws -> InstallRecordingResult {
         guard let before = await recordingStore.active() else { throw RecordingError.notRecording }

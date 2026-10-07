@@ -16,7 +16,8 @@ private struct PointerLight: ViewModifier {
     /// A third of a full light, everywhere: brighter read as the page
     /// lighting up rather than the card answering.
     private let strength = 0.3
-    @State private var location: UnitPoint?
+    /// Where the pointer is, in this view's points.
+    @State private var location: CGPoint?
     @State private var isLit = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @SwiftUI.Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -58,19 +59,18 @@ private struct PointerLight: ViewModifier {
         case let .active(point):
             // Sizes are read from the light's own geometry, so the point is
             // kept in points here and normalised there.
-            let next = UnitPoint(x: point.x, y: point.y)
             if location == nil || !isLit {
-                location = next
+                location = point
                 withAnimation(Motion.acknowledge) { isLit = true }
             } else {
-                withAnimation(Motion.pointerLight) { location = next }
+                withAnimation(Motion.pointerLight) { location = point }
             }
         case .ended:
             withAnimation(Motion.lightExit) { isLit = false }
         }
     }
 
-    private func light(at point: UnitPoint) -> some View {
+    private func light(at point: CGPoint) -> some View {
         GeometryReader { proxy in
             let size = proxy.size
             let center = UnitPoint(

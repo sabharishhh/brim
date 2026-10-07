@@ -6,7 +6,7 @@ import Security
 /// Lists the applications installed on a machine.
 ///
 /// Resolves each bundle through `IdentityResolver`, so the identity the list
-/// shows is the same one an uninstall will plan against — the name in the UI
+/// shows is the same one an uninstall will plan against: the name in the UI
 /// and the subject of the plan can never drift apart.
 public actor ApplicationInventory {
     private let root: FileSystemRoot

@@ -21,7 +21,7 @@ public enum Ownership: Equatable, Sendable {
     /// another installed copy now claims this data.
     case unknown(evidence: String)
 
-    /// Nothing anywhere claims it. *Unclaimed* — shown, never pre-selected,
+    /// Nothing anywhere claims it. *Unclaimed*: shown, never pre-selected,
     /// because an absence of evidence is not evidence of absence.
     case unattributable
 
@@ -40,7 +40,7 @@ public enum Ownership: Equatable, Sendable {
 /// Every source is injected rather than read here, so the ordering below can
 /// be tested without a machine that happens to have the right software on it.
 public struct OwnershipSearch: Sendable {
-    /// Bundle identifiers of applications found on disk — across all mounted
+    /// Bundle identifiers of applications found on disk, across all mounted
     /// volumes and every readable user account, not just `/Applications`.
     public let installedBundleIDs: Set<String>
     /// Lowercased names of those same applications, for the many directories
@@ -53,8 +53,8 @@ public struct OwnershipSearch: Sendable {
     public let receiptBundleIDs: Set<String>
     /// Identifiers Brim itself has removed, from its own ledger.
     public let previouslyRemovedBundleIDs: Set<String>
-    /// Identifiers named by a registration — a launchd job, a background
-    /// item, an installer receipt — whose program is no longer on disk,
+    /// Identifiers named by a registration (a launchd job, a background
+    /// item, an installer receipt) whose program is no longer on disk,
     /// mapped to the sentence describing that registration. The strongest
     /// everyday orphan evidence there is: macOS is still holding a record
     /// of software that has gone, which is precisely what a user notices as
@@ -89,7 +89,7 @@ public struct OwnershipSearch: Sendable {
     ///
     /// The order is deliberate. Presence beats every other signal, and it is
     /// checked against real applications on real volumes before Launch
-    /// Services is asked — because an app on an unmounted or unusual volume
+    /// Services is asked, because an app on an unmounted or unusual volume
     /// must never be reported as orphaned on the strength of a database.
     public func ownership(of identifier: String) -> Ownership {
         let installed = installedBundleIDs.contains(identifier) || installedNames.contains(identifier.lowercased())

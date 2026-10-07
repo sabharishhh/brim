@@ -12,16 +12,16 @@ struct StatusDot: View {
         case .checking:
             ProgressView().controlSize(.mini)
         case .clear:
-            dot(AnyShapeStyle(Palette.success))
+            dot(Palette.success)
         case .attention, .partial:
-            dot(AnyShapeStyle(Palette.caution))
+            dot(Palette.caution)
         case .neutral:
-            dot(AnyShapeStyle(Palette.inkTertiary))
+            dot(Palette.inkTertiary)
         }
     }
 
-    private func dot(_ style: AnyShapeStyle) -> some View {
-        Circle().fill(style).frame(width: 7, height: 7)
+    private func dot(_ color: Color) -> some View {
+        Circle().fill(color).frame(width: 7, height: 7)
     }
 }
 
@@ -40,6 +40,9 @@ struct MeterSegment: Identifiable {
 struct MeterBar: View {
     let segments: [MeterSegment]
     var showsLegend = true
+    /// How a segment's value is said. Sizes unless told otherwise: the
+    /// battery's bar was read out as "Charge 80 bytes".
+    var format: (Int64) -> String = ByteText.short
 
     private var total: Int64 {
         max(1, segments.reduce(0) { $0 + max(0, $1.value) })
@@ -67,7 +70,7 @@ struct MeterBar: View {
                         HStack(spacing: 5) {
                             Circle().fill(segment.color).frame(width: 7, height: 7)
                             Text(segment.label).foregroundStyle(Palette.inkSecondary)
-                            Text(ByteText.short(segment.value)).foregroundStyle(Palette.ink)
+                            Text(format(segment.value)).foregroundStyle(Palette.ink)
                         }
                     }
                 }
@@ -76,7 +79,7 @@ struct MeterBar: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(segments.map { "\($0.label) \(ByteText.short($0.value))" }.joined(separator: ", "))
+        .accessibilityLabel(segments.map { "\($0.label) \(format($0.value))" }.joined(separator: ", "))
         .accessibilityAddTraits(.isStaticText)
     }
 }

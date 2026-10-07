@@ -139,7 +139,7 @@ final class AppleOwnedFilterTests: XCTestCase {
 /// of the same bug the inventory fix addressed: a place nothing looked.
 /// Real Warp remains had been sitting in Group Containers the whole time,
 /// named `2BBY89MBSN.dev.warp`, one anonymous row among a hundred and
-/// sixty-nine "Unclaimed" — found, and buried, which is not found. These
+/// sixty-nine "Unclaimed", found, and buried, which is not found. These
 /// hold the three classes that turned up auditing what else was missing.
 final class LeftoversScannerGapAuditTests: XCTestCase {
     private func makeRoot() throws -> (FileSystemRoot, URL) {

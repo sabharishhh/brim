@@ -58,10 +58,8 @@ struct HomeView: View {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
                 VStack(alignment: .leading, spacing: Self.spacing) {
-                    if case .failed = freshness {
-                        FreshnessLabel(freshness: freshness)
-                    } else if case .partial = freshness {
-                        FreshnessLabel(freshness: freshness)
+                    if let error = leftovers.errorMessage {
+                        FreshnessLabel(freshness: .failed(error))
                     }
                     if !fullDiskAccess.isGranted {
                         accessNote
@@ -100,19 +98,6 @@ struct HomeView: View {
         }
         .task { spaceLooks = SpaceHistory.load() }
         .onAppear { fullDiskAccess.startObserving() }
-    }
-
-    private var freshness: Freshness {
-        if leftovers.isScanning {
-            return .checking
-        }
-        if let checkedAt = leftovers.checkedAt {
-            return .checked(checkedAt)
-        }
-        if let error = leftovers.errorMessage {
-            return .failed(error)
-        }
-        return .notChecked
     }
 
     /// Wider than a reading page: Home is a dashboard of cards.
@@ -185,7 +170,7 @@ struct HomeView: View {
         let unclaimed = leftovers.unclaimedGroupsForReview.count
         let size = HomeRemnantsSize(groups: groups, unclaimed: unclaimed)
         let summary = HomeStatus.leftovers(.init(
-            removedApps: leftovers.orphanedGroups.count, unclaimed: unclaimed,
+            removedApps: groups.count, unclaimed: unclaimed,
             hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
         ))
         let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
@@ -209,8 +194,10 @@ struct HomeView: View {
 
     private var backgroundCard: some View {
         // A first load shows placeholders; a reload keeps the last figures,
-        // greyed, until the new ones arrive.
-        let hasData = !background.isLoading || !background.live.isEmpty || !background.stale.isEmpty
+        // greyed, until the new ones arrive. Not loading is not the same as
+        // loaded: before the first load starts, an empty list said "0 listed"
+        // and "All belong to installed apps" for a moment.
+        let hasData = background.hasLoaded
         let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData,
                                             hasFaults: !background.faults.isEmpty)
         return StatCard(
@@ -223,11 +210,14 @@ struct HomeView: View {
 
     private var developerCard: some View {
         let count = developer.caches.count
-        let firstLoad = developer.isScanning && developer.caches.isEmpty
+        let firstLoad = !developer.hasLoaded && developer.caches.isEmpty
+        // A size that is still measuring, or could only be read in part, is
+        // an estimate short of the truth, and the dot says so.
+        let measured = developer.caches.allSatisfy { $0.sizeMeasurement.map { $0.state == .complete } ?? true }
         return StatCard(
             title: "Developer", symbol: "hammer",
             figure: ByteText.short(developer.totalBytes),
-            status: firstLoad ? .checking : .neutral,
+            status: firstLoad ? .checking : (developer.isScanning || measured ? .neutral : .partial),
             phrase: count == 1 ? "1 build cache" : "\(count) build caches",
             isRefreshing: developer.isScanning && !firstLoad, fillsRow: true
         ) { shell.go(to: .developer) }

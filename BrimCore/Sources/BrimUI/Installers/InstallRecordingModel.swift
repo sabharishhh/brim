@@ -4,11 +4,12 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// An install being recorded, shared by Home, the menu bar and the sheet
-/// that shows what it found.
+/// The recording around an install Brim makes. Nobody starts or finishes
+/// one by hand: installing from the preview starts it, and the installed
+/// app quitting, or Installer quitting, finishes it.
 ///
 /// The first snapshot is kept by the service, so a recording outlives
-/// Brim: reopening finds it still open and says since when.
+/// Brim: the next launch finds it still open and finishes it.
 @MainActor
 public final class InstallRecordingModel: ObservableObject {
     public enum Phase: Equatable {
@@ -16,7 +17,6 @@ public final class InstallRecordingModel: ObservableObject {
         case starting
         case recording(since: Date)
         case finishing(since: Date)
-        case found(InstallRecordingResult)
     }
 
     @Published public private(set) var phase: Phase = .idle
@@ -29,16 +29,16 @@ public final class InstallRecordingModel: ObservableObject {
     // MARK: Installs Brim performs
 
     /// What Brim waits for to finish a recording it started itself.
-    public enum Waiting: Equatable, Sendable {
+    enum Waiting: Equatable, Sendable {
         /// The app it installed: its first run ends when it quits.
-        case app(bundleID: String, name: String, url: URL)
+        case app(bundleID: String)
         /// Apple's Installer, running a package.
-        case installer(name: String)
+        case installer
     }
 
-    @Published public private(set) var waiting: Waiting?
-    /// A recording kept without asking, because everything it found was
-    /// linked to the install. Shown once, as a note.
+    private var waiting: Waiting?
+    /// A recording just kept. The window reads Apps again on it, since a
+    /// package's app arrived through Installer rather than through Brim.
     @Published public var keptQuietly: InstallRecording?
     /// Something to say once, such as an install that put nothing down.
     @Published public var notice: String?
@@ -85,17 +85,6 @@ public final class InstallRecordingModel: ObservableObject {
         }
     }
 
-    public func finish() async {
-        guard let service, let since else { return }
-        phase = .finishing(since: since)
-        do {
-            phase = try await .found(service.finishInstallRecording())
-        } catch {
-            phase = .recording(since: since)
-            problem = error.localizedDescription
-        }
-    }
-
     /// Ends the recording without keeping anything.
     public func cancel() async {
         await service?.cancelInstallRecording()
@@ -104,20 +93,7 @@ public final class InstallRecordingModel: ObservableObject {
         pendingPackage = nil
     }
 
-    /// Goes back to recording, for a result shown too early: the app was
-    /// not opened yet, or its setup had not finished.
-    public func keepRecording() {
-        guard case let .found(result) = phase else { return }
-        phase = .recording(since: result.startedAt)
-    }
-
-    /// Keeps the chosen apps and items. Returns whether it was saved.
-    @discardableResult
-    public func keep(_ result: InstallRecordingResult, apps: Set<String>, items: Set<String>) async -> Bool {
-        await keptRecording(result, apps: apps, items: items) != nil
-    }
-
-    private func keptRecording(
+    private func keep(
         _ result: InstallRecordingResult, apps: Set<String>, items: Set<String>
     ) async -> InstallRecording? {
         guard let service else { return nil }
@@ -182,7 +158,7 @@ public final class InstallRecordingModel: ObservableObject {
                 return .failed("Installer could not open the package.")
             }
             pendingPackage = preview.source
-            wait(for: .installer(name: preview.name))
+            wait(for: .installer)
             return .openedInstaller
         }
         guard let item = Self.installable(preview), let app = item.apps.first else {
@@ -197,7 +173,7 @@ public final class InstallRecordingModel: ObservableObject {
                 progress: progress
             )
             if let identifier = app.identifier {
-                wait(for: .app(bundleID: identifier, name: app.name, url: url))
+                wait(for: .app(bundleID: identifier))
             }
             return .installed(url)
         } catch {
@@ -243,7 +219,7 @@ public final class InstallRecordingModel: ObservableObject {
     private func quit(_ bundleID: String?) {
         guard let waiting, let bundleID else { return }
         let finished = switch waiting {
-        case let .app(identifier, _, _): bundleID.lowercased() == identifier.lowercased()
+        case let .app(identifier): bundleID.lowercased() == identifier.lowercased()
         case .installer: bundleID == "com.apple.installer"
         }
         guard finished else { return }
@@ -259,22 +235,41 @@ public final class InstallRecordingModel: ObservableObject {
         waiting = nil
     }
 
-    /// Keeps what is linked without asking; asks only when something
-    /// appeared that nothing links to the install.
+    /// Takes the second snapshot and keeps what links to the install.
+    ///
+    /// Anything else that appeared meanwhile is left out rather than asked
+    /// about: nobody started this recording, so nobody should be asked to
+    /// judge it. It used to publish what it found first, which showed the
+    /// old review sheet, with its Keep Recording button, for as long as
+    /// saving took, and left it up when saving failed.
     func finishOnItsOwn() async {
-        await finish()
-        guard case let .found(result) = phase else { return }
-        if result.apps.isEmpty {
-            await cancel()
-            notice = "Nothing was installed, so nothing was recorded."
+        guard let service, let since else { return }
+        phase = .finishing(since: since)
+        let result: InstallRecordingResult
+        do {
+            result = try await service.finishInstallRecording()
+        } catch {
+            phase = .recording(since: since)
+            problem = error.localizedDescription
             return
         }
-        // Only what links to the install is kept. Anything else that
-        // appeared meanwhile is left out rather than asked about: nobody
-        // started this recording, so nobody should be asked to judge it.
-        let apps = Set(result.apps.filter { !$0.wasUpdated }.map(\.id))
-        keptQuietly = await keptRecording(result, apps: apps.isEmpty ? Set(result.apps.map(\.id)) : apps,
-                                          items: Set(result.linked.map(\.id)))
+        if result.apps.isEmpty {
+            await cancel()
+            notice = "Nothing was installed, so nothing was recorded"
+            return
+        }
+        // An app that only updated itself while recording is not what was
+        // installed, unless nothing new appeared at all.
+        let fresh = Set(result.apps.filter { !$0.wasUpdated }.map(\.id))
+        let kept = await keep(result, apps: fresh.isEmpty ? Set(result.apps.map(\.id)) : fresh,
+                              items: Set(result.linked.map(\.id)))
+        if let kept {
+            keptQuietly = kept
+        } else {
+            // Saving failed. The recording stays open, as any failure leaves
+            // it, and the next launch finishes it again.
+            phase = .recording(since: since)
+        }
     }
 }
 

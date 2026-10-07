@@ -89,7 +89,7 @@ struct AppInspector: View {
         .scrollContentBackground(.hidden)
     }
 
-    private func open(_ loss: FootprintLoss, animated _: Bool) {
+    private func open(_ loss: FootprintLoss) {
         guard loss != shown?.loss else { return }
         var change = Transaction()
         change.disablesAnimations = true
@@ -198,10 +198,8 @@ struct AppInspector: View {
                 }
                 if !sections.isEmpty {
                     FootprintNavigator(
-                        sections: sections, selected: shown?.loss ?? sections[0].loss
-                    ) { loss, animated in
-                        open(loss, animated: animated)
-                    }
+                        sections: sections, selected: shown?.loss ?? sections[0].loss, select: open
+                    )
                 }
                 // Coverage is its own fact, beside the groups, never folded
                 // into them: an unfinished search does not shrink a group.
@@ -213,6 +211,20 @@ struct AppInspector: View {
                 if footprint.unreadableEntries > 0 {
                     unreadable(footprint.unreadableEntries)
                 }
+            }
+            .padding(.top, 8)
+        } else if let problem = model.inspectionError {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Could not look", systemImage: "exclamationmark.triangle")
+                    .font(.brimRowTitle)
+                    .foregroundStyle(Palette.caution)
+                Text(problem)
+                    .font(.brimFacts)
+                    .foregroundStyle(Palette.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Try Again") { model.select(app) }
+                    .capsuleAction()
+                    .buttonBorderShape(.capsule)
             }
             .padding(.top, 8)
         }
@@ -267,7 +279,7 @@ private struct LocationRow: View {
                             StatusChip(text: "Shared")
                         }
                     }
-                    Text(Self.abbreviated(location.url.deletingLastPathComponent().path))
+                    Text(PathText.abbreviated(location.url.deletingLastPathComponent().path))
                         .font(.caption)
                         .foregroundStyle(Palette.inkTertiary)
                         .truncationMode(.middle)
@@ -356,10 +368,5 @@ private struct LocationRow: View {
             return ByteText.short(bytes)
         }
         return location.isUnmeasured ? "Not measured" : "Sizes differ"
-    }
-
-    static func abbreviated(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }

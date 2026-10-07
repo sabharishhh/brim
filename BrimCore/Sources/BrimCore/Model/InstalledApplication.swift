@@ -3,8 +3,8 @@ import Foundation
 /// An application present on this machine, as the Applications view lists it.
 ///
 /// Deliberately thin: the bundle's own identity and location, plus the size of
-/// the bundle itself. The *footprint* — everything the app has scattered
-/// elsewhere — is not computed here. Discovering that is expensive and is what
+/// the bundle itself. The *footprint*, everything the app has scattered
+/// elsewhere, is not computed here. Discovering that is expensive and is what
 /// `inspect(identity:)` is for, so the list stays fast and the depth is paid
 /// for only when the user asks about one app.
 public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {

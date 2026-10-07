@@ -17,8 +17,6 @@ enum Motion {
     static let toastArrive = Animation.easeOut(duration: 0.18)
     static let trayArrive = Animation.spring(duration: 0.22, bounce: 0)
     static let leave = Animation.easeOut(duration: 0.12)
-    /// The tray, a drop, the proof. One of these per flow.
-    static let emphasis = Animation.spring(response: 0.45, dampingFraction: 0.82)
     /// Numbers and bars.
     static let data = Animation.smooth(duration: 0.5)
     /// The inspector's content when the selection changes. Short, and a

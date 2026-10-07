@@ -66,8 +66,6 @@ struct DeveloperView: View {
         model.caches.first { $0.id == inspectedID }
     }
 
-    // MARK: - Header
-
     // MARK: - List
 
     private var scanScope: some View {
@@ -90,13 +88,16 @@ struct DeveloperView: View {
                 }
             }
             if model.scanWasCancelled {
-                Text("Scan stopped. Some sizes may still be unavailable.")
+                Text("Scan stopped, so some sizes are missing")
             }
             if !model.excludedFolders.isEmpty {
-                Text("\(model.excludedFolders.count) folders kept out of cleanup.")
+                let count = model.excludedFolders.count
+                Text(count == 1 ? "1 folder kept out of cleanup" : "\(count) folders kept out of cleanup")
             }
             if model.selectedOutsideFilter > 0 {
-                Text("\(model.selectedOutsideFilter) selected items are outside this filter.")
+                let count = model.selectedOutsideFilter
+                Text(count == 1 ? "1 selected item is outside this filter"
+                    : "\(count) selected items are outside this filter")
             }
         }
         .font(.brimFacts)
@@ -156,11 +157,7 @@ struct DeveloperView: View {
         let pickable = section.items.filter(\.cost.isBrimRemovable)
         if !pickable.isEmpty {
             let allPicked = pickable.allSatisfy(model.isSelected)
-            Button(allPicked ? "Deselect All" : "Select All") {
-                for cache in pickable where model.isSelected(cache) == allPicked {
-                    model.toggle(cache)
-                }
-            }
+            Button(allPicked ? "Deselect All" : "Select All") { model.setSelected(!allPicked, pickable) }
         }
     }
 

@@ -18,7 +18,7 @@ import Foundation
 ///   terminal without access is still a process without access.
 public enum FullDiskAccessProbe {
 
-    /// Probes by opening the user's Trash for event monitoring — an
+    /// Probes by opening the user's Trash for event monitoring, an
     /// operation Brim genuinely needs, which returns EPERM without access.
     /// Read-only and immediately closed; nothing is modified.
     public static func isGranted(

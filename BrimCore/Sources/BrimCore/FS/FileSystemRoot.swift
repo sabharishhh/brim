@@ -33,7 +33,7 @@ public struct FileSystemRoot: Sendable {
         case systemLaunchDaemons
         case systemLaunchAgents
         case applications
-        /// `~/Applications` — apps installed for this user alone.
+        /// `~/Applications`: apps installed for this user alone.
         case userApplications
         case receipts
         case tempDirs

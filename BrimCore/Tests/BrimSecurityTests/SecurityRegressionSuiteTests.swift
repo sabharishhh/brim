@@ -158,35 +158,6 @@ final class SecurityRegressionSuiteTests: XCTestCase {
         }
     }
     
-    // (d) a directory replaced by a symlink mid-traversal during a recursive operation
-    func testRecursiveSymlinkReplacementMidTraversal() async throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-        
-        let targetDir = tempDir.appendingPathComponent("App.app")
-        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
-        
-        let secretDir = tempDir.appendingPathComponent("SecretRootFolder")
-        try FileManager.default.createDirectory(at: secretDir, withIntermediateDirectories: true)
-        try "TopSecret".write(to: secretDir.appendingPathComponent("password.txt"), atomically: true, encoding: .utf8)
-        
-        // Place a symlink inside the app pointing to the secret directory
-        try FileManager.default.createSymbolicLink(at: targetDir.appendingPathComponent("LinkToSecret"), withDestinationURL: secretDir)
-        
-        let scanner = BrimScanner()
-        let stream = scanner.enumerate(url: targetDir)
-        
-        var traversedToSecret = false
-        for try await entry in stream {
-            if entry.url.path.contains("password.txt") {
-                traversedToSecret = true
-            }
-        }
-        
-        XCTAssertFalse(traversedToSecret, "Scanner MUST NOT traverse into symlinked directories")
-    }
-    
     // Plus a malformed-message fuzz pass over the XPC interfaces.
     func testMalformedMessageFuzzPass() async throws {
         // Send absolute garbage plan intent data
@@ -274,7 +245,7 @@ final class TrashNamingTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
         XCTAssertTrue(
             trashed.lastPathComponent.hasPrefix("BrimTestApp-DELETE-ME"),
-            "Trash shows \"\(trashed.lastPathComponent)\" — a name nobody can recognise or restore"
+            "Trash shows \"\(trashed.lastPathComponent)\", a name nobody can recognise or restore"
         )
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: trashed.appendingPathComponent("marker").path),

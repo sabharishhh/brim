@@ -134,9 +134,10 @@ struct JournalView: View {
         return actions
     }
 
-    /// Names one removal, counts several, and says how much goes.
+    /// Names one removal, counts several, and says how much goes: what each
+    /// still has in the Trash, not what its plan estimated for everything.
     private var trashTitle: String {
-        let bytes = trashRequest.reduce(Int64(0)) { $0 + $1.bytes }
+        let bytes = trashRequest.reduce(Int64(0)) { $0 + ($1.recoverable?.bytes ?? 0) }
         let what = trashRequest.count == 1 ? "\(trashRequest[0].name)'s items"
             : "items from \(trashRequest.count) removals"
         return bytes > 0 ? "Delete \(what), \(ByteText.short(bytes)), from the Trash?"
@@ -180,6 +181,8 @@ struct JournalView: View {
             // The rows are built a moment after the page opens. Until then
             // there is something to show, so "Nothing yet" would be untrue.
             Color.clear
+        } else if groups.isEmpty, let problem = model.loadError {
+            EmptyState.couldNotRead(problem) { Task { await model.reload() } }
         } else if groups.isEmpty {
             EmptyState(symbol: "book.closed", title: "Nothing yet", message: "Removals and installs appear here.")
         } else {

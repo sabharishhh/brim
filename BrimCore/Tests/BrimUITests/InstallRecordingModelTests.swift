@@ -7,8 +7,8 @@ import Testing
 // swiftformat:disable wrapMultilineStatementBraces
 
 /// When Brim installs something itself, it also finishes the recording
-/// itself: what is linked to the install is kept without asking, and the
-/// person is asked only about what nothing links to it.
+/// itself: what is linked to the install is kept without asking, and what
+/// nothing links to it is left out.
 @MainActor
 struct InstallRecordingModelTests {
     private let app = RecordedApp(name: "Demo", bundleID: "com.vendorco.demo", path: "/Applications/Demo.app",

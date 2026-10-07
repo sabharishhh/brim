@@ -36,8 +36,8 @@ public enum PrivilegedReceiptRemoval {
         public var explanation: String {
             switch self {
             case let .notAPackageIdentifier(id):
-                "\"\(id)\" is not shaped like a package identifier, so Brim's helper "
-                    + "will not pass it on."
+                "\"\(id)\" is not shaped like a package identifier, so administrator "
+                    + "cleanup will not pass it on."
             case let .belongsToApple(id):
                 "\(id) belongs to macOS. Forgetting an Apple receipt can confuse a "
                     + "later system update, and it cannot be put back."

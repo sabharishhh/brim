@@ -2,7 +2,7 @@ import XCTest
 @testable import BrimService
 
 /// Presence has to survive a relaunch, or the first destructive action of
-/// every session costs a fingerprint — which during a build-and-test loop is
+/// every session costs a fingerprint, which during a build-and-test loop is
 /// most of them, and is what made this tiring enough to complain about.
 final class PresenceStoreTests: XCTestCase {
 

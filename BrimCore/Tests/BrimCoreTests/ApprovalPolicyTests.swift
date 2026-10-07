@@ -1,7 +1,7 @@
 import XCTest
 @testable import BrimCore
 
-/// When Brim interrupts a human, and — just as importantly — when it does
+/// When Brim interrupts a human, and, just as importantly, when it does
 /// not. Both directions are tested: a policy that never prompts is as wrong
 /// as one that always does, and the second failure is the quieter one,
 /// because a user asked constantly learns to approve without reading.

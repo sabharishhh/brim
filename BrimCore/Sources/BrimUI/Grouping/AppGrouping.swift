@@ -27,9 +27,7 @@ public enum AppGrouping: String, CaseIterable, Sendable {
 
 /// Groups installed applications.
 public struct AppGrouper {
-    public static let recentDays = 14
     public static let unusedDays = 90
-    public static let everydayDays = 7
     public static let largeBytes: Int64 = 1_000_000_000
 
     public let now: Date
@@ -77,19 +75,6 @@ public struct AppGrouper {
         return false
     }
 
-    public func isRecentlyInstalled(_ app: InstalledApplication) -> Bool {
-        app.installedAt.map { $0 >= daysAgo(Self.recentDays) } ?? false
-    }
-
-    func isEveryday(_ app: InstalledApplication) -> Bool {
-        guard !app.isMigratedAndUnopened, let lastOpened = app.lastOpened else { return false }
-        return lastOpened >= daysAgo(Self.everydayDays)
-    }
-
-    static func isApple(_ app: InstalledApplication) -> Bool {
-        app.source == .apple || app.isSystemProtected
-    }
-
     static func byName(_ lhs: InstalledApplication, _ rhs: InstalledApplication) -> Bool {
         lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
     }
@@ -130,16 +115,6 @@ public struct AppGrouper {
         case (nil, .some): false
         case (nil, nil): byName(lhs, rhs)
         }
-    }
-
-    /// The signing team when there is one, since two apps from one team
-    /// are one developer whatever their names say.
-    static func suiteKey(_ app: InstalledApplication) -> String? {
-        app.identity.teamID ?? app.developer
-    }
-
-    static func suiteTitle(_ app: InstalledApplication) -> String {
-        app.developer ?? app.identity.teamID ?? "Unknown developer"
     }
 
     // MARK: - Alternates

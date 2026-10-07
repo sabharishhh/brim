@@ -49,9 +49,7 @@ private let log = BrimLog.make("app")
     /// keeps the person's colour.
     private static func useGraphiteAccent() {
         let defaults = UserDefaults.standard
-        if defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleAccentColor"] as? Int != -1 {
-            defaults.set(-1, forKey: "AppleAccentColor")
-        }
+        defaults.set(-1, forKey: "AppleAccentColor")
         defaults.set("0.847059 0.847059 0.862745 Graphite", forKey: "AppleHighlightColor")
     }
 
@@ -161,12 +159,8 @@ private let log = BrimLog.make("app")
         // side; below that width the pane now floats over the list
         // (`AdaptivePanes`), and Home's cards wrap two by two.
         //
-        // The 1200x800 default is not currently honoured on this machine:
-        // the window opens at roughly half the display width whatever is
-        // set here. Ruled out so far: a saved window frame, saved split
-        // view frames, saved application state, `windowResizability`, and
-        // the content reporting an infinite width. Left in place because it
-        // is correct, and noted because it is not yet taking effect.
+        // A hosted AppKit table once made the window ignore this and open
+        // at half the display (`CLAUDE.md`, on greedy representables).
         .defaultSize(width: 1200, height: 800)
         .handlesExternalEvents(matching: ["*"])
         .windowResizability(.contentMinSize)

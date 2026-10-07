@@ -6,8 +6,8 @@ import os
 
 /// Backs the Leftovers view.
 ///
-/// The two categories are kept apart at every level — separate sections,
-/// separate selection, separate totals — because they answer different
+/// The two categories are kept apart at every level (separate sections,
+/// separate selection, separate totals) because they answer different
 /// questions and carry different risk. **Orphaned** means a record named an
 /// owner and that owner has gone, which is evidence, so these may be
 /// pre-selected. **Unclaimed** means the search came back empty, which is
@@ -22,42 +22,17 @@ public final class LeftoversModel: ObservableObject {
     /// one has, which is "not checked", never "checked and empty".
     @Published public private(set) var checkedAt: Date?
     @Published public private(set) var errorMessage: String?
-    @Published public var searchText = "" {
-        didSet {
-            if oldValue != searchText {
-                filterGroups()
-            }
-        }
-    }
 
     /// Chosen for removal. Orphans start selected, unclaimed items never do.
     ///
     /// Written only through this model, so there is one place to work the
     /// derived answers out. Every mutation below ends in `settle()`, which
-    /// is also why `selectAll` over two hundred and seventy items costs one
-    /// pass rather than two hundred and seventy.
+    /// is also why selecting every removed app's items costs one pass
+    /// rather than one per item.
     @Published public private(set) var selection: Set<String> = []
-
-    /// Groups the person kept, by `LeftoverGroup.id`. Never ticked: not by
-    /// a fresh scan's pre-selection, not by Select All, not by an undo.
-    /// Enforced in `settle()`, the one place every change ends, so no path
-    /// can forget it.
-    @Published public var keptGroups: Set<String> = [] {
-        didSet {
-            guard keptGroups != oldValue else { return }
-            settle()
-        }
-    }
 
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
-    @Published public private(set) var visibleOrphanedGroups: [LeftoverGroup] = []
-    @Published public private(set) var visibleUnclaimedGroups: [LeftoverGroup] = []
-
-    private func filterGroups() {
-        visibleOrphanedGroups = visible(orphanedGroups)
-        visibleUnclaimedGroups = visible(unclaimedGroups)
-    }
 
     public init() {}
 
@@ -80,25 +55,15 @@ public final class LeftoversModel: ObservableObject {
     ///
     /// Published rather than computed. As computed properties these grouped
     /// two hundred and fifty items from scratch on every read, and they are
-    /// read several times per body evaluation: once for the summary line,
-    /// once per section, and again inside `visible`. Grouping is pure, so the
+    /// read several times per body evaluation: by Home's card, by each
+    /// section and by the command bar. Grouping is pure, so the
     /// answer only changes when the arrays do, which is where it is done now.
     @Published public private(set) var orphanedGroups: [LeftoverGroup] = []
     @Published public private(set) var unclaimedGroups: [LeftoverGroup] = []
 
-    /// Which group's detail is open. The list answers "what is here"; the
-    /// detail answers "what is this and what do I lose".
-    @Published public var inspected: LeftoverGroup?
-
-    public func visible(_ groups: [LeftoverGroup]) -> [LeftoverGroup] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return groups }
-        return groups.filter { group in
-            group.displayName.localizedCaseInsensitiveContains(query)
-                || (group.identifier?.localizedCaseInsensitiveContains(query) ?? false)
-                || group.items.contains { $0.url.path.localizedCaseInsensitiveContains(query) }
-        }
-    }
+    /// A group asked for from outside the page, by the command bar. Remnants
+    /// opens its card and clears this.
+    @Published public var requested: LeftoverGroup?
 
     /// Selection is per group: a user reasons about software, not paths.
     public func isSelected(_ group: LeftoverGroup) -> Bool {
@@ -116,53 +81,27 @@ public final class LeftoversModel: ObservableObject {
         settle()
     }
 
-    public func selectAll(groups: [LeftoverGroup]) {
-        selection.formUnion(groups.flatMap(\.items).filter(\.canBeRemovedByBrim).map(\.id))
+    public func deselectAll(in items: [Leftover]) {
+        selection.subtract(items.map(\.id))
         settle()
     }
 
-    public func deselectAll(groups: [LeftoverGroup]) {
-        selection.subtract(groups.flatMap(\.items).map(\.id))
-        settle()
-    }
-
-    public func visible(_ items: [Leftover]) -> [Leftover] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return items }
-        return items.filter {
-            $0.url.lastPathComponent.localizedCaseInsensitiveContains(query)
-                || $0.url.path.localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    /// What is ticked, and what that comes to.
-    ///
-    /// These were computed properties reading `all`, which is
-    /// `orphaned + unclaimed`: a fresh concatenation of every leftover on
-    /// the Mac, then a filter, every time one of them was read. The footer
-    /// alone reads them nine times in a single pass, twice through
-    /// `canRemoveSelection` and twice more through `blockedSelection`, so
-    /// drawing it cost 2.9ms of rebuilding an answer that had not moved.
-    /// Worked out when the selection or the scan changes, which is the only
-    /// time it can.
+    /// What is ticked. Worked out when the selection or the scan changes,
+    /// which is the only time it can, rather than by filtering every
+    /// leftover on the Mac each time the footer is drawn.
     @Published public private(set) var selectedItems: [Leftover] = []
-    @Published public private(set) var selectedBytes: Int64 = 0
 
-    /// Items that are selected but that Brim cannot remove as it is running.
-    /// Surfaced rather than discovered on failure: a container needs Full
-    /// Disk Access, and without it the removal fails in a way that looks
-    /// like a defect.
-    @Published public private(set) var blockedSelection: [Leftover] = []
-
+    /// Nothing Brim cannot remove is ever ticked: a group's tick and Review
+    /// All take only removable items, so a removal is never refused at the
+    /// end for something that was offered at the start.
     public var canRemoveSelection: Bool {
-        !selectedItems.isEmpty && blockedSelection.isEmpty
+        !selectedItems.isEmpty
     }
 
     /// Unknown owners require an explicit selection. Bulk removal includes
-    /// only known remnants, including items covered by the administrator helper.
+    /// only known remnants, including items covered by administrator cleanup.
     public var removableOrphans: [Leftover] {
-        orphanedGroups.filter { !keptGroups.contains($0.id) }
-            .flatMap(\.items).filter(\.canBeRemovedByBrim)
+        orphanedGroups.flatMap(\.items).filter(\.canBeRemovedByBrim)
     }
 
     public func selectAllRemovableOrphans() {
@@ -196,7 +135,6 @@ public final class LeftoversModel: ObservableObject {
         unclaimed.removeAll { paths.contains($0.url.path) }
         selection.subtract(going.map(\.id))
         regroup()
-        refreshInspected()
     }
 
     /// Puts back anything that has reappeared on disk.
@@ -215,30 +153,6 @@ public final class LeftoversModel: ObservableObject {
         orphaned.append(contentsOf: back.filter { $0.category == .orphaned })
         unclaimed.append(contentsOf: back.filter { $0.category == .unclaimed })
         regroup()
-        refreshInspected()
-    }
-
-    /// Bumps whenever rows are added or taken away.
-    ///
-    /// What the list animates on. `withAnimation` around a mutation does not
-    /// reliably reach SwiftUI when the mutation happens in an async context,
-    /// which is exactly where a removal finishes: the rows changed and the
-    /// transaction did not travel with them, so they blinked out. A value
-    /// the view can watch works wherever the change came from, and an `Int`
-    /// costs nothing to compare against on every pass, which mapping a
-    /// hundred and fifty-seven group identities would not.
-    @Published public private(set) var revision = 0
-
-    /// Re-points the open detail at the rebuilt group, or closes it.
-    ///
-    /// `inspected` holds a value, not a reference, so removing one of an
-    /// application's locations left the pane showing the group as it was:
-    /// the removed path still listed, under a heading claiming it was
-    /// there. Closing the pane outright would be wrong too, because the
-    /// other locations are still the thing the person was reading about.
-    private func refreshInspected() {
-        guard let open = inspected else { return }
-        inspected = (orphanedGroups + unclaimedGroups).first { $0.id == open.id }
     }
 
     /// The one place the two arrays become the two grouped lists.
@@ -249,26 +163,18 @@ public final class LeftoversModel: ObservableObject {
     private func regroup() {
         orphanedGroups = orphaned.groupedByOwner()
         unclaimedGroups = unclaimed.groupedByOwner()
-        filterGroups()
         settle()
-        revision &+= 1
     }
 
     /// The one place the selection's consequences are worked out. Called
     /// after a batch of changes, never inside the loop making them.
     private func settle() {
-        if !keptGroups.isEmpty {
-            let kept = (orphanedGroups + unclaimedGroups).filter { keptGroups.contains($0.id) }
-            selection.subtract(kept.flatMap(\.items).map(\.id))
-        }
         selectedItems = all.filter { selection.contains($0.id) }
-        selectedBytes = selectedItems.reduce(0) { $0 + $1.size }
-        blockedSelection = selectedItems.filter { !$0.canBeRemovedByBrim }
     }
 
     /// Scans only if there is nothing to show. Returning to a section is a
-    /// change of view, not a reason to walk the disk again — rescanning is
-    /// what the Rescan button is for.
+    /// change of view, not a reason to walk the disk again; rescanning is
+    /// what Check Again is for.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         // Coming back to the section is not a reason to walk the disk, but
         // it is a reason to catch up on anything restored from the Trash
@@ -318,14 +224,12 @@ public final class LeftoversModel: ObservableObject {
             // a restore that the scan itself would have found.
             removedButRecoverable = []
             regroup()
-            inspected = nil
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
             hasLoaded = false
             checkedAt = nil
-            inspected = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
             orphaned = []
@@ -337,32 +241,6 @@ public final class LeftoversModel: ObservableObject {
         }
     }
 
-    public func toggle(_ item: Leftover) {
-        if selection.contains(item.id) {
-            selection.remove(item.id)
-        } else {
-            selection.insert(item.id)
-        }
-        settle()
-    }
-
-    public func selectAll(in items: [Leftover]) {
-        selection.formUnion(items.filter(\.canBeRemovedByBrim).map(\.id))
-        settle()
-    }
-
-    public func deselectAll(in items: [Leftover]) {
-        selection.subtract(items.map(\.id))
-        settle()
-    }
-
-    /// The plan intent for the current selection.
-    ///
-    /// Named targets, not an identity: these items have no owner by
-    /// definition, so there is nothing to discover a footprint from. The
-    /// planner treats an intent with explicit targets as tidying rather than
-    /// uninstalling, which is exactly right — it must not clear privacy
-    /// grants or retract registrations for an app that is already gone.
     /// The plan intent for one removed app's traces, named for the app so
     /// the review says whose they are.
     public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
@@ -377,6 +255,13 @@ public final class LeftoversModel: ObservableObject {
         )
     }
 
+    /// The plan intent for the current selection.
+    ///
+    /// Named targets, not an identity: these items have no owner by
+    /// definition, so there is nothing to discover a footprint from. The
+    /// planner treats an intent with explicit targets as tidying rather than
+    /// uninstalling, which is exactly right: it must not clear privacy
+    /// grants or retract registrations for an app that is already gone.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
         guard !isScanning, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)

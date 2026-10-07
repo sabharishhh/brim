@@ -50,9 +50,12 @@ struct EnergyAwakeCard: View {
         max(3600, now.timeIntervalSince(since ?? now.addingTimeInterval(-7 * 24 * 3600)))
     }
 
+    /// The days the log covers, which is what the hours add up over and what
+    /// the bars are measured against. It was capped at seven, so a log
+    /// reaching back ten days was labelled a week.
     private var period: String {
         let days = Int((covered / 86400).rounded(.up))
-        return days <= 1 ? "Last day" : "Last \(min(days, 7)) days"
+        return days <= 1 ? "Last day" : "Last \(days) days"
     }
 
     var body: some View {
@@ -79,7 +82,7 @@ struct EnergyAwakeCard: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        let figure = row.seconds.map(EnergyHistoryCard.duration) ?? "Now"
+        let figure = row.seconds.map { EnergyHistoryCard.duration($0) } ?? "Now"
         return HStack(spacing: 12) {
             BrimIcon(
                 source: row.bundlePath.map { .bundle(URL(fileURLWithPath: $0)) } ?? .monogram(Monogram(name: row.name)),

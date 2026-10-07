@@ -193,7 +193,7 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
         )
 
         // The neighbouring app must not claim it just because its identifier
-        // is a prefix — that is how an uninstall removes a sibling's job.
+        // is a prefix: that is how an uninstall removes a sibling's job.
         let neighbour = Identity(bundleID: "com.example.suite", name: "Suite")
         XCTAssertFalse(job.belongs(to: neighbour, bundleURL: nil))
 

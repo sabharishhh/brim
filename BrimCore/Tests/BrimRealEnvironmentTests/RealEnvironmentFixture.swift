@@ -7,8 +7,8 @@ import BrimOps
 ///
 /// Synthetic fixtures (T-0.3) remain where correctness is proven: they are
 /// deterministic and independent of whoever's Mac is running them. This
-/// fixture exists for the class of defect those cannot reach — TCC refusals,
-/// real Trash semantics, live scanning of protected domains — each of which
+/// fixture exists for the class of defect those cannot reach (TCC refusals,
+/// real Trash semantics, live scanning of protected domains), each of which
 /// has already shipped a bug that every synthetic test passed.
 ///
 /// Because it writes to real locations, every path is namespaced and every
@@ -54,11 +54,11 @@ struct RealEnvironmentFixture {
 
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
-    /// `~/Library/Caches` — low cost of error, so the planner disposes of it
+    /// `~/Library/Caches`, low cost of error, so the planner disposes of it
     /// permanently.
     var cachesDomain: URL { home.appendingPathComponent("Library/Caches") }
 
-    /// `~/Library/Application Support` — medium cost, so it is trashed and
+    /// `~/Library/Application Support`, medium cost, so it is trashed and
     /// stays recoverable.
     var applicationSupportDomain: URL { home.appendingPathComponent("Library/Application Support") }
 
@@ -97,7 +97,7 @@ struct RealEnvironmentFixture {
     ///
     /// Creating `~/Library/Containers/<id>` makes `containermanagerd` adopt
     /// the directory and write `.com.apple.containermanagerd.metadata.plist`
-    /// inside it. That file cannot be removed afterwards — not by this
+    /// inside it. That file cannot be removed afterwards: not by this
     /// process, not with Full Disk Access, and not as root. It is a data
     /// vault, and SIP does not yield to any of them; only the owning daemon
     /// or a process holding the right entitlement can unlink it, which is
@@ -114,7 +114,7 @@ struct RealEnvironmentFixture {
     /// own their filesystem root and can delete anything in it.
 
     /// Lays down the footprint a real application scatters across the user's
-    /// Library — the whole point of a deep uninstall being that every one of
+    /// Library, the whole point of a deep uninstall being that every one of
     /// these is found from the identity alone, with nothing named explicitly.
     ///
     /// - Returns: every path created, labelled by the mechanism that should
@@ -143,7 +143,7 @@ struct RealEnvironmentFixture {
 
         // Note: the LaunchAgents plist makes macOS post an "App Background
         // Activity" notification while the test runs. It names the item
-        // "(null)" because the plist carries a Label and nothing else — no
+        // "(null)" because the plist carries a Label and nothing else: no
         // executable and no owning bundle for Background Task Management to
         // take a display name from. That is expected, and it is the same
         // literal `(null)` BTMParser has to cope with when reading the real
@@ -228,7 +228,7 @@ struct RealEnvironmentFixture {
     func cleanUp(file: StaticString = #filePath, line: UInt = #line) {
         // Anything Brim trashed rather than deleted is still on the machine,
         // in the user's Trash, and stays there until they empty it. Left
-        // alone these accumulate one per run — and for as long as a `.app`
+        // alone these accumulate one per run, and for as long as a `.app`
         // among them exists, Launch Services keeps re-registering it, so
         // unregistering is futile while the file is there. 58 such records
         // had built up before this was noticed.

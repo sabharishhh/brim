@@ -75,9 +75,13 @@ struct CrashReporterFolders {
         return sentryAddresses(in: text)
     }
 
+    /// Compiled once rather than for every executable read.
+    private static let sentryPattern = try? NSRegularExpression(
+        pattern: #"https://[0-9a-f]{32}(?::[0-9a-f]{32})?@[A-Za-z0-9.\-]+(?::[0-9]+)?/[0-9]+"#
+    )
+
     static func sentryAddresses(in text: String) -> [String] {
-        let pattern = #"https://[0-9a-f]{32}(?::[0-9a-f]{32})?@[A-Za-z0-9.\-]+(?::[0-9]+)?/[0-9]+"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
+        guard let expression = sentryPattern else { return [] }
         let range = NSRange(text.startIndex..., in: text)
         return Array(Set(expression.matches(in: text, range: range).compactMap {
             Range($0.range, in: text).map { String(text[$0]) }

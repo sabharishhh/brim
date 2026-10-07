@@ -64,15 +64,17 @@ public enum HomebrewCatalog {
         )
     }
 
+    /// Compiled once, not for every cask.
+    private static let identifierPattern = try? NSRegularExpression(pattern: #"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){2,}"#)
+
     /// Bundle identifiers a cask names in its uninstall and zap stanzas,
     /// which is how two casks installing an app of the same name are told
     /// apart.
     static func identifiers(in artifacts: [[String: Any]]) -> Set<String> {
         guard let data = try? JSONSerialization.data(withJSONObject: artifacts),
               let text = String(data: data, encoding: .utf8) else { return [] }
-        let pattern = try? NSRegularExpression(pattern: #"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){2,}"#)
         let range = NSRange(text.startIndex..., in: text)
-        return Set((pattern?.matches(in: text, range: range) ?? []).compactMap {
+        return Set((identifierPattern?.matches(in: text, range: range) ?? []).compactMap {
             Range($0.range, in: text).map { String(text[$0]).lowercased() }
         })
     }
@@ -95,6 +97,10 @@ public enum HomebrewCatalog {
 // MARK: - App Store
 
 public enum AppStoreCatalog {
+    /// Built once, not for every listing. Safe to share between threads,
+    /// as Apple documents; Swift cannot see that.
+    private nonisolated(unsafe) static let releaseDates = ISO8601DateFormatter()
+
     public struct Listing: Equatable, Sendable {
         public let bundleID: String
         public let version: String
@@ -131,7 +137,7 @@ public enum AppStoreCatalog {
                 bundleID: bundleID, version: version, trackID: trackID,
                 notes: result["releaseNotes"] as? String,
                 released: (result["currentVersionReleaseDate"] as? String)
-                    .flatMap { ISO8601DateFormatter().date(from: $0) },
+                    .flatMap { releaseDates.date(from: $0) },
                 minimumSystem: result["minimumOsVersion"] as? String,
                 isShared: (result["kind"] as? String) != "mac-software"
             )

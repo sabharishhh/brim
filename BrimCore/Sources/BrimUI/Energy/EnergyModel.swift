@@ -72,11 +72,6 @@ public final class EnergyModel: ObservableObject {
         readings.reduce(0) { $0 + $1.milliwatts(over: window) }
     }
 
-    /// The busiest application, which is the one the panel leads with.
-    public var busiest: Reading? {
-        applications.first
-    }
-
     /// One application's part of what every listed application drew, for
     /// the bar beside it.
     ///
