@@ -12,16 +12,14 @@ import SQLite3
 /// program path outlives the program: the privacy database keeps the row
 /// until someone removes it.
 ///
-/// Only those are reported: a permission that is allowed, to a path that
-/// is no longer on the disk. On 7 October the Microsoft helper's row was
-/// still there but switched off (`auth_value` 0), and Brim listed it as a
-/// grant and sent the person to Settings for a minus button that Settings
-/// does not show: a denied permission for a program that is gone grants
-/// nothing and is not listed. Brim cannot know whether Settings lists an
-/// allowed one either, so the row says what it means and opens the pane. Grants to a bundle
-/// identifier whose app is gone are left out, because Settings does not
-/// list them and nothing can remove them selectively, and offering an
-/// action that does not exist is worse than not mentioning it.
+/// Only those are reported: a permission, on or switched off, for a path
+/// that is no longer on the disk. System Settings lists them in the pane
+/// for their service, and its minus button removes them: on 7 October the
+/// Microsoft helper's switched-off Full Disk Access entry was removed that
+/// way. Brim had told the person only to look in Privacy & Security, which
+/// has a dozen panes, and was then wrongly changed to hide switched-off
+/// entries on the belief that Settings did not show them. Each row now
+/// names its pane and whether it is on, and opens that pane.
 ///
 /// Read only. The privacy database belongs to macOS; Brim never writes to
 /// it (`CLAUDE.md`: no private database edits), so each row is report-only
@@ -51,9 +49,13 @@ public struct PrivacyGrantSurface: RegistrationSurface {
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
         var services: [String: Set<String>] = [:]
+        var allowed: Set<String> = []
         for database in databases(in: root) {
-            for row in Self.rows(in: database) ?? [] where row.isPath && row.isAllowed {
+            for row in Self.rows(in: database) ?? [] where row.isPath {
                 services[row.client, default: []].insert(row.service)
+                if row.isAllowed {
+                    allowed.insert(row.client)
+                }
             }
         }
         return services.keys.sorted().compactMap { path in
@@ -62,8 +64,10 @@ public struct PrivacyGrantSurface: RegistrationSurface {
             // A program that is still there is the person's business, not a
             // leftover.
             guard presence.isAbsent else { return nil }
-            let panes = (services[path] ?? []).compactMap(Self.paneName).sorted()
+            let held = (services[path] ?? []).sorted()
+            let panes = held.compactMap(Self.paneName)
             let listed = panes.isEmpty ? "Privacy & Security" : panes.joined(separator: " and ")
+            let state = allowed.contains(path) ? "switched on" : "switched off"
             let name = URL(fileURLWithPath: path).lastPathComponent
             return Registration(
                 kind: .privacyGrant,
@@ -72,10 +76,12 @@ public struct PrivacyGrantSurface: RegistrationSurface {
                 owningBundleID: PrivilegedHelperToolSurface.probableOwner(label: name),
                 programPath: path,
                 targetExists: false,
-                evidence: "\(listed) still allows this program, but it is no longer on this Mac.",
+                evidence: "\(listed) lists this program, \(state), but it is no longer on this Mac.",
                 isSystemOwned: path.hasPrefix("/System/") || path.hasPrefix("/usr/"),
                 capability: .refusedByOS,
                 targetPresence: presence,
+                // The services, so the inspector can open the right pane.
+                recordIdentity: held.joined(separator: ","),
                 namespace: "privacy"
             )
         }
