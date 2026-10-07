@@ -61,11 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quitFromMenu(_: Any?) {
-        QuitRequest.shared.quit()
+        Task { await QuitRequest.shared.quit() }
     }
 
     @objc private func quitRequested(_: NSAppleEventDescriptor, reply _: NSAppleEventDescriptor) {
-        QuitRequest.shared.quit()
+        Task { await QuitRequest.shared.quit() }
     }
 
     func applicationWillTerminate(_: Notification) {
@@ -112,6 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// Quit, asked of the sheets first. Closing a sheet from AppKit does not
 /// work: SwiftUI puts it straight back, because its own state still says
 /// it is shown. So each sheet closes itself (`closesForQuit`).
+///
+/// Every quit goes through here, Brim's own included: reopening for Full
+/// Disk Access and removing Brim called `terminate` directly, which SwiftUI
+/// ignores while a sheet is open, and setup's Reopen Brim is in a sheet.
 @MainActor
 @Observable
 final class QuitRequest {
@@ -119,17 +123,16 @@ final class QuitRequest {
 
     private(set) var isQuitting = false
 
-    func quit() {
+    /// Returns only if Brim is still running: a sheet would not close, or
+    /// a removal that is running kept its panel.
+    func quit() async {
         isQuitting = true
-        Task {
-            // A sheet takes a moment to animate away.
-            for _ in 0 ..< 20 where NSApp.windows.contains(where: { $0.attachedSheet != nil }) {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            NSApp.terminate(nil)
-            // Still here: a sheet would not close.
-            isQuitting = false
+        // A sheet takes a moment to animate away.
+        for _ in 0 ..< 20 where NSApp.windows.contains(where: { $0.attachedSheet != nil }) {
+            try? await Task.sleep(for: .milliseconds(50))
         }
+        NSApp.terminate(nil)
+        isQuitting = false
     }
 }
 
