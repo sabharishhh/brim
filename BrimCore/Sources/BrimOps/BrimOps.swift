@@ -1,16 +1,6 @@
 import Foundation
 import Darwin
 
-public enum SafeOpsError: Error {
-    case failedToOpenParent(Int32)
-    case fingerprintMismatch
-    case failedToStat(Int32)
-    case failedToRename(Int32)
-    case failedToUnlink(Int32)
-    case crossDeviceLink
-    case pathOccupied
-}
-
 public struct SafeOps {
     
     /// Securely removes or relocates an item by opening its parent directory and using the `*at` family of syscalls.
@@ -98,13 +88,13 @@ public struct SafeOps {
     /// first, so a path swapped between the fingerprint check and the move
     /// cannot redirect this at something else. That rename uses a UUID, and
     /// the item is then given its **original name back** before it reaches
-    /// the Trash — otherwise the user opens the Trash and finds a pile of
+    /// the Trash. Otherwise the user opens the Trash and finds a pile of
     /// opaque identifiers they cannot recognise, which makes "recoverable"
     /// true only on paper.
     ///
     /// Finder's own "Put Back" still will not work: macOS records where an
     /// item came from at the moment it is trashed, and by then it came from
-    /// the isolated directory. Restoring is Brim's job — the journal records
+    /// the isolated directory. Restoring is Brim's job: the journal records
     /// the trashed URL against the planned target, and `undo` uses that.
     public static func trashItem(
         targetPath: String,
@@ -133,7 +123,7 @@ public struct SafeOps {
 
         // 4. Give it its name back before trashing. The item is already
         // unreachable by its original path, so nothing can be substituted
-        // here — and the Trash needs to show "Photoshop.app", not a UUID.
+        // here, and the Trash needs to show "Photoshop.app", not a UUID.
         let originalName = targetURL.lastPathComponent
         var toTrash = isolatedURL
         if Self.isUsableTrashName(originalName) {
@@ -240,7 +230,7 @@ public struct SafeOps {
     /// Securely and permanently removes an item.
     ///
     /// Same discipline as `trashItem`: verify the fingerprint, rename into an
-    /// isolated directory on the same volume, and only then destroy it — so a
+    /// isolated directory on the same volume, and only then destroy it, so a
     /// path swapped between the check and the removal cannot redirect this at
     /// something else. There is no Trash copy afterwards, which is exactly why
     /// the isolation matters more here than it does for trashing.
