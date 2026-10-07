@@ -60,48 +60,10 @@ struct InstallerDetails: View {
 
     private var scripts: some View {
         InstallerSection(title: "Runs while installing", count: preview.scripts.count) {
-            ForEach(preview.scripts) { script in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "terminal")
-                            .foregroundStyle(Palette.snow)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        Text(script.name)
-                            .font(.brimRowTitle)
-                            .foregroundStyle(Palette.ink)
-                        if script.runsAsAdministrator {
-                            Text("As administrator")
-                                .font(.caption)
-                                .foregroundStyle(Palette.inkSecondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Palette.well, in: Capsule())
-                        }
-                    }
-                    if !script.isText || script.findings.isEmpty {
-                        Text(script.isText ? "Calls nothing Brim looks for" : "A program, not readable as text")
-                            .font(.brimFacts)
-                            .foregroundStyle(Palette.inkSecondary)
-                            .padding(.leading, 28)
-                    } else {
-                        ForEach(script.findings.prefix(ScriptLinesModel.shown), id: \.line) { finding in
-                            ScriptFindingRow(
-                                finding: finding,
-                                description: scriptLines.descriptions[script.id]?[finding.line],
-                                isReading: scriptLines.reading.contains(script.id)
-                            )
-                        }
-                        let more = script.findings.count - ScriptLinesModel.shown
-                        if more > 0 {
-                            Text(more == 1 ? "1 more line" : "\(more) more lines")
-                                .font(.brimFacts)
-                                .foregroundStyle(Palette.inkTertiary)
-                                .padding(.leading, 28)
-                        }
-                    }
+            VStack(spacing: 10) {
+                ForEach(preview.scripts) { script in
+                    ScriptCard(script: script, scriptLines: scriptLines)
                 }
-                .padding(.vertical, 6)
             }
         }
     }
@@ -266,68 +228,5 @@ struct InstallerRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel([title, detail, trailing].compactMap(\.self).joined(separator: ", "))
-    }
-}
-
-/// One line of an install script that does something: Brim's words for it,
-/// what the on-device model says it does, and the line as written. The
-/// model's words sit under Brim's and never replace them, because a script
-/// can try to steer what is said about it; the line itself is there to
-/// check either against.
-private struct ScriptFindingRow: View {
-    let finding: InstallScriptReading.Finding
-    let description: String?
-    let isReading: Bool
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(finding.phrase)
-                    .foregroundStyle(Palette.ink)
-                Spacer(minLength: 8)
-                Text("Line \(finding.line)")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkTertiary)
-            }
-            if description != nil || isReading {
-                ZStack(alignment: .leading) {
-                    if let description {
-                        HStack(spacing: 5) {
-                            Image(systemName: "apple.intelligence")
-                                .foregroundStyle(Palette.inkTertiary)
-                            Text(description)
-                                .foregroundStyle(Palette.inkSecondary)
-                        }
-                        .transition(.opacity)
-                    } else {
-                        SkeletonBar(width: 160, height: 7)
-                            .shimmer()
-                            .appearsAfterBriefWait()
-                            .transition(.opacity)
-                    }
-                }
-                .frame(height: 16, alignment: .leading)
-            }
-            Text(finding.code)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(Palette.inkTertiary)
-                .truncationMode(.middle)
-        }
-        .font(.brimFacts)
-        .lineLimit(1)
-        .padding(.leading, 28)
-        .padding(.vertical, 2)
-        .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: description)
-        .help(finding.code)
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(spoken)
-    }
-
-    private var spoken: String {
-        let model = description.map { ". Apple Intelligence says: \($0)" } ?? ""
-        return "\(finding.phrase), line \(finding.line)\(model). \(finding.code)"
     }
 }
