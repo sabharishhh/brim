@@ -37,7 +37,8 @@ struct EnergyStatusCard: View {
                     caption: "Temperature", symbol: condition.thermal.symbolName,
                     figure: condition.thermal.title,
                     phrase: condition.thermal.isNoteworthy ? "Slowing down to cool" : "No slowdown",
-                    status: condition.thermal.isNoteworthy ? .attention : .clear
+                    status: condition.thermal.isNoteworthy ? .attention : .clear,
+                    tint: EnergyTone.thermal(condition.thermal)
                 )
             }
             if let health = battery?.health {
@@ -52,9 +53,17 @@ struct EnergyStatusCard: View {
 
     private func batteryColumn(_ battery: BatteryReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Battery", systemImage: batterySymbol(battery))
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
+            Label {
+                Text("Battery")
+            } icon: {
+                Image(systemName: batterySymbol(battery))
+                    .foregroundStyle(EnergyTone.battery(
+                        percent: battery.percent, onBattery: battery.charging == .onBattery,
+                        lowPowerMode: condition.lowPowerMode
+                    ))
+            }
+            .font(.brimGroupTitle)
+            .foregroundStyle(Palette.ink)
             Text("\(battery.percent)%")
                 .font(.brimFigure)
                 .foregroundStyle(Palette.ink)
@@ -79,12 +88,17 @@ struct EnergyStatusCard: View {
     }
 
     private func statusColumn(
-        caption: String, symbol: String, figure: String, phrase: String?, status: CardStatus
+        caption: String, symbol: String, figure: String, phrase: String?, status: CardStatus, tint: Color? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(caption, systemImage: symbol)
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
+            Label {
+                Text(caption)
+            } icon: {
+                Image(systemName: symbol)
+                    .foregroundStyle(tint ?? Palette.ink)
+            }
+            .font(.brimGroupTitle)
+            .foregroundStyle(Palette.ink)
             Text(figure)
                 .font(.brimFigure)
                 .foregroundStyle(Palette.ink)
