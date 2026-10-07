@@ -31,10 +31,25 @@ public final class LeftoversModel: ObservableObject {
     /// rather than one per item.
     @Published public private(set) var selection: Set<String> = []
 
+    /// The rows on screen are the last launch's, kept on disk, and this
+    /// launch's scan has not finished. They are shown so the page is never
+    /// empty, and none of them can be ticked or removed: a footprint is a
+    /// claim about the disk now, which a kept answer cannot support.
+    @Published public private(set) var isProvisional = false
+
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
+    private let cache: PageCache<[Leftover]>?
 
-    public init() {}
+    public init(cache: PageCache<[Leftover]>? = nil) {
+        self.cache = cache
+        guard let kept = cache?.load() else { return }
+        orphaned = kept.value.filter { $0.category == .orphaned }
+        unclaimed = kept.value.filter { $0.category == .unclaimed }
+        checkedAt = kept.savedAt
+        isProvisional = true
+        regroup()
+    }
 
     public var all: [Leftover] {
         orphaned + unclaimed
@@ -72,6 +87,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func toggle(_ group: LeftoverGroup) {
+        guard !isProvisional else { return }
         let ids = group.items.map(\.id)
         if isSelected(group) {
             selection.subtract(ids)
@@ -105,6 +121,7 @@ public final class LeftoversModel: ObservableObject {
     }
 
     public func selectAllRemovableOrphans() {
+        guard !isProvisional else { return }
         selection = Set(removableOrphans.map(\.id))
         settle()
     }
@@ -214,7 +231,9 @@ public final class LeftoversModel: ObservableObject {
             let found = try await service.leftovers()
             try Task.checkCancellation()
             hasLoaded = true
+            isProvisional = false
             checkedAt = Date()
+            cache?.save(found)
             orphaned = found.filter { $0.category == .orphaned }
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
@@ -229,6 +248,7 @@ public final class LeftoversModel: ObservableObject {
             return
         } catch {
             hasLoaded = false
+            isProvisional = false
             checkedAt = nil
             // A failed sweep must not leave the last run's rows on screen
             // looking like this one's answer.
@@ -244,6 +264,7 @@ public final class LeftoversModel: ObservableObject {
     /// The plan intent for one removed app's traces, named for the app so
     /// the review says whose they are.
     public func removalIntent(for group: LeftoverGroup, requesterIdentity: String) -> PlanIntent? {
+        guard !isProvisional else { return nil }
         let targets = group.items.filter(\.canBeRemovedByBrim).map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
@@ -263,7 +284,7 @@ public final class LeftoversModel: ObservableObject {
     /// uninstalling, which is exactly right: it must not clear privacy
     /// grants or retract registrations for an app that is already gone.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        guard !isScanning, canRemoveSelection else { return nil }
+        guard !isScanning, !isProvisional, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)
         guard !targets.isEmpty else { return nil }
         return PlanIntent(

@@ -3,6 +3,8 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// Remnants: apps that have left this Mac and what each one left behind.
 ///
 /// Called "Removed" until 29 Sep, which named the apps rather than what
@@ -40,8 +42,8 @@ struct LeftoversView: View {
             if !model.all.isEmpty {
                 LeftoverBatchActions(
                     selectedCount: model.selectedItems.count,
-                    canRemoveSelection: model.canRemoveSelection && !model.isScanning,
-                    canRemoveAll: !model.removableOrphans.isEmpty && !model.isScanning,
+                    canRemoveSelection: model.canRemoveSelection && !model.isScanning && !model.isProvisional,
+                    canRemoveAll: !model.removableOrphans.isEmpty && !model.isScanning && !model.isProvisional,
                     clear: { model.deselectAll(in: model.all) },
                     removeSelected: { openSelection() },
                     removeAll: {
@@ -309,7 +311,7 @@ private extension LeftoversView {
         ))
         .toggleStyle(.checkbox)
         .labelsHidden()
-        .disabled(model.isScanning || !group.items.contains(where: \.canBeRemovedByBrim))
+        .disabled(model.isScanning || model.isProvisional || !group.items.contains(where: \.canBeRemovedByBrim))
     }
 
     private func openSelection() {
