@@ -103,7 +103,8 @@ public struct PrivacyGrantSurface: RegistrationSurface {
         }
         defer { sqlite3_close(handle) }
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, "SELECT service, client, client_type, auth_value FROM access", -1, &statement, nil)
+        let query = "SELECT service, client, client_type, auth_value FROM access"
+        guard sqlite3_prepare_v2(handle, query, -1, &statement, nil)
             == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(statement) }
         var rows: [Row] = []
