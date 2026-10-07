@@ -82,7 +82,7 @@ struct EnergyAwakeCard: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        let figure = row.seconds.map(EnergyHistoryCard.duration) ?? "Now"
+        let figure = row.seconds.map { EnergyHistoryCard.duration($0) } ?? "Now"
         return HStack(spacing: 12) {
             BrimIcon(
                 source: row.bundlePath.map { .bundle(URL(fileURLWithPath: $0)) } ?? .monogram(Monogram(name: row.name)),
