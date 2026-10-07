@@ -94,7 +94,7 @@ struct EnergyHistoryCard: View {
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)
                 Spacer()
-                Text(summary)
+                Text(summary ?? "")
                     .font(.brimFacts)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkSecondary)
@@ -216,15 +216,13 @@ struct EnergyHistoryCard: View {
 
     /// The most recent sleep of half an hour or more in the last day, by
     /// when it was, so it is never read as the night just gone.
-    private var summary: String {
-        guard let sleep = history.lastSleep, sleep.span.end > start else {
-            return "No long sleep in this time"
-        }
-        let when = "Asleep \(Self.time.string(from: sleep.span.start)) to \(Self.time.string(from: sleep.span.end))"
-        if let used = sleep.chargeUsed {
-            return "\(when), \(used)% used"
-        }
-        return "\(when), on the adapter"
+    /// What the last long sleep in this time cost the battery. A sleep on
+    /// the adapter cost nothing measurable, and the shaded band already
+    /// shows it, so it is not described.
+    private var summary: String? {
+        guard let sleep = history.lastSleep, sleep.span.end > start, let used = sleep.chargeUsed else { return nil }
+        let start = Self.time.string(from: sleep.span.start), end = Self.time.string(from: sleep.span.end)
+        return "Asleep \(start) to \(end), \(used)% used"
     }
 
     private var spokenSummary: String {
@@ -235,7 +233,9 @@ struct EnergyHistoryCard: View {
         if !restarts.isEmpty {
             parts.append(restarts.count == 1 ? "Restarted once" : "Restarted \(restarts.count) times")
         }
-        parts.append(summary)
+        if let summary {
+            parts.append(summary)
+        }
         return parts.joined(separator: ". ")
     }
 
