@@ -224,7 +224,7 @@ struct EnergyHistoryCard: View {
         if let used = sleep.chargeUsed {
             return "\(when), \(used)% used"
         }
-        return "\(when), on the adapter"
+        return "\(when), plugged in"
     }
 
     private var spokenSummary: String {
