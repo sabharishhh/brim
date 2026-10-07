@@ -56,10 +56,31 @@ public final class UpdatesModel: ObservableObject {
     /// count nobody measured is not zero.
     public var pending: [AppUpdate]? {
         check?.updates.filter { update in
-            switch states[update.id] {
+            guard !settledOnDisk.contains(update.id) else { return false }
+            return switch states[update.id] {
             case .updated, .openedInstaller: false
             default: true
             }
+        }
+    }
+
+    /// Updates the Applications folder has since answered: the app updated
+    /// itself, was updated some other way, or was removed.
+    @Published private var settledOnDisk: Set<String> = []
+
+    /// Called when the app list changes. An app that updated itself left
+    /// its row offering an update that was already installed until the next
+    /// network check, hours later.
+    public func reconcile(with applications: [InstalledApplication]) {
+        let byPath = Dictionary(applications.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
+        let settled = (check?.updates ?? []).filter { update in
+            guard let app = byPath[update.appURL.path] else { return true }
+            guard let version = app.version else { return false }
+            return !VersionOrder.isNewer(update.latestVersion, than: version)
+        }
+        let ids = Set(settled.map(\.id))
+        if ids != settledOnDisk {
+            settledOnDisk = ids
         }
     }
 
@@ -96,6 +117,7 @@ public final class UpdatesModel: ObservableObject {
             let result = await service.checkForUpdates()
             guard !Task.isCancelled else { return }
             check = result
+            settledOnDisk = []
             // A finished update belongs to the list it was finished in.
             states = states.filter { key, state in state.isBusy && result.updates.contains { $0.id == key } }
             // One an earlier run did not finish is shown as failed, to retry.

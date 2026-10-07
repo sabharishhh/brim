@@ -189,17 +189,34 @@ public final class LeftoversModel: ObservableObject {
         selectedItems = all.filter { selection.contains($0.id) }
     }
 
-    /// Scans only if there is nothing to show. Returning to a section is a
-    /// change of view, not a reason to walk the disk again; rescanning is
-    /// what Check Again is for.
+    /// Scans when there is nothing confirmed to show, or when the result
+    /// is stale. Returning to a section is a change of view, not a reason
+    /// to walk the disk again.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         // Coming back to the section is not a reason to walk the disk, but
         // it is a reason to catch up on anything restored from the Trash
         // while the person was elsewhere, which the view could not see
         // because it was not on screen to be told.
         reconcileWithDisk()
-        guard !hasLoaded, !isScanning else { return }
+        guard !hasLoaded || isStale, !isScanning else { return }
         await load(service: service)
+    }
+
+    /// Something happened that can change what is left: an app arrived or
+    /// went, or Brim was away long enough. The next look scans again.
+    public func markStale() {
+        needsScan = true
+    }
+
+    private var needsScan = false
+
+    /// How long a result is taken as current without anything saying it
+    /// changed. Apps writing into Library do not count: they write all the
+    /// time, and scanning for every write is the cost this avoids.
+    public static let freshFor: TimeInterval = 3600
+
+    public var isStale: Bool {
+        needsScan || checkedAt.map { Date().timeIntervalSince($0) > Self.freshFor } ?? true
     }
 
     private var loadTask: Task<Void, Never>?
@@ -230,6 +247,13 @@ public final class LeftoversModel: ObservableObject {
         do {
             let found = try await service.leftovers()
             try Task.checkCancellation()
+            // A scan again, not the first: what the person ticked or
+            // unticked stays as they left it, and only something new is
+            // ticked the way a first scan would.
+            let rescan = hasLoaded && !isProvisional
+            let shownBefore = Set(all.map(\.id))
+            let pickedBefore = selection
+            needsScan = false
             hasLoaded = true
             isProvisional = false
             checkedAt = Date()
@@ -238,7 +262,10 @@ public final class LeftoversModel: ObservableObject {
             unclaimed = found.filter { $0.category == .unclaimed }
             // Only orphans are pre-selected, and only the ones Brim can
             // actually act on.
-            selection = Set(orphaned.filter(\.canBeRemovedByBrim).map(\.id))
+            let preselected = Set(orphaned.filter(\.canBeRemovedByBrim).map(\.id))
+            selection = rescan
+                ? pickedBefore.intersection(found.map(\.id)).union(preselected.subtracting(shownBefore))
+                : preselected
             // A fresh scan is the truth, so nothing is being held back for
             // a restore that the scan itself would have found.
             removedButRecoverable = []
