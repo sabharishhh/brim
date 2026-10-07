@@ -262,24 +262,30 @@ public final class BackgroundModel: ObservableObject {
 
     /// The section owns its scan. Navigation can cancel a view's waiter without
     /// discarding the result or leaving a second view waiting on an empty model.
-    public func load(service: any BrimServiceProtocol) async {
+    /// `applications`, when given, is the list Apps already holds, so a
+    /// reload that only needs the registrations does not list every app
+    /// again, which would also add a history snapshot each time.
+    public func load(service: any BrimServiceProtocol, applications known: [InstalledApplication]? = nil) async {
         if let loadTask {
             await loadTask.value
             return
         }
-        let task = Task { await self.performLoad(service: service) }
+        let task = Task { await self.performLoad(service: service, applications: known) }
         loadTask = task
         defer { loadTask = nil }
         await task.value
     }
 
-    private func performLoad(service: any BrimServiceProtocol) async {
+    private func performLoad(service: any BrimServiceProtocol, applications known: [InstalledApplication]?) async {
         self.service = service
         isLoading = true
         async let registrationReport = service.registrations()
-        async let installed = try? service.installedApplications()
+        if let known {
+            applications = known
+        } else {
+            applications = await (try? service.installedApplications()) ?? []
+        }
         report = await registrationReport
-        applications = await installed ?? []
         updateVisibleReport()
         regroup()
         isLoading = false
