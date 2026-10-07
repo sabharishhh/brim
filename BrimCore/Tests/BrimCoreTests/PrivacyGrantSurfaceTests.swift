@@ -28,8 +28,8 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
             .init(service: "kTCCServiceAccessibility", client: helper, isPath: true),
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/usr/local/bin/tool", isPath: true),
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "com.binance.BinanceDesktop", isPath: false),
-            // Switched off, for a helper that is gone: grants nothing, and
-            // Settings does not list it.
+            // Switched off, for a helper that is gone: Settings still lists
+            // it, and its minus button removes it.
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/Library/PrivilegedHelperTools/gone.off",
                   isPath: true, isAllowed: false)
         ])
@@ -42,13 +42,16 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
 
     func testAGrantToAProgramThatIsGoneIsListedOnceWithItsPanes() async throws {
         let found = await PrivacyGrantSurface().registrations(in: root)
-        XCTAssertEqual(found.map(\.label), ["com.microsoft.autoupdate.helper"],
+        XCTAssertEqual(found.map(\.label), ["com.microsoft.autoupdate.helper", "gone.off"],
                        "The present tool is not a leftover, and a bundle identifier cannot be removed from Settings")
         let grant = try XCTUnwrap(found.first)
+        XCTAssertEqual(found.last?.evidence,
+                       "Full Disk Access lists this program, switched off, but it is no longer on this Mac.")
+        XCTAssertEqual(found.last?.recordIdentity, "kTCCServiceSystemPolicyAllFiles")
         XCTAssertTrue(grant.isStale)
         XCTAssertFalse(grant.isActionable, "Brim reads the privacy database and never edits it")
-        XCTAssertEqual(grant.evidence,
-                       "Accessibility and Full Disk Access still allows this program, but it is no longer on this Mac.")
+        XCTAssertEqual(grant.evidence, "Accessibility and Full Disk Access lists this program, switched on, "
+            + "but it is no longer on this Mac.")
     }
 
     func testAnUnreadableDatabaseIsAGapNotAnEmptyList() async throws {
