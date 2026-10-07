@@ -347,7 +347,7 @@ private struct UpdateRow<Action: View>: View {
     }
 
     private var spokenNews: String {
-        whatsNew.map(WhatsNewLine.spoken) ?? ""
+        whatsNew.map { WhatsNewLine.spoken($0) } ?? ""
     }
 }
 

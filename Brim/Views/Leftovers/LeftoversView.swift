@@ -117,7 +117,7 @@ private extension LeftoversView {
     }
 
     private var recoveryGroups: [LeftoverGroup] {
-        model.unclaimedGroupsForReview.filter(Self.isRecovery)
+        model.unclaimedGroupsForReview.filter { Self.isRecovery($0) }
     }
 
     private var apps: [LeftoverGroup] {
