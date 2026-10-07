@@ -13,31 +13,15 @@ import Observation
 @Observable
 public final class VisitMemory {
     struct Saved: Codable {
-        var lastVisit: Date?
         var seen: [String: Set<String>] = [:]
     }
 
-    /// When the person last opened Brim before this launch. Home's
-    /// "Since your last visit" is measured from here.
-    public private(set) var lastVisit: Date?
     private var seen: [String: Set<String>]
     private let file: JSONFile<Saved>
 
     public init(file: URL?) {
         self.file = JSONFile(url: file)
-        let saved = self.file.read() ?? Saved()
-        lastVisit = saved.lastVisit
-        seen = saved.seen
-    }
-
-    /// Records this launch as a visit. `lastVisit` keeps the previous one
-    /// for the rest of the session, which is the one people mean.
-    public func begin(now: Date = .now) {
-        file.write(Saved(lastVisit: now, seen: seen))
-    }
-
-    public func hasSnapshot(of collection: String) -> Bool {
-        seen[collection] != nil
+        seen = (self.file.read() ?? Saved()).seen
     }
 
     /// The identifiers that were not there the last time this collection
@@ -48,12 +32,10 @@ public final class VisitMemory {
     }
 
     /// The person has seen these. Called a moment after the rows appear,
-    /// so the dots are seen before they go.
+    /// so whatever counted them as new is seen before it clears.
     public func acknowledge(_ collection: String, current: Set<String>) {
         guard seen[collection] != current else { return }
         seen[collection] = current
-        var saved = file.read() ?? Saved()
-        saved.seen = seen
-        file.write(saved)
+        file.write(Saved(seen: seen))
     }
 }

@@ -15,7 +15,7 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     public let category: Category
     public let potentialOwner: Identity?
 
-    /// Why this is here — the sentence from the ownership search that decided
+    /// Why this is here: the sentence from the ownership search that decided
     /// the category. An orphan says which record named an owner that has
     /// gone; an unclaimed item says what was searched and came back empty.
     /// Never a bare assertion: the user is being asked to delete something.
@@ -29,7 +29,7 @@ public struct Leftover: Sendable, Codable, Equatable, Identifiable {
     /// rather than a missing permission.
     public let capability: Capability
 
-    /// When the item was last read. Used to *sort*, never to justify —
+    /// When the item was last read. Used to *sort*, never to justify:
     /// an old access time is not evidence that software was uninstalled,
     /// only that nothing has looked at this lately.
     public let lastAccessed: Date?

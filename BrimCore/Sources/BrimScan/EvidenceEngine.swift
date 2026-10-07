@@ -148,10 +148,8 @@ public struct EvidenceEngine: Sendable {
                 bestEvidenceByFile[key] = e
             }
         }
-        let bestEvidenceByPath = bestEvidenceByFile
-
         // Sort deterministically (alphabetically by path)
-        return bestEvidenceByPath.values.sorted { $0.url.path < $1.url.path }
+        return bestEvidenceByFile.values.sorted { $0.url.path < $1.url.path }
     }
 
     /// Helper applications the evidence names, and whether an installer
@@ -163,7 +161,7 @@ public struct EvidenceEngine: Sendable {
             guard !followed.contains(path), !followed.contains(where: { path.hasPrefix($0 + "/") }),
                   !path.contains("/Applications/") || receipt
             else { return }
-            parts[path] = (parts[path]?.1 ?? false) || receipt ? (url, true) : (url, false)
+            parts[path] = (url, (parts[path]?.1 ?? false) || receipt)
         }
         for item in evidence where item.tier != .S {
             if item.mechanism == "InstallerPayloadSource", item.url.pathExtension == "app" {
@@ -256,8 +254,15 @@ public struct EvidenceEngine: Sendable {
     /// with a confident one, or the veto is thrown away at exactly the
     /// moment it matters.
     private func isStronger(_ t1: EvidenceTier, than t2: EvidenceTier) -> Bool {
-        let weight: [EvidenceTier: Int] = [.S: 4, .A: 3, .B: 2, .C: 1]
-        return weight[t1]! > weight[t2]!
+        func weight(_ tier: EvidenceTier) -> Int {
+            switch tier {
+            case .S: 4
+            case .A: 3
+            case .B: 2
+            case .C: 1
+            }
+        }
+        return weight(t1) > weight(t2)
     }
 
     /// What makes two pieces of evidence the same thing.

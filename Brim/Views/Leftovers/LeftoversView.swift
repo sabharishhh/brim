@@ -18,6 +18,10 @@ struct LeftoversView: View {
     /// The Trash, shared with Home and the Journal because the Trash is one
     /// thing and two watchers would poll it twice.
     @ObservedObject var recovery: RecoveryStatusModel
+    /// Without it most of Library is unread, and "nothing left behind"
+    /// would be a claim about places Brim never looked.
+    @ObservedObject var access: FullDiskAccessModel
+    @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
     @SwiftUI.Environment(AppSession.self) private var session
@@ -74,8 +78,7 @@ struct LeftoversView: View {
                         offerPutBack(proven.planId)
                     }
                 },
-                onUnverified: { Task { await model.load(service: service) } },
-                onPhase: { _ in }
+                onUnverified: { Task { await model.load(service: service) } }
             )
             .frame(width: 560, height: 600)
         }
@@ -85,11 +88,17 @@ struct LeftoversView: View {
             guard model.checkedAt != nil else { return }
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            session.visits.acknowledge("leftovers", current: Set(model.all.map(\.id)))
+            session.visits.acknowledge("removed apps", current: Set(model.orphanedGroups.map(\.id)))
         }
         // Restoring from the Trash puts files back where they were, so
         // their rows belong back in the list.
         .onChange(of: recovery.items) { _, _ in model.reconcileWithDisk() }
+        // A remnant chosen in the command bar opens here, folded out.
+        .onChange(of: model.requested, initial: true) { _, group in
+            guard let group else { return }
+            opened.insert(group.id)
+            model.requested = nil
+        }
     }
 }
 
@@ -108,7 +117,7 @@ private extension LeftoversView {
     }
 
     private var recoveryGroups: [LeftoverGroup] {
-        model.unclaimedGroupsForReview.filter(Self.isRecovery)
+        model.unclaimedGroupsForReview.filter { Self.isRecovery($0) }
     }
 
     private var apps: [LeftoverGroup] {
@@ -124,11 +133,28 @@ private extension LeftoversView {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if let error = model.errorMessage {
             EmptyState.couldNotRead(error) { Task { await model.load(service: service) } }
-        } else if apps.isEmpty, unknowns.isEmpty {
-            EmptyState(symbol: "checkmark.circle", title: "Nothing left behind",
-                       message: "No removed app has left anything on this Mac.")
+        } else if apps.isEmpty, unknowns.isEmpty, recoveryGroups.isEmpty {
+            if access.isGranted {
+                EmptyState(symbol: "checkmark.circle", title: "Nothing left behind",
+                           message: "No removed app has left anything on this Mac.")
+            } else {
+                let offer = AccessOffer.current(requestedAt: accessRequestedAt)
+                EmptyState(symbol: "lock", title: "Nothing found where Brim could look",
+                           message: "Full Disk Access is off, so most of Library was not checked.",
+                           actionTitle: offer.title, action: offer.action)
+            }
         } else {
-            list.refreshing(model.isScanning)
+            VStack(spacing: 0) {
+                if !access.isGranted {
+                    let offer = AccessOffer.current(requestedAt: accessRequestedAt)
+                    Notice(symbol: "eye.slash", title: "Library not fully read",
+                           detail: "Full Disk Access is off, so some remnants are not listed",
+                           actionTitle: offer.title, action: offer.action)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 6)
+                }
+                list.refreshing(model.isScanning)
+            }
         }
     }
 
@@ -170,14 +196,7 @@ private extension LeftoversView {
                                 selectionToggle(for: group)
                                 UnknownRow(
                                     group: group, isScanning: model.isScanning,
-                                    readRecovery: {
-                                        if let problem = await HelperRoute.authorizeRecoveryRead() {
-                                            recoveryReadError = problem
-                                        } else {
-                                            await model.load(service: service)
-                                        }
-                                    },
-                                    review: { open(group) }
+                                    readRecovery: readRecoveryCopies, review: { open(group) }
                                 )
                             }
                         }
@@ -189,14 +208,7 @@ private extension LeftoversView {
                     ForEach(recoveryGroups) { group in
                         UnknownRow(
                             group: group, isScanning: model.isScanning,
-                            readRecovery: {
-                                if let problem = await HelperRoute.authorizeRecoveryRead() {
-                                    recoveryReadError = problem
-                                } else {
-                                    await model.load(service: service)
-                                }
-                            },
-                            review: { open(group) }
+                            readRecovery: readRecoveryCopies, review: { open(group) }
                         )
                     }
                 }
@@ -216,6 +228,16 @@ private extension LeftoversView {
 
     private func toggle(_ id: String) {
         opened.formSymmetricDifference([id])
+    }
+
+    /// Reading Brim's protected recovery copies asks for an administrator
+    /// password, so it happens only when the person asks.
+    private func readRecoveryCopies() async {
+        if let problem = await HelperRoute.authorizeRecoveryRead() {
+            recoveryReadError = problem
+        } else {
+            await model.load(service: service)
+        }
     }
 
     private func sectionTitle(_ title: String, count: Int, bytes: Int64, sizeIsKnown: Bool = true) -> some View {
@@ -287,8 +309,7 @@ private extension LeftoversView {
         ))
         .toggleStyle(.checkbox)
         .labelsHidden()
-        .disabled(model.isScanning || model.keptGroups.contains(group.id)
-            || !group.items.contains(where: \.canBeRemovedByBrim))
+        .disabled(model.isScanning || !group.items.contains(where: \.canBeRemovedByBrim))
     }
 
     private func openSelection() {
@@ -303,32 +324,13 @@ private extension LeftoversView {
 
     /// After a removal the check proved: say so, and offer it back.
     private func offerPutBack(_ planId: UUID) {
-        let count = removedInReview
-        guard count > 0 else { return }
-        Task {
-            var toast = ToastMessage(
-                symbol: "checkmark.circle.fill",
-                text: count == 1 ? "Removed 1 item" : "Removed \(count) items"
-            )
-            if await (try? service.recoverableItems())?.contains(where: { $0.planId == planId }) == true {
-                toast.actionTitle = "Put Back"
-                toast.action = {
-                    Task {
-                        do {
-                            try await service.undo(planId: planId)
-                            recovery.refreshNow()
-                            model.reconcileWithDisk()
-                        } catch {
-                            shell.show(ToastMessage(
-                                symbol: "exclamationmark.triangle.fill",
-                                text: "Could not put it back"
-                            ))
-                        }
-                    }
-                }
+        shell.offerPutBack(
+            planId: planId, count: removedInReview, noun: ("item", "items"), service: service,
+            afterPutBack: {
+                recovery.refreshNow()
+                model.reconcileWithDisk()
             }
-            shell.show(toast)
-        }
+        )
     }
 }
 
@@ -466,10 +468,13 @@ private struct RemnantCard: View {
         }
     }
 
+    /// Built once, not every time a card draws (`CLAUDE.md`, on formatters).
+    private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
+
     private var facts: String {
         var parts: [String] = []
         if let removed = group.removedAt {
-            parts.append("Removed " + removed.formatted(.dateTime.day().month(.abbreviated)))
+            parts.append("Removed " + Self.day.format(removed))
         } else {
             parts.append("Removed")
         }
@@ -511,7 +516,7 @@ private struct PlaceRow: View {
 
     /// The folder it is in, with the home folder as a tilde.
     private var folder: String {
-        (item.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+        PathText.abbreviated(item.url.deletingLastPathComponent().path)
     }
 }
 
@@ -537,7 +542,7 @@ private struct UnknownRow: View {
                     : group.displayName)
                     .foregroundStyle(Palette.inkSecondary)
                 if let first = group.items.first {
-                    Text((first.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                    Text(PathText.abbreviated(first.url.deletingLastPathComponent().path))
                         .font(.caption)
                         .foregroundStyle(Palette.inkTertiary)
                         .truncationMode(.head)

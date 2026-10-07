@@ -4,49 +4,6 @@ import Combine
 import BrimCore
 import BrimProtocol
 
-/// One application's discovered footprint, grouped for display.
-///
-/// The grouping is by *how Brim knows* rather than by folder, because the
-/// point the UI has to make is not "here are some files" but "here is how
-/// Brim knows each of these belongs to this app".
-///
-/// **A heading is a claim about every row under it**, so a group is exactly
-/// the rows that share a sentence and a tier. It used to be the rows that
-/// shared a source, with the heading borrowed from the first row and the
-/// label from the strongest, which held only while every source said one
-/// thing. `LocationInventorySource` says something different for every place
-/// it looks. In the running app that put "the list macOS keeps of documents
-/// this application opened" above a group of caches, and "Brim will not tick
-/// it for you" beside a Strong label, because the same source had also
-/// found a Tier B preferences file.
-public struct FootprintGroup: Identifiable, Equatable, Sendable {
-    /// How strong the evidence is. The same for every row in the group.
-    public let tier: EvidenceTier
-    /// The sentence the evidence engine produced. The same for every row in
-    /// the group, so it can head them.
-    public let explanation: String
-    public let items: [FootprintItem]
-
-    public init(tier: EvidenceTier, explanation: String, items: [FootprintItem]) {
-        self.tier = tier
-        self.explanation = explanation
-        self.items = items
-    }
-
-    /// Which part of Brim found the rows. Shown only when the engine gave
-    /// no sentence, and part of the identity only then, so two sources with
-    /// nothing to say are not merged under one of their names.
-    public var mechanism: String { items.first?.evidence.mechanism ?? "" }
-
-    public var id: String {
-        "\(tier.rawValue)|\(explanation)|\(explanation.isEmpty ? mechanism : "")"
-    }
-    public var totalBytes: Int64 { items.reduce(0) { $0 + $1.sizeBytes } }
-    /// The tier every row shares. Kept under this name because it is what
-    /// the list sorts and labels on.
-    public var strongestTier: EvidenceTier { tier }
-}
-
 extension EvidenceTier {
     /// Sort order for the footprint list. Lower comes first.
     ///
@@ -90,14 +47,16 @@ public final class ApplicationsModel: ObservableObject {
     /// least two: a single mark is just a selection.
     @Published public private(set) var marked: [InstalledApplication] = []
     @Published public private(set) var footprint: Footprint? {
-        didSet {
-            footprintGroups = makeFootprintGroups()
-            footprintSections = footprint.map(FootprintSection.arrange) ?? []
-        }
+        didSet { footprintSections = footprint.map(FootprintSection.arrange) ?? [] }
     }
 
     @Published public private(set) var isInspecting = false
+    /// Why the list could not be read.
     @Published public private(set) var errorMessage: String?
+    /// Why the selected app's footprint could not be read. Its own fact:
+    /// sharing `errorMessage` meant a failed inspection was never shown,
+    /// and the pane read as an app that had put nothing on the Mac.
+    @Published public private(set) var inspectionError: String?
 
     private var service: (any BrimServiceProtocol)?
     private var inspectionTask: Task<Void, Never>?
@@ -131,40 +90,8 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
-    /// Groups the selected app's footprint by what Brim can say about each
-    /// item and how sure it is, strongest evidence first.
-    @Published public private(set) var footprintGroups: [FootprintGroup] = []
-
     /// Cached once per inspection, rather than regrouped during hover or disclosure.
     @Published public private(set) var footprintSections: [FootprintSection] = []
-
-    private func makeFootprintGroups() -> [FootprintGroup] {
-        guard let footprint else { return [] }
-        struct Key: Hashable {
-            let tier: EvidenceTier
-            let sentence: String
-            /// Only set when there is no sentence to group on.
-            let mechanism: String
-        }
-        let byReason = Dictionary(grouping: footprint.items) { item in
-            Key(
-                tier: item.evidence.tier,
-                sentence: item.evidence.humanSentence,
-                mechanism: item.evidence.humanSentence.isEmpty ? item.evidence.mechanism : ""
-            )
-        }
-        return byReason
-            .map { FootprintGroup(tier: $0.key.tier, explanation: $0.key.sentence, items: $0.value) }
-            .sorted {
-                if $0.strongestTier.rank != $1.strongestTier.rank {
-                    return $0.strongestTier.rank < $1.strongestTier.rank
-                }
-                if $0.totalBytes != $1.totalBytes { return $0.totalBytes > $1.totalBytes }
-                // Stable when two groups weigh the same, so the list does not
-                // reshuffle every time the footprint is recomputed.
-                return $0.id < $1.id
-            }
-    }
 
     /// Lists only if the list is empty. Enumerating and sizing every
     /// installed bundle takes seconds, and paying that on each visit to the
@@ -243,10 +170,6 @@ public final class ApplicationsModel: ObservableObject {
         return true
     }
 
-    /// Selects an application and discovers its footprint.
-    ///
-    /// Selecting again while a scan is in flight cancels it, so clicking
-    /// down a list does not queue a scan per row.
     /// Only for tests: stands in for an enumeration.
     func acceptForTesting(_ applications: [InstalledApplication]) {
         self.applications = applications
@@ -323,10 +246,6 @@ public final class ApplicationsModel: ObservableObject {
         marked.contains { $0.id == application.id }
     }
 
-    public func clearMarks() {
-        marked = []
-    }
-
     /// A table's selection, which can be several rows at once.
     public func mark(_ applications: [InstalledApplication]) {
         let removable = applications.filter { !$0.isSystemProtected }
@@ -337,12 +256,16 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
+    /// Selects an application and discovers its footprint.
+    ///
+    /// Selecting again while a scan is in flight cancels it, so clicking
+    /// down a list does not queue a scan per row.
     public func select(_ application: InstalledApplication?) {
         marked = []
         isChoosing = false
         selected = application
         footprint = nil
-        errorMessage = nil
+        inspectionError = nil
 
         inspectionTask?.cancel()
         guard let application, let service else {
@@ -361,16 +284,10 @@ public final class ApplicationsModel: ObservableObject {
                 self.isInspecting = false
             } catch {
                 guard !Task.isCancelled, self.selected?.id == application.id else { return }
-                self.errorMessage = error.localizedDescription
+                self.inspectionError = error.localizedDescription
                 self.isInspecting = false
             }
         }
-    }
-
-    /// Whether an uninstall can be offered for the current selection.
-    public var canUninstallSelection: Bool {
-        guard let selected else { return false }
-        return !selected.isSystemProtected
     }
 
     /// Why the selected application cannot be removed, in the user's terms.

@@ -37,13 +37,13 @@ public struct FeedbackDraft: Codable, Equatable, Sendable {
             return "Add a description."
         }
         if details.count > Limit.details {
-            return "Keep the description within 5,000 characters."
+            return "Keep the description within \(Limit.details.formatted()) characters."
         }
         if kind == .bug, reproduction.count > Limit.reproduction {
-            return "Keep the steps within 3,000 characters."
+            return "Keep the steps within \(Limit.reproduction.formatted()) characters."
         }
         if kind == .bug, expected.count > Limit.expected {
-            return "Keep the expected result within 1,000 characters."
+            return "Keep the expected result within \(Limit.expected.formatted()) characters."
         }
         return nil
     }

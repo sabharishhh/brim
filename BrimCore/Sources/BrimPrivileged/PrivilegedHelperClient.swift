@@ -29,19 +29,9 @@ public final class PrivilegedHelperClient: ObservableObject {
         Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/BrimJobHelper")
     }
 
-    public func refreshIfNeeded() {
-        if state == .notAsked {
-            refresh()
-        }
-    }
-
     public func refresh() {
         state = FileManager.default.isExecutableFile(atPath: executable.path)
             ? .ready : .unavailable("This copy of Brim does not include administrator cleanup.")
-    }
-
-    public func verifyVersion() async {
-        refresh()
     }
 
     /// Called after a removal was approved, or an explicit recovery read.

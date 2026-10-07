@@ -23,6 +23,9 @@ private actor AppsStub: BrimServiceProtocol {
 
     func inspect(identity: Identity) async throws -> Footprint {
         inspectCalls.append(identity.name)
+        if identity.name == "Unreadable" {
+            throw URLError(.noPermissionsToReadFile)
+        }
         if gated {
             await withCheckedContinuation { gate = $0 }
         }
@@ -172,137 +175,6 @@ final class ApplicationsModelTests: XCTestCase {
         XCTAssertEqual(model.visibleApplications.count, 2, "Whitespace is not a query")
     }
 
-    func testFootprintIsGroupedStrongestEvidenceFirst() async {
-        let identity = Identity(bundleID: "com.test.app", name: "App")
-        let footprint = Footprint(identity: identity, items: [
-            item("/a", mechanism: "HeuristicSource", tier: .C, bytes: 900),
-            item("/b", mechanism: "AppBundleSource", tier: .A, bytes: 100),
-            item("/c", mechanism: "SandboxContainerSource", tier: .S, bytes: 50),
-            item("/d", mechanism: "AppBundleSource", tier: .A, bytes: 10)
-        ])
-
-        let model = ApplicationsModel()
-        let stub = AppsStub(apps: [app("App")], footprints: ["App": footprint])
-        await model.load(service: stub)
-        model.select(model.applications.first)
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(50))
-
-        let groups = model.footprintGroups
-        XCTAssertEqual(groups.map(\.mechanism),
-                       ["SandboxContainerSource", "AppBundleSource", "HeuristicSource"],
-                       "Strongest evidence first, not largest first")
-        XCTAssertEqual(groups.first { $0.mechanism == "AppBundleSource" }?.totalBytes, 110,
-                       "Items sharing a mechanism are summed")
-    }
-
-    // MARK: - A header is a claim about every row under it
-
-    private func groups(for items: [FootprintItem]) async -> [FootprintGroup] {
-        let identity = Identity(bundleID: "com.test.app", name: "App")
-        let model = ApplicationsModel()
-        let stub = AppsStub(
-            apps: [app("App")],
-            footprints: ["App": Footprint(identity: identity, items: items)]
-        )
-        await model.load(service: stub)
-        model.select(model.applications.first)
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(50))
-        return model.footprintGroups
-    }
-
-    /// **Seen in the running app, not in a test.** Visual Studio Code's
-    /// footprint showed "The list macOS keeps of documents this application
-    /// opened" above a group of caches, HTTP storage and per-machine
-    /// preferences. Groups were keyed on the source that found each row and
-    /// the header took the first row's sentence, and one source,
-    /// `LocationInventorySource`, gives a different sentence for every place
-    /// it looks. The recent-documents record sorted first, so its sentence
-    /// described five rows that were nothing of the kind.
-    func testAGroupsSentenceIsTrueOfEveryRowInIt() async {
-        let found = await groups(for: [
-            item("/lib/Support/com.apple.sharedfilelist/x/com.test.app.sfl4",
-                 mechanism: "LocationInventorySource", tier: .B, bytes: 1,
-                 sentence: "The list macOS keeps of documents this application opened."),
-            item("/lib/Caches/com.test.app", mechanism: "LocationInventorySource",
-                 tier: .B, bytes: 1, sentence: "A cache folder keyed to the bundle identifier."),
-            item("/lib/HTTPStorages/com.test.app", mechanism: "LocationInventorySource",
-                 tier: .B, bytes: 1, sentence: "Cookies and web storage macOS keeps.")
-        ])
-
-        for group in found {
-            for row in group.items {
-                XCTAssertEqual(
-                    row.evidence.humanSentence, group.explanation,
-                    "\(row.evidence.url.lastPathComponent) sits under a heading that says "
-                        + "\"\(group.explanation)\", which is not what Brim knows about it."
-                )
-            }
-        }
-        XCTAssertEqual(found.count, 3, "Three different reasons are three groups.")
-    }
-
-    /// **Also seen in the running app.** "Named after the application rather
-    /// than its identifier, so Brim will not tick it for you" was labelled
-    /// Strong, because the same source had found a Tier B preferences file
-    /// and the label was the strongest tier in the group. A heading that
-    /// says Brim will not tick something, beside a label that means Brim
-    /// will, is the kind of contradiction that gets a person to stop reading
-    /// the headings.
-    func testAGroupNeverMixesTiers() async {
-        let found = await groups(for: [
-            item("/lib/Support/Code", mechanism: "BundleIdentifierComponentSource", tier: .C,
-                 bytes: 131_500_000,
-                 sentence: "Named after the application rather than its identifier, so Brim "
-                     + "will not tick it for you."),
-            item("/lib/Preferences/com.test.app.plist", mechanism: "BundleIdentifierComponentSource",
-                 tier: .B, bytes: 1000, sentence: "Preferences keyed to the bundle identifier")
-        ])
-
-        for group in found {
-            for row in group.items {
-                XCTAssertEqual(
-                    row.evidence.tier, group.strongestTier,
-                    "A \(row.evidence.tier.rawValue) row is labelled "
-                        + "\(group.strongestTier.shortLabel) because it shares a group with "
-                        + "stronger evidence."
-                )
-            }
-        }
-        let nameMatch = found.first { $0.items.contains { $0.evidence.url.path == "/lib/Support/Code" } }
-        XCTAssertEqual(nameMatch?.strongestTier.shortLabel, "Heuristic")
-    }
-
-    /// The same reason at the same strength from two different sources is
-    /// one thing to the person reading it. Which part of Brim noticed is not
-    /// something they reason about.
-    func testTheSameReasonFromTwoSourcesIsOneGroup() async {
-        let found = await groups(for: [
-            item("/lib/Caches/com.test.app", mechanism: "BundleIdentifierStateSource",
-                 tier: .B, bytes: 10, sentence: "A cache folder keyed to the bundle identifier."),
-            item("/lib/Caches/com.test.app.ShipIt", mechanism: "LocationInventorySource",
-                 tier: .B, bytes: 20, sentence: "A cache folder keyed to the bundle identifier.")
-        ])
-
-        XCTAssertEqual(found.count, 1)
-        XCTAssertEqual(found.first?.totalBytes, 30)
-        XCTAssertEqual(Set(found.map(\.id)).count, found.count, "Group identities collide.")
-    }
-
-    /// A row the engine gave no sentence still gets a heading, and two
-    /// sources with nothing to say are not merged under one of their names.
-    func testRowsWithoutASentenceAreNotMergedAcrossSources() async {
-        let found = await groups(for: [
-            item("/x", mechanism: "OneSource", tier: .B, bytes: 1, sentence: ""),
-            item("/y", mechanism: "AnotherSource", tier: .B, bytes: 1, sentence: "")
-        ])
-
-        XCTAssertEqual(found.count, 2)
-        XCTAssertEqual(Set(found.map(\.mechanism)), ["OneSource", "AnotherSource"])
-        XCTAssertEqual(Set(found.map(\.id)).count, 2, "Group identities collide.")
-    }
-
     func testSelectingAnotherApplicationDiscardsTheFirstResult() async {
         // Clicking down a list must not leave a slow scan to overwrite the
         // footprint of whatever the user landed on.
@@ -345,7 +217,6 @@ final class ApplicationsModelTests: XCTestCase {
         await model.load(service: AppsStub(apps: [app("Safari", bundleID: "com.apple.Safari", protected: true)]))
         model.select(model.applications.first)
 
-        XCTAssertFalse(model.canUninstallSelection)
         XCTAssertEqual(
             model.uninstallBlockedReason,
             "macOS protects this application. It is part of the system and cannot be removed."
@@ -357,8 +228,25 @@ final class ApplicationsModelTests: XCTestCase {
         await model.load(service: AppsStub(apps: [app("Figma")]))
         model.select(model.applications.first)
 
-        XCTAssertTrue(model.canUninstallSelection)
+        XCTAssertNotNil(model.selected)
         XCTAssertNil(model.uninstallBlockedReason)
+    }
+
+    /// A footprint that could not be read was never shown: the failure
+    /// went into the list's error, which the inspector does not read, and
+    /// the pane showed the app with nothing under it.
+    func testAFailedInspectionIsTheInspectorsToSay() async throws {
+        let model = ApplicationsModel()
+        await model.load(service: AppsStub(apps: [app("Unreadable"), app("Figma")]))
+        model.select(model.applications.first { $0.name == "Unreadable" })
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertNotNil(model.inspectionError)
+        XCTAssertNil(model.footprint)
+        XCTAssertNil(model.errorMessage, "The list itself was read")
+
+        model.select(model.applications.first { $0.name == "Figma" })
+        XCTAssertNil(model.inspectionError)
     }
 
     func testAFailedListingIsReported() async {

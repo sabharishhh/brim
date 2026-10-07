@@ -22,7 +22,7 @@ extension BrimService {
         }
         let copies = try await recoveryReader().filter { requested.contains($0.path) }
         guard Set(copies.map(\.path)) == requested else {
-            throw ApplyError.validationFailed("A recovery copy changed or could not be checked. Refresh Leftovers.")
+            throw ApplyError.validationFailed("A recovery copy changed or could not be checked. Check Remnants again.")
         }
         return copies.sorted { $0.path < $1.path }
     }

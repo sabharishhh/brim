@@ -196,7 +196,6 @@ private struct PrivacySection: View {
     @SwiftUI.Environment(AppSession.self) private var session
     @State private var icons: (count: Int, bytes: Int64) = (0, 0)
     @State private var confirmsIcons = false
-    @State private var confirmsKept = false
 
     var body: some View {
         Section {
@@ -207,15 +206,6 @@ private struct PrivacySection: View {
                         .foregroundStyle(Palette.inkSecondary)
                     Button("Clear") { confirmsIcons = true }
                         .disabled(icons.count == 0)
-                }
-            }
-            LabeledContent("Kept items") {
-                HStack(spacing: 10) {
-                    Text(session.decisions.kept.isEmpty ? "None" : "\(session.decisions.kept.count)")
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
-                    Button("Forget") { confirmsKept = true }
-                        .disabled(session.decisions.kept.isEmpty)
                 }
             }
         } header: {
@@ -233,11 +223,6 @@ private struct PrivacySection: View {
             }
         } message: {
             Text("Removed apps will show a monogram instead")
-        }
-        .confirmationDialog("Forget kept items?", isPresented: $confirmsKept) {
-            Button("Forget", role: .destructive) { session.decisions.forgetAll() }
-        } message: {
-            Text("They return to the list on the next check")
         }
     }
 }

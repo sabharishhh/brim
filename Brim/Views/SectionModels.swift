@@ -7,10 +7,10 @@ import SwiftUI
 ///
 /// A `NavigationSplitView` tears down the detail view when the selection
 /// changes, taking every `@StateObject` inside it with it. That made leaving
-/// a section and coming back cost a full rescan — the Review Queue walks the
-/// whole Library, the Applications list sizes every installed bundle — so
-/// switching panels was measured in seconds and any selection the user had
-/// made was silently discarded.
+/// a section and coming back cost a full rescan: Remnants walks the whole
+/// Library and the Apps list sizes every installed bundle. Switching panels
+/// was measured in seconds, and any selection the person had made was
+/// silently discarded.
 ///
 /// Holding them here makes a section change what the user expects it to be:
 /// a change of view, not a reload of the machine.
