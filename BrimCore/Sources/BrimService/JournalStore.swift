@@ -60,15 +60,6 @@ public actor JournalStore {
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
-    public func allPlanIds() throws -> [UUID] {
-        try ensureDirectory()
-        let urls = try fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
-        return urls.compactMap { url in
-            guard url.pathExtension == "journal" else { return nil }
-            return UUID(uuidString: url.deletingPathExtension().lastPathComponent)
-        }
-    }
-
     /// Keep startup work bounded even after years of removal history.
     /// Older removals remain available through Journal's Check removal action.
     func recentEntries(limit: Int = 100) throws -> [JournalEntry] {
@@ -134,27 +125,5 @@ public actor JournalStore {
             ])
         }
         return latest
-    }
-
-    public func getOpenJournals() throws -> [JournalEntry] {
-        try ensureDirectory()
-        let urls = try fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
-        var entries = [JournalEntry]()
-        for url in urls where url.pathExtension == "journal" {
-            let data = try Data(contentsOf: url)
-            if let entry = try? JSONDecoder().decode(JournalEntry.self, from: data) {
-                if entry.status == .pending || entry.status == .partial {
-                    entries.append(entry)
-                }
-            }
-        }
-        return entries
-    }
-
-    public func delete(planId: UUID) throws {
-        let url = fileURL(for: planId)
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
-        }
     }
 }

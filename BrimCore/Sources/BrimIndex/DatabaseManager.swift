@@ -171,13 +171,4 @@ public struct DatabaseManager: Sendable {
             try Set(String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations"))
         }
     }
-    public func checkIntegrity() throws {
-        try dbPool.read { db in
-            let row = try Row.fetchOne(db, sql: "PRAGMA integrity_check")
-            if let result = row?[0] as? String, result.lowercased() != "ok" {
-                throw DatabaseError(resultCode: .SQLITE_CORRUPT, message: "Integrity check failed: \(result)")
-            }
-        }
-    }
-
 }
