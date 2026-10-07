@@ -82,7 +82,7 @@ struct InstallCard: View {
         case .recording: "Install and open the app, then finish here"
         case .finishing: "Looking at what changed"
         case .starting: "Noting what is on this Mac now"
-        default: "Drop an installer here to look inside, or record what installing does"
+        default: "See what an installer adds before it changes your Mac"
         }
     }
 
@@ -103,12 +103,10 @@ struct InstallCard: View {
         case .starting, .finishing:
             ProgressView().controlSize(.small)
         default:
-            HStack(spacing: 8) {
-                Button("Look Inside…") { shell.chooseInstaller() }
-                    .capsuleAction()
-                Button("Record an Install") { Task { await recording.start(service: service) } }
-                    .capsuleAction()
-            }
+            // Recording is Brim's job, done around an install it makes;
+            // nobody should have to start it.
+            Button("Choose an Installer…") { shell.chooseInstaller() }
+                .capsuleAction(prominent: true)
         }
     }
 
