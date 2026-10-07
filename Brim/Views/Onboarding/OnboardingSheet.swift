@@ -15,7 +15,6 @@ import SwiftUI
 /// as though nothing had happened.
 struct OnboardingSheet: View {
     let service: any BrimServiceProtocol
-    @ObservedObject var leftovers: LeftoversModel
     let onFinished: () -> Void
 
     enum Step: Int, CaseIterable {

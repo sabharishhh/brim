@@ -18,9 +18,6 @@ public final class RecoveryStatusModel: ObservableObject {
     @Published public private(set) var isRefreshing = false
     /// A failed refresh cannot support a claim that the old items are recoverable.
     @Published public private(set) var isAvailable = false
-    /// True when the watcher could not get kernel events and is polling, so
-    /// the UI can explain the delay rather than appear broken.
-    @Published public private(set) var isPolling = false
 
     public var totalBytes: Int64 {
         items.reduce(0) { $0 + $1.bytes }
@@ -59,11 +56,6 @@ public final class RecoveryStatusModel: ObservableObject {
         await watcher.start { [weak self] in
             await self?.refresh()
         }
-        let mode = await watcher.mode
-        if case .polling = mode {
-            isPolling = true
-        }
-
         observeActivation()
     }
 
