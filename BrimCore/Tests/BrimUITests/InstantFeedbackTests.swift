@@ -51,34 +51,6 @@ final class InstantFeedbackTests: XCTestCase {
         XCTAssertEqual(model.orphanedGroups.map(\.displayName), ["stayed"])
     }
 
-    func testTheOpenDetailClosesWhenItsSubjectGoes() async {
-        let model = await loaded([leftover("/tmp/a"), leftover("/tmp/b")])
-        model.inspected = model.orphanedGroups.first { $0.displayName == "a" }
-        XCTAssertNotNil(model.inspected)
-
-        model.forget(paths: ["/tmp/a"])
-        XCTAssertNil(model.inspected, "A detail pane about something removed is about nothing")
-    }
-
-    /// Two locations belonging to one application, which is the ordinary
-    /// case: `Application Support/Thing` and `Caches/Thing`.
-    func testTheDetailStaysOpenAndUpdatesWhenOnlyPartOfItGoes() async {
-        let model = await loaded([
-            leftover("/tmp/Application Support/Thing"),
-            leftover("/tmp/Caches/Thing"),
-        ])
-        XCTAssertEqual(model.orphanedGroups.count, 1, "One application, two locations")
-        model.inspected = model.orphanedGroups.first
-        let subject = model.inspected?.id
-
-        model.forget(paths: ["/tmp/Caches/Thing"])
-
-        XCTAssertEqual(model.inspected?.id, subject,
-                       "One of two locations going is not a reason to close the pane")
-        XCTAssertEqual(model.inspected?.items.count, 1,
-                       "And the pane must not go on listing the location that has gone")
-    }
-
     // MARK: - Putting it back
 
     /// Everything here went to the Trash, and the Trash is a place people

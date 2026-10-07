@@ -300,7 +300,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     ///
     /// This is deliberately not a gate. It establishes who set Brim up, and
     /// it does not stand in for the confirmation before a permanent
-    /// deletion — an authentication at launch proves nothing about the person
+    /// deletion: an authentication at launch proves nothing about the person
     /// present an hour later, which is when it would matter.
     public func enroll() async throws {
         #if DEBUG
@@ -512,7 +512,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return "Remove \(subject): \(items), \(permanent) of them permanent."
         }
         if plan.steps.contains(where: { $0.kind == .trashPathPrivileged }) {
-            return "Remove \(subject): \(items), including items set aside by the helper without a restore action."
+            return "Remove \(subject): \(items), including items set aside that Brim cannot put back."
         }
         return "Remove \(subject): \(items). Trash items can be restored until the Trash is emptied."
     }
@@ -709,12 +709,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
         }
 
-        // Ensure steps match exactly (count, targets, and fingerprints)
+        // Steps must match exactly: count, targets and fingerprints. These
+        // sentences reach the person under "Stopped", so they say what
+        // changed on the disk rather than which array index disagreed, or a
+        // fingerprint printed as `Optional(TargetFingerprint(dev: ...))`.
         guard plan.steps.count == revalidatedPlan.steps.count else {
-            throw ApplyError.validationFailed(
-                "Step count mismatch: expected \(plan.steps.count), "
-                    + "found \(revalidatedPlan.steps.count)"
-            )
+            throw ApplyError.validationFailed("Something was added or removed since the review.")
         }
 
         for i in 0 ..< plan.steps.count {
@@ -722,10 +722,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let newStep = revalidatedPlan.steps[i]
 
             guard originalStep.target == newStep.target else {
-                throw ApplyError.validationFailed(
-                    "Target mismatch at step \(i): expected \(originalStep.target), "
-                        + "found \(newStep.target)"
-                )
+                throw ApplyError.validationFailed("\(originalStep.target) is no longer what the review found.")
             }
 
             // One guard, not the two that were here. They tested the same
@@ -739,11 +736,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 throw ApplyError.validationFailed("The required action changed. Review the plan again.")
             }
             guard originalStep.targetFingerprint == newStep.targetFingerprint else {
-                throw ApplyError.validationFailed(
-                    "Fingerprint mismatch at step \(i) for target \(originalStep.target): "
-                        + "original \(String(describing: originalStep.targetFingerprint)), "
-                        + "new \(String(describing: newStep.targetFingerprint))"
-                )
+                throw ApplyError.validationFailed("\(originalStep.target) changed since the review.")
             }
         }
     }
@@ -847,7 +840,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             privacyResetFailed: privacyResetFailed, otherActionsFailed: otherActionsFailed
         )
         let receiptReason = executionEvidenceUnavailable
-            ? "Execution receipts could not be read. Completed actions are unknown." : nil
+            ? "Brim's record of this removal could not be read, so what it did is not known." : nil
         let reason = [observedReason, receiptReason]
             .compactMap(\.self).joined(separator: "\n\n")
 
@@ -899,7 +892,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let cleanup = ToolCleanupResult(state: state, command: command,
                                         scope: plan.toolCleanupBinding?.scope, failure: completed ? nil : outcome)
         let result = VerificationResult(planId: plan.planId, expectedBytes: 0, recoveredBytes: 0, success: completed,
-                                        reason: journal == nil ? "Execution receipts could not be read."
+                                        reason: journal == nil ? "Brim's record of this removal could not be read."
                                             : (completed ? nil : outcome),
                                         toolCleanup: cleanup, observedAt: observedAt)
         if journal != nil {
@@ -1040,7 +1033,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             followUps.append(.deviceManagementSettings)
         }
         let extensions = postChecks.first { $0.capability == .systemExtension }?.remaining ?? []
-        followUps.removeAll { $0 == .vendorUninstaller }
         if extensions
             .contains(where: { $0.runtimeState?.lowercased().contains("waiting to uninstall on reboot") == true }) {
             followUps.append(.restartForSystemExtension)
@@ -1166,7 +1158,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw NSError(
                 domain: "BrimService",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "No journal found for plan."]
+                userInfo: [NSLocalizedDescriptionKey: "Brim has no record of what this removal moved, "
+                    + "so it cannot put it back."]
             )
         }
         guard journal.restoredAt == nil else {
@@ -1241,7 +1234,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                     throw NSError(
                         domain: "BrimOps",
                         code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "Path \(step.target) has been re-occupied."]
+                        userInfo: [NSLocalizedDescriptionKey: "Something new is at \(step.target), "
+                            + "so the old item was not put back over it."]
                     )
                 }
             }
@@ -1253,8 +1247,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let trashedURLs = journal.stepTrashedURLs ?? [:]
         // Put the registration back with the bundle. The uninstall retracted
         // it deliberately, so restoring the files alone would leave a working
-        // application macOS does not know about — no "Open With", no document
-        // types, until something happens to rescan it.
+        // application macOS does not know about (no "Open With", no document
+        // types) until something happens to rescan it.
         for step in plan.steps where step.kind == .unregisterLaunchServices {
             // An offline filesystem cannot restore the host Mac's registry.
             guard root.rootURL.standardizedFileURL.path == "/" else { continue }
@@ -1298,11 +1292,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// Gives the executor a way to reach Brim's privileged daemon.
+    /// Gives the executor a way to reach administrator cleanup.
     ///
-    /// Set by the application once, after the daemon reports itself
-    /// ready. Nothing else in the service knows the daemon exists, which
-    /// keeps the privileged path to one line in one place.
+    /// Set by the application once, through `HelperRoute`. Nothing else in
+    /// the service knows how protected items are removed, which keeps the
+    /// privileged path to one line in one place.
     public func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {
         privilegedRemover = remover
         await executor.setPrivilegedRemover(remover)
@@ -1392,13 +1386,22 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // Grouped by the folder and the reason, because together they are
         // what somebody can act on. Fourteen names sharing one answer is
         // one paragraph, not fourteen.
-        var order: [String] = []
-        var names: [String: [String]] = [:]
+        // The folder and what was said about it, as a key rather than two
+        // strings joined by a NUL and split apart again.
+        enum Said: Hashable {
+            case recorded(String)
+            case capability(Capability)
+        }
+        struct Key: Hashable {
+            let folder: String
+            let said: Said
+        }
+        var order: [Key] = []
+        var names: [Key: [String]] = [:]
         for path in paths.sorted() {
-            let folder = (path as NSString).deletingLastPathComponent
-            let said = recorded[path].flatMap(Self.recordedReason)
-                ?? "capability:\(capabilityForPath(path).rawValue)"
-            let key = "\(folder)\u{0}\(said)"
+            let said = recorded[path].flatMap(Self.recordedReason).map(Said.recorded)
+                ?? .capability(capabilityForPath(path))
+            let key = Key(folder: (path as NSString).deletingLastPathComponent, said: said)
             if names[key] == nil {
                 order.append(key)
             }
@@ -1406,23 +1409,20 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         let paragraphs = order.flatMap { key -> [String] in
-            let parts = key.components(separatedBy: "\u{0}")
-            let folder = parts[0]
-            let said = parts[1]
+            let folder = key.folder
             let these = names[key] ?? []
 
             // The folder is the subject wherever the folder is the reason,
             // so one sentence is right for one item and for fourteen. What
             // is left over is per item, and there the item is the subject.
-            let reason: String
-            if said.hasPrefix("capability:") {
-                let capability = Capability(rawValue: String(said.dropFirst("capability:".count))) ?? .ok
-                reason = RemovalCapability.folderExplanation(capability, folder: folder)
+            let reason: String = switch key.said {
+            case let .capability(capability):
+                RemovalCapability.folderExplanation(capability, folder: folder)
                     ?? RemovalCapability.explanation(capability)
                     ?? "Brim could not remove \(these.count == 1 ? "it" : "them"), and nothing was "
                     + "recorded to say why."
-            } else {
-                reason = said
+            case let .recorded(said):
+                said
             }
             // Where they are, whenever the reason has not already said.
             let list = these.joined(separator: ", ")
@@ -1462,7 +1462,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 + "Review the removal again in a signed copy of Brim."
         }
         if outcome.hasPrefix("helper_refused: ") {
-            return "Brim's helper would not move this. "
+            return "Administrator cleanup would not move this. "
                 + outcome.dropFirst("helper_refused: ".count)
         }
         if outcome == "skipped_due_to_prior_failures" {
@@ -1518,11 +1518,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return Plan(planId: UUID(), createdAt: Date(), engineVersion: EvidenceEngineRevision,
                     osVersion: ProcessInfo.processInfo.operatingSystemVersionString, intent: intent,
                     steps: [step], excludedItems: [], expectedTotalBytes: 0, toolCleanupBinding: binding)
-    }
-
-    public func developerCaches() async -> [DeveloperCache] {
-        await DeveloperCacheScanner(home: root.url(for: .userHomeDotFolders),
-                                    darwinCache: root.url(for: .darwinUserCache)).scan()
     }
 
     public func sampleEnergy() async -> EnergySampleResult {
@@ -1785,7 +1780,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     private func scanLeftovers() async throws -> [Leftover] {
         // A registration whose program has gone names an owner that was
-        // recorded present and is not there now — the spec's definition of
+        // recorded present and is not there now: the spec's definition of
         // orphaned, and the thing a user actually notices as "I uninstalled
         // this and it is still here". The sweep already enumerates these.
         var staleRegistrationOwners: [String: String] = [:]
@@ -1811,6 +1806,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // Microsoft AutoUpdate were removed, Home said so, and what they left
         // was still listed as owner unknown.
         let removedApps = await (try? index?.removedApplications()) ?? [:]
+        // What Brim has seen applications called. Without it a leftover
+        // was named from its identifier alone, so Teams' would read "Teams2"
+        // although Brim had recorded "Microsoft Teams" for weeks. Read once:
+        // the same query ran again a few lines below for the scanner.
         let recorded = await (try? index?.recordedNames()) ?? [:]
         for (id, seen) in removedApps where staleRegistrationOwners[id] == nil {
             let name = recorded[id.lowercased()] ?? id
@@ -1832,10 +1831,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             inUseWithin: root.rootURL.path == "/" ? 7 * 24 * 60 * 60 : nil
         )
         var knownPastBundleIDs = Set(removedApps.keys)
-        // What Brim has seen applications called. Without it a leftover
-        // was named from its identifier alone, so Teams' would read "Teams2"
-        // although Brim had recorded "Microsoft Teams" for weeks.
-        var knownNames = await (try? index?.recordedNames()) ?? [:]
+        var knownNames = recorded
         var knownAliases = await (try? index?.recordedAliases()) ?? [:]
         var knownIdentities: [Identity] = []
         let entries = try await ledgerStore.allEntries()
@@ -2000,7 +1996,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     ///
     /// An uninstall retracts the record for the path an app was installed
     /// at, but a bundle moved to the Trash keeps its name, so macOS
-    /// registers it there — accurately, while it is still recoverable.
+    /// registers it there, accurately, while it is still recoverable.
     /// Emptying the Trash removes the file and leaves that record pointing
     /// at nothing, and macOS does not reliably prune it: a record for
     /// `~/.Trash/…app` was observed surviving the file by some minutes.

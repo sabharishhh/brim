@@ -128,7 +128,7 @@ struct InstallerItemSection: View {
                 )
             }
             if items.count > Metrics.rowsBeforeShowAll, !showsAll {
-                Button("Show All \(items.count)") { showsAll = true }
+                Button("Show all \(items.count)") { showsAll = true }
                     .buttonStyle(.borderless)
                     .font(.brimFacts)
                     .padding(.leading, 28)

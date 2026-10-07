@@ -226,6 +226,16 @@ public actor LeftoversScanner {
         let containerClaimants = Set(activeIdentities.flatMap {
             [$0.bundleID].compactMap(\.self) + ($0.identitySurface?.bundleIdentifiers ?? [])
         }.map { $0.lowercased() })
+        // Worked out once per domain rather than once per item: every
+        // identifier lowercased and every bundle path standardised again
+        // for each of thousands of folders was most of what asking whether
+        // an item belongs to an installed app cost.
+        let installed = InstalledLookup(
+            identifiersLowercased: Set(activeBundleIDs.map { $0.lowercased() }),
+            bundlePaths: activeIdentities.compactMap(\.bundlePath).map {
+                URL(fileURLWithPath: $0).standardizedFileURL.path
+            }
+        )
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -269,7 +279,7 @@ public actor LeftoversScanner {
                 // prefix check has to survive the group-container spelling:
                 // a group container is named `group.com.apple.SHTTS`, which
                 // does not start with `com.apple.` and so was being listed
-                // as a leftover — one of them had been written to under a
+                // as a leftover: one of them had been written to under a
                 // minute before the scan.
                 //
                 // Logic and Final Cut are the deliberate exceptions: Apple
@@ -364,7 +374,7 @@ public actor LeftoversScanner {
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
-                    locationRules: locationRules, activeIdentities: activeIdentities,
+                    locationRules: locationRules, installed: installed,
                     activeSubjects: activeSubjects,
                     activeBundleIDs: activeBundleIDs, activeNames: activeNames,
                     activeGroupContainers: activeGroupContainers, activeTeamIDs: activeTeamIDs,
@@ -604,8 +614,16 @@ public actor LeftoversScanner {
             }
     }
 
-    /// Whether a directory belongs to macOS itself.
-    ///
+    /// The folders macOS shares with installers, where a plain name is macOS's.
+    static let systemDomains: Set<FileSystemRoot.Domain> = [
+        .systemApplicationSupport, .systemCaches, .systemLogs,
+        .systemPreferences, .systemContainers, .systemDiagnosticReports,
+        .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
+        .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
+        .systemPreferencePanes, .systemExtensionsFolder, .startupItems,
+        .systemApplicationScripts, .systemDictionaries
+    ]
+
     /// Whether a plainly-named entry in a system folder belongs to macOS.
     ///
     /// `/Library` holds Apple's own work under ordinary names: `Apple`,
@@ -620,15 +638,6 @@ public actor LeftoversScanner {
     /// plainly-named folders and anything else unrecognisable stay out.
     /// `jp.co.nikon.UninstallCenter.Receipts` is a leftover;
     /// `iLifeMediaBrowser` is macOS.
-    static let systemDomains: Set<FileSystemRoot.Domain> = [
-        .systemApplicationSupport, .systemCaches, .systemLogs,
-        .systemPreferences, .systemContainers, .systemDiagnosticReports,
-        .systemServices, .systemQuickLook, .systemSpotlight, .systemAutomator,
-        .systemColorPickers, .systemScreenSavers, .systemInternetPlugIns,
-        .systemPreferencePanes, .systemExtensionsFolder, .startupItems,
-        .systemApplicationScripts, .systemDictionaries
-    ]
-
     static func isSystemOwnedByName(_ name: String, in domain: FileSystemRoot.Domain) -> Bool {
         guard systemDomains.contains(domain) else { return false }
 
@@ -639,9 +648,6 @@ public actor LeftoversScanner {
         return parts.count < 3
     }
 
-    /// A name is protected only when a corresponding component exists under
-    /// this machine's /System/Library. A generic vendor or framework list
-    /// would age as macOS changes and could hide third-party residue.
     /// The first two components of every reverse-DNS name macOS ships
     /// outside `com.apple`, which is handled on its own.
     static func families(of names: Set<String>) -> Set<String> {
@@ -689,6 +695,9 @@ public actor LeftoversScanner {
         return (plist["CFBundleIdentifier"] as? String, team)
     }
 
+    /// A name is protected only when a corresponding component exists under
+    /// this machine's /System/Library. A generic vendor or framework list
+    /// would age as macOS changes and could hide third-party residue.
     static func isInstalledSystemComponent(_ name: String, names: Set<String>) -> Bool {
         let stem = systemComponentStem(name)
         return names.contains(stem)
@@ -704,16 +713,6 @@ public actor LeftoversScanner {
         return isNamed && FileManager.default.fileExists(
             atPath: url.appendingPathComponent(".localized").path
         )
-    }
-
-    /// Sandbox containers can have UUID directory names. The container
-    /// manager's owner identifier is a disk record, unlike a guess from
-    /// creation time or neighbouring UUIDs.
-    static func containerOwnerIdentifier(
-        at url: URL, in domain: FileSystemRoot.Domain
-    ) -> String? {
-        guard domain == .userContainers || domain == .systemContainers else { return nil }
-        return ContainerOwnershipReader.read(at: url).identifier
     }
 
     private static func systemComponentStem(_ name: String) -> String {
@@ -945,13 +944,37 @@ public actor LeftoversScanner {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
     }
 
+    /// What every item in a domain is compared against, prepared once.
+    private struct InstalledLookup {
+        let identifiersLowercased: Set<String>
+        /// Standardised, so a folder can be tested as one an app runs from.
+        let bundlePaths: [String]
+
+        /// The identifier or one of its parents, so a helper, widget or
+        /// extension that appends a component to an installed app's
+        /// identifier is that app's. Asked of the name's own dotted
+        /// prefixes, a handful of set lookups, rather than of every
+        /// installed identifier in turn.
+        func containsIdentifierOrParent(of lowerName: String) -> Bool {
+            var candidate = Substring(lowerName)
+            while !candidate.isEmpty {
+                if identifiersLowercased.contains(String(candidate)) {
+                    return true
+                }
+                guard let dot = candidate.lastIndex(of: ".") else { return false }
+                candidate = candidate[..<dot]
+            }
+            return false
+        }
+    }
+
     private nonisolated func isItemActive(
         item: URL,
         in domain: FileSystemRoot.Domain,
         vendor: String?,
         containerOwner: String?,
         locationRules: [LocationInventory.Location],
-        activeIdentities: [Identity],
+        installed: InstalledLookup,
         activeSubjects: [LocationInventory.Subject],
         activeBundleIDs: Set<String>,
         activeNames: Set<String>,
@@ -966,9 +989,7 @@ public actor LeftoversScanner {
         // A folder an installed application runs from. Microsoft AutoUpdate
         // lives in `Application Support/Microsoft/MAU2.0`.
         let inside = item.standardizedFileURL.path + "/"
-        if activeIdentities.contains(where: { identity in
-            identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(inside) } ?? false
-        }) {
+        if installed.bundlePaths.contains(where: { $0.hasPrefix(inside) }) {
             return true
         }
         if locationRules.contains(where: { $0.rule == .applicationName || $0.rule == .applicationNameLowercased }),
@@ -978,10 +999,7 @@ public actor LeftoversScanner {
         let lowerName = name.lowercased()
         // A helper, widget, or extension often appends a component to its
         // parent bundle identifier. The installed parent still owns it.
-        if activeBundleIDs.contains(where: { identifier in
-            lowerName == identifier.lowercased()
-                || lowerName.hasPrefix(identifier.lowercased() + ".")
-        }) {
+        if installed.containsIdentifierOrParent(of: lowerName) {
             return true
         }
         if let containerOwner {
@@ -1170,8 +1188,6 @@ public actor LeftoversScanner {
         }
     }
 
-    /// Something a person can read, instead of a team identifier and a
-    /// reverse-DNS name.
     /// The name Brim recorded for this identifier or the application it is
     /// inside, the longest match winning, so `com.microsoft.teams2.agent`
     /// is Microsoft Teams too.
@@ -1182,6 +1198,8 @@ public actor LeftoversScanner {
             .max { $0.key.count < $1.key.count }?.value
     }
 
+    /// Something a person can read, instead of a team identifier and a
+    /// reverse-DNS name.
     static func readableName(ownerID: String, url: URL, qualified: String? = nil) -> String {
         // Inside a vendor folder the vendor is half the name, and
         // dropping it leaves a row saying "Chrome" beside one saying
@@ -1244,7 +1262,7 @@ public actor LeftoversScanner {
     /// Whether Brim can remove this, rather than only see it.
     ///
     /// A sandbox container carries a `containermanagerd` metadata file that
-    /// cannot be unlinked without Full Disk Access — and not by `sudo`
+    /// cannot be unlinked without Full Disk Access, and not by `sudo`
     /// either, since TCC is judged on the responsible application rather
     /// than the effective user. Reported honestly so the UI can explain it
     /// instead of failing.

@@ -92,7 +92,7 @@ struct RegistrationLifecycleTests {
         }
         let result = try await service(base, runtime: .init(observe: { _, _ in .absent })).verify(planId: plan.planId)
         #expect(!result.success)
-        #expect(result.reason?.contains("Execution receipts") == true)
+        #expect(result.reason?.contains("record of this removal could not be read") == true)
         #expect(result.observedAt != nil)
     }
 

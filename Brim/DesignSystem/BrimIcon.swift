@@ -5,18 +5,14 @@ import SwiftUI
 /// replaces it, so the eye still finds the app first.
 enum IconBadge: String, CaseIterable {
     case removed
-    case shared
     case helper
-    case kept
     case regenerates
     case job
 
     var symbolName: String {
         switch self {
         case .removed: "xmark"
-        case .shared: "shield.fill"
         case .helper: "lock.fill"
-        case .kept: "pin.fill"
         case .regenerates: "arrow.triangle.2.circlepath"
         case .job: "gearshape.fill"
         }
@@ -28,8 +24,6 @@ struct BrimIcon: View {
     let source: IconSource
     var size: CGFloat = Metrics.rowIcon
     var badge: IconBadge?
-    /// New since the last visit: a dot in the accent colour.
-    var isNew = false
 
     var body: some View {
         face
@@ -38,16 +32,6 @@ struct BrimIcon: View {
                 if let mark = badge ?? (isRemembered ? .removed : nil) {
                     BadgeMark(badge: mark, size: size * 0.44)
                         .offset(x: size * 0.1, y: size * 0.1)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                if isNew {
-                    Circle()
-                        .fill(.tint)
-                        .stroke(Palette.canvas, lineWidth: 1.5)
-                        .frame(width: size * 0.28, height: size * 0.28)
-                        .offset(x: size * 0.08, y: -size * 0.08)
-                        .transition(.opacity)
                 }
             }
             // The name is beside it everywhere this is used, and the row's
@@ -147,7 +131,7 @@ struct BadgeMark: View {
             .overlay {
                 Image(systemName: badge.symbolName)
                     .font(.system(size: size * 0.52, weight: .bold))
-                    .foregroundStyle(badge == .shared || badge == .helper ? Palette.caution : Palette.inkSecondary)
+                    .foregroundStyle(badge == .helper ? Palette.caution : Palette.inkSecondary)
             }
             .frame(width: size, height: size)
     }

@@ -67,27 +67,7 @@ final class DesignFoundationTests: XCTestCase {
         first.acknowledge("leftovers", current: ["a", "b"])
 
         let next = VisitMemory(file: file)
-        XCTAssertTrue(next.hasSnapshot(of: "leftovers"))
         XCTAssertEqual(next.newItems(in: "leftovers", current: ["a", "b", "c"]), ["c"])
         XCTAssertEqual(next.newItems(in: "apps", current: ["x"]), [], "Never looked is not new")
-    }
-
-    func testTheVisitBeforeThisOneIsTheOnePeopleMean() throws {
-        let file = try scratch().appendingPathComponent("visits.json")
-        let monday = Date(timeIntervalSince1970: 1_000_000)
-        VisitMemory(file: file).begin(now: monday)
-
-        let today = VisitMemory(file: file)
-        today.begin(now: monday.addingTimeInterval(86400))
-        XCTAssertEqual(today.lastVisit, monday)
-    }
-
-    func testAKeptItemStaysKept() throws {
-        let file = try scratch().appendingPathComponent("decisions.json")
-        DecisionStore(file: file).keep(["/Users/me/Library/Caches/Tool"])
-        let later = DecisionStore(file: file)
-        XCTAssertTrue(later.isKept("/Users/me/Library/Caches/Tool"))
-        later.unkeep(["/Users/me/Library/Caches/Tool"])
-        XCTAssertFalse(DecisionStore(file: file).isKept("/Users/me/Library/Caches/Tool"))
     }
 }

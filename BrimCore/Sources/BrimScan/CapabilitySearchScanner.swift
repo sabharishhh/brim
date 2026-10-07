@@ -211,15 +211,14 @@ public extension CapabilitySearchScanner {
         let exactPaths = Set((reviewed + discovered.records).compactMap(\.programPath))
         let identifiers = Set(identity.searchBundleIdentifiers
             + (reviewed + discovered.records).map(\.identifier).filter { !$0.hasPrefix("/") })
-        let prefixes = removalLocations + recoveryLocations.map(\.path)
-            + [identity.bundlePath].compactMap(\.self)
+        let prefixes = (removalLocations + recoveryLocations.map(\.path) + [identity.bundlePath].compactMap(\.self))
+            .map { URL(fileURLWithPath: $0).standardizedFileURL.path }
         do {
             let records = try identifiers.sorted().flatMap { identifier in
                 try lookup(identifier).filter { url in
                     let path = url.standardizedFileURL.path
-                    return exactPaths.contains(path) || prefixes.contains {
-                        let prefix = URL(fileURLWithPath: $0).standardizedFileURL.path
-                        return path == prefix || path.hasPrefix(prefix + "/")
+                    return exactPaths.contains(path) || prefixes.contains { prefix in
+                        path == prefix || path.hasPrefix(prefix + "/")
                     }
                 }.map { url in
                     Registration(kind: .launchServices, identifier: identifier, label: url.lastPathComponent,

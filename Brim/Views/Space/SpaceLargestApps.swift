@@ -43,7 +43,7 @@ struct SpaceLargestApps: View {
                             .font(.brimFacts)
                             .foregroundStyle(Palette.inkSecondary)
                     }
-                    Button("Show All") { shell.go(to: .apps, lens: .all) }
+                    Button("Show all") { shell.go(to: .apps, lens: .all) }
                         .buttonStyle(.borderless)
                         .font(.brimFacts)
                         .padding(.leading, 8)

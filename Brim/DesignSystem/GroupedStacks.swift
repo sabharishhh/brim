@@ -6,9 +6,8 @@ import SwiftUI
 ///
 /// A styled `List` rather than a stack in a scroll view, so rows are
 /// measured once and reused (`CLAUDE.md`). No box behind a group: the
-/// title and the indent already say what belongs together. Leftovers has
-/// its own copy of this with ticks and keeps on the header; this one is
-/// for the pages that need less.
+/// title and the indent already say what belongs together. Apps,
+/// Background, Developer and Updates all draw their groups with this.
 struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
     let sections: [ItemGroup<Item>]
     /// "3 · 1.2 GB" beside a group's title.

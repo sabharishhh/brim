@@ -93,7 +93,7 @@ final class PlanStepOrderingTests: XCTestCase {
 
     func testUnloadPrecedesPlistRemovalOnApplyAndReversesOnUndo() {
         // Both are .launchd, so the planner's index ordering is what keeps the
-        // unload ahead of the removal — and the restore ahead of the reload.
+        // unload ahead of the removal, and the restore ahead of the reload.
         let unload = step(0, .launchd, target: "/Users/x/Library/LaunchAgents/com.test.plist", kind: .unloadLaunchdJob)
         let remove = step(1, .launchd, target: "/Users/x/Library/LaunchAgents/com.test.plist", kind: .removeLaunchdPlist)
         let subject = plan([remove, unload])

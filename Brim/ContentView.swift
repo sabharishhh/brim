@@ -153,9 +153,8 @@ struct ContentView: View {
             }
         }
         .onChange(of: shell.checkRequests) { Task { await checkAgain() } }
-        // Once, for every section. Asks macOS nothing until a removal
-        // needs the helper; see `HelperRoute`.
-        .task { session.visits.begin() }
+        // Asks macOS nothing until a removal needs administrator access;
+        // see `HelperRoute`.
         .task(id: needsSetup) {
             await HelperRoute.connect(models.background.helper, to: service)
             guard needsSetup == false else { return }
@@ -185,7 +184,7 @@ struct ContentView: View {
                 }
             }
         )) {
-            OnboardingSheet(service: service, leftovers: models.leftovers) {
+            OnboardingSheet(service: service) {
                 hasFinishedSetup = true
                 needsSetup = false
             }
@@ -205,7 +204,7 @@ struct ContentView: View {
             case .updates: UpdatesView(model: models.updates, whatsNew: models.whatsNew)
             }
         case .leftovers:
-            LeftoversView(model: models.leftovers, recovery: models.recovery)
+            LeftoversView(model: models.leftovers, recovery: models.recovery, access: models.fullDiskAccess)
         case .background:
             BackgroundView(model: models.background)
         case .energy:
@@ -360,11 +359,12 @@ private struct ActivityLine: View {
     }
 }
 
-/// New leftovers since the last visit on the Dock icon, when the person
-/// asked for it in Settings. Opening Leftovers acknowledges them, which
-/// clears it. Its own view, observing the model directly: read through
-/// `SectionModels` it would never hear of a change (`CLAUDE.md`, on nested
-/// observable objects).
+/// Removed apps with something new left behind since the last visit, on
+/// the Dock icon, when the person asked for it in Settings. Opening
+/// Remnants acknowledges them, which clears it. It counted every path,
+/// Unknown items included, under a setting that says removed apps. Its own
+/// view, observing the model directly: read through `SectionModels` it
+/// would never hear of a change (`CLAUDE.md`, on nested observable objects).
 private struct DockBadge: View {
     @ObservedObject var leftovers: LeftoversModel
     let isOn: Bool
@@ -378,7 +378,7 @@ private struct DockBadge: View {
 
     private var count: Int {
         guard isOn else { return 0 }
-        return session.visits.newItems(in: "leftovers", current: Set(leftovers.all.map(\.id))).count
+        return session.visits.newItems(in: "removed apps", current: Set(leftovers.orphanedGroups.map(\.id))).count
     }
 }
 

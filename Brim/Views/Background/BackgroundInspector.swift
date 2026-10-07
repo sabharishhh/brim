@@ -7,13 +7,13 @@ import SwiftUI
 /// One application's registrations in depth: who signed them, what state
 /// they are in, and each record with the evidence for it.
 ///
-/// A `List`, like the Leftovers inspector, so each record is measured once.
+/// A `List`, so each record is measured once.
 struct BackgroundInspector: View {
     let entry: BackgroundEntry
     let icon: IconSource
     let canPick: Bool
     let isPicked: Bool
-    /// Brim's helper is set up and can take the jobs that need it.
+    /// Administrator cleanup is available for the jobs that need it.
     let helperIsReady: Bool
     let pick: () -> Void
     @SwiftUI.Environment(\.backgroundReveals) private var reveals
@@ -160,7 +160,7 @@ private struct RecordRow: View {
                 }
                 if let location = registration.spokenLocation {
                     Text(registration.kind == .backgroundItem
-                        ? "Target: " + Self.abbreviated(location) : Self.abbreviated(location))
+                        ? "Target: " + PathText.abbreviated(location) : PathText.abbreviated(location))
                         .font(.caption)
                         .foregroundStyle(Palette.inkTertiary)
                         .lineLimit(2)
@@ -193,7 +193,9 @@ private struct RecordRow: View {
             }
             if let url = reveals[registration.id] {
                 HoverActions {
-                    RowAction(symbol: "arrow.up.forward.app", help: "Show Target in Finder") {
+                    // The record's file for a job or an extension, its
+                    // program for the rest: "Target" was wrong for the first.
+                    RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") {
                         shell.reveal([url])
                     }
                 }
@@ -238,10 +240,5 @@ private struct RecordRow: View {
             return nil
         }
         return RemovalCapability.explanation(registration.capability)
-    }
-
-    static func abbreviated(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }

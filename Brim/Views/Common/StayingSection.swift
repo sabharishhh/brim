@@ -44,7 +44,7 @@ struct StayingRow: View {
                     Text(name).font(.brimFacts).foregroundStyle(Palette.ink)
                     Text("Stays").font(.caption).foregroundStyle(Palette.caution)
                 }
-                Text(UninstallPlanRow.abbreviated((item.target as NSString).deletingLastPathComponent))
+                Text(PathText.abbreviated((item.target as NSString).deletingLastPathComponent))
                     .font(.caption).foregroundStyle(Palette.inkTertiary)
                     .truncationMode(.middle).lineLimit(1)
                 Text(item.reason)

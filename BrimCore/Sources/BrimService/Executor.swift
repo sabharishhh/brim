@@ -12,19 +12,18 @@ public actor Executor {
     private let toolCleanupClient: ToolCleanup.Client
     private let launchdRuntime: LaunchdRuntimeClient
 
-    /// Removes something this process cannot reach, by asking Brim's
-    /// privileged daemon. Nil when no daemon is set up, which is the
-    /// normal state and is not an error: the step then records that it
-    /// needed one, and the plan says so rather than half succeeding.
+    /// Removes something this process cannot reach, through administrator
+    /// cleanup. Nil when this copy of Brim has none, which is not an error:
+    /// the step then records that it needed it, and the plan says so rather
+    /// than half succeeding.
     ///
-    /// Injected rather than imported so the executor keeps knowing
-    /// nothing about XPC, and so a test can stand in for root.
+    /// Injected rather than imported so the executor knows nothing about
+    /// how root is reached, and so a test can stand in for root.
     private var privilegedRemover: (@Sendable (String) async -> String?)?
 
-    /// Forgets an installer receipt, by asking the daemon. Nil when no
-    /// daemon is set up: receipts live in a folder that belongs to root,
-    /// so without one the step records that it needed help rather than
-    /// failing with a permission error nobody can act on.
+    /// Forgets an installer receipt through administrator cleanup. Nil
+    /// without it: receipts live in a folder that belongs to root, so the
+    /// step then tries the bounded `pkgutil` route and records what it got.
     private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
 
     private var recoveryRemover: (@Sendable (String, TargetFingerprint) async -> String?)?
@@ -110,9 +109,9 @@ public actor Executor {
                     journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .trashPathPrivileged {
                     // Something in a folder that belongs to root. The
-                    // daemon applies its own rules and moves the file to a
-                    // holding folder rather than deleting it, so this is
-                    // as reversible as the Trash is.
+                    // administrator process applies its own rules and moves
+                    // the file to a holding folder rather than deleting it.
+                    // Brim cannot put it back from there.
                     guard let privilegedRemover else {
                         journal.stepOutcomes[step.index] = "needs_helper_not_set_up"
                         hasFailures = true
@@ -222,7 +221,7 @@ public actor Executor {
                 } else if step.kind == .unregisterLaunchServices {
                     // Only the path the app was installed at. A bundle that
                     // went to the Trash keeps its name, so Launch Services
-                    // registers it there — but that record is *accurate*:
+                    // registers it there, but that record is *accurate*:
                     // the app really is in the Trash, and macOS does the same
                     // for any app dragged there by hand. Retracting it is the
                     // Trash's lifecycle, not this step's, and racing Launch
@@ -230,7 +229,7 @@ public actor Executor {
                     // non-zero because the record does not exist yet, and the
                     // daemon creates it a moment later.
                     //
-                    // Recorded, never fatal — for the same reason as the
+                    // Recorded, never fatal, for the same reason as the
                     // privacy reset. The files are already gone; refusing the
                     // whole uninstall over a registration would be the wrong
                     // trade, and the journal says what happened either way.
@@ -319,13 +318,8 @@ public actor Executor {
                     hasFailures = true
                     blocksBundle = true
                 }
-            } catch let SafeOpsError.failedToRename(err) where err == EPERM {
-                journal.stepOutcomes[step.index] = "refusedByOS"
-                hasFailures = true
-                if !Self.isSupportFile(step) {
-                    blocksBundle = true
-                }
-            } catch let SafeOpsError.failedToUnlink(err) where err == EPERM {
+            } catch let SafeOpsError.failedToRename(err) where err == EPERM,
+                        let SafeOpsError.failedToUnlink(err) where err == EPERM {
                 journal.stepOutcomes[step.index] = "refusedByOS"
                 hasFailures = true
                 if !Self.isSupportFile(step) {

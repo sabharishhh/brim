@@ -8,8 +8,7 @@ import SwiftUI
 /// applications. Energy is a place under Your Mac, because it is about
 /// what the Mac is doing now.
 enum Destination: String, Hashable, CaseIterable {
-    /// Brim's overview of this Mac, named for Brim like the app's own
-    /// first page. A saved "Home" from an earlier build falls back here.
+    /// The overview of this Mac, and where the window opens.
     case home = "Home"
     case apps = "Apps"
     case leftovers = "Remnants"
@@ -204,10 +203,8 @@ struct MainSidebar: View {
         }
     }
 
-    private static let order: [Destination] = Destination.brim + Destination.yourMac + [.journal]
-
     private func move(by step: Int) -> KeyPress.Result {
-        let order = Self.order
+        let order = Destination.displayOrder
         guard let current = selection, let index = order.firstIndex(of: current) else { return .ignored }
         let next = index + step
         guard order.indices.contains(next) else { return .handled }
@@ -216,10 +213,10 @@ struct MainSidebar: View {
     }
 }
 
-/// A sidebar row's label. The icon does not move when the row is chosen:
-/// the selection is the answer to the click. Each icon once bounced, then
-/// turned, swung or breathed, on every change of page, and Apple's guidance
-/// is to keep motion off things people do constantly.
+/// A sidebar row's label. Each icon once bounced, then turned, swung or
+/// breathed, on every change of page, and Apple's guidance is to keep
+/// motion off things people do constantly; what is left is one small press
+/// when a page is chosen (`icon`).
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool

@@ -147,21 +147,6 @@ struct EmptyState: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    static func nothingFound(_ title: String, placesChecked: Int) -> EmptyState {
-        EmptyState(
-            symbol: "checkmark.seal", title: title,
-            message: "Brim checked \(placesChecked) places."
-        )
-    }
-
-    static func notChecked(_ what: String, action: @escaping () -> Void) -> EmptyState {
-        EmptyState(
-            symbol: "magnifyingglass", title: "Not checked yet",
-            message: "Brim has not looked for \(what) on this Mac.",
-            actionTitle: "Check Now", action: action
-        )
-    }
-
     static func couldNotRead(_ reason: String, action: @escaping () -> Void) -> EmptyState {
         EmptyState(
             symbol: "lock", title: "Brim could not look",
@@ -254,7 +239,7 @@ struct Toast: View {
     var action: (() -> Void)?
 
     /// A done mark in the status green, a problem in the status orange,
-    /// anything else in the accent. Every toast's symbol is Brim's own, so
+    /// anything else in plain ink. Every toast's symbol is Brim's own, so
     /// the mark says which it is; the message still says it in words.
     private var symbolStyle: Color {
         if symbol.hasPrefix("checkmark") {

@@ -36,7 +36,13 @@ enum AccessRelaunch {
             return
         }
         lifeline = pipe
-        NSApplication.shared.terminate(nil)
+        Task {
+            await QuitRequest.shared.quit()
+            // Still running, so the script must not open a second Brim the
+            // next time this one quits.
+            log.error("quit was refused; the reopen is cancelled")
+            process.terminate()
+        }
     }
 }
 

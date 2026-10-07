@@ -9,7 +9,9 @@ public final class DeveloperModel: ObservableObject {
     @Published public private(set) var caches: [DeveloperCache] = []
     @Published public private(set) var isScanning = false
     @Published public private(set) var scanWasCancelled = false
-    private var hasLoaded = false
+    /// A scan has finished since the folders it covers last changed. Until
+    /// then an empty list is not a measured zero.
+    @Published public private(set) var hasLoaded = false
     @Published public var ageFilter: DeveloperAgeFilter = .all
     @Published public private(set) var excludedFolders: Set<URL> = []
 
@@ -57,11 +59,6 @@ public final class DeveloperModel: ObservableObject {
             return "Partial sizes"
         }
         return partial ? "Partial estimate: " + ByteText.short(bytes) : ByteText.short(bytes) + " estimated"
-    }
-
-    /// What comes back on its own, which is the figure worth acting on.
-    public var recoverableBytes: Int64 {
-        DeveloperCache.estimatedTotal(of: caches.filter { $0.cost != .configured })
     }
 
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
@@ -145,9 +142,14 @@ public final class DeveloperModel: ObservableObject {
         }
     }
 
-    public func selectRegenerable() {
-        for cache in visibleCaches where cache.cost.isBrimRemovable && !isExcluded(cache.url) {
-            selection.insert(cache.id)
+    /// A section's Select All and Deselect All. Only what Brim may clear is
+    /// ever selected, whatever the list passed in holds.
+    public func setSelected(_ selected: Bool, _ caches: [DeveloperCache]) {
+        let ids = caches.filter { $0.cost.isBrimRemovable && !isExcluded($0.url) }.map(\.id)
+        if selected {
+            selection.formUnion(ids)
+        } else {
+            selection.subtract(ids)
         }
     }
 
