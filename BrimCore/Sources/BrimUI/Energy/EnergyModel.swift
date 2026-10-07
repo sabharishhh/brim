@@ -193,6 +193,8 @@ public final class EnergyModel: ObservableObject {
     /// No sampling, which is the Energy page's to ask for.
     public func loadOverview() async {
         readHistory()
+        // Cheap and changes by the minute, so read on every visit.
+        condition = SystemCondition.current()
         guard !hasReadBattery else { return }
         battery = await Task.detached(priority: .utility) { BatteryReport.current() }.value
         hasReadBattery = true

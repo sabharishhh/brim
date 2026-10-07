@@ -67,8 +67,12 @@ public final class InstallRecordingModel: ObservableObject {
         self.service = service
         guard !hasLoaded else { return }
         hasLoaded = true
+        // A recording an earlier launch left open has nothing waiting on it
+        // any more, and nobody finishes one by hand: Brim finishes it now,
+        // keeping what links to an install or saying nothing was installed.
         if phase == .idle, let since = await service.activeInstallRecording() {
             phase = .recording(since: since)
+            await finishOnItsOwn()
         }
     }
 
