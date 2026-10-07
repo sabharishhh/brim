@@ -71,15 +71,14 @@ struct HomeEnergyCard: View {
         return parts.joined(separator: " · ")
     }
 
-    /// The last sleep of half an hour or more, said with its day so it is
-    /// never read as the night just gone.
+    /// How much charge the last sleep of half an hour or more used, said
+    /// with its day so it is never read as the night just gone. A sleep on
+    /// the adapter used nothing measurable, and "on the adapter" beside it
+    /// read as a second, confusing account of the power state, so the card
+    /// says nothing about it.
     private var sleep: String? {
-        guard let sleep = energy.history?.lastSleep else { return nil }
-        let when = "Asleep \(Self.moment(sleep.span.start)) to \(Self.moment(sleep.span.end))"
-        if let used = sleep.chargeUsed {
-            return "\(when), \(used)% used"
-        }
-        return "\(when), on the adapter"
+        guard let sleep = energy.history?.lastSleep, let used = sleep.chargeUsed else { return nil }
+        return "Asleep \(Self.moment(sleep.span.start)) to \(Self.moment(sleep.span.end)), \(used)% used"
     }
 
     private var awake: String? {
