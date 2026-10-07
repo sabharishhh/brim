@@ -44,10 +44,6 @@ private actor AppsStub: BrimServiceProtocol {
         throw Stub.unavailable
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw Stub.unavailable
-    }
-
     func requestApproval(planId _: UUID, requesterIdentity _: String) async throws -> ApprovalRequestReceipt {
         throw Stub.unavailable
     }

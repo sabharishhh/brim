@@ -107,10 +107,6 @@ private actor TickingStub: BrimServiceProtocol, ApprovalGranting {
         throw NotHere()
     }
 
-    func explain(planId _: UUID) async throws -> String {
-        throw NotHere()
-    }
-
     func history() async throws -> [Plan] {
         []
     }
