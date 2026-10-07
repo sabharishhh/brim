@@ -24,9 +24,10 @@ public actor LedgerStore {
         guard fm.fileExists(atPath: directoryURL.path) else { return [] }
         let urls = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
         var entries: [LedgerEntry] = []
+        let decoder = JSONDecoder()
         for url in urls where url.pathExtension == "json" {
             if let data = try? Data(contentsOf: url),
-               let entry = try? JSONDecoder().decode(LedgerEntry.self, from: data) {
+               let entry = try? decoder.decode(LedgerEntry.self, from: data) {
                 entries.append(entry)
             }
         }

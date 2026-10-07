@@ -36,7 +36,7 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
 public extension StepKind {
     /// Whether this step's `target` names a file, rather than an identifier
     /// such as a bundle id or a launchd label. Anything reading a target as
-    /// a path — the "already gone" check, verification — has to ask first.
+    /// a path (the "already gone" check, verification) has to ask first.
     var targetIsPath: Bool {
         switch self {
         case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
@@ -87,7 +87,7 @@ public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
     case launchd = 1
     case appBundle = 2
     /// Retracting registrations that name the bundle. This runs *after* the
-    /// bundle is removed — the mirror image of `privacyReset`. Unregistering
+    /// bundle is removed, the mirror image of `privacyReset`. Unregistering
     /// a bundle that is still on disk achieves nothing, because Launch
     /// Services re-registers it the moment anything looks at it again.
     case registration = 3
@@ -322,10 +322,8 @@ public struct Plan: Codable, Equatable, Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .custom { date, encoder in
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             var container = encoder.singleValueContainer()
-            try container.encode(formatter.string(from: date))
+            try container.encode(Self.dates.string(from: date))
         }
 
         return try encoder.encode(self)
