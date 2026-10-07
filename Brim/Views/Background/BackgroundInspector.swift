@@ -98,11 +98,37 @@ struct BackgroundInspector: View {
             }
             .buttonBorderShape(.capsule)
         }
+        if let grant = entry.group.items.first(where: { $0.kind == .privacyGrant }),
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?"
+               + BackgroundInspector.privacyAnchor(grant.recordIdentity)) {
+            Link("Open in System Settings", destination: url)
+                .capsuleAction()
+        }
         if entry.group.items.contains(where: { $0.isStale && $0.loginItemsFollowUp != nil }),
            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
             Link("Open Login Items", destination: url)
                 .capsuleAction()
         }
+    }
+}
+
+extension BackgroundInspector {
+    /// The anchor for the Privacy & Security pane of a privacy service, so
+    /// the button lands on the list the entry is in.
+    static func privacyAnchor(_ services: String?) -> String {
+        let anchors = [
+            "kTCCServiceSystemPolicyAllFiles": "Privacy_AllFiles",
+            "kTCCServiceAccessibility": "Privacy_Accessibility",
+            "kTCCServiceScreenCapture": "Privacy_ScreenCapture",
+            "kTCCServiceListenEvent": "Privacy_ListenEvent",
+            "kTCCServiceDeveloperTool": "Privacy_DevTools",
+            "kTCCServiceAppleEvents": "Privacy_Automation",
+            "kTCCServiceCamera": "Privacy_Camera",
+            "kTCCServiceMicrophone": "Privacy_Microphone",
+            "kTCCServiceSystemPolicyAppBundles": "Privacy_AppBundles"
+        ]
+        let first = services?.split(separator: ",").compactMap { anchors[String($0)] }.first
+        return first ?? "Privacy"
     }
 }
 
@@ -205,7 +231,7 @@ private struct RecordRow: View {
             return "Review this entry in System Settings > Network > Firewall > Options."
         }
         if registration.kind == .privacyGrant {
-            return "Remove it in System Settings > Privacy & Security: select it and click the minus button."
+            return "To remove it, select it in that list in System Settings and click the minus button."
         }
         guard registration.isActionableStale else { return nil }
         if helperIsReady, BackgroundModel.needsTheHelper(registration) {
