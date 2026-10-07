@@ -212,7 +212,7 @@ struct InstallerPreviewSheet: View {
         // loads while the package is read, so its words are not a second
         // wait.
         let engine = ["pkg", "mpkg"].contains(request.url.pathExtension.lowercased()) ? intelligence : nil
-        async let warm: Void = engine?.prewarm() ?? ()
+        async let warm: Void = engine?.prewarm(for: .installScript) ?? ()
         do {
             phase = try await .read(service.previewInstaller(at: request.url))
         } catch {

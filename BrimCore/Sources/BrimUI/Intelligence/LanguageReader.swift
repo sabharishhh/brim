@@ -8,13 +8,22 @@ import Foundation
 /// every failure path are exercised without a model.
 public protocol LanguageReader: Sendable {
     func availability() async -> ModelAvailability
-    /// Loads the model ahead of a request that is about to come.
-    func prewarm() async
+    /// Loads the model, with the instructions for `question`, ahead of a
+    /// request that is about to come.
+    func prewarm(for question: ModelQuestion) async
     /// What `version` changes, from its section of the release notes.
-    func highlights(notes: String, version: String) async throws -> ReleaseHighlights
+    /// `tighter` is a second attempt after the input did not fit: cut more.
+    func highlights(notes: String, version: String, tighter: Bool) async throws -> ReleaseHighlights
     /// A plain summary of an install script, and a few plain words for each
     /// of `lines` (one-based), read with the rest of the script for context.
-    func describe(lines: [Int], of script: String) async throws -> ScriptDescription
+    /// `tighter` sends only the lines around the asked ones, cut more.
+    func describe(lines: [Int], of script: String, tighter: Bool) async throws -> ScriptDescription
+}
+
+/// The two things Brim asks the model, each with its own instructions.
+public enum ModelQuestion: Sendable {
+    case releaseNotes
+    case installScript
 }
 
 /// Whether the model can be asked, and if not, why, in the person's terms.

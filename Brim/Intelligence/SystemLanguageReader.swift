@@ -25,8 +25,12 @@ nonisolated struct SystemLanguageReader: LanguageReader {
         }
     }
 
-    func prewarm() async {
-        LanguageModelSession(instructions: Self.releaseInstructions).prewarm()
+    func prewarm(for question: ModelQuestion) async {
+        let instructions = switch question {
+        case .releaseNotes: Self.releaseInstructions
+        case .installScript: Self.scriptInstructions
+        }
+        LanguageModelSession(instructions: instructions).prewarm()
     }
 
     // MARK: - Release notes
@@ -51,8 +55,8 @@ nonisolated struct SystemLanguageReader: LanguageReader {
     versions below the new one; ignore those. Use only what the notes say.
     """
 
-    func highlights(notes: String, version: String) async throws -> ReleaseHighlights {
-        let text = try await fit(notes, reserving: 700)
+    func highlights(notes: String, version: String, tighter: Bool) async throws -> ReleaseHighlights {
+        let text = try await fit(notes, reserving: tighter ? 2400 : 700)
         let reading = try await respond(
             instructions: Self.releaseInstructions, prompt: "Version: \(version)\nRelease notes:\n\(text)",
             generating: ReleaseReading.self, maximumTokens: 160
@@ -95,8 +99,8 @@ nonisolated struct SystemLanguageReader: LanguageReader {
     to work out names, such as what a variable holds. Do not say whether anything is safe.
     """
 
-    func describe(lines: [Int], of script: String) async throws -> ScriptDescription {
-        let numbered = try await numberedScript(script, around: lines)
+    func describe(lines: [Int], of script: String, tighter: Bool) async throws -> ScriptDescription {
+        let numbered = try await numberedScript(script, around: lines, tighter: tighter)
         let asked = lines.map(String.init).joined(separator: ", ")
         let changes = InstallScriptReading.consequences(of: InstallScriptReading.findings(in: script))
             .map(\.plain).joined(separator: "; ")
@@ -117,11 +121,13 @@ nonisolated struct SystemLanguageReader: LanguageReader {
     }
 
     /// The script with line numbers, whole if it fits, otherwise only the
-    /// asked-for lines with three lines either side.
-    private func numberedScript(_ script: String, around lines: [Int]) async throws -> String {
+    /// asked-for lines with three lines either side. A tighter attempt
+    /// never sends the whole script and leaves more room.
+    private func numberedScript(_ script: String, around lines: [Int], tighter: Bool) async throws -> String {
+        let reserve = tighter ? 2500 : 900
         let all = script.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let whole = all.enumerated().map { "\($0.offset + 1): \($0.element)" }.joined(separator: "\n")
-        if try await tokens(whole) <= budget(reserving: 900) {
+        if !tighter, try await tokens(whole) <= budget(reserving: reserve) {
             return whole
         }
         let wanted = Set(lines.flatMap { ($0 - 3) ... ($0 + 3) }).filter { (1 ... all.count).contains($0) }
@@ -134,7 +140,7 @@ nonisolated struct SystemLanguageReader: LanguageReader {
             parts.append("\(number): \(all[number - 1])")
             previous = number
         }
-        return try await fit(parts.joined(separator: "\n"), reserving: 900)
+        return try await fit(parts.joined(separator: "\n"), reserving: reserve)
     }
 
     // MARK: - Asking

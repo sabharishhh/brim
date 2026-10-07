@@ -10,7 +10,8 @@ import Foundation
 /// - The same question asked twice while it is running is asked once.
 /// - Answers are kept (`IntelligenceCache`), so each release or script is
 ///   read once.
-/// - A rate limit is retried after a pause, a refusal is remembered for a
+/// - A rate limit is retried after a pause. Input too long for the window
+///   is cut further and asked once more. A refusal is remembered for a
 ///   day, and a request that runs past its time is given up and not kept.
 public actor IntelligenceEngine {
     public enum Outcome<Value: Sendable>: Sendable {
@@ -50,32 +51,32 @@ public actor IntelligenceEngine {
         await reader.availability()
     }
 
-    public func prewarm() async {
+    public func prewarm(for question: ModelQuestion) async {
         guard await reader.availability() == .ready else { return }
-        await reader.prewarm()
+        await reader.prewarm(for: question)
     }
 
     // MARK: - Questions
 
     public func highlights(notes: String, version: String) async -> Outcome<ReleaseHighlights> {
         let key = IntelligenceCache.key("release-highlights", version: 1, notes, version)
-        return await ask(key) { reader in
-            try await reader.highlights(notes: notes, version: version)
+        return await ask(key) { reader, tighter in
+            try await reader.highlights(notes: notes, version: version, tighter: tighter)
         }
     }
 
     public func describe(lines: [Int], of script: String) async -> Outcome<ScriptDescription> {
         let numbers = lines.map(String.init).joined(separator: ",")
         let key = IntelligenceCache.key("script-lines", version: 4, script, numbers)
-        return await ask(key) { reader in
-            try await reader.describe(lines: lines, of: script)
+        return await ask(key) { reader, tighter in
+            try await reader.describe(lines: lines, of: script, tighter: tighter)
         }
     }
 
     // MARK: - The queue
 
     private func ask<Value: Codable & Sendable>(
-        _ key: String, _ work: @escaping @Sendable (any LanguageReader) async throws -> Value
+        _ key: String, _ work: @escaping @Sendable (any LanguageReader, Bool) async throws -> Value
     ) async -> Outcome<Value> {
         if let data = cache.value(for: key), let value = try? JSONDecoder().decode(Value.self, from: data) {
             return .done(value)
@@ -83,8 +84,8 @@ public actor IntelligenceEngine {
         guard !cache.refused(key) else { return .failed }
         let token = UUID()
         waiting[key, default: []].insert(token)
-        let request = running[key] ?? enqueue(key) { reader in
-            try await JSONEncoder().encode(work(reader))
+        let request = running[key] ?? enqueue(key) { reader, tighter in
+            try await JSONEncoder().encode(work(reader, tighter))
         }
         let result = await withTaskCancellationHandler {
             await request.value
@@ -102,7 +103,7 @@ public actor IntelligenceEngine {
     }
 
     private func enqueue(
-        _ key: String, _ work: @escaping @Sendable (any LanguageReader) async throws -> Data
+        _ key: String, _ work: @escaping @Sendable (any LanguageReader, Bool) async throws -> Data
     ) -> Task<Result, Never> {
         let previous = tail
         let request = Task {
@@ -121,19 +122,24 @@ public actor IntelligenceEngine {
         }
     }
 
-    private func perform(_ key: String, _ work: @escaping @Sendable (any LanguageReader) async throws -> Data)
+    private func perform(_ key: String, _ work: @escaping @Sendable (any LanguageReader, Bool) async throws -> Data)
         async -> Result {
         defer { running[key] = nil }
         guard waiting[key] != nil else { return .failed }
         guard await reader.availability() == .ready else { return .unavailable }
         let reader = reader
-        for attempt in 0 ... retryDelays.count {
+        var tighter = false
+        var waits = retryDelays[...]
+        while true {
             do {
-                let data = try await Self.within(timeout) { try await work(reader) }
+                let data = try await Self.within(timeout) { [tighter] in try await work(reader, tighter) }
                 cache.store(data, for: key)
                 return .done(data)
-            } catch ModelFailure.rateLimited where attempt < retryDelays.count {
-                try? await Task.sleep(for: retryDelays[attempt])
+            } catch ModelFailure.rateLimited where !waits.isEmpty {
+                try? await Task.sleep(for: waits.removeFirst())
+            } catch ModelFailure.tooLong where !tighter {
+                // The count the input was fitted by was off; cut more, once.
+                tighter = true
             } catch ModelFailure.refused, ModelFailure.unreadable, ModelFailure.tooLong {
                 cache.markRefused(key)
                 return .failed
@@ -143,7 +149,6 @@ public actor IntelligenceEngine {
                 return .failed
             }
         }
-        return .failed
     }
 
     /// Runs `work`, or throws `timedOut` once `limit` has passed, cancelling
