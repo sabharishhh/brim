@@ -251,7 +251,7 @@ final class LeftoverGroupingTests: XCTestCase {
 
     func testGroupContainersAreNotMistakenForContainers() {
         // "Group Containers" contains the word "Containers", and the two
-        // mean different things — one may still be in use by other software.
+        // mean different things: one may still be in use by other software.
         XCTAssertEqual(
             LeftoverDomain.of(URL(fileURLWithPath: "\(home)/Group Containers/group.com.acme")),
             .groupContainer

@@ -5,8 +5,8 @@ import Foundation
 /// Retracting an application's Launch Services registration.
 ///
 /// **Deleting a bundle does not unregister it.** Launch Services keeps the
-/// record — bundle identifier, document types, URL schemes, the path it was
-/// last seen at — until something explicitly retracts it or the database is
+/// record (bundle identifier, document types, URL schemes, the path it was
+/// last seen at) until something explicitly retracts it or the database is
 /// rebuilt. That stale record is why a removed app still appears in "Open
 /// With", still claims its file types, and still answers when something
 /// resolves its bundle identifier.

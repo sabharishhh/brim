@@ -8,7 +8,7 @@ import XCTest
 /// and remove the whole footprint, leaving nothing for a later scan to find.
 ///
 /// Nothing here names a path to remove. The identity goes in, the evidence
-/// engine discovers the footprint, and the test asserts on what came back —
+/// engine discovers the footprint, and the test asserts on what came back,
 /// so a source that stops working shows up as a named gap rather than as a
 /// quietly shallower uninstall.
 final class DeepUninstallTests: XCTestCase {
@@ -121,8 +121,8 @@ final class DeepUninstallTests: XCTestCase {
     }
 
     /// Removing the files is not the whole uninstall. Launch Services keeps
-    /// its own record of an application — the one behind "Open With" and the
-    /// document types it claims — and deleting the bundle does not retract
+    /// its own record of an application (the one behind "Open With" and the
+    /// document types it claims), and deleting the bundle does not retract
     /// it. This test exists because the first real uninstall Brim performed
     /// reported "nothing remains" while eight such records survived.
     func testTheLaunchServicesRegistrationDoesNotSurviveAnUninstall() async throws {
@@ -172,9 +172,9 @@ final class DeepUninstallTests: XCTestCase {
     /// The claim has to be falsifiable: if a registration survives,
     /// verification must say so rather than reporting success.
     ///
-    /// This recreates the exact state the first real uninstall left behind —
-    /// bundle gone from disk, Launch Services still pointing at where it was
-    /// — by removing the bundle with FileManager, which is what every tool
+    /// This recreates the exact state the first real uninstall left behind
+    /// (bundle gone from disk, Launch Services still pointing at where it was)
+    /// by removing the bundle with FileManager, which is what every tool
     /// that does not know about this surface effectively does.
     func testVerificationFailsWhileARegistrationSurvives() async throws {
         _ = try fixture.makeRegisteredAppBundle()
@@ -197,7 +197,7 @@ final class DeepUninstallTests: XCTestCase {
         XCTAssertTrue(clean.success, clean.reason ?? "")
 
         // Put the bundle back at the same path, let Launch Services record
-        // it, then delete it the naive way — leaving the record behind.
+        // it, then delete it the naive way, leaving the record behind.
         let bundle = try fixture.makeRegisteredAppBundle()
         guard !LaunchServicesRegistration
             .registeredApplicationURLs(forBundleID: fixture.harnessBundleID).isEmpty
@@ -217,7 +217,7 @@ final class DeepUninstallTests: XCTestCase {
             // Launch Services is a live database that prunes records for
             // files that have gone. If it dropped this one between planting
             // it and the check, the premise no longer holds and there is
-            // nothing to assert — that is a skip, not a pass and not a
+            // nothing to assert: that is a skip, not a pass and not a
             // failure.
             try XCTSkipIf(
                 LaunchServicesRegistration
@@ -266,7 +266,7 @@ final class DeepUninstallTests: XCTestCase {
     }
 
     /// Where the bundle went is not a leftover. A trashed app keeps its
-    /// name, so Launch Services registers it in the Trash — exactly as it
+    /// name, so Launch Services registers it in the Trash, exactly as it
     /// does for any app dragged there by hand. The app is recoverable and
     /// the record says so; calling that a leftover would mean fighting the
     /// OS and racing its daemon. What must be gone is the record for the
@@ -335,7 +335,7 @@ final class DeepUninstallTests: XCTestCase {
     }
 
     /// Emptying the Trash is what turns an accurate registration into a
-    /// stale one, and macOS does not reliably prune it — a record for a
+    /// stale one, and macOS does not reliably prune it: a record for a
     /// bundle that had already gone from the Trash was observed surviving
     /// the file by minutes. So the Trash lifecycle has to clear it.
     ///
@@ -343,8 +343,8 @@ final class DeepUninstallTests: XCTestCase {
     /// `reconcileRegistrations` acts on is "a bundle this plan trashed that
     /// is no longer there", and the Trash itself cannot be used to stage
     /// that: registering anything under `~/.Trash` needs Full Disk Access to
-    /// read it, which a `swift test` run does not have. So the journal — the
-    /// record Brim itself keeps and the only input this reads — is pointed
+    /// read it, which a `swift test` run does not have. So the journal (the
+    /// record Brim itself keeps and the only input this reads) is pointed
     /// at a bundle the test can register and then remove.
     func testAVanishedTrashedBundleLosesItsRegistration() async throws {
         _ = try fixture.makeRegisteredAppBundle()

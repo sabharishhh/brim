@@ -137,7 +137,7 @@ final class LeftoversModelTests: XCTestCase {
 
     func testOnlyOrphansArePreSelected() async {
         // The whole point of the two-category model. An unclaimed item is
-        // one the search could not attribute — pre-selecting it would turn
+        // one the search could not attribute: pre-selecting it would turn
         // an absence of evidence into a recommendation to delete.
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([

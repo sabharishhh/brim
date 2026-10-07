@@ -1,7 +1,7 @@
 import Foundation
 
-/// Clearing an application's privacy grants — accessibility, screen
-/// recording, full disk access and the rest.
+/// Clearing an application's privacy grants (accessibility, screen
+/// recording, full disk access and the rest).
 ///
 /// Brim has no supported API for enumerating another application's grants.
 /// Private TCC databases are not a stable enumeration contract. A reset
@@ -16,7 +16,7 @@ import Foundation
 /// bundle is still on disk.
 public enum PrivacyGrants {
     public enum ResetError: Error, LocalizedError, Equatable {
-        /// Launch Services could not resolve the bundle — almost always
+        /// Launch Services could not resolve the bundle, almost always
         /// because the application has already been removed.
         case bundleNotFound(String)
         case failed(String, code: Int32)

@@ -2,7 +2,7 @@ import Foundation
 
 /// A past removal whose contents are still sitting in the Trash, and so can
 /// still be put back. Anything permanently deleted, or trashed and since
-/// emptied, is absent — the list reflects what is recoverable *now*, not what
+/// emptied, is absent. The list reflects what is recoverable *now*, not what
 /// was once trashed.
 public struct RecoverableItem: Codable, Equatable, Sendable, Identifiable {
     public let planId: UUID

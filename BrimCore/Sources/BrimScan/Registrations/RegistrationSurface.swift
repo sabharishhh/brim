@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Mirrors `EvidenceSource`, deliberately: one surface per mechanism, each
 /// enumerating what it knows about and saying in a sentence how it knows.
-/// One enumeration then serves both questions — *what belongs to this app*,
+/// One enumeration then serves both questions: *what belongs to this app*,
 /// for an uninstall, and *what belongs to nothing*, for the stale sweep.
 public protocol RegistrationSurface: Sendable {
     var kind: Registration.Kind { get }
