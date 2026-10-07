@@ -8,8 +8,15 @@ import Foundation
 /// Brim records around it. What is copied is checked again against what the
 /// preview showed, because the file could have changed in between: the same
 /// identifier, and Gatekeeper's approval when the preview said it had it.
-/// `ditto` keeps the download's quarantine, so macOS still checks the app
-/// the first time it opens, as it would after a drag in Finder.
+///
+/// Once Gatekeeper accepts the copy, its quarantine is removed. macOS runs
+/// a quarantined app from a hidden read-only copy (App Translocation)
+/// unless a person moved it in Finder, and clicking Open on the first
+/// launch warning does not change that: Figma's installer app, run from
+/// there, could not replace itself and asked to be moved to Applications.
+/// Brim has made the check the warning stands for, as Apple's Installer and
+/// the App Store have, and they leave no quarantine either. An app
+/// Gatekeeper does not accept keeps it, so macOS still warns or blocks.
 public enum AppInstaller {
     public enum Failure: Error, Equatable, LocalizedError {
         case licence
@@ -47,8 +54,19 @@ public enum AppInstaller {
         applications: URL = URL(fileURLWithPath: "/Applications", isDirectory: true),
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) throws -> URL {
+        try install(from: source, identifier: identifier, trusted: trusted, applications: applications,
+                    accepts: { UpdateInstaller.passesGatekeeper($0) }, progress: progress)
+    }
+
+    /// `accepts` is Gatekeeper's verdict, replaceable so a test can reach
+    /// the accepted path without a notarised app.
+    static func install(
+        from source: URL, identifier: String?, trusted: Bool, applications: URL,
+        accepts: (URL) -> Bool, progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) throws -> URL {
         if source.pathExtension.lowercased() == "app" {
-            return try place(source, identifier: identifier, trusted: trusted, into: applications, progress: progress)
+            return try place(source, identifier: identifier, trusted: trusted, into: applications,
+                             accepts: accepts, progress: progress)
         }
         guard UpdateInstaller.kind(of: source) == .diskImage else { throw Failure.unreadable }
         guard let info = UpdateInstaller.runOutput("/usr/bin/hdiutil", ["imageinfo", "-plist", source.path]),
@@ -76,18 +94,20 @@ public enum AppInstaller {
             identifier.flatMap { UpdateInstaller.find($0, in: volume) } ?? topLevelApp(in: volume)
         }.first
         guard let app else { throw Failure.noApplication }
-        return try place(app, identifier: identifier, trusted: trusted, into: applications, progress: progress)
+        return try place(app, identifier: identifier, trusted: trusted, into: applications,
+                         accepts: accepts, progress: progress)
     }
 
     static func place(
         _ app: URL, identifier: String?, trusted: Bool, into applications: URL,
-        progress: @escaping @Sendable (Double) -> Void = { _ in }
+        accepts: (URL) -> Bool, progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) throws -> URL {
         let found = UpdateInstaller.identifier(of: app)
         if let identifier, found?.lowercased() != identifier.lowercased() {
             throw Failure.differentApplication
         }
-        if trusted, !UpdateInstaller.passesGatekeeper(app) {
+        let accepted = accepts(app)
+        if trusted, !accepted {
             throw Failure.gatekeeper
         }
         let destination = applications.appendingPathComponent(app.lastPathComponent)
@@ -101,7 +121,21 @@ public enum AppInstaller {
             try? FileManager.default.removeItem(at: destination)
             throw Failure.copy
         }
+        if accepted {
+            clearQuarantine(in: destination)
+        }
         return destination
+    }
+
+    /// Removes the quarantine from the bundle and everything in it, without
+    /// following links. Best effort: the bundle's own is what macOS reads
+    /// to decide whether to translocate.
+    static func clearQuarantine(in bundle: URL) {
+        removexattr(bundle.path, "com.apple.quarantine", XATTR_NOFOLLOW)
+        let items = FileManager.default.enumerator(at: bundle, includingPropertiesForKeys: nil)
+        while let item = items?.nextObject() as? URL {
+            removexattr(item.path, "com.apple.quarantine", XATTR_NOFOLLOW)
+        }
     }
 
     /// `ditto`, with how much of the app has arrived measured while it
