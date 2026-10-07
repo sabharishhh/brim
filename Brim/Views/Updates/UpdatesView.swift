@@ -11,7 +11,9 @@ import SwiftUI
 /// whether anything needed updating. It now lists updates, and nothing else.
 struct UpdatesView: View {
     @ObservedObject var model: UpdatesModel
+    @ObservedObject var whatsNew: WhatsNewModel
     @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(\.intelligence) private var intelligence
     @State private var showsUnchecked = false
 
     /// A row in either list.
@@ -37,7 +39,13 @@ struct UpdatesView: View {
         .toolbar { updateAll }
         .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
             ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
-        .task { await model.load(service: service) }
+        .task {
+            // The check takes seconds; the model loads meanwhile, so long
+            // release notes are read without a second wait.
+            async let warm: Void = intelligence?.prewarm(for: .releaseNotes) ?? ()
+            await model.load(service: service)
+            await warm
+        }
     }
 
     // MARK: - Header
@@ -127,9 +135,13 @@ struct UpdatesView: View {
     private func row(_ entry: Entry) -> some View {
         switch entry {
         case let .available(update):
-            UpdateRow(url: update.appURL, name: update.name, facts: facts(update), failed: failure(update)) {
+            UpdateRow(
+                url: update.appURL, name: update.name, facts: facts(update), failed: failure(update),
+                whatsNew: whatsNew.state(for: update)
+            ) {
                 action(update)
             }
+            .task(id: WhatsNewModel.key(update)) { await whatsNew.read(update, engine: intelligence) }
         case let .recent(recent):
             UpdateRow(url: recent.appURL, name: recent.name, facts: Self.facts(recent), failed: nil) {
                 Button("Open") { NSWorkspace.shared.open(recent.appURL) }
@@ -290,6 +302,7 @@ private struct UpdateRow<Action: View>: View {
     let name: String
     let facts: String
     let failed: String?
+    var whatsNew: WhatsNewModel.State?
     @ViewBuilder let action: () -> Action
 
     var body: some View {
@@ -309,11 +322,14 @@ private struct UpdateRow<Action: View>: View {
                 }
                 .font(.brimFacts)
                 .foregroundStyle(failed == nil ? Palette.inkSecondary : Palette.caution)
+                if let whatsNew {
+                    WhatsNewLine(state: whatsNew)
+                }
             }
             .lineLimit(1)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isStaticText)
-            .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? ""))
+            .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? "") + spokenNews)
             Spacer(minLength: 8)
             // A fixed place for the control, so Update, its progress, the
             // result and Retry take turns without moving anything else.
@@ -323,7 +339,12 @@ private struct UpdateRow<Action: View>: View {
                 .frame(minWidth: 120, alignment: .trailing)
         }
         .padding(.horizontal, 14)
-        .frame(height: Metrics.rowHeight)
+        .padding(.vertical, whatsNew == nil ? 0 : 8)
+        .frame(minHeight: Metrics.rowHeight)
+    }
+
+    private var spokenNews: String {
+        whatsNew.map(WhatsNewLine.spoken) ?? ""
     }
 }
 

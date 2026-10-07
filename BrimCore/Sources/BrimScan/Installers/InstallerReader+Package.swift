@@ -73,9 +73,9 @@ extension InstallerReader {
     }
 
     static func limits(hasScripts: Bool, mayInstallInHome: Bool, unreadable: Bool) -> [String] {
-        var limits = ["Lists everything the package can install. It may let you choose less."]
+        var limits: [String] = []
         if hasScripts {
-            limits.append("Scripts can do more than their text shows.")
+            limits.append("Scripts may make changes beyond what their text shows.")
         }
         if mayInstallInHome {
             limits.append("May install into your home folder instead.")
@@ -147,8 +147,7 @@ extension InstallerReader {
             let isText = InstallScriptReading.isText(data)
             return InstallerPreview.Script(
                 name: script.name, package: component.identifier, runsAsAdministrator: component.runsAsRoot,
-                calls: isText ? InstallScriptReading.calls(in: String(bytes: data, encoding: .utf8) ?? "") : [],
-                isText: isText
+                text: isText ? String(bytes: data, encoding: .utf8) : nil
             )
         }
     }

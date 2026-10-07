@@ -27,14 +27,16 @@ struct HomeEnergyCard: View {
                         MeterSegment(label: "Charge", value: Int64(battery.percent), color: Palette.snow),
                         MeterSegment(label: "Used", value: Int64(100 - battery.percent), color: Palette.well)
                     ], showsLegend: false)
-                    lines([health(battery.health), sleep])
+                    lines([health(battery.health)])
+                    temperature
                 }
             } action: { action() }
         } else {
             // A Mac with no battery: what kept it awake instead.
             StatCard(title: "Energy", symbol: "bolt", figure: "Plugged in", status: .neutral,
                      phrase: "No battery", fillsRow: true) {
-                lines([sleep, awake])
+                lines([awake])
+                temperature
             } action: { action() }
         }
     }
@@ -71,37 +73,25 @@ struct HomeEnergyCard: View {
         return parts.joined(separator: " · ")
     }
 
-    /// The last sleep of half an hour or more, said with its day so it is
-    /// never read as the night just gone.
-    private var sleep: String? {
-        guard let sleep = energy.history?.lastSleep else { return nil }
-        let when = "Asleep \(Self.moment(sleep.span.start)) to \(Self.moment(sleep.span.end))"
-        if let used = sleep.chargeUsed {
-            return "\(when), \(used)% used"
+    /// Apple's thermal state, with its symbol in the colour for it.
+    private var temperature: some View {
+        let thermal = energy.condition.thermal
+        return HStack(spacing: 6) {
+            Image(systemName: thermal.symbolName)
+                .foregroundStyle(EnergyTone.thermal(thermal))
+            Text(EnergyTone.thermalPhrase(thermal))
+                .foregroundStyle(Palette.inkSecondary)
         }
-        return "\(when), on the adapter"
+        .font(.brimFacts)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel(EnergyTone.thermalPhrase(thermal))
     }
 
     private var awake: String? {
         guard let first = energy.awakeRequests.first else { return nil }
         return "Kept awake most by \(first.name), \(EnergyHistoryCard.duration(first.seconds))"
     }
-
-    /// A time today, "yesterday" and a time, or a weekday and a time.
-    static func moment(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        let time = timeStyle.format(date)
-        if calendar.isDate(date, inSameDayAs: now) {
-            return time
-        }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) {
-            return "yesterday \(time)"
-        }
-        return "\(dayStyle.format(date)) \(time)"
-    }
-
-    private static let timeStyle = Date.FormatStyle.dateTime.hour().minute()
-    private static let dayStyle = Date.FormatStyle.dateTime.weekday(.abbreviated)
 }
 
 /// What Brim removed, and whether it is still gone.

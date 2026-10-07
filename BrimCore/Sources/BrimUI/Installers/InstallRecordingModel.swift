@@ -37,9 +37,6 @@ public final class InstallRecordingModel: ObservableObject {
     }
 
     @Published public private(set) var waiting: Waiting?
-    /// An installer to offer to move to the Trash, once what it installed
-    /// is in place.
-    @Published public var installerToTrash: URL?
     /// A recording kept without asking, because everything it found was
     /// linked to the install. Shown once, as a note.
     @Published public var keptQuietly: InstallRecording?
@@ -67,8 +64,12 @@ public final class InstallRecordingModel: ObservableObject {
         self.service = service
         guard !hasLoaded else { return }
         hasLoaded = true
+        // A recording an earlier launch left open has nothing waiting on it
+        // any more, and nobody finishes one by hand: Brim finishes it now,
+        // keeping what links to an install or saying nothing was installed.
         if phase == .idle, let since = await service.activeInstallRecording() {
             phase = .recording(since: since)
+            await finishOnItsOwn()
         }
     }
 
@@ -134,7 +135,7 @@ public final class InstallRecordingModel: ObservableObject {
             // A package's file is offered to the Trash only once what it
             // installed is known to be there.
             if let package = pendingPackage {
-                installerToTrash = package
+                Self.discardInstaller(package)
                 pendingPackage = nil
             }
             return recording
@@ -159,7 +160,10 @@ public final class InstallRecordingModel: ObservableObject {
     /// recording finishes on its own when the installed app first quits, or
     /// when Installer does, while Brim is open. A recording the person
     /// started is kept running and used.
-    public func install(_ preview: InstallerPreview, service: any BrimServiceProtocol) async -> InstallOutcome {
+    public func install(
+        _ preview: InstallerPreview, service: any BrimServiceProtocol,
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async -> InstallOutcome {
         self.service = service
         let startedHere = !isRecording
         if startedHere {
@@ -189,7 +193,8 @@ public final class InstallRecordingModel: ObservableObject {
         }
         do {
             let url = try await service.installApplication(
-                from: preview.source, identifier: app.identifier, trusted: item.signature.verdict.isTrusted
+                from: preview.source, identifier: app.identifier, trusted: item.signature.verdict.isTrusted,
+                progress: progress
             )
             if let identifier = app.identifier {
                 wait(for: .app(bundleID: identifier, name: app.name, url: url))
@@ -264,7 +269,9 @@ public final class InstallRecordingModel: ObservableObject {
             notice = "Nothing was installed, so nothing was recorded."
             return
         }
-        guard result.unclaimed.isEmpty else { return }
+        // Only what links to the install is kept. Anything else that
+        // appeared meanwhile is left out rather than asked about: nobody
+        // started this recording, so nobody should be asked to judge it.
         let apps = Set(result.apps.filter { !$0.wasUpdated }.map(\.id))
         keptQuietly = await keptRecording(result, apps: apps.isEmpty ? Set(result.apps.map(\.id)) : apps,
                                           items: Set(result.linked.map(\.id)))
@@ -278,5 +285,19 @@ public extension InstallerSignature.Verdict {
         case .notarized, .apple, .appStore: true
         default: false
         }
+    }
+}
+
+public extension InstallRecordingModel {
+    /// Moves an installer to the Trash once what it installed is in place,
+    /// without asking: almost nobody keeps one, and the Trash can put it
+    /// back. Only from the person's own folders, never from Applications
+    /// or another volume.
+    static func discardInstaller(_ url: URL) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path + "/"
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(home), !path.hasPrefix(home + "Applications/"),
+              FileManager.default.fileExists(atPath: path) else { return }
+        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
     }
 }

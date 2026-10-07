@@ -12,11 +12,14 @@ import SQLite3
 /// program path outlives the program: the privacy database keeps the row
 /// until someone removes it.
 ///
-/// Only those are reported: grants to a path that is no longer on the disk.
-/// They are what Settings lists and can remove. Grants to a bundle
-/// identifier whose app is gone are left out, because Settings does not
-/// list them and nothing can remove them selectively, and offering an
-/// action that does not exist is worse than not mentioning it.
+/// Only those are reported: a permission, on or switched off, for a path
+/// that is no longer on the disk. System Settings lists them in the pane
+/// for their service, and its minus button removes them: on 7 October the
+/// Microsoft helper's switched-off Full Disk Access entry was removed that
+/// way. Brim had told the person only to look in Privacy & Security, which
+/// has a dozen panes, and was then wrongly changed to hide switched-off
+/// entries on the belief that Settings did not show them. Each row now
+/// names its pane and whether it is on, and opens that pane.
 ///
 /// Read only. The privacy database belongs to macOS; Brim never writes to
 /// it (`CLAUDE.md`: no private database edits), so each row is report-only
@@ -46,9 +49,13 @@ public struct PrivacyGrantSurface: RegistrationSurface {
 
     public func registrations(in root: FileSystemRoot) async -> [Registration] {
         var services: [String: Set<String>] = [:]
+        var allowed: Set<String> = []
         for database in databases(in: root) {
             for row in Self.rows(in: database) ?? [] where row.isPath {
                 services[row.client, default: []].insert(row.service)
+                if row.isAllowed {
+                    allowed.insert(row.client)
+                }
             }
         }
         return services.keys.sorted().compactMap { path in
@@ -57,8 +64,10 @@ public struct PrivacyGrantSurface: RegistrationSurface {
             // A program that is still there is the person's business, not a
             // leftover.
             guard presence.isAbsent else { return nil }
-            let panes = (services[path] ?? []).compactMap(Self.paneName).sorted()
+            let held = (services[path] ?? []).sorted()
+            let panes = held.compactMap(Self.paneName)
             let listed = panes.isEmpty ? "Privacy & Security" : panes.joined(separator: " and ")
+            let state = allowed.contains(path) ? "switched on" : "switched off"
             let name = URL(fileURLWithPath: path).lastPathComponent
             return Registration(
                 kind: .privacyGrant,
@@ -67,10 +76,12 @@ public struct PrivacyGrantSurface: RegistrationSurface {
                 owningBundleID: PrivilegedHelperToolSurface.probableOwner(label: name),
                 programPath: path,
                 targetExists: false,
-                evidence: "\(listed) still lists this program, but it is no longer on this Mac.",
+                evidence: "\(listed) lists this program, \(state), but it is no longer on this Mac.",
                 isSystemOwned: path.hasPrefix("/System/") || path.hasPrefix("/usr/"),
                 capability: .refusedByOS,
                 targetPresence: presence,
+                // The services, so the inspector can open the right pane.
+                recordIdentity: held.joined(separator: ","),
                 namespace: "privacy"
             )
         }
@@ -83,6 +94,8 @@ public struct PrivacyGrantSurface: RegistrationSurface {
         let client: String
         /// `client_type` 1 is a path; 0 is a bundle identifier.
         let isPath: Bool
+        /// `auth_value` 2 is allowed and 3 limited; 0 is switched off.
+        var isAllowed = true
     }
 
     /// Nil when the database could not be opened, which without Full Disk
@@ -96,7 +109,8 @@ public struct PrivacyGrantSurface: RegistrationSurface {
         }
         defer { sqlite3_close(handle) }
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, "SELECT service, client, client_type FROM access", -1, &statement, nil)
+        let query = "SELECT service, client, client_type, auth_value FROM access"
+        guard sqlite3_prepare_v2(handle, query, -1, &statement, nil)
             == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(statement) }
         var rows: [Row] = []
@@ -105,7 +119,8 @@ public struct PrivacyGrantSurface: RegistrationSurface {
             else { continue }
             rows.append(Row(
                 service: String(cString: service), client: String(cString: client),
-                isPath: sqlite3_column_int(statement, 2) == 1
+                isPath: sqlite3_column_int(statement, 2) == 1,
+                isAllowed: [2, 3].contains(sqlite3_column_int(statement, 3))
             ))
         }
         return rows

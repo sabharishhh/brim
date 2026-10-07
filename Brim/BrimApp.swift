@@ -15,6 +15,13 @@ private let log = BrimLog.make("app")
     @FocusedValue(\.selectedItems) var selectedItems
 
     let client: any BrimServiceProtocol = BrimServiceLocator.makeService()
+    /// Every request to the on-device model, one at a time, remembered in
+    /// Brim's caches folder.
+    let intelligence = IntelligenceEngine(
+        reader: SystemLanguageReader(),
+        cacheFile: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("com.sabharishhh.brim/Intelligence/answers.json")
+    )
     /// The Dock's menu, and apps dropped on its icon.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     /// What outlives a launch: kept items, what was seen, saved icons.
@@ -66,6 +73,7 @@ private let log = BrimLog.make("app")
         Settings {
             SettingsView()
                 .tint(Palette.tint)
+                .environment(\.intelligence, intelligence)
                 .environment(session)
                 .environment(feedback)
         }
@@ -100,6 +108,7 @@ private let log = BrimLog.make("app")
                 // checkboxes, switches and the sidebar selection.
                 .tint(Palette.tint)
                 .environment(\.brimService, client)
+                .environment(\.intelligence, intelligence)
                 .environment(session)
                 .environment(feedback)
                 .environment(\.compactRows, compactRows)
@@ -204,10 +213,6 @@ private let log = BrimLog.make("app")
                 Button("Look Inside an Installer…") { shell?.chooseInstaller() }
                     .keyboardShortcut("o", modifiers: .command)
                     .disabled(shell == nil)
-                Button(shell?.isRecordingInstall == true ? "Finish Recording" : "Record an Install") {
-                    shell?.toggleRecording()
-                }
-                .disabled(shell == nil)
                 Divider()
                 Button("Show in Finder") { shell?.reveal(selectedItems?.urls ?? []) }
                     .keyboardShortcut("r", modifiers: [.command, .option])

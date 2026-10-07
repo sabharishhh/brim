@@ -6,6 +6,7 @@ import SwiftUI
 /// then what runs while installing, then what the app may ask for.
 struct InstallerDetails: View {
     let preview: InstallerPreview
+    @ObservedObject var scriptLines: ScriptLinesModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -59,40 +60,10 @@ struct InstallerDetails: View {
 
     private var scripts: some View {
         InstallerSection(title: "Runs while installing", count: preview.scripts.count) {
-            ForEach(preview.scripts) { script in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "terminal")
-                            .foregroundStyle(Palette.snow)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        Text(script.name)
-                            .font(.brimRowTitle)
-                            .foregroundStyle(Palette.ink)
-                        if script.runsAsAdministrator {
-                            Text("As administrator")
-                                .font(.caption)
-                                .foregroundStyle(Palette.inkSecondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Palette.well, in: Capsule())
-                        }
-                    }
-                    Group {
-                        if !script.isText {
-                            Text("A program, not readable as text")
-                        } else if script.calls.isEmpty {
-                            Text("Calls nothing Brim looks for")
-                        } else {
-                            Text(script.calls.joined(separator: "\n"))
-                        }
-                    }
-                    .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
-                    .padding(.leading, 28)
+            VStack(spacing: 10) {
+                ForEach(preview.scripts) { script in
+                    ScriptCard(script: script, scriptLines: scriptLines)
                 }
-                .padding(.vertical, 6)
-                .accessibilityElement(children: .combine)
             }
         }
     }
