@@ -128,9 +128,6 @@ public actor LeftoversScanner {
         // software left behind looked in eight, so /Library, every
         // installer receipt and every command line tool were invisible.
         let domainsToScan = LocationInventory.sweepDomains
-        let inventoryRoots = Set(LocationInventory.standard.locations.map {
-            root.url(for: $0.domain).resolvingSymlinksInPath().path
-        })
 
         // One task per domain. Each walk reads a different directory tree
         // and writes nothing the others can see: the ownership search, the
@@ -153,10 +150,12 @@ public actor LeftoversScanner {
             installed: activeIdentities, recorded: knownNames, past: pastIdentities,
             packageFolders: InstalledBundleInventory.packageInstallFolders(in: root), root: root
         )
+        let prepared = Prepared(active: activeIdentities, past: pastIdentities,
+                                activeBundleIDs: activeBundleIDs, root: root)
         let batches = try await BoundedTasks.map(domainsToScan) { [self] domain in
             walkDomain(domain, search, activeIdentities, pastIdentities,
                        activeBundleIDs, activeNames,
-                       activeGroupContainers, activeTeamIDs, inventoryRoots, writers, knownNames, vendors)
+                       activeGroupContainers, activeTeamIDs, prepared, writers, knownNames, vendors)
         }
         let found = batches.flatMap(\.self)
         let leftovers = Self.markingVendors(
@@ -200,13 +199,13 @@ public actor LeftoversScanner {
     private nonisolated func walkDomain(
         _ domain: FileSystemRoot.Domain,
         _ search: OwnershipSearch,
-        _ activeIdentities: [Identity],
+        _: [Identity],
         _ pastIdentities: [Identity],
         _ activeBundleIDs: Set<String>,
         _ activeNames: Set<String>,
         _ activeGroupContainers: Set<String>,
         _ activeTeamIDs: Set<String>,
-        _ inventoryRoots: Set<String>,
+        _ prepared: Prepared,
         _ writers: [ProvenanceSource.Owner],
         _ knownNames: [String: String],
         _ vendors: SystemVendors
@@ -216,26 +215,12 @@ public actor LeftoversScanner {
         let ownerLookup = OwnerLookup(
             domain: domain, locationRules: locationRules,
             pastIdentities: pastIdentities,
-            pastSubjects: pastIdentities.map(LocationInventory.Subject.init), search: search
+            pastSubjects: prepared.pastSubjects, search: search
         )
-        // Matching reads each identity's identifiers once per file, so they
-        // are worked out once per domain rather than once per question.
-        let activeSubjects = activeIdentities.map(LocationInventory.Subject.init)
-        // Library helpers can protect a shared container even though they
-        // are deliberately excluded from an app's removal identifiers.
-        let containerClaimants = Set(activeIdentities.flatMap {
-            [$0.bundleID].compactMap(\.self) + ($0.identitySurface?.bundleIdentifiers ?? [])
-        }.map { $0.lowercased() })
-        // Worked out once per domain rather than once per item: every
-        // identifier lowercased and every bundle path standardised again
-        // for each of thousands of folders was most of what asking whether
-        // an item belongs to an installed app cost.
-        let installed = InstalledLookup(
-            identifiersLowercased: Set(activeBundleIDs.map { $0.lowercased() }),
-            bundlePaths: activeIdentities.compactMap(\.bundlePath).map {
-                URL(fileURLWithPath: $0).standardizedFileURL.path
-            }
-        )
+        let activeSubjects = prepared.activeSubjects
+        let containerClaimants = prepared.containerClaimants
+        let installed = prepared.installed
+        let inventoryRoots = prepared.inventoryRoots
         do {
             let dir = root.url(for: domain)
             // A vendor folder puts its children on the queue in place of
@@ -511,6 +496,44 @@ public actor LeftoversScanner {
     }
 
     // swiftlint:enable cyclomatic_complexity function_body_length
+
+    /// What every domain's walk matches against, worked out once per scan.
+    ///
+    /// Each walk built these for itself: a subject per installed and per
+    /// removed app, the container claimants and the installed lookup, about
+    /// 19 ms a time across sixty domains, so a domain with nothing in it
+    /// still cost as much as one with something to find. Matching reads
+    /// each identity's identifiers once per file, so they are worked out
+    /// once rather than once per question, and every identifier lowercased
+    /// and every bundle path standardised again for each of thousands of
+    /// folders was most of what asking whether an item belongs to an
+    /// installed app cost.
+    private struct Prepared: Sendable {
+        let activeSubjects: [LocationInventory.Subject]
+        let pastSubjects: [LocationInventory.Subject]
+        /// Library helpers can protect a shared container even though they
+        /// are deliberately excluded from an app's removal identifiers.
+        let containerClaimants: Set<String>
+        let installed: InstalledLookup
+        let inventoryRoots: Set<String>
+
+        init(active: [Identity], past: [Identity], activeBundleIDs: Set<String>, root: FileSystemRoot) {
+            activeSubjects = active.map(LocationInventory.Subject.init)
+            pastSubjects = past.map(LocationInventory.Subject.init)
+            containerClaimants = Set(active.flatMap {
+                [$0.bundleID].compactMap(\.self) + ($0.identitySurface?.bundleIdentifiers ?? [])
+            }.map { $0.lowercased() })
+            installed = InstalledLookup(
+                identifiersLowercased: Set(activeBundleIDs.map { $0.lowercased() }),
+                bundlePaths: active.compactMap(\.bundlePath).map {
+                    URL(fileURLWithPath: $0).standardizedFileURL.path
+                }
+            )
+            inventoryRoots = Set(LocationInventory.standard.locations.map {
+                root.url(for: $0.domain).resolvingSymlinksInPath().path
+            })
+        }
+    }
 
     private struct OwnerLookup {
         let domain: FileSystemRoot.Domain
@@ -1303,14 +1326,17 @@ public actor LeftoversScanner {
         var identities: [Identity] = []
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
-        for bundle in inventory.bundles {
-            if budget.hasRunOut || Task.isCancelled {
+        // Read four at a time: one bundle after another, the claims were
+        // 0.83 of the scan's two seconds for 79 bundles on this Mac.
+        let root = root
+        let allClaims = await (try? BoundedTasks.map(inventory.bundles, limit: 4) { bundle in
+            budget.hasRunOut ? nil : BundleSurfaceReader.protectionClaims(at: bundle, in: root)
+        }) ?? []
+        for (index, bundle) in inventory.bundles.enumerated() {
+            guard index < allClaims.count, let claims = allClaims[index], !Task.isCancelled else {
                 complete = false; break
             }
             let identity = await resolver.resolve(bundleURL: bundle)
-            let claims = await Task.detached {
-                BundleSurfaceReader.protectionClaims(at: bundle, in: self.root)
-            }.value
             complete = complete && claims.complete
             // These claims are local to the protective sweep, never passed
             // to the uninstall evidence engine or used to select a deletion.
