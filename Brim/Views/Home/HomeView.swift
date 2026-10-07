@@ -302,7 +302,7 @@ extension HomeView {
                     developerCard
                     updatesCard
                 }
-                row { InstallCard(recording: models.recording) }
+                row { InstallCard() }
                 row { journalCard }
             } else {
                 row {
@@ -316,7 +316,7 @@ extension HomeView {
                     updatesCard
                 }
                 row {
-                    InstallCard(recording: models.recording)
+                    InstallCard()
                     journalCard
                 }
             }

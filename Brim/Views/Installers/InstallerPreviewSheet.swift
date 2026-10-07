@@ -21,6 +21,10 @@ struct InstallerPreviewSheet: View {
     /// What the sheet holds, measured, so a short preview is a short sheet.
     @State private var contentHeight: CGFloat = 0
     @State private var isInstalling = false
+    /// How much of the app has been copied, while installing.
+    @State private var progress: Double?
+    /// Where the app now is, once installed.
+    @State private var installed: URL?
     @State private var asksToInstallUntrusted = false
     @State private var installProblem: String?
 
@@ -92,14 +96,35 @@ struct InstallerPreviewSheet: View {
 
     private var footer: some View {
         HStack {
-            Button("Show in Finder") { shell.showInFinder(request.url) }
+            Button("Show in Finder") { shell.showInFinder(installed ?? request.url) }
                 .capsuleAction()
             Spacer()
-            if isInstalling {
-                ProgressView().controlSize(.small)
-                Text("Installing")
+            if let installed {
+                Label("In Applications", systemImage: "checkmark.circle.fill")
                     .font(.brimFacts)
-                    .foregroundStyle(Palette.inkSecondary)
+                    .foregroundStyle(Palette.success)
+                    .transition(.opacity)
+                Button("Done") { dismiss() }
+                    .capsuleAction()
+                Button("Open") {
+                    NSWorkspace.shared.open(installed)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .capsuleAction(prominent: true)
+            } else if isInstalling {
+                HStack(spacing: 10) {
+                    Text("Installing")
+                        .font(.brimFacts)
+                        .foregroundStyle(Palette.inkSecondary)
+                    ProgressView(value: progress ?? 0)
+                        .progressViewStyle(.linear)
+                        .tint(Palette.snow)
+                        .frame(width: 140)
+                        .animation(.linear(duration: 0.25), value: progress)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Installing, \(Int((progress ?? 0) * 100)) percent")
             } else if let item = installable {
                 Button("Done") { dismiss() }
                     .capsuleAction()
@@ -112,24 +137,8 @@ struct InstallerPreviewSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .capsuleAction(prominent: true)
-                .help(item.kind == .package
-                    ? "Opens it in Installer, and records what it adds"
-                    : "Copies the app into Applications, and records what it creates")
+                .help(item.kind == .package ? "Opens it in Installer" : "Copies the app into Applications")
             } else {
-                // Looking inside says what an installer can do; recording
-                // says what it did. Offered where Brim cannot install.
-                if case .read = phase, !recording.isRecording {
-                    Button("Record Its Install") {
-                        Task {
-                            await recording.start(service: service)
-                            if recording.isRecording {
-                                dismiss()
-                            }
-                        }
-                    }
-                    .capsuleAction()
-                    .help("Notes what is on this Mac now, so Brim can show what installing this adds")
-                }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                     .capsuleAction(prominent: true)
@@ -168,27 +177,26 @@ struct InstallerPreviewSheet: View {
             : "Install \(name)? It is not notarized."
     }
 
-    /// Installs, then closes: the Trash question and the note about the
-    /// recording are the window's, so they outlive this sheet.
+    /// Installs, and stays open to show it happening and offer the app.
+    /// The installer goes to the Trash on its own, and the recording around
+    /// the install finishes on its own; neither is asked about.
     private func install() {
         guard case let .read(preview) = phase else { return }
         isInstalling = true
+        progress = 0
         Task {
-            let outcome = await recording.install(preview, service: service)
+            let outcome = await recording.install(preview, service: service) { fraction in
+                Task { @MainActor in progress = fraction }
+            }
             isInstalling = false
             switch outcome {
             case let .installed(app):
-                let name = app.deletingPathExtension().lastPathComponent
-                dismiss()
+                withAnimation(Motion.quick) { installed = app }
                 shell.noteInstall()
-                shell.show(ToastMessage(symbol: "checkmark.circle", text: "\(name) is in Applications",
-                                        actionTitle: "Open") { NSWorkspace.shared.open(app) })
-                // After the sheet has gone, so the question has a window.
-                try? await Task.sleep(for: .milliseconds(450))
-                recording.installerToTrash = request.url
+                InstallRecordingModel.discardInstaller(request.url)
             case .openedInstaller:
                 dismiss()
-                shell.show(ToastMessage(symbol: "shippingbox", text: "Finish in Installer. Brim records what it adds."))
+                shell.show(ToastMessage(symbol: "shippingbox", text: "Finish in Installer"))
             case let .failed(message):
                 installProblem = message
             }

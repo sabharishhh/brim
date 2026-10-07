@@ -228,11 +228,17 @@ struct InstallerSheets: ViewModifier {
             } message: {
                 Text(model.problem ?? "")
             }
-            .modifier(InstallNotes(model: model, shell: shell))
             .task { await model.load(service: service) }
             // Compositor was missing from Apps after Brim installed it: the
             // list had been read before it existed, and nothing read it again.
             .onChange(of: shell.installs) { Task { await applications.load(service: service) } }
+            // A package's app arrives through Installer, not Brim; Apps
+            // reads the list again once the recording around it is kept.
+            .onChange(of: model.keptQuietly) { _, kept in
+                guard kept != nil else { return }
+                shell.noteInstall()
+                model.keptQuietly = nil
+            }
             .onChange(of: model.isRecording, initial: true) { _, recording in
                 shell.isRecordingInstall = recording
             }
@@ -252,61 +258,5 @@ struct InstallerSheets: ViewModifier {
             return true
         }
         return false
-    }
-}
-
-/// What an install Brim performed says afterwards: whether to move the
-/// installer to the Trash, and a note when a recording was kept or there
-/// was nothing to record.
-private struct InstallNotes: ViewModifier {
-    @ObservedObject var model: InstallRecordingModel
-    let shell: ShellState
-
-    func body(content: Content) -> some View {
-        content
-            .alert(trashTitle, isPresented: Binding(
-                get: { model.installerToTrash != nil }, set: {
-                    if !$0 {
-                        model.installerToTrash = nil
-                    }
-                }
-            )) {
-                Button("Move to Trash") {
-                    if let url = model.installerToTrash {
-                        moveToTrash(url)
-                    }
-                }
-                Button("Keep", role: .cancel) {}
-            } message: {
-                Text("What it installed is in place, so the installer is no longer needed.")
-            }
-            .onChange(of: model.keptQuietly) { _, kept in
-                guard let kept else { return }
-                // A package's app arrives through Installer, not Brim.
-                shell.noteInstall()
-                let count = kept.items.count
-                let name = kept.apps.first?.name ?? "the app"
-                shell.show(ToastMessage(symbol: "checkmark.circle", text: count == 1
-                        ? "Noted what installing \(name) created: 1 item"
-                        : "Noted what installing \(name) created: \(count) items"))
-                model.keptQuietly = nil
-            }
-            .onChange(of: model.notice) { _, notice in
-                guard let notice else { return }
-                shell.show(ToastMessage(symbol: "info.circle", text: notice))
-                model.notice = nil
-            }
-    }
-
-    private var trashTitle: String {
-        "Move \u{201C}\(model.installerToTrash?.lastPathComponent ?? "")\u{201D} to the Trash?"
-    }
-
-    private func moveToTrash(_ url: URL) {
-        do {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-        } catch {
-            model.problem = error.localizedDescription
-        }
     }
 }
