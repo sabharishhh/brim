@@ -86,9 +86,11 @@ struct SpaceSoftwareCard: View {
         let apps = applications.applications.filter { !$0.isSystemProtected && !$0.url.path.hasPrefix("/Volumes/") }
         let measuring = appData.isMeasuring ? "Measuring \(appData.measured) of \(appData.toMeasure)" : nil
         var rows = [
+            // A Mac always has apps, so an empty list is one not read yet.
             SoftwareRow(
                 title: "Apps",
-                bytes: apps.isEmpty && applications.isLoading ? nil : apps.reduce(0) { $0 + $1.bundleSizeBytes },
+                bytes: applications.applications.isEmpty ? nil : apps.reduce(0) { $0 + $1.bundleSizeBytes },
+                figure: applications.applications.isEmpty && applications.errorMessage != nil ? "Unavailable" : nil,
                 destination: .apps
             ),
             SoftwareRow(
@@ -99,7 +101,7 @@ struct SpaceSoftwareCard: View {
             ),
             SoftwareRow(
                 title: "Developer caches",
-                bytes: developer.caches.isEmpty && developer.isScanning ? nil : developer.totalBytes,
+                bytes: !developer.hasLoaded && developer.caches.isEmpty ? nil : developer.totalBytes,
                 destination: .developer
             )
         ]

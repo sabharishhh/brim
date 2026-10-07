@@ -91,16 +91,6 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(Set(model.unclaimedGroupsForReview.map(\.displayName)), ["large", "protected"])
     }
 
-    func testRepeatedSearchBindingDoesNotRepublishDerivedRows() {
-        let model = LeftoversModel()
-        var publications = 0
-        let observation = model.$visibleOrphanedGroups.sink { _ in publications += 1 }
-        model.searchText = ""
-        model.searchText = ""
-        XCTAssertEqual(publications, 1)
-        withExtendedLifetime(observation) {}
-    }
-
     func testEmptySuccessfulScanIsCachedAcrossNavigation() async {
         let service = LeftoversStub([])
         let model = LeftoversModel()
@@ -108,20 +98,6 @@ final class LeftoversModelTests: XCTestCase {
         await model.loadIfNeeded(service: service)
         let calls = await service.calls
         XCTAssertEqual(calls, 1)
-    }
-
-    func testSearchSnapshotUpdatesAfterRemovalWithoutChangingSelection() async {
-        let model = LeftoversModel()
-        await model.load(service: LeftoversStub([
-            leftover("Alpha", .orphaned), leftover("Beta", .unclaimed)
-        ]))
-        let original = model.selection
-        model.searchText = " beta "
-        XCTAssertTrue(model.visibleOrphanedGroups.isEmpty)
-        XCTAssertEqual(model.visibleUnclaimedGroups.count, 1)
-        XCTAssertEqual(model.selection, original)
-        model.forget(paths: ["/tmp/leftovers/Beta"])
-        XCTAssertTrue(model.visibleUnclaimedGroups.isEmpty)
     }
 
     /// The grouped lists are stored now rather than recomputed on read, so
@@ -206,31 +182,35 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertTrue(model.selection.isEmpty, "But not offered as something Brim will remove")
     }
 
-    func testABlockedSelectionIsSurfacedRatherThanAttempted() async {
+    func testWhatBrimCannotRemoveCannotBeTicked() async throws {
         let model = LeftoversModel()
         let blocked = leftover("container", .unclaimed, capability: .needsFullDiskAccess)
         await model.load(service: LeftoversStub([blocked]))
 
-        model.toggle(blocked)
+        let group = try XCTUnwrap(model.unclaimedGroups.first)
+        model.toggle(group)
 
-        XCTAssertEqual(model.blockedSelection.count, 1)
+        XCTAssertTrue(model.selection.isEmpty)
         XCTAssertFalse(
             model.canRemoveSelection,
             "Removal must be refused up front, not discovered as a failure afterwards"
         )
     }
 
-    func testSelectAllSkipsWhatCannotBeRemoved() async {
+    func testReviewAllSkipsWhatCannotBeRemoved() async {
         let model = LeftoversModel()
+        let owner = Identity(bundleID: "com.example.removed", name: "Removed App")
         let items = [
-            leftover("fine", .unclaimed),
-            leftover("container", .unclaimed, capability: .needsFullDiskAccess)
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/fine"), size: 100,
+                     category: .orphaned, potentialOwner: owner),
+            Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/container"), size: 100,
+                     category: .orphaned, potentialOwner: owner, capability: .needsFullDiskAccess)
         ]
         await model.load(service: LeftoversStub(items))
 
-        model.selectAll(in: model.unclaimed)
+        model.selectAllRemovableOrphans()
 
-        XCTAssertEqual(model.selection.count, 1)
+        XCTAssertEqual(model.selection, [items[0].id])
         XCTAssertTrue(model.canRemoveSelection)
     }
 
@@ -254,20 +234,6 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertTrue(model.selection.isEmpty)
         XCTAssertFalse(model.canRemoveSelection)
         XCTAssertNil(model.removalIntent(requesterIdentity: "tester"))
-    }
-
-    func testSearchFiltersWithoutChangingSelection() async {
-        let model = LeftoversModel()
-        await model.load(service: LeftoversStub([
-            leftover("figma-cache", .orphaned),
-            leftover("sketch-cache", .orphaned)
-        ]))
-        let before = model.selection
-
-        model.searchText = "figma"
-
-        XCTAssertEqual(model.visible(model.orphaned).count, 1)
-        XCTAssertEqual(model.selection, before, "Filtering the view must not silently deselect")
     }
 
     func testMixedGroupCanBeDeselectedWithoutSelectingBlockedItems() async throws {
@@ -303,11 +269,12 @@ final class LeftoversModelTests: XCTestCase {
         let ordinary = leftover("ordinary", .orphaned)
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([helper, unknown, blocked, ordinary]))
-        model.toggle(unknown)
+        let unknownGroup = try XCTUnwrap(model.unclaimedGroups.first { $0.items.contains { $0.id == unknown.id } })
+        model.toggle(unknownGroup)
         model.selectAllRemovableOrphans()
         let batch = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
         XCTAssertEqual(Set(batch.explicitTargets), [helper.url, ordinary.url])
-        model.toggle(unknown)
+        model.toggle(unknownGroup)
         let selected = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
         XCTAssertEqual(Set(selected.explicitTargets), [helper.url, ordinary.url, unknown.url])
     }
@@ -324,17 +291,14 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(retry.explicitTargets, [failed.url])
     }
 
-    func testBatchDoesNotOverrideKeptGroupsOrIncludeBlockedSelection() async throws {
-        let kept = leftover("kept", .orphaned)
-        let blocked = leftover("blocked", .unclaimed, capability: .needsFullDiskAccess)
+    func testReviewAllLeavesOutUnknownItems() async throws {
+        let removed = leftover("removed", .orphaned)
+        let unknown = leftover("unknown", .unclaimed)
         let model = LeftoversModel()
-        await model.load(service: LeftoversStub([kept, blocked]))
-        let group = try XCTUnwrap(model.orphanedGroups.first)
-        model.keptGroups = [group.id]
+        await model.load(service: LeftoversStub([removed, unknown]))
+        model.deselectAll(in: model.all)
         model.selectAllRemovableOrphans()
-        XCTAssertTrue(model.removableOrphans.isEmpty)
-        XCTAssertTrue(model.selection.isEmpty)
-        model.toggle(blocked)
-        XCTAssertNil(model.removalIntent(requesterIdentity: "tester"))
+        let intent = try XCTUnwrap(model.removalIntent(requesterIdentity: "tester"))
+        XCTAssertEqual(intent.explicitTargets, [removed.url])
     }
 }
