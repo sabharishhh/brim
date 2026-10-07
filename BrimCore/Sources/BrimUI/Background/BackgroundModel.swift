@@ -24,6 +24,9 @@ import Foundation
 public final class BackgroundModel: ObservableObject {
     @Published public private(set) var report: RegistrationReport = .empty
     @Published public private(set) var isLoading = false
+    /// A load has finished. Before that, an empty list is not a measured
+    /// zero, and Home says it is checking rather than that all is well.
+    @Published public private(set) var hasLoaded = false
     @Published public var searchText = "" {
         didSet { regroup() }
     }
@@ -47,9 +50,9 @@ public final class BackgroundModel: ObservableObject {
     private var applications: [InstalledApplication] = []
     private var visibleReport: RegistrationReport = .empty
 
-    /// Brim's privileged daemon, for the jobs that live in a folder
-    /// belonging to root. Observed directly rather than through a
-    /// container, because a nested ObservableObject publishes nothing.
+    /// Administrator cleanup, for the jobs that live in a folder belonging
+    /// to root. Observed directly rather than through a container, because
+    /// a nested ObservableObject publishes nothing.
     public let helper = PrivilegedHelperClient()
 
     public init() {}
@@ -111,12 +114,6 @@ public final class BackgroundModel: ObservableObject {
         report.gaps.filter(\.isAFault)
     }
 
-    /// Surfaces Brim will not read on purpose. Worth saying once, quietly,
-    /// and never as something the person should go and fix.
-    public var boundaries: [RegistrationCoverage] {
-        report.gaps.filter { $0.absence == .byDesign }
-    }
-
     // MARK: - Removing what is left over
 
     /// Everything currently selected.
@@ -142,9 +139,9 @@ public final class BackgroundModel: ObservableObject {
             && registration.capability == .ok
     }
 
-    /// Something Brim cannot reach itself, but the daemon can once it is
-    /// set up. Only the two machine-wide launchd folders qualify, because
-    /// those are the only places the daemon will touch.
+    /// Something Brim cannot reach itself, but administrator cleanup can.
+    /// Only the two machine-wide launchd folders qualify, because those are
+    /// the only places it will touch.
     public static func needsTheHelper(_ registration: Registration) -> Bool {
         guard registration.kind == .launchdJob,
               !registration.isSystemOwned,
@@ -167,30 +164,20 @@ public final class BackgroundModel: ObservableObject {
         return Self.needsTheHelper(registration) && helper.state.canRemove
     }
 
-    /// Jobs that need the daemon and are waiting on it being set up.
+    /// Jobs that need administrator cleanup, which this copy of Brim may
+    /// not include.
     public var waitingOnHelper: [Registration] {
         matching(visibleReport.stale).filter(Self.needsTheHelper)
     }
 
     /// Brings the helper's state up to date where this section has work
-    /// for it, so the section can say whether it is ready.
-    ///
-    /// This used to connect the helper to the service as well, and to
-    /// disconnect it when this section had nothing waiting, which left a
-    /// removal started anywhere else with no helper at all. `HelperRoute`
-    /// connects it once for the whole app now.
-    public func connectHelper(service _: any BrimServiceProtocol) async {
-        // Only where the daemon would have something to do. Asking macOS
-        // about it on a Mac with no privileged jobs to remove costs an XPC
-        // round trip, a signature check, and a background-item notification
-        // nobody asked for. `waitingOnHelper` is derived from the scan that
-        // has just finished, so by here it is a settled answer.
+    /// for it, so the section can say whether it is ready. Reading the state
+    /// only checks that this copy of Brim carries its administrator tool;
+    /// it starts nothing and asks for no password. `HelperRoute` connects
+    /// the helper to the service once for the whole app.
+    private func refreshHelper() {
         guard !waitingOnHelper.isEmpty else { return }
         helper.refresh()
-        // Before trusting it with anything: an SMAppService daemon stays
-        // registered across an application update, so the root process
-        // answering can be one an older Brim installed.
-        await helper.verifyVersion()
     }
 
     /// Entries that are genuinely left over but that Brim cannot remove as
@@ -263,11 +250,11 @@ public final class BackgroundModel: ObservableObject {
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         self.service = service
         if report.registrations.isEmpty, !isLoading {
-            // `load` connects the helper itself, once it knows whether there
-            // is anything for it to do.
+            // `load` refreshes the helper itself, once it knows whether
+            // there is anything for it to do.
             await load(service: service)
         } else {
-            await connectHelper(service: service)
+            refreshHelper()
         }
     }
 
@@ -296,11 +283,10 @@ public final class BackgroundModel: ObservableObject {
         updateVisibleReport()
         regroup()
         isLoading = false
+        hasLoaded = true
 
-        // After the scan, not before it. Connecting first meant
-        // `waitingOnHelper` was always empty at the point the decision was
-        // made, so the question "is there privileged work here" could not be
-        // answered and macOS was asked about the daemon regardless.
-        await connectHelper(service: service)
+        // After the scan, not before it: before it, `waitingOnHelper` is
+        // always empty and the question cannot be answered.
+        refreshHelper()
     }
 }

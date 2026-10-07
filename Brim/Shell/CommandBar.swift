@@ -70,23 +70,32 @@ struct CommandBar: View {
             .padding(.horizontal, 18)
             .frame(height: 52)
             if !results.isEmpty {
-                ScrollView {
-                    VStack(spacing: 2) {
-                        ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                            // A real button, so a click, a VoiceOver press
-                            // and Full Keyboard Access all run it.
-                            Button {
-                                highlighted = index
-                                run(results)
-                            } label: {
-                                row(result, isHighlighted: index == highlighted)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                                // A real button, so a click, a VoiceOver press
+                                // and Full Keyboard Access all run it.
+                                Button {
+                                    highlighted = index
+                                    run(results)
+                                } label: {
+                                    row(result, isHighlighted: index == highlighted)
+                                }
+                                .buttonStyle(.plain)
+                                .id(result.id)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(8)
                     }
-                    .padding(8)
+                    .frame(maxHeight: 320)
+                    // Eight rows fit; the arrow keys reach twenty. Without
+                    // this the highlight walked off the bottom of the list.
+                    .onChange(of: highlighted) { _, index in
+                        guard results.indices.contains(index) else { return }
+                        proxy.scrollTo(results[index].id)
+                    }
                 }
-                .frame(maxHeight: 320)
             }
         }
         .frame(width: 560)
@@ -151,6 +160,14 @@ struct CommandBar: View {
                 symbol: destination.icon, run: { shell.go(to: destination) }
             )
         }
+        // Updates is a lens on Apps rather than a page, and the Go menu
+        // reaches it, so the bar does too.
+        if matches("Updates") {
+            results.append(Result(
+                id: "page:updates", title: "Updates", kind: "Page", icon: nil, symbol: "arrow.down.circle",
+                run: { shell.go(to: .apps, lens: .updates) }
+            ))
+        }
         if matches("Check Again") {
             results.append(Result(
                 id: "check", title: "Check Again", kind: "Command", icon: nil, symbol: "arrow.clockwise",
@@ -175,7 +192,7 @@ struct CommandBar: View {
                     symbol: "shippingbox",
                     run: {
                         shell.go(to: .leftovers)
-                        leftovers.inspected = group
+                        leftovers.requested = group
                     }
                 )
             }

@@ -38,7 +38,7 @@ final class DeveloperSafetyTests: XCTestCase {
         model.toggle(archive)
         XCTAssertTrue(model.selection.isEmpty, "Selecting it must be refused outright")
 
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         XCTAssertTrue(model.selection.isEmpty, "Select all must skip it too")
         XCTAssertNil(model.removalIntent(requesterIdentity: "t"))
     }
@@ -49,7 +49,7 @@ final class DeveloperSafetyTests: XCTestCase {
         let model = await loaded([docker])
 
         model.toggle(docker)
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
 
         XCTAssertTrue(model.selection.isEmpty)
         XCTAssertNil(model.removalIntent(requesterIdentity: "t"),
@@ -60,7 +60,7 @@ final class DeveloperSafetyTests: XCTestCase {
         let devices = cache("Simulator devices", "Xcode",
                             "/Users/x/Library/Developer/CoreSimulator/Devices", .configured)
         let model = await loaded([devices])
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         XCTAssertTrue(model.selection.isEmpty)
     }
 
@@ -95,7 +95,7 @@ final class DeveloperSafetyTests: XCTestCase {
         let archive = cache("Archives", "Xcode", "/a/Archives", .configured)
         let model = await loaded([derived, archive])
 
-        model.selectRegenerable()
+        model.setSelected(true, model.visibleCaches)
         model.toggle(archive)
 
         let intent = model.removalIntent(requesterIdentity: "t")
