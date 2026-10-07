@@ -1,16 +1,6 @@
 import Foundation
 import Observation
 
-/// Where the app is in its life, which decides what the window shows.
-public enum AppPhase: Equatable, Sendable {
-    case firstLaunch
-    case onboarding
-    /// Set up, and the first scan has not finished. Home says it is
-    /// looking rather than showing zeros it never measured.
-    case firstScan
-    case ready
-}
-
 /// How current a surface's findings are.
 ///
 /// Every surface says how old what it shows is, because a list with no
@@ -68,17 +58,14 @@ public extension Freshness {
 ///
 /// Section models own their scans (`SectionModels`); this owns what is
 /// true of the person's use of Brim rather than of the Mac: what they
-/// kept, what they have already seen, and the icons of apps that are gone.
+/// have already seen, and the icons of apps that are gone.
 @MainActor
 @Observable
 public final class AppSession {
-    public var phase: AppPhase = .firstLaunch
-    public let decisions: DecisionStore
     public let visits: VisitMemory
     public let icons: IconMemory
 
     public init(directory: URL? = AppSession.standardDirectory, icons: IconMemory = .standard) {
-        decisions = DecisionStore(file: directory?.appendingPathComponent("decisions.json"))
         visits = VisitMemory(file: directory?.appendingPathComponent("visits.json"))
         self.icons = icons
     }

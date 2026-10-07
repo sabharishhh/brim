@@ -22,10 +22,4 @@ public enum ByteText {
         guard bytes > 0 else { return "0 KB" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
-
-    /// For a size inside a sentence, where "nothing" reads properly.
-    public static func inSentence(_ bytes: Int64) -> String {
-        guard bytes > 0 else { return "nothing" }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
 }

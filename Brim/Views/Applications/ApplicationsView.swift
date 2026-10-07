@@ -107,7 +107,7 @@ struct ApplicationsView: View {
     // MARK: - Header
 
     /// The search and the list's controls, on one row at the top of the
-    /// list. The page's name and size are in the toolbar.
+    /// list. The Apps and Updates switch in the toolbar names the page.
     private var header: some View {
         HStack(spacing: 8) {
             BrimSearchField(text: $model.searchText, prompt: "Search Apps")
@@ -129,11 +129,6 @@ struct ApplicationsView: View {
         .padding(.horizontal, Metrics.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 8)
-    }
-
-    private var totalBytes: Int64 {
-        // Apps shipped inside another are already in its size.
-        model.applications.filter { $0.enclosingApp == nil }.reduce(0) { $0 + $1.bundleSizeBytes }
     }
 
     // MARK: - List
