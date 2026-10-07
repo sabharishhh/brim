@@ -1,5 +1,7 @@
 import Foundation
 
+// swiftformat:disable wrapMultilineStatementBraces
+
 /// What an install script's text visibly does, line by line.
 ///
 /// Read, never run, and never judged. A script can do anything its text
@@ -108,8 +110,7 @@ public enum InstallScriptReading {
         let phrases = Set(findings(in: text).map(\.phrase))
         var ordered: [String] = []
         for rule in rules where phrases.contains(rule.phrase) && !ordered.contains(rule.phrase)
-            && rule.phrase != settingsPhrase
-        {
+            && rule.phrase != settingsPhrase {
             ordered.append(rule.phrase)
         }
         if phrases.contains(settingsPhrase) {

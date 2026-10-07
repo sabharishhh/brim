@@ -56,7 +56,9 @@ nonisolated struct SystemLanguageReader: LanguageReader {
             instructions: Self.releaseInstructions, prompt: "Version: \(version)\nRelease notes:\n\(text)",
             generating: ReleaseReading.self, maximumTokens: 160
         )
-        return ReleaseHighlights(highlights: Self.tidy(reading.highlights, limit: 60), fixesSecurity: reading.fixesSecurity)
+        return ReleaseHighlights(
+            highlights: Self.tidy(reading.highlights, limit: 60), fixesSecurity: reading.fixesSecurity
+        )
     }
 
     // MARK: - Install scripts

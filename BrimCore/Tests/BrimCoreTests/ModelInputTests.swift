@@ -29,7 +29,8 @@ struct ModelInputTests {
 
     @Test func `a version that is not a heading does not cut the notes`() {
         let notes = "Adds a compact player. Requires macOS 14.0 or later. Version 3.1 fixes a crash."
-        #expect(ReleaseNotesText.section(of: notes, version: "3.2") == "Adds a compact player. Requires macOS 14.0 or later.")
+        #expect(ReleaseNotesText.section(of: notes, version: "3.2")
+            == "Adds a compact player. Requires macOS 14.0 or later.")
         #expect(ReleaseNotesText.section(of: "Requires macOS 14.0. Fixes a crash.", version: "2.0")
             == "Requires macOS 14.0. Fixes a crash.")
     }
