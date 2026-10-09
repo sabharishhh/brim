@@ -1,224 +1,93 @@
 # Brim
 
-Brim shows what software has left on your Mac, removes approved items,
-and checks what is gone, what remains and what could not be checked.
+Brim shows what apps have left behind on your Mac, removes what you approve,
+and then confirms what is gone. Every item it lists says how Brim knows
+who it belongs to, and anything another installed app still uses is left
+alone.
 
-Every row says how Brim knows what it claims: an installer receipt, a
-launch job, a record macOS keeps, a matching identifier. Anything another
-installed app still uses stays where it is. Removals go to the Trash first
-when possible. Writable files can be put back from History. Protected files
-may be retained as recovery copies without a restore action in Brim.
-Permanent actions, including deleting recovery copies, are shown before
-approval.
+## What it does
 
-Brim runs on macOS 27 or later.
+- **Remnants** finds files, settings and background jobs left by apps you
+  have already removed.
+- **Apps** lists everything installed and removes an app together with the
+  files it keeps elsewhere on your Mac, in one review.
+- **Background** shows login items and launch jobs, including those that
+  point at software no longer installed.
+- **Updates** finds new versions of your apps and installs one only when the
+  same developer signed it.
+- **Installers** can be opened in Brim first, to see what a package or disk
+  image would add before anything changes.
+- **Journal** records every removal and checks again that it stayed removed.
+- **Space**, **Developer** and **Energy** show where your storage goes, which
+  build caches can be cleared safely, and which apps are using power.
+
+Removed items go to the Trash where possible, so most of them can be put
+back. Anything that would be deleted permanently is shown before you approve
+it.
 
 ## Installing
+
+Brim needs macOS 27 or later.
 
 1. Download `Brim-<version>.dmg` from
    [Releases](https://github.com/sabharishhh/brim/releases/latest) and drag
    Brim to Applications.
-2. Open Brim. macOS says it cannot check it for malicious software and
-   offers only Done or Move to Trash. Choose **Done**.
-3. Open **System Settings, Privacy & Security**, scroll to Security, and
-   choose **Open Anyway** beside the line about Brim. Confirm with your
-   password or Touch ID.
-4. Brim opens. From then on it opens normally.
+2. Open Brim. macOS says it cannot check Brim for malicious software. Choose
+   **Done**.
+3. Open **System Settings > Privacy & Security**, find the message about Brim
+   under Security, and choose **Open Anyway**.
 
-macOS asks this because Brim is signed with a free Apple Development
-certificate and not notarised by Apple, which needs a paid developer
-account. The signature is still checked: Brim and its temporary administrator
-process verify each other as Brim components signed by the same team
-(`9LY29YLFG2`). You can check the
-download against the `.sha256` file published beside it:
+macOS asks this once because Brim is signed with a free Apple Development
+certificate and is not notarised. To confirm that your download is the one
+published, compare its checksum with the `.sha256` file beside it:
 
 ```bash
-shasum -a 256 ~/Downloads/Brim-1.0.dmg
+shasum -a 256 ~/Downloads/Brim-<version>.dmg
 ```
 
-### What Brim asks for
+## Permissions
 
-Brim asks for Full Disk Access during setup. Protected cleanup needs
-administrator authentication when you approve it.
+- **Full Disk Access** lets Brim read the folders where apps keep most of
+  their data. Without it, Brim tells you what it could not read rather than
+  reporting nothing.
+- **An administrator password** is needed only when you approve the removal
+  of protected items. Brim starts a temporary process for that batch and ends
+  it when the work is done.
+- **Touch ID or your password** confirms a removal that deletes something
+  permanently.
 
-- **Full Disk Access.** Much of what apps leave behind sits in places macOS
-  only lets an app with this permission read. Without it Brim says what it
-  could not read rather than reporting nothing.
-- **An administrator password** for a selected batch of protected cleanup.
-  Brim starts a temporary administrator process, checks each item, and ends
-  the process when the operation finishes. It does not install a background
-  job or run after Brim quits. Reading protected recovery copies also needs
-  explicit authorization.
-- **Touch ID or your password** once per removal that deletes anything
-  permanently. Administrator authentication covers this check for protected
-  cleanup, so the batch does not need a second prompt. Moving writable items
-  to the Trash needs no authentication.
-
-### Checking a removal
-
-The result shows files confirmed gone, registrations still listed and
-locations Brim could not check. A completed command and an empty
-registration list are reported separately. Shared items and recovery copies
-stay identified in the result.
-
-Use **Check removal** from a removal's context menu in Journal to read its
-current state again. This records another observation without removing
-anything. Some records can be removed only by their owning app or a specific Settings
-control. Background activity switches do not erase registrations. Brim keeps
-remaining records visible rather than claiming they have gone.
-
-### Deep uninstall scope
-
-Brim traces associated files and components, protects shared items, and
-removes approved items through supported cleanup routes. Exact application
-registrations and supported launch jobs are checked again after removal.
-Remnants supports selected and grouped removal; protected cleanup shares
-temporary administrator access for the selected batch.
-
-This does not remove every registration or permission entry for every app.
-Some records are shared, controlled by macOS or removable only by their
-owner. Brim reports those limits and provides a manual route where one is
-available. Emptying Trash or restarting does not guarantee their removal.
-
-Universal removal is deferred for this release. Forcing the last records
-out through shared databases or broad resets could affect other apps and
-would add substantial compatibility and recovery work. The priority is
-reliable detection, removal and verification on supported routes.
-See [achievements, limits and future work](docs/uninstall-registration-verification.md#release-scope-4-october-2026).
+Brim installs no background service and does nothing once it has quit.
 
 ## Privacy
 
-Brim works on your Mac and has no account, analytics or crash reporting.
-It goes online to check for updates and when you send feedback:
-
-- **Your apps.** Updates asks the App Store (`itunes.apple.com`,
-  `apps.apple.com`) about apps installed from it, Homebrew
-  (`formulae.brew.sh`) about apps installed with it, and each other app's
-  own update feed, the one it already checks itself. These requests carry
-  the app's identifier or name.
-- **Brim itself.** Brim asks GitHub for the latest release to tell you when
-  a new version is out.
-- **Feedback.** Reports you send from Settings become public GitHub issues
-  through Brim's feedback service. They include your text, Brim's version and
-  build, the macOS version and processor type.
-
-Opening Updates or choosing **Check Again** requests a fresh check. Home
-reuses its update summary for up to six hours. Brim revalidates Homebrew's
-catalogue with its publisher each time it is needed; an ETag avoids
-downloading unchanged data. An app whose sources do not answer remains unchecked.
-No scheduled update checks run in the background.
-
-## Loading and review performance
-
-Brim shares overlapping application reads, reuses ownership claims within a
-review, and bounds independent measurements to four workers. Later checks
-still read current disk state. See [measurements and remaining work](docs/performance.md).
-
-## Home summaries
-
-Home shows removals that can be put back, storage and cleanup summaries,
-followed by currently installed apps that arrived in the last five days.
-An observed removal clears
-the recent entry; an observed reinstall starts a new five-day period. Brim
-compares its own scans, so activity between scans may not be recorded.
-
-Check Again also checks which removals still have files in Trash. The Remnants
-card measures data belonging to removed apps separately from unknown storage.
-Unreadable locations remain identified in Remnants without asking for
-administrator access merely to open Home.
-
-Floating selection controls keep Review separate from the status capsule,
-and totals follow selection immediately. See [experience implementation notes](docs/experience.md).
+Brim has no account, analytics or crash reporting. It goes online only to
+check for updates: the App Store, Homebrew and each app's own update feed for
+your apps, and GitHub for Brim itself. Feedback you send from Settings is
+posted as a public GitHub issue containing your message, Brim's version, the
+macOS version and the processor type.
 
 ## Building from source
 
-You need Xcode 27 and a free Apple ID signed in to Xcode.
+You need Xcode 27 and an Apple ID signed in to Xcode.
 
 ```bash
 git clone https://github.com/sabharishhh/brim.git
+cd brim
+xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
 ```
 
-```bash
-cd brim && xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
-```
+Brim and its administrator process check that both were signed by the same
+team. To run a build signed by your own team, replace `9LY29YLFG2` in
+`BrimCore/Sources/BrimPrivileged/HelperInterface.swift` with your team
+identifier.
 
-The app lands in
-`~/Library/Developer/Xcode/DerivedData/Brim-*/Build/Products/Debug/brim.app`.
-Open it by path.
+## Contributing
 
-Brim pins its own team identifier when the app and its administrator process
-connect, so both components must be signed by your team. Replace
-`9LY29YLFG2` in `MutualAuthentication.swift` and `HelperInterface.swift`
-with your own team to run your build end to end.
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md)
+explains how to report a problem, run the tests and send a change.
 
-To make a disk image:
+## Licence
 
-```bash
-./scripts/build_release.sh
-```
-
-It selects a certificate for Brim's signing team and builds a committed
-snapshot. Notarisation runs only when `APPLE_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set.
-
-### Tests
-
-```bash
-swift test --package-path BrimCore
-```
-
-Tests that touch the real machine run only with `BRIM_REAL_ENV=1`.
-
-CI builds the package and app with strict concurrency checks, runs the tests,
-and rejects added formatting or lint findings. Compare against the main branch
-locally with `python3 scripts/lint_changes.py --base origin/main`. Existing lint
-debt is tracked per file and rule; new files have no allowance.
-
-## Layout
-
-- `Brim/`: the app.
-- `BrimCore/`: the engine, as a Swift package. Detection in `BrimScan`,
-  changes to the disk in `BrimOps`, and the checks everything passes
-  through in `BrimCore`.
-- `Helper/`: the temporary administrator process.
-- `scripts/`: release build and coverage tools.
-
-## Reporting a problem
-
-Open an [issue](https://github.com/sabharishhh/brim/issues). If Brim
-offered to remove something it should not have, say what the item was and
-which app Brim said it belonged to.
-
-## Releases
-
-Signing stays on the maintainer's Mac. GitHub Actions checks the tagged code
-and signed package before publishing a draft release.
-
-Start from a clean commit on main, with Xcode 27 and an Apple Development or
-Developer ID certificate in your keychain:
-
-```bash
-./scripts/build_release.sh
-```
-
-The script builds only committed files and records the source commit inside
-the signed app. It checks the app and helper signatures and writes a DMG and
-a portable SHA-256 checksum to `build/`. A free Apple Development certificate
-works; without notarisation, people open the download through Privacy &
-Security, Open Anyway. Developer ID builds can be notarised when `APPLE_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` are set.
-
-For version 1.0, create the tag and attach the package to a draft:
-
-```bash
-git tag v1.0
-git push origin v1.0
-gh release create v1.0 build/Brim-1.0.dmg build/Brim-1.0.dmg.sha256 \
-  --draft --verify-tag --title "Brim 1.0" --generate-notes
-gh workflow run release.yml -f tag=v1.0
-```
-
-Use the project's version for the tag and filenames. The workflow runs the
-same build, test, and lint checks as a PR. It publishes only after verifying
-the checksum, signatures, helper layout, version, and source commit. No
-signing certificate or Apple password is stored in GitHub.
+Brim is free software, released under the
+[GNU General Public License, version 3](LICENSE) or any later version.
+Copyright 2026 Sabharish.
