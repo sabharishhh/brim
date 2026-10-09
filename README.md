@@ -1,7 +1,7 @@
 # Brim
 
 Brim shows what apps have left behind on your Mac, removes what you approve,
-and then checks what is actually gone. Every item it lists says how Brim knows
+and then confirms what is gone. Every item it lists says how Brim knows
 who it belongs to, and anything another installed app still uses is left
 alone.
 
