@@ -98,8 +98,13 @@ struct CheckAgainButton: View {
                 }
                 .help("Stop Scanning")
             } else if isBusy {
+                // A fixed square: a toolbar item sizes itself to what it
+                // holds, and a bare spinner arriving with a page was drawn
+                // stretched while the item grew.
                 ProgressView()
                     .controlSize(.small)
+                    .fixedSize()
+                    .frame(width: 18, height: 18)
                     .help("Checking")
                     .accessibilityLabel("Checking")
                     .transition(.opacity)
@@ -116,6 +121,8 @@ struct CheckAgainButton: View {
                 if isBusy {
                     ProgressView()
                         .controlSize(.small)
+                        .fixedSize()
+                        .frame(width: 16, height: 16)
                 } else {
                     Image(systemName: "arrow.clockwise")
                         // Turns once per press, so the click is answered
