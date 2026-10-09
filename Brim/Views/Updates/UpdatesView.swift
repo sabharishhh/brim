@@ -163,7 +163,9 @@ struct UpdatesView: View {
         // Also set when the app turned out to be current already, so it
         // says where the app is now, not that an update happened.
         case let .updated(version): return "Now \(version)"
-        case .failed, .stillOpen: return "Update failed"
+        // What to do, not a failure: the update is downloaded and kept.
+        case let .stillOpen(name): return "Quit \(name) to finish"
+        case .failed: return "Update failed"
         case .notAllowed: return "Needs App Management"
         default:
             let versions = "\(update.installedVersion) → \(update.latestVersion)"
@@ -178,7 +180,7 @@ struct UpdatesView: View {
     /// Why it failed, behind the row's Details button.
     private func failure(_ update: AppUpdate) -> String? {
         switch model.states[update.id] {
-        case let .failed(why), let .stillOpen(why): why
+        case let .failed(why): why
         default: nil
         }
     }
@@ -218,7 +220,11 @@ struct UpdatesView: View {
                 model.clearState(of: update)
             }
             .capsuleAction()
-        case .failed, .stillOpen:
+        case .stillOpen:
+            Button("Try Again") { Task { await model.install(update, service: service) } }
+                .capsuleAction()
+                .disabled(model.isChecking)
+        case .failed:
             HStack(spacing: 6) {
                 FailureDetails(reason: failure(update) ?? "")
                 Button("Try Again") { Task { await model.install(update, service: service) } }

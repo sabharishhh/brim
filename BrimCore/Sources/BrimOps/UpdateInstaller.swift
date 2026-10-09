@@ -72,11 +72,23 @@ public struct UpdateInstaller: Sendable {
         do {
             guard let download = update.download else { return .failed("There is no download for this update.") }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let file = try await UpdateDownloader.fetch(
-                download.url, into: folder, resumeFolder: workspace.appendingPathComponent("Resume"),
-                progress: progress
-            )
-            guard try Self.matches(file, download.integrity) else { throw Failure.integrity }
+            let file: URL
+            if let kept = ReadyDownloads.file(for: download.url, in: workspace) {
+                // Downloaded and checked on an attempt whose app would not
+                // quit. Checked again below before it is used.
+                file = kept
+                let bytes = (try? kept.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init) ?? 1
+                progress(DownloadProgress(received: bytes, expected: bytes))
+            } else {
+                file = try await UpdateDownloader.fetch(
+                    download.url, into: folder, resumeFolder: workspace.appendingPathComponent("Resume"),
+                    progress: progress
+                )
+            }
+            guard try Self.matches(file, download.integrity) else {
+                ReadyDownloads.forget(download.url, in: workspace)
+                throw Failure.integrity
+            }
 
             if update.route == .installer || Self.kind(of: file) == .package {
                 try Self.checkPackage(file, against: update.appURL)
@@ -87,9 +99,18 @@ public struct UpdateInstaller: Sendable {
             let unpacked = folder.appendingPathComponent("unpacked")
             let candidate = try Self.unpack(file, into: unpacked, bundleID: update.bundleID)
             if let refusal = try Self.verify(candidate, replacing: update.appURL) {
+                ReadyDownloads.forget(download.url, in: workspace)
                 return refusal
             }
-            return try await replace(update.appURL, with: candidate)
+            let outcome = try await replace(update.appURL, with: candidate)
+            // Only the app staying open is worth keeping the download for:
+            // quitting it is all that stands between this one and success.
+            if case .stillOpen = outcome {
+                ReadyDownloads.keep(file, for: download.url, in: workspace)
+            } else {
+                ReadyDownloads.forget(download.url, in: workspace)
+            }
+            return outcome
         } catch let Failure.notAllowed(folder) {
             return .notAllowed(folder: folder)
         } catch is CancellationError {
