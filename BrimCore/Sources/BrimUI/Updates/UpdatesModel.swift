@@ -133,16 +133,23 @@ public final class UpdatesModel: ObservableObject {
         checkTask = nil
     }
 
+    /// Each update being put in place, so its download can be stopped.
+    private var running: [String: Task<UpdateOutcome, Never>] = [:]
+
     public func install(_ update: AppUpdate, service: any BrimServiceProtocol) async {
         guard states[update.id]?.isBusy != true else { return }
         states[update.id] = update.download == nil ? .installing : .downloading(.started)
         let id = update.id
-        let outcome = await service.installUpdate(update) { [weak self] progress in
+        let report: @Sendable (DownloadProgress) -> Void = { [weak self] progress in
             Task { @MainActor [weak self] in
                 guard let self, case .downloading = self.states[id] else { return }
                 states[id] = progress.fraction >= 1 ? .installing : .downloading(progress)
             }
         }
+        let work = Task { await service.installUpdate(update, progress: report) }
+        running[id] = work
+        let outcome = await work.value
+        running[id] = nil
         switch outcome {
         case let .installed(version):
             states[id] = .updated(version)
@@ -153,8 +160,18 @@ public final class UpdatesModel: ObservableObject {
         case .openedInstaller: states[id] = .openedInstaller
         case let .stillOpen(name): states[id] = .failed("\(name) did not quit.")
         case .notAllowed: states[id] = .notAllowed
+        // Back to offering the update, which resumes what arrived.
+        case .cancelled: states[id] = nil
         case let .failed(why): states[id] = .failed(why)
         }
+    }
+
+    /// Stops an update while it is downloading. Once it is installing it
+    /// runs to the end: stopping halfway through replacing an app is how an
+    /// app ends up half replaced.
+    public func cancelDownload(of update: AppUpdate) {
+        guard case .downloading = states[update.id] else { return }
+        running[update.id]?.cancel()
     }
 
     /// After the person has been sent to the setting, the row offers the

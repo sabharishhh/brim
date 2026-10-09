@@ -224,6 +224,9 @@ public enum UpdateOutcome: Codable, Equatable, Sendable {
     /// macOS would not let Brim change the folder the app is in, which is
     /// App Management's decision. Nothing was changed.
     case notAllowed(folder: String)
+    /// Stopped by the person while downloading. What arrived is kept for a
+    /// day, so updating again carries on from there.
+    case cancelled
     case failed(String)
 }
 
