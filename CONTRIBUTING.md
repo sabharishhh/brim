@@ -1,20 +1,20 @@
 # Contributing to Brim
 
-Thank you for taking the time to help. Bug reports, fixes and improvements are
-all welcome. This guide explains how to report a problem, how to set up the
-project, and what a change needs before it can be merged.
+Thank you for your interest in Brim. Bug reports, fixes and improvements are
+welcome. This guide explains how to report a problem, set up the project and
+prepare a change for review.
 
 ## Scope
 
-Brim does two things: it shows what software has left on a Mac, and it proves
-that those things are gone once they are removed. A feature earns its place
-by serving one of those. Junk cleaning, system "optimisation" and duplicate
-finders have been considered and declined. Please open an issue to discuss a
-new feature before you start work on it.
+Brim does two things: it shows what software has left on a Mac, and it
+confirms that those items are gone once they are removed. New features should
+serve one of these purposes. Junk cleaning, system optimisation and duplicate
+file finding are outside the project's scope. Please open an issue to discuss
+a new feature before you start work on it.
 
-Because Brim removes files, safety outweighs speed of review. A change that
-could lead Brim to offer the wrong item for removal is examined closely, and
-it will not be merged unless it can be shown to be safe.
+Brim deletes files, so any change that affects what it offers for removal is
+reviewed with particular care. Such a change is merged only when it is shown
+to be safe, ideally with a test.
 
 ## Reporting a bug
 
@@ -41,11 +41,16 @@ cd brim
 xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
 ```
 
-Open the built app by its path in
-`~/Library/Developer/Xcode/DerivedData/`. Brim and its administrator process
-check that both were signed by the same team, so to test removals that need
-administrator access with your own signing team, replace `9LY29YLFG2` in
-`BrimCore/Sources/BrimPrivileged/HelperInterface.swift`.
+The app is built to
+`~/Library/Developer/Xcode/DerivedData/Brim-<identifier>/Build/Products/Debug/brim.app`.
+Open it from that path rather than by name, so that macOS does not start an
+older copy.
+
+Brim and its administrator process check that both were signed by the same
+team. To test removals that need administrator access with your own signing
+team, replace `9LY29YLFG2` in
+`BrimCore/Sources/BrimPrivileged/HelperInterface.swift` with your team
+identifier.
 
 The project is laid out as follows:
 
@@ -53,7 +58,8 @@ The project is laid out as follows:
 - `BrimCore/` is a Swift package. Detection lives in `BrimScan`, changes to
   the disk in `BrimOps`, and the rules both rely on in `BrimCore`.
 - `Helper/` is the temporary administrator process.
-- `scripts/` holds the release build and the lint check.
+- `scripts/` holds the release build and the lint check. The release
+  steps are in [RELEASING.md](RELEASING.md).
 
 ## Making a change
 
@@ -91,31 +97,9 @@ data you would mind losing.
 - Commit messages should explain the problem and the result in full
   sentences.
 
-## Releases
-
-Releases are built and signed on the maintainer's Mac; no certificate or
-password is stored on GitHub. From a clean commit on `main`:
-
-```bash
-./scripts/build_release.sh
-```
-
-The script builds only committed files, checks the app and helper
-signatures, and writes the disk image and its SHA-256 checksum to `build/`.
-Tag the version, attach both files to a draft release, then run the release
-workflow, which repeats the build, test and lint checks and publishes the
-draft only after verifying the checksum, signatures and source commit:
-
-```bash
-git tag v1.0 && git push origin v1.0
-gh release create v1.0 build/Brim-1.0.dmg build/Brim-1.0.dmg.sha256 --draft --verify-tag --title "Brim 1.0" --generate-notes
-gh workflow run release.yml -f tag=v1.0
-```
-
 ## Conduct
 
-Please be courteous and patient in issues and reviews. Everyone here is
-volunteering their time.
+Please keep issues and reviews respectful and on topic.
 
 ## Licence
 
