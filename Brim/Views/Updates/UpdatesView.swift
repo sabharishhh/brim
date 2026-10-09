@@ -266,8 +266,13 @@ struct UpdatesView: View {
     private var footer: some View {
         if let check = model.check {
             HStack(spacing: 6) {
-                Text("Checked \(check.checked) \(check.checked == 1 ? "app" : "apps") "
-                    + check.checkedAt.formatted(.relative(presentation: .named)))
+                // A minute's refresh, as every "Checked" line has. Formatting
+                // the age on each redraw made a download's progress tick it
+                // second by second.
+                TimelineView(.everyMinute) { context in
+                    Text("Checked \(check.checked) \(check.checked == 1 ? "app" : "apps") "
+                        + Freshness.age(of: check.checkedAt, now: context.date))
+                }
                 if !check.unchecked.isEmpty {
                     Text("·")
                     Button("\(check.unchecked.count) can't be checked") { showsUnchecked = true }
