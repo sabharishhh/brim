@@ -182,6 +182,8 @@ extension UpdateInstaller {
             }
         }
         clearPackages(in: workspace, installerIsOpen: isInstallerOpen())
+        // Stopped downloads kept for resuming, once they are a day old.
+        UpdateDownloader.discardExpired(in: workspace.appendingPathComponent("Resume"))
         return interrupted
     }
 

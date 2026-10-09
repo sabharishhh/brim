@@ -92,6 +92,8 @@ public struct UpdateInstaller: Sendable {
             return try await replace(update.appURL, with: candidate)
         } catch let Failure.notAllowed(folder) {
             return .notAllowed(folder: folder)
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             return .failed(error.localizedDescription)
         }
