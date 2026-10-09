@@ -178,7 +178,11 @@ struct MainSidebar: View {
                     // was laid out during the row's selection animation and
                     // drew stretched the first time a page was opened.
                     ZStack {
-                        if activity.busy.contains(destination) {
+                        // Not on the selected row: the toolbar shows the page
+                        // you are on working, and this spinner cannot be
+                        // made dark, so on the off-white row it all but
+                        // disappeared.
+                        if activity.busy.contains(destination), !isSelected {
                             ProgressView()
                                 .controlSize(.mini)
                                 .fixedSize()

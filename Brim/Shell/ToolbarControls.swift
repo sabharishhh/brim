@@ -98,16 +98,24 @@ struct CheckAgainButton: View {
                 }
                 .help("Stop Scanning")
             } else if isBusy {
-                // A fixed square: a toolbar item sizes itself to what it
-                // holds, and a bare spinner arriving with a page was drawn
-                // stretched while the item grew.
-                ProgressView()
-                    .controlSize(.small)
-                    .fixedSize()
-                    .frame(width: 18, height: 18)
-                    .help("Checking")
-                    .accessibilityLabel("Checking")
-                    .transition(.opacity)
+                // Drawn as a toolbar button, so it gets the same round glass
+                // as the others. A bare spinner got the toolbar's glass
+                // stretched to its height, a tall narrow pill. It does
+                // nothing when clicked and is read as text, not a button.
+                Button {} label: {
+                    Label {
+                        Text("Checking")
+                    } icon: {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .allowsHitTesting(false)
+                .help("Checking")
+                .accessibilityRemoveTraits(.isButton)
+                .accessibilityAddTraits(.isStaticText)
+                .transition(.opacity)
             }
         }
         .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: isBusy)
