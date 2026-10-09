@@ -49,7 +49,10 @@ public extension Freshness {
         return formatter
     }()
 
-    private static func age(of date: Date, now: Date) -> String {
+    /// "just now" under a minute, then "2 minutes ago", "3 hours ago". The
+    /// one way Brim says how old something is; shown with a minute's
+    /// refresh, never a second's.
+    static func age(of date: Date, now: Date) -> String {
         now.timeIntervalSince(date) < 60 ? "just now" : relative.localizedString(for: date, relativeTo: now)
     }
 }
