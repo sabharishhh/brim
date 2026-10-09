@@ -199,10 +199,7 @@ struct UpdatesView: View {
     private func action(_ update: AppUpdate) -> some View {
         switch model.states[update.id] {
         case let .downloading(progress):
-            ProgressView(value: progress.fraction)
-                .progressViewStyle(.circular)
-                .controlSize(.small)
-                .accessibilityLabel("Downloading")
+            DownloadRing(fraction: progress.fraction) { model.cancelDownload(of: update) }
         case .installing:
             ProgressView().controlSize(.small).accessibilityLabel("Installing")
         case .openedInstaller:
