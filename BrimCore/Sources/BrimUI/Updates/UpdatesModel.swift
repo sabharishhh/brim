@@ -16,6 +16,7 @@ public final class UpdatesModel: ObservableObject {
         case installing
         case updated(String)
         case openedInstaller
+        /// Ready, but the app would not quit. Holds the app's name.
         case stillOpen(String)
         /// Refused by macOS; the row offers App Management's setting.
         case notAllowed
@@ -158,7 +159,9 @@ public final class UpdatesModel: ObservableObject {
                                          toVersion: version, updatedAt: Date()))
         case .alreadyCurrent: states[id] = .updated(update.installedVersion)
         case .openedInstaller: states[id] = .openedInstaller
-        case let .stillOpen(name): states[id] = .failed("\(name) did not quit.")
+        // Not a failure: the update is downloaded, checked and kept, and
+        // waits only for the app to be quit.
+        case let .stillOpen(name): states[id] = .stillOpen(name)
         case .notAllowed: states[id] = .notAllowed
         // Back to offering the update, which resumes what arrived.
         case .cancelled: states[id] = nil
