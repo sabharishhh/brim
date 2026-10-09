@@ -174,12 +174,19 @@ struct MainSidebar: View {
                 HStack {
                     SidebarLabel(destination: destination, isSelected: isSelected)
                     Spacer()
-                    if activity.busy.contains(destination) {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .transition(.opacity)
-                            .accessibilityLabel("Checking")
+                    // A fixed slot the spinner fades into. Inserted bare, it
+                    // was laid out during the row's selection animation and
+                    // drew stretched the first time a page was opened.
+                    ZStack {
+                        if activity.busy.contains(destination) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .fixedSize()
+                                .transition(.opacity)
+                                .accessibilityLabel("Checking")
+                        }
                     }
+                    .frame(width: 14, height: 14)
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 30)
