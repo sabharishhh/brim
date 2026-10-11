@@ -11,8 +11,8 @@ import SwiftUI
 ///
 /// The two tabs are drawn here rather than by a `TabView`. AppKit draws a
 /// settings toolbar's icons in the system accent, so with a red accent they
-/// were red, and the closest Brim can set for itself is Graphite, which made
-/// them a dull grey beside the off-white of everything else. The selected
+/// were red, and the grey Brim sets for itself (`BrimAppMain.useOwnAccent`)
+/// made them dull beside the off-white of everything else. The selected
 /// tab is told apart by colour alone: off-white, with the other dimmer.
 struct SettingsView: View {
     @AppStorage("settings.tab") private var selection = SettingsTab.general
