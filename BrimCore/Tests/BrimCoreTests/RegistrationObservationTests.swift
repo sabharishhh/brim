@@ -148,6 +148,13 @@ struct RegistrationObservationTests {
         #expect(snapshot.registrations.first?.isClearedByMacOS == false)
     }
 
+    /// WhatsApp's firewall entry read "WhatsApp.app" beside its other rows.
+    @Test func aFirewallEntryForAnAppIsNamedAsFinderNamesIt() async {
+        let output = "Total number of apps = 2\n1 : /Applications/WhatsApp.app\n2 : /opt/bin/python3.12"
+        let snapshot = await FirewallSurface(read: { output }).snapshot(in: FileSystemRoot())
+        #expect(snapshot.registrations.map(\.label) == ["WhatsApp", "python3.12"])
+    }
+
     @Test func emptyMeasuredListsAreDifferentFromFailedReads() async {
         let plugins = await AppExtensionSurface(read: { " (0 plug-ins)" }).snapshot(in: FileSystemRoot())
         let system = await SystemExtensionSurface(read: { "0 extension(s)" }).snapshot(in: FileSystemRoot())
