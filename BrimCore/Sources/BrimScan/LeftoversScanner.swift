@@ -1245,10 +1245,12 @@ public actor LeftoversScanner {
             let app = candidate.dropLast(suffix.count)
             return app.prefix(1).uppercased() + app.dropFirst()
         }
-        // The last meaningful component: dev.warp becomes Warp,
-        // com.example.app becomes App.
+        // The last meaningful component of a reverse DNS name:
+        // com.example.app becomes App. A file's extension is not a
+        // product: two scripts in /usr/local/bin, uninstall-container.sh
+        // and update-container.sh, were one row called "Sh".
         let parts = candidate.split(separator: ".")
-        guard let last = parts.last, parts.count > 1 else { return candidate }
+        guard let last = parts.last, parts.count > 2 else { return candidate }
         return String(last).capitalized
     }
 
