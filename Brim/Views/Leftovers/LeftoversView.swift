@@ -474,6 +474,13 @@ private struct RemnantCard: View {
     private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 
     private var facts: String {
+        // An app replaced at its own path by one of the same name is the
+        // installed app's earlier copy. Figma's small installer, swapped
+        // for Figma itself, read "Figma, Removed, Replaced by Figma" while
+        // Figma was open on the same screen.
+        if let replacement = group.replacedBy, NameKey.of(replacement.name) == NameKey.of(group.displayName) {
+            return "Earlier copy, replaced by the \(replacement.name) now installed"
+        }
         var parts: [String] = []
         if let removed = group.removedAt {
             parts.append("Removed " + Self.day.format(removed))

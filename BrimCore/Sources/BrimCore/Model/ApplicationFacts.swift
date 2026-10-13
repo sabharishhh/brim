@@ -73,6 +73,12 @@ public enum ApplicationFacts {
         guard let parts = bundleID?.split(separator: "."), parts.count >= 3 else { return nil }
         let vendor = String(parts[1])
         guard vendor.count > 1 else { return nil }
+        // The product often spells the vendor properly: net.whatsapp.WhatsApp
+        // read "Whatsapp" under WhatsApp's own name.
+        let spelled = parts.dropFirst(2).first { $0.lowercased() == vendor.lowercased() && $0 != $0.lowercased() }
+        if let spelled {
+            return String(spelled)
+        }
         return vendor.prefix(1).uppercased() + vendor.dropFirst()
     }
 

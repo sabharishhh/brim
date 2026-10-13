@@ -27,6 +27,23 @@ final class JournalTimelineTests: XCTestCase {
         XCTAssertEqual(groups.map(\.items.count), [1, 1, 1, 1, 1])
     }
 
+    /// Rows under "This week" and a month said only "12:01 PM", so which
+    /// day was anyone's guess. Each row adds what its heading leaves out.
+    func testARowSaysTheDayWhenItsHeadingDoesNot() throws {
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 28, hour: 12)))
+        let dates = [0, -3, -20].compactMap { calendar.date(byAdding: .day, value: $0, to: now) }
+        let installs = dates.enumerated().map { install("App\($0.offset)", on: $0.element) }
+        let entries = JournalTimeline.entries(records: [], installs: installs)
+        let rows = JournalTimeline.groups(entries, now: now, calendar: calendar).map { $0.items[0] }
+
+        let timeOnly = Date.FormatStyle.dateTime.hour().minute()
+        XCTAssertEqual(rows[0].time, timeOnly.format(dates[0]))
+        XCTAssertEqual(rows[1].time, JournalTimeline.weekStyle.format(dates[1]))
+        XCTAssertEqual(rows[2].time, JournalTimeline.dateStyle.format(dates[2]))
+        XCTAssertNotEqual(rows[1].time, timeOnly.format(dates[1]))
+        XCTAssertNotEqual(rows[2].time, timeOnly.format(dates[2]))
+    }
+
     /// Two installs of one app are two entries, and an app that has gone
     /// keeps its installs without claiming its bundle is still there.
     func testEachInstallIsItsOwnEntryEvenAfterTheAppHasGone() {

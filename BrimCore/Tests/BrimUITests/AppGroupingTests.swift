@@ -68,6 +68,10 @@ final class ApplicationFactsTests: XCTestCase {
         )
         XCTAssertNil(ApplicationFacts.organisation(fromCertificateSummary: "Apple Mac OS Application Signing"))
         XCTAssertNil(ApplicationFacts.organisation(fromCertificateSummary: "Apple Development: me@example.dev (X1)"))
+        // WhatsApp from the App Store has no developer in its certificate,
+        // and its developer read "Whatsapp" under its own name.
+        XCTAssertEqual(ApplicationFacts.vendor(fromBundleID: "net.whatsapp.WhatsApp"), "WhatsApp")
+        XCTAssertEqual(ApplicationFacts.vendor(fromBundleID: "com.microsoft.Word"), "Microsoft")
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.graphics-design"), "Graphics & Design")
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.puzzle-games"), "Games")
     }
