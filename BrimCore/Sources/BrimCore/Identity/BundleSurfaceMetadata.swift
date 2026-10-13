@@ -55,13 +55,27 @@ extension BundleSurfaceReader {
     /// `-ide` suffix, and Antigravity's 400 MB of extensions outlived its
     /// removal because of it. The bundle's own declaration is a record, so
     /// it is trusted where a name alone is not.
+    ///
+    /// A declaration is still only a string the bundle wrote. It is taken
+    /// only when it names the product, as every real one does (`.vscode`
+    /// for VS Code, `.cursor`, `.antigravity-ide`), and never when it names
+    /// a folder every tool shares or credentials live in: one saying `.ssh`
+    /// made the person's keys this app's data, ticked for removal.
     static func declaredHomeFolders(of bundle: URL) -> [String] {
         let product = bundle.appendingPathComponent("Contents/Resources/app/product.json")
-        guard let data = try? Data(contentsOf: product), data.count < 1_000_000,
+        guard let size = (try? product.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size < 1_000_000,
+              let data = try? Data(contentsOf: product),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let folder = json["dataFolderName"] as? String,
-              folder.hasPrefix("."), folder.count > 2, IdentitySurface.isPathComponent(folder)
+              folder.hasPrefix("."), folder.count > 2, IdentitySurface.isPathComponent(folder),
+              !SafetyChecker.credentialStores.contains(folder.lowercased()),
+              !SafetyChecker.personalFolders.contains(folder.lowercased())
         else { return [] }
+        let products = ["applicationName", "nameShort", "nameLong", "urlProtocol"]
+            .compactMap { json[$0] as? String }
+            .map(NameKey.of).filter { $0.count >= 3 }
+        let key = NameKey.of(String(folder.dropFirst()))
+        guard products.contains(where: { key.contains($0) || $0.contains(key) }) else { return [] }
         return [folder]
     }
 }
