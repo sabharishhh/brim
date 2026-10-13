@@ -42,7 +42,7 @@ xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
 ```
 
 The app is built to
-`~/Library/Developer/Xcode/DerivedData/Brim-<identifier>/Build/Products/Debug/brim.app`.
+`~/Library/Developer/Xcode/DerivedData/Brim-<identifier>/Build/Products/Debug/Brim.app`.
 Open it from that path rather than by name, so that macOS does not start an
 older copy.
 
