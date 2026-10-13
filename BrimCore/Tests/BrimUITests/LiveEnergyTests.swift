@@ -12,7 +12,11 @@ import Testing
         let service = Counters()
         let model = EnergyModel(gap: .milliseconds(5), tick: .milliseconds(5))
         let following = Task { await model.follow(service: service, visible: { true }) }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        // Only an upper bound: the loop leaves at the fifth sample, a few
+        // tens of milliseconds on an idle Mac. Each sample also reads the
+        // battery at utility priority, and on a loaded CI runner two
+        // seconds was not always enough for five of them.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         while await service.calls < 5, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(5))
         }
