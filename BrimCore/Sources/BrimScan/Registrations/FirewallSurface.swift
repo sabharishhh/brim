@@ -46,7 +46,7 @@ public struct FirewallSurface: RegistrationSurface {
             return path.hasPrefix("/") ? path : nil
         }
         let registrations = paths.map { path in
-            Registration(kind: kind, identifier: path, label: URL(fileURLWithPath: path).lastPathComponent,
+            Registration(kind: kind, identifier: path, label: Self.label(for: path),
                          programPath: path, targetExists: true, evidence: "An application firewall entry at this path.",
                          capability: .needsHelper, targetPresence: PathObservation.observe(path), namespace: "system")
         }
@@ -55,5 +55,14 @@ public struct FirewallSurface: RegistrationSurface {
             kind: kind, available: complete,
             limitation: complete ? nil : "The firewall listing format could not be fully checked."
         ), readerVersion: 1)
+    }
+
+    /// An app is named as Finder names it: the firewall lists WhatsApp as
+    /// `/Applications/WhatsApp.app`, and its row read "WhatsApp.app" beside
+    /// rows for the same app saying "WhatsApp". Only `.app` is dropped; a
+    /// tool such as `python3.12` keeps its whole name.
+    static func label(for path: String) -> String {
+        let url = URL(fileURLWithPath: path)
+        return url.pathExtension == "app" ? url.deletingPathExtension().lastPathComponent : url.lastPathComponent
     }
 }

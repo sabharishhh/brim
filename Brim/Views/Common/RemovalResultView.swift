@@ -169,6 +169,7 @@ struct RemovalResultView: View {
                         if action == .loginItemsSettings,
                            let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
                             Link("Open Login Items", destination: url)
+                                .capsuleAction()
                         }
                     }
                 }
