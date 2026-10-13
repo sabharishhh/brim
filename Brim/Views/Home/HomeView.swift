@@ -77,8 +77,9 @@ struct HomeView: View {
                     }
                 }
                 .frame(maxWidth: Self.pageWidth, alignment: .leading)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 28)
+                // The page padding every page uses, so the cards start under
+                // the title; at 32 they sat eight points to its right.
+                .padding(Metrics.pagePadding)
                 Spacer(minLength: 0)
             }
         }

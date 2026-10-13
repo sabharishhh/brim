@@ -5,8 +5,13 @@ import SwiftUI
 
 extension DeveloperCache {
     /// "Xcode derived data": the tool and the cache, as a person says it.
+    /// Only an ordinary word is lowered: a name such as IntelliSense keeps
+    /// its own capitals, and lowering all of it wrote "intellisense".
     var title: String {
-        "\(tool) \(name.lowercased())"
+        let words = name.split(separator: " ", omittingEmptySubsequences: false).map { word in
+            word.dropFirst().contains(where: \.isUppercase) ? String(word) : word.lowercased()
+        }
+        return "\(tool) \(words.joined(separator: " "))"
     }
 
     var qualifiedSize: String {
