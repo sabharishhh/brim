@@ -185,6 +185,52 @@ final class ApprovalGateTests: XCTestCase {
         }
     }
 
+    /// The review happens before the request: approval was asked for when
+    /// Remove was pressed, and hashed whatever the file said by then. Any
+    /// program the person runs can write that folder, so a plan rewritten
+    /// while it was on screen was approved, administrator password and all.
+    func testAPlanRewrittenDuringTheReviewIsNeverApproved() async throws {
+        let (service, gen, rootURL, planDir) = try makeService(consent: ConsentSource { _ in true })
+        defer { gen.destroy() }
+        let reviewed = try await plan(from: service, in: rootURL)
+        let rewritten = Plan(
+            planId: reviewed.planId, createdAt: reviewed.createdAt,
+            engineVersion: reviewed.engineVersion, osVersion: reviewed.osVersion,
+            intent: reviewed.intent, steps: Array(reviewed.steps.dropLast()),
+            excludedItems: reviewed.excludedItems, expectedTotalBytes: reviewed.expectedTotalBytes
+        )
+        try rewritten.canonicalData().write(
+            to: planDir.appendingPathComponent("\(reviewed.planId.uuidString).json"), options: .atomic
+        )
+        do {
+            _ = try await service.requestApproval(planId: reviewed.planId, requesterIdentity: "user")
+            XCTFail("A plan rewritten on the disk was put up for approval")
+        } catch let error as ApprovalError {
+            XCTAssertEqual(error, .planChangedSinceRequest)
+        }
+    }
+
+    /// A plan file this process never wrote cannot be approved at all.
+    func testAPlanThisProcessNeverWroteIsNeverApproved() async throws {
+        let (service, gen, rootURL, planDir) = try makeService(consent: ConsentSource { _ in true })
+        defer { gen.destroy() }
+        let made = try await plan(from: service, in: rootURL)
+        let planted = Plan(
+            planId: UUID(), createdAt: made.createdAt, engineVersion: made.engineVersion,
+            osVersion: made.osVersion, intent: made.intent, steps: made.steps,
+            excludedItems: made.excludedItems, expectedTotalBytes: made.expectedTotalBytes
+        )
+        try planted.canonicalData().write(
+            to: planDir.appendingPathComponent("\(planted.planId.uuidString).json"), options: .atomic
+        )
+        do {
+            _ = try await service.requestApproval(planId: planted.planId, requesterIdentity: "user")
+            XCTFail("A planted plan was put up for approval")
+        } catch let error as ApprovalError {
+            XCTAssertEqual(error, .planChangedSinceRequest)
+        }
+    }
+
     func testTheOneRouteToApplyRefusesWhenNothingCanAsk() async throws {
         let (service, gen, rootURL, _) = try makeService(consent: nil)
         defer { gen.destroy() }
