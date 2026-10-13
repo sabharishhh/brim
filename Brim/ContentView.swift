@@ -81,8 +81,8 @@ struct ContentView: View {
             // edge draws a solid band down to the first row of a list.
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
-        // The window's own background, so the system sidebar is the canvas
-        // seen through glass: a shade apart, with no line between them.
+        // The window's own background. The sidebar draws its own over it,
+        // the desktop seen through AppKit's material (`SidebarBackdrop`).
         .containerBackground(Palette.canvas, for: .window)
         .onAppear { LaunchSignpost.shellAppeared() }
         // Each page draws its own name in the toolbar (`pageTitle`); the
