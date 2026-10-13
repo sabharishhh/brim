@@ -22,21 +22,19 @@ struct HomeEnergyCard: View {
                 status: battery.health?.needsService == true ? .attention : .neutral,
                 phrase: Self.state(battery.charging), fillsRow: true
             ) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 14) {
                     MeterBar(segments: [
                         MeterSegment(label: "Charge", value: Int64(battery.percent), color: Palette.snow),
                         MeterSegment(label: "Empty", value: Int64(100 - battery.percent), color: Palette.well)
                     ], showsLegend: false, format: { "\($0) percent" })
                     lines([health(battery.health)])
-                    temperature
                 }
             } action: { action() }
         } else {
             // A Mac with no battery: what kept it awake instead.
             StatCard(title: "Energy", symbol: "bolt", figure: "Plugged in", status: .neutral,
                      phrase: "No battery", fillsRow: true) {
-                lines([awake])
-                temperature
+                lines([awake, temperature])
             } action: { action() }
         }
     }
@@ -61,31 +59,22 @@ struct HomeEnergyCard: View {
         }
     }
 
-    private func health(_ health: BatteryReport.Health?) -> String? {
-        guard let health else { return nil }
-        var parts = ["Health \(health.condition)"]
-        if let capacity = health.maximumCapacity {
-            parts.append("\(capacity)% capacity")
+    /// One line: health, cycles and Apple's thermal state. Capacity is on
+    /// the Energy page; Home is an overview.
+    private func health(_ health: BatteryReport.Health?) -> String {
+        var parts: [String] = []
+        if let health {
+            parts.append("Health \(health.condition)")
+            if let cycles = health.cycles {
+                parts.append(cycles == 1 ? "1 cycle" : "\(cycles) cycles")
+            }
         }
-        if let cycles = health.cycles {
-            parts.append(cycles == 1 ? "1 cycle" : "\(cycles) cycles")
-        }
+        parts.append(temperature)
         return parts.joined(separator: " · ")
     }
 
-    /// Apple's thermal state, with its symbol in the colour for it.
-    private var temperature: some View {
-        let thermal = energy.condition.thermal
-        return HStack(spacing: 6) {
-            Image(systemName: thermal.symbolName)
-                .foregroundStyle(EnergyTone.thermal(thermal))
-            Text(EnergyTone.thermalPhrase(thermal))
-                .foregroundStyle(Palette.inkSecondary)
-        }
-        .font(.brimFacts)
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityLabel(EnergyTone.thermalPhrase(thermal))
+    private var temperature: String {
+        EnergyTone.thermalPhrase(energy.condition.thermal)
     }
 
     private var awake: String? {
