@@ -114,6 +114,17 @@ struct EnergyHistoryCard: View {
             }
             chart
                 .frame(height: 140)
+                .overlay {
+                    if !hasLine {
+                        Text(restarts.isEmpty ? "Charge is logged at sleep and wake"
+                            : "No charge logged since the restart")
+                            .font(.brimFacts)
+                            .foregroundStyle(Palette.inkSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Palette.surface, in: .capsule)
+                    }
+                }
             legend
         }
         .padding(18)
@@ -139,7 +150,12 @@ struct EnergyHistoryCard: View {
                 RuleMark(x: .value("Restarted", restart))
                     .foregroundStyle(Palette.frost)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-                    .annotation(position: .bottom, alignment: .trailing, spacing: 2) {
+                    // Beside the line at the top of the plot. Below it, the
+                    // label sat on the hour labels and hid one of them.
+                    .annotation(
+                        position: .trailing, alignment: .top, spacing: 4,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
                         Text("Restarted")
                             .font(.caption2)
                             .foregroundStyle(Palette.inkSecondary)
@@ -187,12 +203,20 @@ struct EnergyHistoryCard: View {
         }
     }
 
+    /// Whether any stretch has two points to draw a line between. Charge is
+    /// logged only at sleep and wake, so a Mac awake since its restart has
+    /// only the charge now, and the card showed a blank day with no reason.
+    private var hasLine: Bool {
+        runs.contains { $0.points.count > 1 }
+    }
+
     private var legend: some View {
         HStack(spacing: 16) {
-            if runs.contains(where: \.onBattery) {
+            // Only what is drawn: a stretch of one point is no line.
+            if runs.contains(where: { $0.onBattery && $0.points.count > 1 }) {
                 key(Capsule().fill(Palette.snow).frame(width: 14, height: 2), "On battery")
             }
-            if runs.contains(where: { !$0.onBattery }) {
+            if runs.contains(where: { !$0.onBattery && $0.points.count > 1 }) {
                 key(
                     Line().stroke(Palette.frost, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
                         .frame(width: 14, height: 2),
