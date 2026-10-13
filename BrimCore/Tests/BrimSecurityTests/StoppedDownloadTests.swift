@@ -60,3 +60,48 @@ struct StoppedDownloadTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 }
+
+/// Claude's update downloaded 384 MB, passed every check and stopped only
+/// because Claude stayed open; Try Again downloaded all of it again. A
+/// download whose app would not quit is kept for a day and used once more.
+struct ReadyDownloadTests {
+    private let url = URL(string: "https://example.com/releases/Demo-2.0.zip")!
+
+    private func workspace() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brim-ready-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test func `a download kept for its app is found for the same address, and only that one`() throws {
+        let workspace = try workspace()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let download = workspace.appendingPathComponent("attempt/Demo.zip")
+        try FileManager.default.createDirectory(at: download.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(count: 64).write(to: download)
+
+        ReadyDownloads.keep(download, for: url, in: workspace)
+
+        let kept = ReadyDownloads.file(for: url, in: workspace)
+        #expect(kept?.lastPathComponent == "Demo.zip")
+        let other = try #require(URL(string: "https://example.com/Other.zip"))
+        #expect(ReadyDownloads.file(for: other, in: workspace) == nil)
+        ReadyDownloads.forget(url, in: workspace)
+        #expect(ReadyDownloads.file(for: url, in: workspace) == nil)
+    }
+
+    @Test func `a kept download goes once it is a day old`() throws {
+        let workspace = try workspace()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let download = workspace.appendingPathComponent("Demo.zip")
+        try Data(count: 64).write(to: download)
+        ReadyDownloads.keep(download, for: url, in: workspace)
+        let slot = try #require(ReadyDownloads.file(for: url, in: workspace)).deletingLastPathComponent()
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-25 * 3600)],
+                                              ofItemAtPath: slot.path)
+
+        #expect(ReadyDownloads.file(for: url, in: workspace) == nil)
+        #expect(!FileManager.default.fileExists(atPath: slot.path))
+    }
+}

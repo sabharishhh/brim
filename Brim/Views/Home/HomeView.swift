@@ -26,9 +26,6 @@ struct HomeView: View {
     @ObservedObject private var energy: EnergyModel
     @ObservedObject private var history: RemovalHistoryModel
     private let models: SectionModels
-    /// The last two times Space measured, for what grew between them.
-    @State private var spaceLooks: [SpaceSnapshot] = []
-
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(ShellState.self) private var shell
 
@@ -98,7 +95,6 @@ struct HomeView: View {
             await applications.loadIfNeeded(service: service)
             await history.recheck(installed: Set(applications.applications.compactMap(\.identity.bundleID)))
         }
-        .task { spaceLooks = SpaceHistory.load() }
         .onAppear { fullDiskAccess.startObserving() }
     }
 
@@ -142,25 +138,18 @@ struct HomeView: View {
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
             isRefreshing: storage.isLoading && volume != nil, fillsRow: true
         ) {
+            // Three facts, never added into one: what is used, what macOS
+            // will release when it needs to, and what is free. What changed
+            // and the largest app are the Space page's, not an overview's.
             if let volume {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Three facts, never added into one: what is used, what
-                    // macOS will release when it needs to, and what is free.
-                    MeterBar(segments: [
-                        MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
-                        MeterSegment(
-                            label: "Held by macOS", value: volume.reclaimableByTheSystem,
-                            color: Palette.frost
-                        ),
-                        MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
-                    ])
-                    ForEach(spaceNotes, id: \.self) { note in
-                        Text(note)
-                            .font(.brimFacts)
-                            .foregroundStyle(Palette.inkSecondary)
-                            .lineLimit(1)
-                    }
-                }
+                MeterBar(segments: [
+                    MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
+                    MeterSegment(
+                        label: "Held by macOS", value: volume.reclaimableByTheSystem,
+                        color: Palette.frost
+                    ),
+                    MeterSegment(label: "Free", value: volume.freeRightNow, color: Palette.well)
+                ])
             }
         } action: { shell.go(to: .space) }
     }
@@ -175,23 +164,16 @@ struct HomeView: View {
             removedApps: groups.count, unclaimed: unclaimed,
             hasChecked: checked, canSeeLibrary: fullDiskAccess.isGranted
         ))
-        let rebuilds = groups.reduce(0) { $0 + $1.regeneratedBytes }
-        let data = groups.reduce(0) { $0 + $1.meaningfulBytes }
         return StatCard(
             title: "Remnants", symbol: "app.dashed",
             figure: failed ? "Unavailable" : (checked ? size.figure : "…"),
             status: failed || !size.isComplete ? .partial : summary.status,
             phrase: failed ? "Could not check remnants"
                 : (size.isComplete ? summary.phrase : "Some locations could not be measured"),
+            // A figure and a phrase, like the cards beside it. How much is
+            // data and how much rebuilds itself is Remnants' to show.
             isRefreshing: leftovers.isScanning && checked, fillsRow: true
-        ) {
-            if checked, size.isComplete, rebuilds + data > 0 {
-                MeterBar(segments: [
-                    MeterSegment(label: "Data", value: data, color: Palette.snow),
-                    MeterSegment(label: "Rebuilds", value: rebuilds, color: Palette.frost)
-                ])
-            }
-        } action: { shell.go(to: .leftovers) }
+        ) { shell.go(to: .leftovers) }
     }
 
     private var backgroundCard: some View {
@@ -331,26 +313,6 @@ extension HomeView {
     private var journalCard: some View {
         HomeJournalCard(history: history) { shell.go(to: .journal) }
     }
-
-    /// From what Space measured on its last two visits, dated, because
-    /// Home does not measure them itself.
-    private var spaceNotes: [String] {
-        guard let latest = spaceLooks.last else { return [] }
-        var notes: [String] = []
-        if let previous = SpaceHistory.previous(to: latest.date, in: spaceLooks),
-           let change = SpaceHistory.changes(from: previous, to: latest, limit: 1).first {
-            let sign = change.bytes > 0 ? "+" : "−"
-            notes.append("\(change.title) \(sign)\(ByteText.short(abs(change.bytes))) between "
-                + "\(Self.day.format(previous.date)) and \(Self.day.format(latest.date))")
-        }
-        if let largest = latest.apps.max(by: { $0.value < $1.value }) {
-            notes.append("Largest app \(largest.key), \(ByteText.short(largest.value)) on "
-                + Self.day.format(latest.date))
-        }
-        return notes
-    }
-
-    private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 }
 
 /// A note that needs the person, above the cards: Full Disk Access, or
