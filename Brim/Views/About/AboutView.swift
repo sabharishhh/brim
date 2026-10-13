@@ -24,7 +24,7 @@ struct AboutView: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
                 .textSelection(.enabled)
-            Text("See what apps leave behind, and make sure it’s gone.")
+            Text("See what apps leave behind,\nand make sure it’s gone.")
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
                 .multilineTextAlignment(.center)
