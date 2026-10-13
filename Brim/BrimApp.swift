@@ -33,7 +33,7 @@ private let log = BrimLog.make("app")
 
     init() {
         LaunchSignpost.begin()
-        Self.useGraphiteAccent()
+        Self.useOwnAccent()
         BrimTips.configure()
     }
 
@@ -43,13 +43,19 @@ private let log = BrimLog.make("app")
     /// sidebar's icons and the Settings window's tabs were still red, drawn
     /// by AppKit from the system accent that a SwiftUI tint never touches.
     /// macOS reads the accent from the `AppleAccentColor` default, and an
-    /// app's own domain wins over the global one, so Brim sets Graphite
-    /// (-1) and the grey selection highlight in its own domain. Every
-    /// control AppKit draws for Brim is then grey, and the rest of the Mac
-    /// keeps the person's colour.
-    private static func useGraphiteAccent() {
+    /// app's own domain wins over the global one.
+    ///
+    /// Brim used to write Graphite (-1) there, which also turned the close,
+    /// minimise and zoom buttons grey. A value outside macOS's range is read
+    /// as Multicolor instead, and under Multicolor an app's own accent asset
+    /// is used: Brim's is the grey of `Palette.tint`, and the window buttons
+    /// keep their colours. Checked on macOS 27 against a test app: -1 drew
+    /// the close button grey, -2 drew it red and used the app's accent. The
+    /// selection highlight stays Graphite. The rest of the Mac keeps the
+    /// person's colour.
+    private static func useOwnAccent() {
         let defaults = UserDefaults.standard
-        defaults.set(-1, forKey: "AppleAccentColor")
+        defaults.set(-2, forKey: "AppleAccentColor")
         defaults.set("0.847059 0.847059 0.862745 Graphite", forKey: "AppleHighlightColor")
     }
 

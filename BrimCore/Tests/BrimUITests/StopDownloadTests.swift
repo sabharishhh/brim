@@ -51,14 +51,28 @@ import Testing
     }
 }
 
+extension StopDownloadTests {
+    /// "Claude did not quit" read as an amber "Update failed", though the
+    /// update was downloaded, checked and only waiting for the app to quit.
+    @Test func `an app that stays open is waited for, not failed`() async {
+        let model = UpdatesModel()
+        let service = SlowDownload(installing: false, stillOpen: true)
+        await model.load(service: service)
+        await model.install(update, service: service)
+        #expect(model.states[update.id] == .stillOpen("Demo"))
+    }
+}
+
 /// Downloads until cancelled, or reports installing and waits to be told
 /// to finish.
 private actor SlowDownload: BrimServiceProtocol {
     let installing: Bool
+    let stillOpen: Bool
     private var release: CheckedContinuation<Void, Never>?
 
-    init(installing: Bool) {
+    init(installing: Bool, stillOpen: Bool = false) {
         self.installing = installing
+        self.stillOpen = stillOpen
     }
 
     func finish() {
@@ -78,6 +92,9 @@ private actor SlowDownload: BrimServiceProtocol {
     func installUpdate(
         _: AppUpdate, progress: @escaping @Sendable (DownloadProgress) -> Void
     ) async -> UpdateOutcome {
+        if stillOpen {
+            return .stillOpen(name: "Demo")
+        }
         if installing {
             progress(DownloadProgress(received: 100, expected: 100))
             await withCheckedContinuation { release = $0 }
