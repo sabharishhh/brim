@@ -38,11 +38,14 @@ struct JournalRow: View {
             // turns in one place and the time beside them never moves.
             trailing
                 .frame(minWidth: 120, alignment: .trailing)
+            // Wide enough for "Oct 3, 7:08 PM", which rows in a month show,
+            // and one width for every row so the times line up.
             Text(entry.time)
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkTertiary)
-                .frame(width: 56, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: 100, alignment: .trailing)
                 .accessibilityHidden(true)
         }
         .padding(.horizontal, 14)
