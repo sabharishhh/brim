@@ -19,9 +19,10 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     /// The bundle is still where the install found it. Read once, when the
     /// entry is made, so a row never touches the disk while it draws.
     public let isPresent: Bool
-    /// The time of day, written once when the entry is made (`CLAUDE.md`,
-    /// on formatters).
-    public let time: String
+    /// When it happened, as its row says it: the time of day, written once
+    /// when the entry is made (`CLAUDE.md`, on formatters). `groups` adds
+    /// the day where the heading does not give it.
+    public internal(set) var time: String
 
     public init(record: RemovalRecord) {
         id = "removed:" + record.id.uuidString
@@ -85,11 +86,21 @@ public enum JournalTimeline {
                 order.append(key)
                 titles[key] = title
             }
-            buckets[key, default: []].append(entry)
+            // "Today" and "Yesterday" name the day; "This week" and a month
+            // do not, and their rows said only "12:01 PM".
+            var shown = entry
+            switch key {
+            case "today", "yesterday": break
+            case "week": shown.time = weekStyle.format(entry.date)
+            default: shown.time = dateStyle.format(entry.date)
+            }
+            buckets[key, default: []].append(shown)
         }
         return order.map { ItemGroup(id: $0, title: titles[$0] ?? $0, items: buckets[$0] ?? []) }
     }
 
+    static let weekStyle = Date.FormatStyle.dateTime.weekday(.abbreviated).hour().minute()
+    static let dateStyle = Date.FormatStyle.dateTime.day().month(.abbreviated).hour().minute()
     private static let monthStyle = Date.FormatStyle.dateTime.month(.wide)
     private static let monthYearStyle = Date.FormatStyle.dateTime.month(.wide).year()
 }
