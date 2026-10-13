@@ -55,8 +55,10 @@ public enum BrimTraces {
         return found
     }
 
+    /// Reports are named for the process. Brim's executable was `brim`
+    /// until 1.0 named the app `Brim.app`.
     static func isBrimsReport(_ name: String) -> Bool {
-        ["brim", "BrimJobHelper"].contains { LocationInventory.Location.isReport(name, of: $0) }
+        ["Brim", "brim", "BrimJobHelper"].contains { LocationInventory.Location.isReport(name, of: $0) }
     }
 
     /// A shell script that waits for Brim to quit, then clears its preference
