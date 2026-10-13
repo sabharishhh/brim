@@ -1,3 +1,4 @@
+import AppKit
 import BrimUI
 import SwiftUI
 
@@ -116,8 +117,8 @@ struct MainSidebar: View {
     var body: some View {
         // Rows are buttons, and the selection is drawn here: an off-white
         // row with near-black text. A list selection is drawn by AppKit in
-        // the accent, which Brim sets to Graphite, so it could only ever be
-        // grey. Buttons expose as buttons, with the selected trait, so the
+        // the accent, which in Brim is a grey, so it could never be
+        // off-white. Buttons expose as buttons, with the selected trait, so the
         // sidebar stays operable to VoiceOver; the arrow keys move through
         // it as a list's would.
         List {
@@ -134,6 +135,8 @@ struct MainSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background { SidebarBackdrop().ignoresSafeArea() }
         // A sidebar draws its symbols in the system accent, and the window's
         // own tint does not reach them: with a red accent every icon here
         // was red. Each row now colours its own symbol.
@@ -174,12 +177,23 @@ struct MainSidebar: View {
                 HStack {
                     SidebarLabel(destination: destination, isSelected: isSelected)
                     Spacer()
-                    if activity.busy.contains(destination) {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .transition(.opacity)
-                            .accessibilityLabel("Checking")
+                    // A fixed slot the spinner fades into. Inserted bare, it
+                    // was laid out during the row's selection animation and
+                    // drew stretched the first time a page was opened.
+                    ZStack {
+                        // Not on the selected row: the toolbar shows the page
+                        // you are on working, and this spinner cannot be
+                        // made dark, so on the off-white row it all but
+                        // disappeared.
+                        if activity.busy.contains(destination), !isSelected {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .fixedSize()
+                                .transition(.opacity)
+                                .accessibilityLabel("Checking")
+                        }
                     }
+                    .frame(width: 14, height: 14)
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 30)
@@ -215,8 +229,9 @@ struct MainSidebar: View {
 
 /// A sidebar row's label. Each icon once bounced, then turned, swung or
 /// breathed, on every change of page, and Apple's guidance is to keep
-/// motion off things people do constantly; what is left is one small press
-/// when a page is chosen (`icon`).
+/// motion off things people do constantly. What is left answers a choice
+/// once: the chosen row's name grows a little, as it does in System
+/// Settings.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
@@ -228,7 +243,15 @@ private struct SidebarLabel: View {
         Label {
             Text(destination.rawValue)
                 .foregroundStyle(isSelected ? Palette.onSnow : Palette.ink)
-                .fontWeight(isSelected ? .medium : .regular)
+                // 5.5% larger: 13 point text reads as about 13.7. Scaled
+                // rather than set a size larger, so the row's layout does
+                // not change and the names below it do not move; the icon
+                // keeps its size. Only the size moves, over a third of a
+                // second each way: a bolder weight blended through a blur
+                // as it grew, and with the icon dimming at the same moment
+                // the row looked as though it blinked.
+                .scaleEffect(isSelected ? 1.055 : 1, anchor: .leading)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: isSelected)
         } icon: {
             icon
         }
@@ -239,26 +262,23 @@ private struct SidebarLabel: View {
         }
     }
 
-    /// A small press when the page is chosen: down a little, then settle
-    /// without overshoot. It was taken out in a pass that trimmed motion,
-    /// which left the sidebar feeling inert, and is back as it was.
+    /// Apps keeps its small press, which suits a grid of squares. Every
+    /// other icon pressed, bounced or grew too and looked fussy; a dim and
+    /// return in their place read as a blink. They now stay still, and the
+    /// name's growth is the answer to a click.
     @ViewBuilder private var icon: some View {
         switch destination {
         case .home:
             // An app icon carries its own margin inside the square, so it
-            // is drawn larger than a symbol to look the same size. It is an
-            // image, not a symbol, so the same press is drawn by hand.
+            // is drawn larger than a symbol to look the same size.
             BrimIcon(source: .bundle(Bundle.main.bundleURL), size: 22)
-                .keyframeAnimator(initialValue: 1.0, trigger: arrivals) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    CubicKeyframe(0.9, duration: 0.1)
-                    SpringKeyframe(1.0, duration: 0.3, spring: .smooth)
-                }
-        default:
+        case .apps:
             Image(systemName: destination.icon)
                 .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
                 .symbolEffect(.bounce.down, options: .nonRepeating, value: arrivals)
+        default:
+            Image(systemName: destination.icon)
+                .foregroundStyle(isSelected ? Palette.onSnow : Palette.snow)
         }
     }
 }
@@ -282,4 +302,33 @@ private struct NewReleaseNotice: View {
         .padding(.vertical, 8)
         .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
     }
+}
+
+/// The sidebar shows the desktop through it, as System Settings' does.
+///
+/// The window's own background is the opaque canvas, so the sidebar's glass
+/// had nothing behind it but more canvas and read as a flat grey panel. This
+/// is AppKit's sidebar material blended with what is behind the window,
+/// softened by a wash of the canvas so a bright wallpaper tints the sidebar
+/// rather than showing through it. It dims with the window when Brim is not
+/// frontmost, and Reduce Transparency makes it solid, as AppKit does for
+/// every material.
+private struct SidebarBackdrop: View {
+    var body: some View {
+        BehindWindowMaterial()
+            .overlay(Palette.canvas.opacity(0.5))
+            .accessibilityHidden(true)
+    }
+}
+
+private struct BehindWindowMaterial: NSViewRepresentable {
+    func makeNSView(context _: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_: NSVisualEffectView, context _: Context) {}
 }
