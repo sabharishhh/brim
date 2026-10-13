@@ -2,15 +2,23 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// A dot for a card's state. The only colour on Home that is not an app
-/// icon: green when all is well, orange when something wants a look.
+/// A dot for a card's state: green when all is well, orange when something
+/// wants a look.
+///
+/// Home's cards draw it `plain`: one off-white dot beside every phrase. A
+/// card holds one fact, and its phrase already says whether it is well, so
+/// a green or orange dot there repeated the words, and the grey one for a
+/// plain fact looked switched off rather than calm.
 struct StatusDot: View {
     let status: CardStatus
+    var plain = false
 
     var body: some View {
         switch status {
         case .checking:
             ProgressView().controlSize(.mini)
+        case _ where plain:
+            dot(Palette.snow)
         case .clear:
             dot(Palette.success)
         case .attention, .partial:
@@ -106,7 +114,7 @@ struct StatCard<Detail: View>: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 7) {
                     Image(systemName: symbol)
                         .foregroundStyle(Palette.inkSecondary)
@@ -136,7 +144,7 @@ struct StatCard<Detail: View>: View {
                             .foregroundStyle(Palette.ink)
                             .contentTransition(reduceMotion ? .identity : .numericText())
                         HStack(spacing: 6) {
-                            StatusDot(status: status)
+                            StatusDot(status: status, plain: true)
                             Text(phrase)
                                 .font(.brimFacts)
                                 .foregroundStyle(Palette.inkSecondary)
@@ -148,6 +156,7 @@ struct StatCard<Detail: View>: View {
                 }
                 if status != .checking {
                     detail
+                        .padding(.top, 6)
                         .refreshAppearance(isRefreshing)
                 }
             }

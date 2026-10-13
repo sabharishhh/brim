@@ -17,10 +17,14 @@ struct InstallCard: View {
                 Image(systemName: "shippingbox")
                     .foregroundStyle(Palette.inkSecondary)
                     .accessibilityHidden(true)
-                Text("Installing")
+                // Named for what it is. "Installing" read as something
+                // already under way.
+                Text("Installer Preview")
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)
+                BetaTag()
             }
+            .accessibilityElement(children: .combine)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Before you install something")
                     .font(.brimRowTitle)
@@ -50,5 +54,17 @@ struct InstallCard: View {
             shell.lookInside(url)
             return true
         } isTargeted: { isTargeted = $0 }
+    }
+}
+
+/// Marks a feature that is still settling.
+private struct BetaTag: View {
+    var body: some View {
+        Text("Beta")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Palette.inkSecondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Palette.well, in: .capsule)
     }
 }
