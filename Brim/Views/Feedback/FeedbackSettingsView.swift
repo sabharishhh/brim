@@ -8,12 +8,12 @@ struct FeedbackSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.pagePadding) {
-                VStack(alignment: .leading, spacing: Metrics.grid) {
-                    Text("Send Feedback")
-                        .font(.brimHeadline)
-                    Text("Report a problem or suggest a change.")
-                        .foregroundStyle(Palette.inkSecondary)
-                }
+                // A heading like the General tab's sections, standing alone:
+                // the large title with a sentence under it was the one place
+                // in Settings that looked like a page of its own.
+                Text("Send Feedback")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(FeedbackKind.allCases, id: \.self) { kind in
                         FeedbackKindCard(kind: kind) {
