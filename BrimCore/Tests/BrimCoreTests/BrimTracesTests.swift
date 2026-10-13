@@ -46,13 +46,15 @@ final class BrimTracesTests: XCTestCase {
             make(.userSavedApplicationState, "\(id).savedState", folder: true),
             make(.userRecentDocuments, "\(id).sfl4"),
             make(.userDiagnosticReports, "brim-2026-10-05-081500.ips"),
+            make(.userDiagnosticReports, "Brim-2026-10-13-091500.ips"),
             make(.userPreferences, "com.google.Brim.plist")
         ]
         let theirs = try [
             make(.userCaches, "com.sabharishhh.brimstone", folder: true),
             make(.userApplicationSupport, "Brimstone", folder: true),
             make(.userPreferences, "com.example.app.plist"),
-            make(.userDiagnosticReports, "brimstone-2026-10-05-081500.ips")
+            make(.userDiagnosticReports, "brimstone-2026-10-05-081500.ips"),
+            make(.userDiagnosticReports, "Brimstone-2026-10-13-091500.ips")
         ]
         let found = Set(BrimTraces.paths(in: root, identifiers: [id, "com.google.Brim"]).map(\.path))
         XCTAssertEqual(found, Set(ours.map(\.path)))
