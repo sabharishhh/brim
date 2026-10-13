@@ -61,12 +61,19 @@ if [[ ${#apps[@]} != 1 || ! -d ${apps[0]} ]]; then
 fi
 app=${apps[0]}
 codesign --verify --deep --strict -R="$(requirement_for "$app_identifier")" "$app"
+# The administrator helper is copied out and run only for an approved batch,
+# so it ships as a plain executable. Brim registers nothing with launchd: a
+# bundled LaunchDaemons plist made macOS list Brim under background activity.
 helper="$app/Contents/MacOS/BrimJobHelper"
-plist="$app/Contents/Library/LaunchDaemons/$helper_identifier.plist"
-[[ -x "$helper" && -f "$plist" ]]
+if [[ ! -x "$helper" ]]; then
+    echo 'The temporary administrator helper is missing.' >&2
+    exit 1
+fi
 codesign --verify --strict -R="$(requirement_for "$helper_identifier")" "$helper"
-[[ $(/usr/libexec/PlistBuddy -c 'Print :AssociatedBundleIdentifiers:0' "$plist") == "$app_identifier" ]]
-[[ $(/usr/libexec/PlistBuddy -c 'Print :BundleProgram' "$plist") == 'Contents/MacOS/BrimJobHelper' ]]
+if [[ -e "$app/Contents/Library" ]]; then
+    echo 'The app must not carry launchd or login item registrations.' >&2
+    exit 1
+fi
 actual_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 actual_commit=$(/usr/libexec/PlistBuddy -c 'Print :BrimSourceRevision' "$app/Contents/Info.plist")
 if [[ "$actual_version" != "$version" || "$actual_commit" != "$commit" ]]; then
