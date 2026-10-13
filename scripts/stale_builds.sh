@@ -17,7 +17,7 @@
 # stub bundle is made at that path, retracted and deleted again.
 set -eu
 
-keep="${1:?usage: stale_builds.sh <path to the brim.app to keep> [--remove]}"
+keep="${1:?usage: stale_builds.sh <path to the Brim.app to keep> [--remove]}"
 remove="${2:-}"
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
