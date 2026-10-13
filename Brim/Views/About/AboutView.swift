@@ -24,14 +24,16 @@ struct AboutView: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
                 .textSelection(.enabled)
-            Text("Shows what software left on this Mac, and checks it is gone when you remove it.")
+            Text("See what apps leave behind, and make sure it’s gone.")
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
+            // A capsule, like every other link in Brim. As plain text it took
+            // the system blue, the only colour in a monochrome window.
             Link("Brim on GitHub", destination: URL(string: "https://github.com/sabharishhh/brim")!)
-                .font(.brimFacts)
+                .capsuleAction()
                 .padding(.top, 4)
         }
         .padding(.horizontal, 28)
