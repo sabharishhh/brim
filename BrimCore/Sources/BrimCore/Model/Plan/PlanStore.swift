@@ -3,6 +3,12 @@ import Foundation
 public actor PlanStore {
     private let directoryURL: URL
     private let fm = FileManager.default
+    /// What this process wrote for each plan. The folder belongs to the
+    /// person, so any program they run can rewrite a plan while it is on
+    /// screen; approval was then given for the file, not for what was
+    /// reviewed. A plan that no longer matches what was written here, or
+    /// that this process never wrote, is refused.
+    private var written: [UUID: Data] = [:]
 
     public init(directoryURL: URL) {
         self.directoryURL = directoryURL
@@ -12,8 +18,16 @@ public actor PlanStore {
         try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
-    public enum PlanStoreError: Error {
+    public enum PlanStoreError: Error, LocalizedError {
         case planAlreadyExists
+        case changedOnDisk
+
+        public var errorDescription: String? {
+            switch self {
+            case .planAlreadyExists: "A different plan with this identifier already exists."
+            case .changedOnDisk: "The plan was changed after it was made, so it was not used."
+            }
+        }
     }
 
     public func save(plan: Plan) throws {
@@ -27,11 +41,21 @@ public actor PlanStore {
             if existingData != data {
                 throw PlanStoreError.planAlreadyExists
             }
+            written[plan.planId] = data
             return // Same plan, skip write
         }
 
         // Write atomically
         try data.write(to: fileURL, options: .atomic)
+        written[plan.planId] = data
+    }
+
+    /// Whether this process wrote the plan and the disk still holds exactly
+    /// that. Approval asks this before anything is shown to a person.
+    public func isUnchangedSinceWritten(planId: UUID) -> Bool {
+        guard let ours = written[planId] else { return false }
+        let fileURL = directoryURL.appendingPathComponent("\(planId.uuidString).json")
+        return (try? Data(contentsOf: fileURL)) == ours
     }
 
     /// Read from the disk every time, never remembered: approval checks
@@ -39,7 +63,11 @@ public actor PlanStore {
     /// a copy held in memory would never see it change.
     public func load(planId: UUID) throws -> Plan {
         let fileURL = directoryURL.appendingPathComponent("\(planId.uuidString).json")
-        return try Self.decoder.decode(Plan.self, from: Data(contentsOf: fileURL))
+        let data = try Data(contentsOf: fileURL)
+        if let ours = written[planId], ours != data {
+            throw PlanStoreError.changedOnDisk
+        }
+        return try Self.decoder.decode(Plan.self, from: data)
     }
 
     /// One formatter for every date, the one plans are written with. It

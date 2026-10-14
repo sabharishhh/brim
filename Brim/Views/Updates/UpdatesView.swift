@@ -254,8 +254,10 @@ struct UpdatesView: View {
         }
     }
 
+    /// Checked again here: an update can come back from the page cache,
+    /// which is a file like any other.
     private func open(_ url: URL?) {
-        if let url {
+        if let url = AppUpdate.openable(url) {
             NSWorkspace.shared.open(url)
         }
     }
