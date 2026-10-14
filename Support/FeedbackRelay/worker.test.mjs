@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import worker, { FeedbackInbox, readReport } from './worker.mjs';
+import worker, { FeedbackInbox, quiet, readReport } from './worker.mjs';
 
 const report = () => ({ id: randomUUID(), kind: 'bug', title: 'A problem', body: '## Bug report\n\nWhat happened.' });
 const request = value => new Request('https://feedback.example/v1/feedback', {
@@ -53,6 +53,13 @@ test('validates the report type and matching idempotency key', async () => {
   await assert.rejects(readReport(bad));
   await assert.rejects(readReport(request({ ...value, kind: 'unrecognized' })));
   await assert.rejects(readReport(request({ ...value, title: ' ' })));
+});
+
+test('mentions in a report notify nobody', async () => {
+  const value = { ...report(), title: 'Ping @someone', body: 'cc @octocat and @org/team, mail a@b.c' };
+  const read = await readReport(request(value));
+  assert.ok(!/@[A-Za-z0-9]/.test(read.title + read.body));
+  assert.equal(quiet('@x').replace('\u200b', ''), '@x');
 });
 
 test('rejects a streamed payload beyond the size cap', async () => {
