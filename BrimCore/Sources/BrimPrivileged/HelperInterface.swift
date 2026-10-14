@@ -117,11 +117,59 @@ public enum BrimJobHelper {
     /// checking the daemon against the *app's* identifier, which nothing
     /// could ever satisfy. Both directions are checked, because a root
     /// service accepting whatever answers is how one gets replaced.
+    /// With `codeHash`, only that one build of the helper. Any helper the
+    /// team signed met the requirement alone, so an older one, with
+    /// whatever it allowed, would run as root before the version handshake
+    /// could refuse it.
     public static func daemonRequirement(
         identifier: String = machServiceName,
-        teamID: String = BrimJobHelper.teamID
+        teamID: String = BrimJobHelper.teamID,
+        codeHash: String? = nil
     ) -> String {
-        requirement(identifier: identifier, teamID: teamID)
+        let base = requirement(identifier: identifier, teamID: teamID)
+        guard let codeHash, codeHash.count == 40 || codeHash.count == 64,
+              codeHash.allSatisfy({ $0.isHexDigit }) else { return base }
+        return base + " and cdhash H\"\(codeHash.lowercased())\""
+    }
+
+    /// The helper's code hash, read only after the application around it
+    /// has passed its own signature check, nested code included, so what
+    /// is pinned is the helper this copy of Brim was signed with.
+    public static func sealedHelperHash(_ executable: URL) throws -> String {
+        let application = executable.deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        var applicationCode: SecStaticCode?
+        var compiled: SecRequirement?
+        guard SecStaticCodeCreateWithPath(application as CFURL, [], &applicationCode) == errSecSuccess,
+              let applicationCode,
+              SecRequirementCreateWithString(clientRequirement() as CFString, [], &compiled) == errSecSuccess,
+              let compiled,
+              SecStaticCodeCheckValidity(
+                  applicationCode,
+                  SecCSFlags(rawValue: kSecCSCheckNestedCode | kSecCSStrictValidate | kSecCSCheckAllArchitectures),
+                  compiled
+              ) == errSecSuccess
+        else { throw SealFailure.applicationNotSealed }
+        var helperCode: SecStaticCode?
+        var information: CFDictionary?
+        guard SecStaticCodeCreateWithPath(executable as CFURL, [], &helperCode) == errSecSuccess, let helperCode,
+              SecCodeCopySigningInformation(helperCode, [], &information) == errSecSuccess,
+              let unique = (information as? [String: Any])?[kSecCodeInfoUnique as String] as? Data,
+              !unique.isEmpty
+        else { throw SealFailure.helperUnreadable }
+        return unique.map { String(format: "%02x", $0) }.joined()
+    }
+
+    public enum SealFailure: Error, LocalizedError {
+        case applicationNotSealed
+        case helperUnreadable
+
+        public var errorDescription: String? {
+            switch self {
+            case .applicationNotSealed: "Brim's own signature does not check out, so it will not ask for root."
+            case .helperUnreadable: "Brim could not read its administrator helper's signature."
+            }
+        }
     }
 
     /// Whether a requirement string is one the system can evaluate.

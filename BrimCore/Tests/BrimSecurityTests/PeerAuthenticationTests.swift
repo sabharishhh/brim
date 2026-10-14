@@ -1,4 +1,4 @@
-import BrimPrivileged
+@testable import BrimPrivileged
 import XCTest
 
 /// Who is allowed to talk to whom, and the fact that anybody checks.
@@ -66,7 +66,7 @@ final class PeerAuthenticationTests: XCTestCase {
             // A Process handle may terminate its own timed-out child. It is
             // not an identity supplied by a peer or an authorization.
             var content = try String(contentsOf: file, encoding: .utf8)
-            if file.lastPathComponent == "ToolOutput.swift" {
+            if ["ToolOutput.swift", "BoundedTool.swift"].contains(file.lastPathComponent) {
                 content = content.replacingOccurrences(of: "kill(process.processIdentifier, SIGKILL)", with: "")
             }
             XCTAssertFalse(
@@ -184,4 +184,27 @@ final class RegisteredIdentifierTests: XCTestCase {
     // `testTheEnergyAgentIsNamedAfterBrim` went with the command line
     // tool. There is no energy agent now, and nothing in the product
     // registers one.
+}
+
+/// The administrator helper's requirement named the team and nothing else,
+/// so any helper the team ever signed ran as root before the version
+/// handshake could refuse it. And a development Brim, which any program
+/// can attach to, was accepted as a client by a released helper.
+final class HelperPinningTests: XCTestCase {
+    func testAPinnedRequirementNamesOneBuild() {
+        let hash = "67e5308ce03f59f53ff6335f969667b0e17c29da"
+        let pinned = BrimJobHelper.daemonRequirement(codeHash: hash)
+        XCTAssertTrue(pinned.hasSuffix(" and cdhash H\"\(hash)\""), pinned)
+        XCTAssertTrue(BrimJobHelper.isWellFormed(pinned))
+        XCTAssertEqual(BrimJobHelper.daemonRequirement(codeHash: "not hex\" or anchor apple"),
+                       BrimJobHelper.daemonRequirement(), "a malformed hash must not reach the requirement")
+    }
+
+    func testAClientOtherProgramsCanAttachToIsInjectable() {
+        let hardened: UInt32 = 0x0001_0001
+        XCTAssertFalse(TemporaryAdminChannel.isInjectable(status: hardened))
+        XCTAssertTrue(TemporaryAdminChannel.isInjectable(status: 0x0000_0001), "no hardened runtime")
+        XCTAssertTrue(TemporaryAdminChannel.isInjectable(status: hardened | 0x4), "get-task-allow")
+        XCTAssertTrue(TemporaryAdminChannel.isInjectable(status: hardened | 0x1000_0000), "being debugged")
+    }
 }
