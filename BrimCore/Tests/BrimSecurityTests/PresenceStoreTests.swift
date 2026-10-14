@@ -36,15 +36,20 @@ final class PresenceStoreTests: XCTestCase {
         XCTAssertTrue(enrolled, "Setup must happen once, not once per launch")
     }
 
-    func testPresenceSurvivesARelaunch() async {
-        await PresenceStore(directoryURL: directory).recordPresence()
+    /// The grace window used to carry over a relaunch, read from a file in
+    /// the person's own folder. Any program they run can write that file, so
+    /// a time written there before Brim opened skipped the fingerprint for a
+    /// permanent deletion. A relaunch now costs one prompt.
+    func testPresenceDoesNotSurviveARelaunch() async throws {
+        await PresenceStore(directoryURL: directory).recordEnrolment()
+        let forged = #"{"enrolledAt":800000000,"lastPresence":\#(Date().timeIntervalSinceReferenceDate)}"#
+        try Data(forged.utf8).write(to: directory.appendingPathComponent("presence.json"))
 
         let next = PresenceStore(directoryURL: directory)
         let presence = await next.lastPresence
-        XCTAssertNotNil(
-            presence,
-            "Quitting and reopening Brim is not by itself a reason to ask again"
-        )
+        let enrolled = await next.isEnrolled
+        XCTAssertNil(presence, "A time read from the disk stood in for a fingerprint")
+        XCTAssertTrue(enrolled)
     }
 
     func testEnrolmentCountsAsPresence() async {
