@@ -159,7 +159,7 @@ public struct BatteryReport: Sendable, Equatable {
         process.arguments = ["SPPowerDataType", "-json"]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return nil }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()

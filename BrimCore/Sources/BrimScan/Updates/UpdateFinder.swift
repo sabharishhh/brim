@@ -243,8 +243,16 @@ extension UpdateFinder {
         var route = UpdateRoute.website
         let enclosure = item.enclosureURL.flatMap(URL.init(string:))
         if !item.informational, let enclosure, enclosure.scheme == "https" {
+            // An app that ships Sparkle's public key expects every update to
+            // be signed with it, and Sparkle refuses one that is not. Brim
+            // used to fall back to no check when a feed left the signature
+            // out, which is exactly what a feed in the wrong hands would do.
+            let key = candidate.info["SUPublicEDKey"]
+            if key != nil, item.edSignature == nil {
+                return .noAnswer
+            }
             let integrity: UpdateDownload.Integrity =
-                if let signature = item.edSignature, let key = candidate.info["SUPublicEDKey"] {
+                if let signature = item.edSignature, let key {
                     .edDSA(signature: signature, publicKey: key)
                 } else {
                     .none
