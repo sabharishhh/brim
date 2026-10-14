@@ -19,7 +19,8 @@ struct ScriptCard: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if !script.isText || script.findings.isEmpty {
-                Text(script.isText ? "Calls nothing Brim looks for" : "A program, not readable as text")
+                Text(script.linkDestination.map { "Runs \($0), which Brim cannot read" }
+                    ?? (script.isText ? "Calls nothing Brim looks for" : "A program, not readable as text"))
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
             } else {
