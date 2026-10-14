@@ -159,19 +159,26 @@ public struct InstallerPreview: Sendable, Equatable, Identifiable {
         /// Nil when it is not text.
         public let text: String?
         public let isText: Bool
+        /// Where the script points, when it is a link rather than a file. A
+        /// link is followed only when Installer runs it, and can name a file
+        /// the package itself installs, so there is nothing here to read.
+        public let linkDestination: String?
 
         public var id: String {
             package + "/" + name
         }
 
-        public init(name: String, package: String, runsAsAdministrator: Bool, text: String?) {
+        public init(
+            name: String, package: String, runsAsAdministrator: Bool, text: String?, linkDestination: String? = nil
+        ) {
             self.name = name
             self.package = package
             self.runsAsAdministrator = runsAsAdministrator
-            self.text = text
-            isText = text != nil
-            findings = text.map(InstallScriptReading.findings(in:)) ?? []
-            calls = text.map(InstallScriptReading.calls(in:)) ?? []
+            self.linkDestination = linkDestination
+            self.text = linkDestination == nil ? text : nil
+            isText = self.text != nil
+            findings = self.text.map(InstallScriptReading.findings(in:)) ?? []
+            calls = self.text.map(InstallScriptReading.calls(in:)) ?? []
         }
     }
 }

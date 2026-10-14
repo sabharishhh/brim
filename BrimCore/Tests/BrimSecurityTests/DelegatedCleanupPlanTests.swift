@@ -94,7 +94,11 @@ struct DelegatedCleanupPlanTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.journal(plan.planId).path))
     }
 
-    /// Approval may cover the altered stored policy. Independent rebuilding must still refuse it.
+    /// A stored policy altered on the disk is never put up for approval:
+    /// approval covers only a plan this process wrote, as it wrote it. This
+    /// test used to have the altered plan approved and showed that
+    /// rebuilding the command still refused it; that layer remains, and
+    /// the request now stops first.
     @Test func newlyApprovedAlteredPolicyCannotDefineAnOperation() async throws {
         let fixture = try Fixture()
         defer { fixture.destroy() }
@@ -103,13 +107,10 @@ struct DelegatedCleanupPlanTests {
         let altered = try changing(original, field: "catalogueRevision")
         #expect(try original.contentHash() != altered.contentHash())
         try altered.canonicalData().write(to: fixture.planFile(altered.planId), options: .atomic)
-        let receipt = try await service.requestApproval(
-            planId: altered.planId,
-            requesterIdentity: altered.intent.requesterIdentity
-        )
-        let token = try await service.grantApproval(for: receipt)
-        await #expect(throws: BrimService.ApplyError.self) {
-            try await service.apply(planId: altered.planId, token: token)
+        await #expect(throws: ApprovalError.planChangedSinceRequest) {
+            _ = try await service.requestApproval(
+                planId: altered.planId, requesterIdentity: altered.intent.requesterIdentity
+            )
         }
         #expect(fixture.invocations.withLock { $0.isEmpty })
     }

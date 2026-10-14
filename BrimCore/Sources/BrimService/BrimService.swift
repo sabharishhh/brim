@@ -348,6 +348,13 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     /// caller could plan, request and apply without a person ever being
     /// involved. That is the one thing the product promises cannot happen.
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
+        // Only a plan this process made, still as it made it. The request
+        // used to hash whatever the file said when Remove was pressed, after
+        // the review, so a rewritten plan was approved in the reviewed one's
+        // place, administrator password included.
+        guard await planStore.isUnchangedSinceWritten(planId: planId) else {
+            throw ApprovalError.planChangedSinceRequest
+        }
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
         let now = Date()
@@ -390,6 +397,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         // answered is spent.
         pendingApprovals.removeValue(forKey: receipt.requestId)
 
+        guard await planStore.isUnchangedSinceWritten(planId: receipt.planId) else {
+            throw ApprovalError.planChangedSinceRequest
+        }
         let plan = try await planStore.load(planId: receipt.planId)
         let hash = try plan.contentHash()
         guard hash == receipt.planHash else {

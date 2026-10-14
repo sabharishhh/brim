@@ -53,7 +53,7 @@ extension UpdateInstaller {
     /// `spctl` is Gatekeeper's own assessment, notarization included; the
     /// API behind it is not available to Swift.
     static func passesGatekeeper(_ candidate: URL, type: String = "execute") -> Bool {
-        run("/usr/sbin/spctl", ["--assess", "--type", type, candidate.path])
+        run("/usr/sbin/spctl", ["--assess", "--type", type, candidate.path], timeout: 120)
     }
 
     static func teamIdentifier(of bundle: URL) -> String? {
@@ -84,10 +84,32 @@ extension UpdateInstaller {
     /// application's own developer and Gatekeeper accepts it.
     static func checkPackage(_ package: URL, against installed: URL) throws {
         guard let team = teamIdentifier(of: installed),
-              let output = runOutput("/usr/sbin/pkgutil", ["--check-signature", package.path]),
-              output.contains("Developer ID Installer:"), output.contains("(\(team))")
+              let check = BoundedTool.run("/usr/sbin/pkgutil", ["--check-signature", package.path], timeout: 60),
+              check.status == 0, installerTeam(fromSignatureCheck: check.output) == team
         else { throw Failure.packageNotSignedBySameDeveloper }
         guard passesGatekeeper(package, type: "install") else { throw Failure.gatekeeper }
+    }
+
+    /// The team of the certificate that signed a package, from the first
+    /// entry of `pkgutil --check-signature`'s certificate chain, and from
+    /// nowhere else.
+    ///
+    /// The check used to look for "Developer ID Installer:" and "(TEAM)"
+    /// anywhere in the output and ignored the exit status, but the output
+    /// begins with the file name, which the download server chooses. A
+    /// package signed by anybody's Developer ID and named `Update (TEAM).pkg`
+    /// passed as the app's own developer's.
+    static func installerTeam(fromSignatureCheck output: String) -> String? {
+        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let chain = lines.firstIndex(of: "Certificate Chain:"), chain + 1 < lines.count else { return nil }
+        let leaf = lines[chain + 1]
+        let prefix = "1. Developer ID Installer: "
+        guard leaf.hasPrefix(prefix), leaf.hasSuffix(")"), let open = leaf.lastIndex(of: "(") else { return nil }
+        let team = leaf[leaf.index(after: open) ..< leaf.index(before: leaf.endIndex)]
+        guard team.count == 10, team.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }) else {
+            return nil
+        }
+        return String(team)
     }
 }
 

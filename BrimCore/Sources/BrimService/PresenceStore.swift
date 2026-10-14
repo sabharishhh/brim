@@ -33,7 +33,13 @@ public actor PresenceStore {
     public init(directoryURL: URL) {
         self.storeURL = directoryURL.appendingPathComponent("presence.json")
         if let data = try? Data(contentsOf: storeURL),
-           let loaded = try? JSONDecoder().decode(Record.self, from: data) {
+           var loaded = try? JSONDecoder().decode(Record.self, from: data) {
+            // Enrolment carries over; the last fingerprint does not. The
+            // file is the person's to write, and so any program's: a time
+            // written there before launch skipped the prompt for a
+            // permanent deletion. A grace window starts with a prompt in
+            // this run, never from the disk.
+            loaded.lastPresence = nil
             self.record = loaded
         } else {
             self.record = Record()

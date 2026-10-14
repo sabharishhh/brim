@@ -81,6 +81,15 @@ public struct SafetyChecker: Sendable {
         if relativeComponents.first == "System" {
             return false
         }
+
+        // Never the person's own folders, nor where credentials are kept,
+        // whatever claims them. An app's product.json may name any dot
+        // folder in the home folder as its data, and a declaration is Tier B,
+        // which is ticked: one naming `.ssh` had the person's keys selected
+        // for removal with it.
+        if Self.isPersonal(relativeComponents, userName: root.userName) {
+            return false
+        }
         
         // 3. Protect iCloud Drive (Mobile Documents)
         if let libIndex = relativeComponents.firstIndex(of: "Library"), 
@@ -106,6 +115,56 @@ public struct SafetyChecker: Sendable {
         return true
     }
     
+    /// Folders that hold what the person made or uses to prove who they
+    /// are. The folder itself is never taken; for credential stores, nothing
+    /// inside it is either.
+    static let personalFolders: Set<String> = [
+        "desktop", "documents", "downloads", "movies", "music", "pictures", "public", "applications",
+        "library", "developer", ".config", ".local", ".cache", ".trash"
+    ]
+    static let credentialStores: Set<String> = [
+        ".ssh", ".gnupg", ".aws", ".azure", ".kube", ".password-store", ".netrc", ".pgpass",
+        ".git-credentials", ".gitconfig", ".npmrc", ".pypirc", ".zshrc", ".zprofile", ".bashrc",
+        ".bash_profile", ".profile"
+    ]
+    static let topLevelFolders: Set<String> = [
+        "applications", "library", "users", "system", "private", "usr", "opt", "volumes", "cores"
+    ]
+    /// Inside Library: the folders every app shares, and the keychains.
+    static let sharedLibraryFolders: Set<String> = [
+        "application support", "caches", "preferences", "containers", "group containers", "logs",
+        "launchagents", "httpstorages", "webkit", "saved application state", "cookies", "mobile documents"
+    ]
+
+    static func isPersonal(_ components: [String], userName: String) -> Bool {
+        let lowered = components.map { $0.lowercased() }
+        // The root of the disk and its main folders, Users, Users/Shared,
+        // and every home folder.
+        if lowered.isEmpty || lowered.count == 1 && topLevelFolders.contains(lowered[0]) {
+            return true
+        }
+        if lowered.count == 2, lowered[0] == "users" {
+            return true
+        }
+        guard lowered.count >= 3, lowered[0] == "users", lowered[1] == userName.lowercased() else {
+            return false
+        }
+        let first = lowered[2]
+        if credentialStores.contains(first) {
+            return true
+        }
+        if lowered.count == 3, personalFolders.contains(first) {
+            return true
+        }
+        if first == "library", lowered.count >= 4 {
+            if lowered[3] == "keychains" {
+                return true
+            }
+            return lowered.count == 4 && sharedLibraryFolders.contains(lowered[3])
+        }
+        return false
+    }
+
     private func isImmutable(url: URL) -> Bool {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)

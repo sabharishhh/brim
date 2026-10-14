@@ -132,23 +132,54 @@ extension InstallerReader {
 
     static func scripts(of component: PackageComponent, in folder: URL) -> [InstallerPreview.Script] {
         // Older packages run the two standard scripts without naming them.
+        // Asked without following links: a link whose target is missing
+        // here still runs when Installer has put that target in place.
         let named = component.scripts.isEmpty
-            ? ["preinstall", "postinstall"].filter {
-                FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-            }.map { PackageComponent.Script(name: $0, file: $0) }
+            ? ["preinstall", "postinstall"].filter { exists(folder.appendingPathComponent($0)) }
+            .map { PackageComponent.Script(name: $0, file: $0) }
             : component.scripts
         return named.compactMap { script in
             let file = folder.appendingPathComponent(script.file).standardizedFileURL
             // The file name comes from the package; it must stay inside it.
-            guard file.path.hasPrefix(folder.standardizedFileURL.path + "/"),
-                  let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-            defer { try? handle.close() }
-            let data = (try? handle.read(upToCount: 1024 * 1024)) ?? Data()
-            let isText = InstallScriptReading.isText(data)
+            guard file.path.hasPrefix(folder.standardizedFileURL.path + "/") else { return nil }
+            let read = readScript(file, within: folder)
             return InstallerPreview.Script(
                 name: script.name, package: component.identifier, runsAsAdministrator: component.runsAsRoot,
-                text: isText ? String(bytes: data, encoding: .utf8) : nil
+                text: read.text, linkDestination: read.link
             )
         }
+    }
+
+    private static func exists(_ url: URL) -> Bool {
+        var info = stat()
+        return lstat(url.path, &info) == 0
+    }
+
+    /// A script's text, read without following a link anywhere on the way.
+    ///
+    /// `pkgutil --expand` keeps a script that is a symbolic link. Followed,
+    /// one pointing at a file the package's own payload installs read as
+    /// missing, so the preview showed no script and no warning while
+    /// Installer would run it as root; one pointing at a file on this Mac
+    /// showed that file as the script. A link is reported as a link.
+    static func readScript(_ file: URL, within folder: URL) -> (text: String?, link: String?) {
+        var info = stat()
+        guard lstat(file.path, &info) == 0 else { return (nil, nil) }
+        if info.st_mode & S_IFMT == S_IFLNK {
+            let destination = (try? FileManager.default.destinationOfSymbolicLink(atPath: file.path)) ?? "?"
+            return (nil, destination)
+        }
+        // A folder in the path that is itself a link points outside too.
+        let real = file.resolvingSymlinksInPath().path
+        guard real.hasPrefix(folder.resolvingSymlinksInPath().path + "/") else {
+            return (nil, real)
+        }
+        let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return (nil, nil) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return (nil, nil) }
+        let data = (try? handle.read(upToCount: 1024 * 1024)) ?? Data()
+        return (InstallScriptReading.isText(data) ? String(bytes: data, encoding: .utf8) : nil, nil)
     }
 }
