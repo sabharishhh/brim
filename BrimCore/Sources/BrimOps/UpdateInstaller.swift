@@ -183,9 +183,9 @@ public struct UpdateInstaller: Sendable {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         switch kind(of: file) {
         case .zip:
-            guard run("/usr/bin/ditto", ["-x", "-k", file.path, folder.path]) else { throw Failure.unpack }
+            guard run("/usr/bin/ditto", ["-x", "-k", file.path, folder.path], timeout: 1800) else { throw Failure.unpack }
         case .tar:
-            guard run("/usr/bin/tar", ["-xf", file.path, "-C", folder.path]) else { throw Failure.unpack }
+            guard run("/usr/bin/tar", ["-xf", file.path, "-C", folder.path], timeout: 1800) else { throw Failure.unpack }
         case .diskImage:
             return try unpackDiskImage(file, into: folder, bundleID: bundleID, depth: depth)
         case .package, .unknown:
@@ -217,7 +217,7 @@ public struct UpdateInstaller: Sendable {
         defer { _ = run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) }
         guard let app = find(bundleID, in: mount) else { throw Failure.noApplication }
         let copy = folder.appendingPathComponent(app.lastPathComponent)
-        guard run("/usr/bin/ditto", [app.path, copy.path]) else { throw Failure.unpack }
+        guard run("/usr/bin/ditto", [app.path, copy.path], timeout: 1800) else { throw Failure.unpack }
         return copy
     }
 
@@ -281,36 +281,19 @@ public struct UpdateInstaller: Sendable {
         return destination
     }
 
+    /// A tool with a deadline (`BoundedTool`). Five minutes covers attaching
+    /// and copying an application of several gigabytes.
     @discardableResult
-    static func run(_ tool: String, _ arguments: [String], input: String? = nil) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let pipe = Pipe()
-        if input != nil {
-            process.standardInput = pipe
-        }
-        guard (try? process.run()) != nil else { return false }
-        if let input {
-            pipe.fileHandleForWriting.write(Data(input.utf8)); try? pipe.fileHandleForWriting.close()
-        }
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+    static func run(
+        _ tool: String, _ arguments: [String], input: String? = nil, timeout: TimeInterval = 300
+    ) -> Bool {
+        BoundedTool.run(tool, arguments, timeout: timeout, input: input)?.status == 0
     }
 
-    static func runOutput(_ tool: String, _ arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(data: data, encoding: .utf8)
+    /// What a tool printed, whatever its exit status, or nil when it did not
+    /// finish in time.
+    static func runOutput(_ tool: String, _ arguments: [String], timeout: TimeInterval = 300) -> String? {
+        BoundedTool.run(tool, arguments, timeout: timeout)?.output
     }
 }
 
