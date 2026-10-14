@@ -193,15 +193,7 @@ final class ApprovalGateTests: XCTestCase {
         let (service, gen, rootURL, planDir) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
         let reviewed = try await plan(from: service, in: rootURL)
-        let rewritten = Plan(
-            planId: reviewed.planId, createdAt: reviewed.createdAt,
-            engineVersion: reviewed.engineVersion, osVersion: reviewed.osVersion,
-            intent: reviewed.intent, steps: Array(reviewed.steps.dropLast()),
-            excludedItems: reviewed.excludedItems, expectedTotalBytes: reviewed.expectedTotalBytes
-        )
-        try rewritten.canonicalData().write(
-            to: planDir.appendingPathComponent("\(reviewed.planId.uuidString).json"), options: .atomic
-        )
+        try write(reviewed, as: reviewed.planId, steps: Array(reviewed.steps.dropLast()), in: planDir)
         do {
             _ = try await service.requestApproval(planId: reviewed.planId, requesterIdentity: "user")
             XCTFail("A plan rewritten on the disk was put up for approval")
@@ -215,20 +207,23 @@ final class ApprovalGateTests: XCTestCase {
         let (service, gen, rootURL, planDir) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
         let made = try await plan(from: service, in: rootURL)
-        let planted = Plan(
-            planId: UUID(), createdAt: made.createdAt, engineVersion: made.engineVersion,
-            osVersion: made.osVersion, intent: made.intent, steps: made.steps,
-            excludedItems: made.excludedItems, expectedTotalBytes: made.expectedTotalBytes
-        )
-        try planted.canonicalData().write(
-            to: planDir.appendingPathComponent("\(planted.planId.uuidString).json"), options: .atomic
-        )
+        let planted = UUID()
+        try write(made, as: planted, steps: made.steps, in: planDir)
         do {
-            _ = try await service.requestApproval(planId: planted.planId, requesterIdentity: "user")
+            _ = try await service.requestApproval(planId: planted, requesterIdentity: "user")
             XCTFail("A planted plan was put up for approval")
         } catch let error as ApprovalError {
             XCTAssertEqual(error, .planChangedSinceRequest)
         }
+    }
+
+    /// Written straight to the store's folder, as another program would.
+    private func write(_ plan: Plan, as planId: UUID, steps: [Step], in planDir: URL) throws {
+        try Plan(
+            planId: planId, createdAt: plan.createdAt, engineVersion: plan.engineVersion, osVersion: plan.osVersion,
+            intent: plan.intent, steps: steps, excludedItems: plan.excludedItems,
+            expectedTotalBytes: plan.expectedTotalBytes
+        ).canonicalData().write(to: planDir.appendingPathComponent("\(planId.uuidString).json"), options: .atomic)
     }
 
     func testTheOneRouteToApplyRefusesWhenNothingCanAsk() async throws {
