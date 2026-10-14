@@ -46,8 +46,10 @@ public enum VendorUninstaller {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // Nothing reads either stream; a pipe nobody reads stalls a tool
+        // that writes more than it holds.
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
         return process.terminationStatus
