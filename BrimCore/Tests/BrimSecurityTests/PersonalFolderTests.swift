@@ -19,9 +19,10 @@ struct PersonalFolderTests {
     }
 
     @Test func `credentials and the person's own folders are never removable`() {
-        for path in ["", ".ssh", ".ssh/id_ed25519", ".aws/credentials", ".gnupg", "Documents", "Desktop",
-                     "Downloads", "Library", "Library/Keychains/login.keychain-db", "Library/Application Support",
-                     ".config", ".local"] {
+        let protected = ["", ".ssh", ".ssh/id_ed25519", ".aws/credentials", ".gnupg", "Documents", "Desktop",
+                         "Downloads", "Library", "Library/Keychains/login.keychain-db", "Library/Application Support",
+                         ".config", ".local"]
+        for path in protected {
             #expect(!checker.isSafeToRemove(url: home(path)), "\(path) was removable")
         }
         #expect(!checker.isSafeToRemove(url: root.appendingPathComponent("Users")))
@@ -29,8 +30,9 @@ struct PersonalFolderTests {
     }
 
     @Test func `an app's own data inside those folders still is`() {
-        for path in ["Library/Application Support/Demo", "Library/Caches/com.example.demo", ".vscode",
-                     ".config/demo", ".local/share/demo", "Documents/Project/node_modules"] {
+        let owned = ["Library/Application Support/Demo", "Library/Caches/com.example.demo", ".vscode",
+                     ".config/demo", ".local/share/demo", "Documents/Project/node_modules"]
+        for path in owned {
             #expect(checker.isSafeToRemove(url: home(path)), "\(path) was refused")
         }
     }

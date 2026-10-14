@@ -257,18 +257,18 @@ public enum TemporaryAdminChannel {
 }
 
 extension TemporaryAdminChannel {
-    /// A released helper takes requests only from a Brim no other program
-    /// can steer. A development build carries `get-task-allow` and no
-    /// hardened runtime, so any program the person runs could attach to it
-    /// and send requests root would carry out. A development helper still
-    /// accepts development builds, or nothing could be tested.
+    // A released helper takes requests only from a Brim no other program
+    // can steer. A development build carries `get-task-allow` and no
+    // hardened runtime, so any program the person runs could attach to it
+    // and send requests root would carry out. A development helper still
+    // accepts development builds, or nothing could be tested.
     #if DEBUG
         static let refusesInjectableClients = false
     #else
         static let refusesInjectableClients = true
     #endif
 
-    /// The kernel's status bits for a running process (`cs_blobs.h`).
+    // The kernel's status bits for a running process (`cs_blobs.h`).
     static let statusGetTaskAllow: UInt32 = 0x0000_0004
     static let statusRuntime: UInt32 = 0x0001_0000
     static let statusDebugged: UInt32 = 0x1000_0000
@@ -276,10 +276,25 @@ extension TemporaryAdminChannel {
     static func isInjectable(status: UInt32) -> Bool {
         status & statusRuntime == 0 || status & statusGetTaskAllow != 0 || status & statusDebugged != 0
     }
-
 }
 
 private extension TemporaryAdminChannel {
+    private static func refuseIfInjectable(_ guest: SecCode) throws {
+        var information: CFDictionary?
+        let flags = SecCSFlags(rawValue: kSecCSDynamicInformation | kSecCSSigningInformation)
+        // A running process's code is accepted where static code is
+        // asked for; dynamic information needs the running one.
+        let running = unsafeBitCast(guest, to: SecStaticCode.self)
+        guard SecCodeCopySigningInformation(running, flags, &information) == errSecSuccess,
+              let status = ((information as? [String: Any])?[kSecCodeInfoStatus as String] as? NSNumber)?
+              .uint32Value,
+              !isInjectable(status: status)
+        else {
+            authenticationLog.error("administrator peer refused: it can be attached to by other programs")
+            throw Failure.refusedPeer
+        }
+    }
+
     private static func authenticate(
         _ descriptor: Int32, requirement: String, refusingInjectable: Bool = false
     ) throws -> uid_t {
@@ -331,19 +346,7 @@ private extension TemporaryAdminChannel {
             throw Failure.refusedPeer
         }
         if refusingInjectable {
-            var information: CFDictionary?
-            let flags = SecCSFlags(rawValue: kSecCSDynamicInformation)
-            // A running process's code is accepted where static code is
-            // asked for; dynamic information needs the running one.
-            let running = unsafeBitCast(guest, to: SecStaticCode.self)
-            guard SecCodeCopySigningInformation(running, flags, &information) == errSecSuccess,
-                  let status = ((information as? [String: Any])?[kSecCodeInfoStatus as String] as? NSNumber)?
-                  .uint32Value,
-                  !isInjectable(status: status)
-            else {
-                authenticationLog.error("administrator peer refused: it can be attached to by other programs")
-                throw Failure.refusedPeer
-            }
+            try refuseIfInjectable(guest)
         }
         return uid
     }

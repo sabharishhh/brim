@@ -136,7 +136,7 @@ extension InstallerReader {
         // here still runs when Installer has put that target in place.
         let named = component.scripts.isEmpty
             ? ["preinstall", "postinstall"].filter { exists(folder.appendingPathComponent($0)) }
-                .map { PackageComponent.Script(name: $0, file: $0) }
+            .map { PackageComponent.Script(name: $0, file: $0) }
             : component.scripts
         return named.compactMap { script in
             let file = folder.appendingPathComponent(script.file).standardizedFileURL

@@ -224,12 +224,11 @@ final class UpdateFindingTests: XCTestCase {
 
     // MARK: - Feeds that cannot be trusted
 
-    private func sparkleCheck(itemSignature: String?, link: String = "https://example.com/notes") async throws
-        -> UpdateCheck {
+    private func sparkleCheck(signature: String?, link: String = "https://example.com/n") async throws -> UpdateCheck {
         let signed = try app("Signed", "com.example.signed", "1.0", info: [
             "SUFeedURL": "https://example.com/appcast.xml", "SUPublicEDKey": "a2V5"
         ])
-        let signature = itemSignature.map { #" sparkle:edSignature="\#($0)""# } ?? ""
+        let signature = signature.map { #" sparkle:edSignature="\#($0)""# } ?? ""
         let feed = Data("""
         <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>
         <item><title>2.0</title><link>\(link)</link><sparkle:version>2.0</sparkle:version>\
@@ -241,7 +240,9 @@ final class UpdateFindingTests: XCTestCase {
             guard let url = request.url,
                   let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
             else { throw URLError(.badServerResponse) }
-            guard url.absoluteString == "https://example.com/appcast.xml" else { throw URLError(.notConnectedToInternet) }
+            guard url.absoluteString == "https://example.com/appcast.xml" else {
+                throw URLError(.notConnectedToInternet)
+            }
             return (feed, response)
         }, catalogueDirectory: folder, platform: sequoia, installedCasks: [])
         return await finder.check([signed])
@@ -251,22 +252,23 @@ final class UpdateFindingTests: XCTestCase {
     /// the feed leaves the signature out. Brim fell back to no check at all,
     /// which is what a feed in the wrong hands would do.
     func testAFeedThatDropsTheSignatureAnAppExpectsOffersNothing() async throws {
-        let unsigned = try await sparkleCheck(itemSignature: nil)
+        let unsigned = try await sparkleCheck(signature: nil)
         XCTAssertTrue(unsigned.updates.isEmpty)
-        let signed = try await sparkleCheck(itemSignature: "c2ln")
-        XCTAssertEqual(signed.updates.first?.download?.integrity, UpdateDownload.Integrity.edDSA(signature: "c2ln", publicKey: "a2V5"))
+        let signed = try await sparkleCheck(signature: "c2ln")
+        let expected = UpdateDownload.Integrity.edDSA(signature: "c2ln", publicKey: "a2V5")
+        XCTAssertEqual(signed.updates.first?.download?.integrity, expected)
     }
 
     /// A feed's `<link>` became the Website button's address unchecked, so
     /// a feed could open a file or another app's URL scheme.
     func testOnlyAWebPageFromAFeedIsEverOpened() async throws {
         for link in ["file:///System/Applications/Calculator.app", "vscode://vscode.git/clone?url=x", "http://x.com"] {
-            let check = try await sparkleCheck(itemSignature: "c2ln", link: link)
+            let check = try await sparkleCheck(signature: "c2ln", link: link)
             XCTAssertNotNil(check.updates.first, link)
             XCTAssertNil(check.updates.first?.pageURL, link)
             try? FileManager.default.removeItem(at: folder.appendingPathComponent("Signed.app"))
         }
-        let web = try await sparkleCheck(itemSignature: "c2ln", link: "https://example.com/notes")
+        let web = try await sparkleCheck(signature: "c2ln", link: "https://example.com/notes")
         XCTAssertEqual(web.updates.first?.pageURL?.absoluteString, "https://example.com/notes")
         XCTAssertEqual(AppUpdate.openable(URL(string: "macappstore://apps.apple.com/app/id1")),
                        URL(string: "macappstore://apps.apple.com/app/id1"))
