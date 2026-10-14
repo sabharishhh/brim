@@ -74,14 +74,17 @@ public enum TemporaryAdminChannel {
         return Listener(descriptor: descriptor, path: path, directory: directory)
     }
 
-    public static func acceptHelper(_ listener: Listener, timeoutSeconds: TimeInterval = 120) throws -> Int32 {
+    public static func acceptHelper(
+        _ listener: Listener, requirement: String = BrimJobHelper.daemonRequirement(),
+        timeoutSeconds: TimeInterval = 120
+    ) throws -> Int32 {
         try wait(listener.descriptor, events: Int16(POLLIN),
                  deadline: ProcessInfo.processInfo.systemUptime + timeoutSeconds)
         let descriptor = Darwin.accept(listener.descriptor, nil, nil)
         guard descriptor >= 0 else { throw systemFailure() }
         do {
             try configure(descriptor)
-            let uid = try authenticate(descriptor, requirement: BrimJobHelper.daemonRequirement())
+            let uid = try authenticate(descriptor, requirement: requirement)
             guard uid == 0 else { throw Failure.refusedPeer }
             return descriptor
         } catch {
@@ -114,7 +117,8 @@ public enum TemporaryAdminChannel {
                       failure == 0 else { throw Failure.disconnected }
             }
             guard fcntl(descriptor, F_SETFL, flags) == 0 else { throw systemFailure() }
-            let uid = try authenticate(descriptor, requirement: BrimJobHelper.clientRequirement())
+            let uid = try authenticate(descriptor, requirement: BrimJobHelper.clientRequirement(),
+                                       refusingInjectable: refusesInjectableClients)
             guard uid != 0 else { throw Failure.refusedPeer }
             return (descriptor, uid)
         } catch {
@@ -252,8 +256,33 @@ public enum TemporaryAdminChannel {
     }
 }
 
+extension TemporaryAdminChannel {
+    /// A released helper takes requests only from a Brim no other program
+    /// can steer. A development build carries `get-task-allow` and no
+    /// hardened runtime, so any program the person runs could attach to it
+    /// and send requests root would carry out. A development helper still
+    /// accepts development builds, or nothing could be tested.
+    #if DEBUG
+        static let refusesInjectableClients = false
+    #else
+        static let refusesInjectableClients = true
+    #endif
+
+    /// The kernel's status bits for a running process (`cs_blobs.h`).
+    static let statusGetTaskAllow: UInt32 = 0x0000_0004
+    static let statusRuntime: UInt32 = 0x0001_0000
+    static let statusDebugged: UInt32 = 0x1000_0000
+
+    static func isInjectable(status: UInt32) -> Bool {
+        status & statusRuntime == 0 || status & statusGetTaskAllow != 0 || status & statusDebugged != 0
+    }
+
+}
+
 private extension TemporaryAdminChannel {
-    private static func authenticate(_ descriptor: Int32, requirement: String) throws -> uid_t {
+    private static func authenticate(
+        _ descriptor: Int32, requirement: String, refusingInjectable: Bool = false
+    ) throws -> uid_t {
         var uid: uid_t = 0
         var gid: gid_t = 0
         guard getpeereid(descriptor, &uid, &gid) == 0 else {
@@ -300,6 +329,21 @@ private extension TemporaryAdminChannel {
             peer UID \(uid, privacy: .public)
             """)
             throw Failure.refusedPeer
+        }
+        if refusingInjectable {
+            var information: CFDictionary?
+            let flags = SecCSFlags(rawValue: kSecCSDynamicInformation)
+            // A running process's code is accepted where static code is
+            // asked for; dynamic information needs the running one.
+            let running = unsafeBitCast(guest, to: SecStaticCode.self)
+            guard SecCodeCopySigningInformation(running, flags, &information) == errSecSuccess,
+                  let status = ((information as? [String: Any])?[kSecCodeInfoStatus as String] as? NSNumber)?
+                  .uint32Value,
+                  !isInjectable(status: status)
+            else {
+                authenticationLog.error("administrator peer refused: it can be attached to by other programs")
+                throw Failure.refusedPeer
+            }
         }
         return uid
     }
