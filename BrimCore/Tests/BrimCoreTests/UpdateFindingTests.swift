@@ -257,6 +257,21 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertEqual(signed.updates.first?.download?.integrity, UpdateDownload.Integrity.edDSA(signature: "c2ln", publicKey: "a2V5"))
     }
 
+    /// A feed's `<link>` became the Website button's address unchecked, so
+    /// a feed could open a file or another app's URL scheme.
+    func testOnlyAWebPageFromAFeedIsEverOpened() async throws {
+        for link in ["file:///System/Applications/Calculator.app", "vscode://vscode.git/clone?url=x", "http://x.com"] {
+            let check = try await sparkleCheck(itemSignature: "c2ln", link: link)
+            XCTAssertNotNil(check.updates.first, link)
+            XCTAssertNil(check.updates.first?.pageURL, link)
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent("Signed.app"))
+        }
+        let web = try await sparkleCheck(itemSignature: "c2ln", link: "https://example.com/notes")
+        XCTAssertEqual(web.updates.first?.pageURL?.absoluteString, "https://example.com/notes")
+        XCTAssertEqual(AppUpdate.openable(URL(string: "macappstore://apps.apple.com/app/id1")),
+                       URL(string: "macappstore://apps.apple.com/app/id1"))
+    }
+
     private func app(
         _ name: String,
         _ bundleID: String,
