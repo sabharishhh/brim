@@ -41,8 +41,13 @@ export async function readReport(request) {
       typeof report.body !== 'string' || !report.body.trim() || characterCount(report.body) > 14_000) {
     throw new Error('invalid');
   }
-  return { id: report.id.toLowerCase(), kind: report.kind, title: report.title.trim(), body: report.body };
+  return { id: report.id.toLowerCase(), kind: report.kind, title: quiet(report.title.trim()), body: quiet(report.body) };
 }
+
+// An issue the relay opens notifies everyone it @mentions, from Brim's
+// repository. A zero-width space after the @ keeps the text as written and
+// notifies nobody.
+export const quiet = text => text.replace(/@(?=[A-Za-z0-9])/g, '@\u200b');
 
 export default {
   async fetch(request, env) {
