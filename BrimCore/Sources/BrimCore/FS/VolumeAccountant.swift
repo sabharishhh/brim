@@ -132,7 +132,7 @@ public struct VolumeAccountant: Sendable {
         process.arguments = ["apfs", "listSnapshots", volume.path]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return [] }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()

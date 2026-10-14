@@ -1,3 +1,4 @@
+import BrimProcess
 import Foundation
 import BrimCore
 
@@ -33,22 +34,29 @@ public struct UpdateChecker: Sendable {
         guard let brew = resolvedBrew else {
             return "Homebrew is not installed."
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: brew)
-        process.arguments = ["upgrade", "--cask", name]
-        let errors = Pipe()
-        process.standardOutput = Pipe()
-        process.standardError = errors
-
+        // Homebrew updates itself first and can print long lists of new
+        // formulae. Its output went to a pipe nobody read, so past what a
+        // pipe holds brew waited on Brim and Brim waited on brew, for ever.
+        // The runner drains both streams and stops it at a deadline.
+        let environment = ProcessInfo.processInfo.environment.filter { key, value in
+            !key.isEmpty && !key.contains("=") && !(key + value).contains("\0")
+        }
+        let result: NativeCommandRunner.Result
         do {
-            try process.run()
+            result = try await NativeCommandRunner.run(
+                executable: brew, arguments: ["upgrade", "--cask", name], environment: environment,
+                timeout: 30 * 60, outputLimit: 64 * 1024
+            )
         } catch {
             return error.localizedDescription
         }
-        let details = errors.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus != 0 else { return nil }
+        switch result.termination {
+        case .exited(0): return nil
+        case .timedOut: return "Homebrew did not finish updating \(name) within half an hour."
+        case .cancelled: return "The update was stopped."
+        case .exited, .signalled: break
+        }
+        let details = result.stderr
         let message = String(data: details, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return message.isEmpty
