@@ -126,9 +126,22 @@ public struct AppUpdate: Codable, Equatable, Sendable, Identifiable {
         self.route = route
         self.download = download
         self.releaseNotes = releaseNotes
-        self.releaseNotesURL = releaseNotesURL
+        self.releaseNotesURL = Self.openable(releaseNotesURL)
         self.releasedAt = releasedAt
-        self.pageURL = pageURL
+        self.pageURL = Self.openable(pageURL)
+    }
+
+    /// An address from a feed that Brim may open: a web page, or the App
+    /// Store's own. A feed is written by whoever controls it, and any app
+    /// can name its own, so a `file://` path or another app's URL scheme
+    /// behind the Website button would open whatever it pointed at.
+    public static func openable(_ url: URL?) -> URL? {
+        guard let url, let scheme = url.scheme?.lowercased() else { return nil }
+        switch scheme {
+        case "https": return url.host?.isEmpty == false ? url : nil
+        case "macappstore": return url.host == "apps.apple.com" ? url : nil
+        default: return nil
+        }
     }
 }
 
