@@ -27,8 +27,9 @@ final class TemporaryAdminSession: @unchecked Sendable {
 
     @concurrent
     static func start(executable: URL) async throws -> TemporaryAdminSession {
+        let requirement = try BrimJobHelper.daemonRequirement(codeHash: BrimJobHelper.sealedHelperHash(executable))
         let listener = try TemporaryAdminChannel.makeListener()
-        let launch = launchAdministrator(executable: executable, socketPath: listener.path)
+        let launch = launchAdministrator(executable: executable, socketPath: listener.path, requirement: requirement)
         let acceptance = PendingAcceptance(descriptor: listener.descriptor)
         Task {
             do { try await acceptance.launchEnded(.success(launch.value)) } catch {
@@ -38,7 +39,7 @@ final class TemporaryAdminSession: @unchecked Sendable {
         var transferred = false
         do {
             let descriptor = try await withTaskCancellationHandler {
-                try await accept(listener)
+                try await accept(listener, requirement: requirement)
             } onCancel: {
                 acceptance.interrupt()
                 launch.cancel()
@@ -75,7 +76,7 @@ final class TemporaryAdminSession: @unchecked Sendable {
     }
 
     private static func launchAdministrator(
-        executable: URL, socketPath: String
+        executable: URL, socketPath: String, requirement: String
     ) -> Task<NativeCommandRunner.Result, Error> {
         // Copy before checking the signature. The root-owned staging directory
         // prevents a replaced app bundle changing what executes after verification.
@@ -83,7 +84,7 @@ final class TemporaryAdminSession: @unchecked Sendable {
             + "trap '/bin/rm -rf \"$admin_work\"' EXIT HUP INT TERM; "
             + "/bin/cp -L " + shellQuote(executable.path) + " \"$admin_work/BrimJobHelper\" && "
             + "[ -f \"$admin_work/BrimJobHelper\" ] && [ ! -L \"$admin_work/BrimJobHelper\" ] && "
-            + "/usr/bin/codesign --verify --strict -R=" + shellQuote(BrimJobHelper.daemonRequirement())
+            + "/usr/bin/codesign --verify --strict -R=" + shellQuote(requirement)
             + " \"$admin_work/BrimJobHelper\" && "
             // Security inspects the peer's executable from the app process.
             // Only root can change the copy; the app can traverse and read it.
@@ -97,8 +98,10 @@ final class TemporaryAdminSession: @unchecked Sendable {
         }
     }
 
-    @concurrent private static func accept(_ listener: TemporaryAdminChannel.Listener) async throws -> Int32 {
-        try TemporaryAdminChannel.acceptHelper(listener, timeoutSeconds: 120)
+    @concurrent private static func accept(
+        _ listener: TemporaryAdminChannel.Listener, requirement: String
+    ) async throws -> Int32 {
+        try TemporaryAdminChannel.acceptHelper(listener, requirement: requirement, timeoutSeconds: 120)
     }
 
     func request(_ command: TemporaryAdminRequest) async throws -> TemporaryAdminResponse {
