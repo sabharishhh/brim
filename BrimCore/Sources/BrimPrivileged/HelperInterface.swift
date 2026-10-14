@@ -128,7 +128,7 @@ public enum BrimJobHelper {
     ) -> String {
         let base = requirement(identifier: identifier, teamID: teamID)
         guard let codeHash, codeHash.count == 40 || codeHash.count == 64,
-              codeHash.allSatisfy({ $0.isHexDigit }) else { return base }
+              codeHash.allSatisfy(\.isHexDigit) else { return base }
         return base + " and cdhash H\"\(codeHash.lowercased())\""
     }
 
@@ -153,7 +153,8 @@ public enum BrimJobHelper {
         var helperCode: SecStaticCode?
         var information: CFDictionary?
         guard SecStaticCodeCreateWithPath(executable as CFURL, [], &helperCode) == errSecSuccess, let helperCode,
-              SecCodeCopySigningInformation(helperCode, [], &information) == errSecSuccess,
+              SecCodeCopySigningInformation(helperCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
+              == errSecSuccess,
               let unique = (information as? [String: Any])?[kSecCodeInfoUnique as String] as? Data,
               !unique.isEmpty
         else { throw SealFailure.helperUnreadable }

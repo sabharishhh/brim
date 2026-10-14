@@ -140,8 +140,10 @@ public struct SafetyChecker: Sendable {
         let lowered = components.map { $0.lowercased() }
         // The root of the disk and its main folders, Users, Users/Shared,
         // and every home folder.
-        if lowered.isEmpty || (lowered.count == 1 && topLevelFolders.contains(lowered[0]))
-            || (lowered.count == 2 && lowered[0] == "users") {
+        if lowered.isEmpty || lowered.count == 1 && topLevelFolders.contains(lowered[0]) {
+            return true
+        }
+        if lowered.count == 2, lowered[0] == "users" {
             return true
         }
         guard lowered.count >= 3, lowered[0] == "users", lowered[1] == userName.lowercased() else {

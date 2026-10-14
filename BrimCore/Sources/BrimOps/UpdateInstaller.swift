@@ -183,9 +183,13 @@ public struct UpdateInstaller: Sendable {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         switch kind(of: file) {
         case .zip:
-            guard run("/usr/bin/ditto", ["-x", "-k", file.path, folder.path], timeout: 1800) else { throw Failure.unpack }
+            guard run("/usr/bin/ditto", ["-x", "-k", file.path, folder.path], timeout: 1800) else {
+                throw Failure.unpack
+            }
         case .tar:
-            guard run("/usr/bin/tar", ["-xf", file.path, "-C", folder.path], timeout: 1800) else { throw Failure.unpack }
+            guard run("/usr/bin/tar", ["-xf", file.path, "-C", folder.path], timeout: 1800) else {
+                throw Failure.unpack
+            }
         case .diskImage:
             return try unpackDiskImage(file, into: folder, bundleID: bundleID, depth: depth)
         case .package, .unknown:

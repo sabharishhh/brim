@@ -16,7 +16,7 @@ struct HomebrewOutputTests {
 
         let checker = UpdateChecker(brewPath: brew.path)
         let outcome = try await withThrowingTaskGroup(of: String??.self) { group in
-            group.addTask { .some(await checker.upgradeCask("demo")) }
+            group.addTask { await .some(checker.upgradeCask("demo")) }
             group.addTask {
                 try await Task.sleep(for: .seconds(20))
                 return .none
