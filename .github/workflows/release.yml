@@ -24,6 +24,11 @@ jobs:
     name: Check release candidate
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # GitHub shows a draft release only to a token that can write contents,
+    # and this job has to read the draft's assets. It runs no third-party
+    # code and its checkout does not keep the token.
+    permissions:
+      contents: write
     outputs:
       commit: ${{ steps.candidate.outputs.commit }}
     steps:
