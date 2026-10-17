@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 
 extension DeveloperCacheScanner {
-    /// The catalogue. Each one is here because somebody looked it up, not
+    /// The catalogue. Each entry is here because its tool documents it, not
     /// because its path contains "cache".
     struct Known: Sendable {
         let name: String
@@ -96,9 +96,8 @@ extension DeveloperCacheScanner {
               explanation: "Built wheels and downloaded packages. pip fetches or rebuilds "
                   + "them as needed.",
               cleanupID: "pip.cache"),
-        // `cargo cache` is an add-on most people do not have, so the
-        // command Brim ran for this failed. Cargo documents the registry as
-        // safe to remove: the next build downloads what it needs.
+        // Cargo documents the registry as safe to remove; the next build downloads
+        // what it needs.
         Known(name: "Registry", tool: "Cargo",
               relativePath: ".cargo/registry",
               cost: .refetched,

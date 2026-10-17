@@ -117,24 +117,20 @@ public struct DatabaseManager: Sendable {
             }
         }
 
-        // v2 widens the append-only observation table so a snapshot can
-        // be subtracted from the one before it. Registered as a second
-        // migration rather than edited into v1 on purpose: a database
-        // that already exists on somebody's Mac has to come forward, and
-        // the only way to know that works is to have done it once.
+        // v2 widens the append-only observation table so one snapshot can be
+        // subtracted from the one before. A separate migration rather than an edit
+        // to v1, so an existing database comes forward.
         migrator.registerMigration("v2-install-snapshots") { db in
             try db.alter(table: "observation") { t in
-                // Which enumeration this row belongs to. Every row from
-                // one scan shares it, which is what makes "the previous
-                // scan" a thing that can be selected.
+                // Which listing this row belongs to; every row of one scan shares it, so
+                // "the previous scan" can be selected.
                 t.add(column: "scan_id", .text)
                 t.add(column: "version", .text)
                 t.add(column: "bundle_path", .text)
                 t.add(column: "size_bytes", .integer)
-                /// When the bundle arrived on this Mac, and when it was
-                /// last opened. Both come from Spotlight, both can be
-                /// absent, and the pair is what tells migrated software
-                /// from software somebody actually uses.
+                /// When the bundle arrived and when it was last opened, both from Spotlight
+                /// and both optional. Together they tell migrated software from software
+                /// someone uses.
                 t.add(column: "added_at", .datetime)
                 t.add(column: "last_used_at", .datetime)
             }
@@ -148,10 +144,8 @@ public struct DatabaseManager: Sendable {
             )
         }
 
-        // Every name an application answered to, not just the one on its
-        // icon. Once the bundle is gone these are all Brim has: SystemEQ for
-        // Mac kept `Application Support/SystemEQ`, and with only its display
-        // name recorded the sweep could not tell whose that was.
+        // Every name an app answered to, since once the bundle is gone these are
+        // all Brim has to recognise its folders.
         migrator.registerMigration("v3-recorded-names") { database in
             try database.alter(table: "identity") { table in
                 table.add(column: "names", .text)
@@ -161,11 +155,8 @@ public struct DatabaseManager: Sendable {
         try migrator.migrate(dbPool)
     }
 
-    /// Which migrations this database has had applied.
-    ///
-    /// Exposed so a test can prove a v1 database comes forward rather
-    /// than being rebuilt, which is the acceptance criterion and the
-    /// thing nobody finds out until somebody's history disappears.
+    /// Which migrations this database has had, so a test can prove an old
+    /// database comes forward rather than being rebuilt.
     public func appliedMigrations() throws -> Set<String> {
         try dbPool.read { db in
             try Set(String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations"))

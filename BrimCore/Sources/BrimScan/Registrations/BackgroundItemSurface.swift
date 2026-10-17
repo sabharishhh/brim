@@ -2,26 +2,10 @@ import BrimCore
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// Background Task Management: login items and background services.
-///
-/// This is the surface that motivated the product. When an app is removed
-/// without deregistering, System Settings goes on listing its background
-/// item, often as a bare identifier with no name, and no amount of file
-/// deletion clears it.
-///
-/// Read straight from the Background Task Management store. That matters
-/// more than it sounds: this used to go through `sfltool dumpbtm`, which
-/// made macOS ask "Allow administrator access for sfltool?" every single
-/// time. The surface grew a whole apparatus for dodging that prompt, and
-/// the user still met it whenever they wanted to see their login items.
-///
-/// `BTMStore` reads the same records out of the files macOS keeps them in,
-/// which needs Full Disk Access and nothing else. So this is now an
-/// ordinary surface: it runs during a scan like the rest, costs nothing,
-/// and asks for nothing.
-///
-/// The records are injectable so the mapping can be tested against fixtures
-/// without a machine that happens to have the right software on it.
+/// Background Task Management: login items and background services. An app
+/// removed without deregistering stays listed in System Settings, often as a
+/// bare identifier. Read from the store through `BTMStore`, which needs Full
+/// Disk Access and raises no prompt. Records are injectable for tests.
 public struct BackgroundItemSurface: RegistrationSurface {
     public let kind: Registration.Kind = .backgroundItem
 
@@ -141,13 +125,9 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return parentURL.appendingPathComponent(relative)
     }
 
-    /// The bundle identifier of the application at the top of the chain.
-    ///
-    /// A record names its container, which names its container, up to the
-    /// application itself. Following that to the end is what puts an app
-    /// and everything it ships into one entry rather than several unrelated
-    /// ones. Guarded against a cycle, because a malformed store is not
-    /// worth hanging on.
+    /// The bundle identifier at the top of the container chain, so an app and
+    /// everything it ships make one entry. Guarded against a cycle in a
+    /// malformed store.
     static func rootOwner(of record: BTMRecord, parents: [String: BTMRecord]) -> String? {
         var current = record
         var seen: Set<String> = [record.uuid]
@@ -159,11 +139,8 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return current.bundleIdentifier
     }
 
-    /// The store records a home directory as `/Users/<uid>`, not as the
-    /// account name. Taken literally that path does not exist, so a
-    /// perfectly healthy login item reads as a leftover. Seen with Figma's
-    /// agent, recorded as `/Users/501/...` while the app sits in the real
-    /// home.
+    /// The store records a home folder as `/Users/<uid>`, which does not exist,
+    /// so a healthy login item would read as a leftover.
     static func normalizingUserPlaceholder(
         _ url: URL,
         homeDirectory: @Sendable (uid_t) -> String?
@@ -184,15 +161,9 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return String(cString: dir)
     }
 
-    /// Apple's own background items are not leftovers and are not the user's
-    /// to remove, however they look.
-    ///
-    /// Three fields can name the owner and any one of them can be the only
-    /// one filled in. Stocks registers a background app refresh item with
-    /// no bundle identifier and no URL at all: its own identifier is
-    /// `4096.com.apple.stocks` and its parent's is `2.com.apple.stocks`.
-    /// Reading only `bundleIdentifier` therefore put Apple's Stocks in a
-    /// list whose whole subject is the user's own software.
+    /// Apple's own background items are not the person's to remove. Any of three
+    /// fields may be the only one naming the owner: Stocks' refresh item has
+    /// only `4096.com.apple.stocks`.
     static func isSystemOwned(_ record: BTMRecord, resolved: URL?) -> Bool {
         let named = [record.bundleIdentifier, record.identifier, record.parentIdentifier]
         if named.contains(where: { $0.map { bundleIdentifier(in: $0).hasPrefix("com.apple.") } == true }) {
@@ -202,13 +173,10 @@ public struct BackgroundItemSurface: RegistrationSurface {
         return ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
     }
 
-    /// The bundle identifier inside a Background Task Management identifier.
-    ///
-    /// The store prefixes each one with the record's type: `2.` for an
-    /// application, `8192.` for its background tasks, `128.` for a dock tile
-    /// plugin, `4096.` for background app refresh. Only a leading run of
-    /// digits is stripped, so an identifier that carries no prefix, and one
-    /// whose first component merely starts with a digit, come back whole.
+    /// The bundle identifier inside a Background Task Management identifier,
+    /// which is prefixed with the record's type (`2.` app, `8192.` background
+    /// tasks, `128.` dock tile, `4096.` background refresh). Only a leading run
+    /// of digits is stripped.
     static func bundleIdentifier(in identifier: String) -> String {
         guard let dot = identifier.firstIndex(of: "."),
               dot != identifier.startIndex,

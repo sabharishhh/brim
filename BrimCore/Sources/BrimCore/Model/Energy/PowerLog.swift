@@ -1,15 +1,8 @@
 import Foundation
 
-/// The last few days of sleep, charge and stay-awake requests, from the log
-/// macOS keeps for itself.
-///
-/// `pmset -g log` is power management's own record: every sleep and wake
-/// with the charge at that moment, and every request a process made to keep
-/// the Mac awake, with how long it was held. macOS keeps about a week of it
-/// and anyone can read it. That is what lets Brim answer "why did my battery
-/// go down overnight" without watching anything: the history was written by
-/// macOS whether Brim was running or not, and Brim reads it when the page
-/// opens.
+/// The last few days of sleep, charge and stay-awake requests, from
+/// `pmset -g log`, power management's own record. macOS keeps about a week
+/// of it whether Brim runs or not, so nothing has to be watched.
 public struct PowerHistory: Sendable, Equatable {
     /// Charge at one moment the log recorded it.
     public struct ChargePoint: Sendable, Equatable {
@@ -24,9 +17,8 @@ public struct PowerHistory: Sendable, Equatable {
         }
     }
 
-    /// A stretch the Mac spent asleep, from going to sleep to the next full
-    /// wake. Brief wakes for maintenance inside it are counted, not split
-    /// out: the screen stayed off and nobody was using it.
+    /// A stretch asleep, from sleep to the next full wake. Maintenance wakes
+    /// inside it are counted, not split out.
     public struct Sleep: Sendable, Equatable {
         public let span: DateInterval
         public let chargeAtStart: Int?
@@ -55,9 +47,8 @@ public struct PowerHistory: Sendable, Equatable {
         /// identifier when the request was made on an application's behalf.
         public let requester: String
         public let isIdentifier: Bool
-        /// The stretches it was held, kept so requests that turn out to be
-        /// the same application's can be added up without counting an
-        /// overlap twice.
+        /// The stretches it was held, so requests from the same app add up without
+        /// counting an overlap twice.
         public let spans: [DateInterval]
 
         public var seconds: TimeInterval {
@@ -85,10 +76,9 @@ public struct PowerHistory: Sendable, Equatable {
         sleeps.last { $0.duration >= 30 * 60 }
     }
 
-    /// Requests added up per application, busiest first. A process no
-    /// application answers to is macOS's own and is left out. Safari asks
-    /// for itself and is asked for by `runningboardd`, and the two are one
-    /// app's time, counted once.
+    /// Requests added up per application, busiest first. A process no app
+    /// answers to is macOS's own and left out. Requests made for an app by
+    /// another process count as the app's, once.
     public func requestsByApplication(_ names: ApplicationNames) -> [ApplicationNames.Held] {
         var grouped: [String: (app: ApplicationNames.App, spans: [DateInterval])] = [:]
         for request in requests {
@@ -103,8 +93,7 @@ public struct PowerHistory: Sendable, Equatable {
 
     // MARK: - Reading
 
-    /// About two and a half seconds on this Mac, so never on the main
-    /// thread.
+    /// Takes a few seconds, so never on the main thread.
     public static func current(now: Date = Date()) -> PowerHistory? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
@@ -198,10 +187,9 @@ struct PowerLogReader {
         lastSeen = entry.time
     }
 
-    /// The Mac started up. A sleep that never woke ended when it shut down,
-    /// and so did every request: their processes are gone. Both end at the
-    /// last thing the log recorded before the restart, never at the
-    /// restart, or the hours switched off would count as hours asked.
+    /// The Mac started up. An unfinished sleep and every open request end at the
+    /// last thing logged before the restart, never at the restart, or time
+    /// switched off would count as time asked.
     private mutating func readStart(_ entry: PowerLogEntry) {
         restarts.append(entry.time)
         asleep = nil
@@ -308,9 +296,8 @@ struct PowerLogEntry {
         let stampEnd = head.index(head.startIndex, offsetBy: 25, limitedBy: head.endIndex) ?? head.endIndex
         let domain = Substring(head[stampEnd...].trimmingCharacters(in: .whitespaces))
         let message = line[line.index(after: tab)...]
-        // Only the lines used here pay for a date parse. Nearly all of the
-        // log is requests of kinds that do not matter here, and parsing
-        // every date took four seconds.
+        // Only the lines used here pay for a date parse; parsing every date took
+        // seconds.
         guard Self.wanted.contains(domain),
               domain != "Assertions" || PowerLogReader.systemKinds.contains(where: { message.contains($0) }),
               let time = Self.stamp.date(from: head[..<stampEnd].trimmingCharacters(in: .whitespaces))

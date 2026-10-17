@@ -1,19 +1,8 @@
 import Foundation
 
-/// The registrations one application is responsible for, gathered together.
-///
-/// The flat list read as though the same software were listed over and over.
-/// Visual Studio Code appeared twice, once as itself and once as its
-/// background tasks. ChatGPT appeared beside a dock tile plugin nobody would
-/// connect to it. Google Keystone appeared four times in a row, identically
-/// labelled, because it installs two jobs and installs each of them twice,
-/// once for the account and once for the machine, and the row showed nothing
-/// that told the copies apart.
-///
-/// None of those were wrong. Every row named a real, separate record. They
-/// were just organised by mechanism, which is how Brim finds them, rather
-/// than by application, which is how a person thinks about them. The same
-/// mistake the leftovers list made, and the same fix.
+/// The registrations one application is responsible for, together. Brim
+/// finds them by mechanism, but people think by application, so the list
+/// is grouped by owner.
 public struct RegistrationGroup: Identifiable, Equatable, Sendable {
     /// The owner's identifier, and what the grouping is keyed on.
     public let id: String
@@ -33,21 +22,15 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
     /// Entries pointing at something that is not there.
     public var stale: [Registration] { items.filter(\.isStale) }
 
-    /// Whether macOS clears every stale entry here without help. Mixed
-    /// groups count as needing attention, since the part that needs it
-    /// still does.
+    /// Whether macOS clears every stale entry here without help. A mixed group
+    /// needs attention.
     public var staleClearsItself: Bool {
         !stale.isEmpty && stale.allSatisfy(\.isClearedByMacOS)
     }
 
-    /// Who signed the code behind this, when every item agrees. Shown on
-    /// the group rather than on each row, because an application and the
-    /// helpers it ships are signed by the same team and repeating it is
-    /// noise.
-    /// Items with no code to examine, such as a background-tasks record
-    /// with no path at all, are passed over rather than counted against
-    /// the group. Requiring every item to be signed meant an application
-    /// beside one pathless record showed nothing.
+    /// Who signed the code behind this, when every item agrees, shown once for
+    /// the group. Items with no code to examine, such as a record with no path,
+    /// are passed over rather than counted against the group.
     public var signedBy: String? {
         var teams: Set<String> = []
         for item in items {
@@ -64,14 +47,9 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         return teams.count == 1 ? teams.first : nil
     }
 
-    /// What the "Signed by" column shows, which is never blank.
-    ///
-    /// `signedBy` is deliberately strict: it answers only when every item
-    /// agrees on one team, and returns nothing for unsigned code, a broken
-    /// signature, a team that has changed underneath macOS, and a group whose
-    /// items disagree. The column used to render all four of those as a dash,
-    /// so a background item signed by nobody looked exactly like one Brim had
-    /// not got to. Each of those states already carries its own sentence.
+    /// What the "Signed by" column shows, which is never blank. `signedBy`
+    /// answers only when every item agrees on one team; unsigned, broken,
+    /// changed and mixed signatures each get their own words instead of a dash.
     public var signerDescription: String {
         if let signedBy { return signedBy }
 
@@ -82,10 +60,8 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         guard !verdicts.isEmpty else { return "No code to read" }
         if let trouble = verdicts.first(where: \.isTrouble) { return trouble.shortDescription }
 
-        // Everything left is valid, so the two remaining cases are a
-        // signature that carries no team identifier and a group whose items
-        // carry more than one. Both are different from "unsigned" and from
-        // "not examined", which is the distinction the dash lost.
+        // Everything left is valid: either a signature with no team identifier, or
+        // items with more than one team.
         var teams: Set<String> = []
         for verdict in verdicts {
             if case .valid(let team) = verdict, let team { teams.insert(team) }
@@ -111,11 +87,8 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
             .joined(separator: ", ")
     }
 
-    /// What a screen reader should say for the group's header row, so a
-    /// reader hears one application rather than a name followed by
-    /// unattached counts.
-    /// Where this group's first located item sits, for a table column and
-    /// for revealing it in Finder.
+    /// Where this group's first located item sits, for a table column and for
+    /// revealing it in Finder.
     public var location: String? {
         items.compactMap { $0.programPath ?? $0.recordPath }.first
     }
@@ -132,12 +105,9 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         return parts.joined(separator: ", ")
     }
 
-    /// Gathers registrations by the application that owns them.
-    ///
-    /// Keyed on the owning bundle identifier, falling back to the entry's
-    /// own identifier when nothing claims it. Two launchd jobs from the
-    /// same vendor stay apart, because they are two different jobs and
-    /// merging them on a shared name prefix would be a guess.
+    /// Gathers registrations by owning bundle identifier, falling back to the
+    /// entry's own identifier. Two jobs from one vendor stay apart: merging on a
+    /// shared prefix would be a guess.
     public static func group(_ registrations: [Registration]) -> [RegistrationGroup] {
         var order: [String] = []
         var buckets: [String: [Registration]] = [:]
@@ -154,27 +124,18 @@ public struct RegistrationGroup: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// The application's name, taken from whichever record knows it.
-    ///
-    /// The record for the application itself carries a real name and points
-    /// at a bundle; the records for what it ships carry names derived from
-    /// it, like "Claude - background tasks". Preferring the one that points
-    /// at an app bundle picks "Claude" over its own helpers, and the
-    /// shortest label breaks the tie when nothing points at a bundle.
+    /// The application's name from whichever record knows it. The record for the
+    /// app itself points at a bundle, so it is preferred over its helpers'
+    /// derived names; the shortest label breaks a tie.
     static func name(for items: [Registration], key: String) -> String {
         let fromBundle = items.first {
             $0.programPath?.hasSuffix(".app") == true && !$0.label.isEmpty
         }
         if let fromBundle { return fromBundle.label }
 
-        // An app extension is not its own application and its label is not a
-        // name anybody knows. Prime Video's notification service listed
-        // itself as "NotificationService", IINA's as "OpenInIINA", WhatsApp's
-        // two as "Intents" and "ServiceExtension". None of those records
-        // points at a `.app`, because each points at the `.appex` inside one,
-        // so the check above missed them and the shortest-label tiebreak
-        // named the group after the plug-in. The enclosing bundle is right
-        // there in the path.
+        // An app extension points at the `.appex` inside an app, so the check above
+        // misses it and its own label ("NotificationService") is no name anyone
+        // knows. The enclosing bundle in the path names the group instead.
         let enclosing = items
             .compactMap { $0.programPath ?? $0.recordPath }
             .compactMap { EnclosingBundle.name(of: URL(fileURLWithPath: $0)) }

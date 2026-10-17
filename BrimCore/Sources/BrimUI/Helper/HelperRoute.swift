@@ -54,9 +54,8 @@ public enum HelperRoute {
         })
     }
 
-    /// Sends a path to whichever of the helper's operations covers its
-    /// folder. The folders are the helper's own; see `HelperScope`, which
-    /// is the planner's reading of the same lists.
+    /// Sends a path to whichever administrator operation covers its folder.
+    /// `HelperScope` is the planner's reading of the same folders.
     static func remove(_ path: String, helper: PrivilegedHelperClient) async -> String? {
         if let problem = await ready(helper) {
             return problem
@@ -84,8 +83,8 @@ public enum HelperRoute {
         return "Administrator cleanup does not remove things from \(folder)."
     }
 
-    /// Nil when the helper can take work. Asked by a review that is about
-    /// to hand it some, which is the moment the answer is needed.
+    /// Nil when administrator cleanup can take work, asked by a review about to
+    /// hand it some.
     public static func problem() async -> String? {
         guard let connected else { return "Administrator cleanup is unavailable in this window." }
         return await ready(connected)

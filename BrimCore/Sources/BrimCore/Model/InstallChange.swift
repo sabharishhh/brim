@@ -1,10 +1,7 @@
 import Foundation
 
-/// One installation of an application, as Brim's snapshots record it.
-///
-/// The Journal used to take its installs from the apps on the disk now, so
-/// an app's installs vanished when it was removed: Figma read removed,
-/// removed, with the install between them gone, and so did eqMac.
+/// One installation of an application, as Brim's snapshots record it. The
+/// Journal reads installs from these, so they survive the app's removal.
 public struct InstallRecord: Equatable, Sendable, Codable {
     public let bundleID: String
     public let name: String
@@ -19,12 +16,9 @@ public struct InstallRecord: Equatable, Sendable, Codable {
     }
 }
 
-/// One application as it stood at one moment.
-///
-/// The unit of the append-only history. Nothing is updated in place and
-/// nothing is derived and stored: a snapshot is written, and what changed
-/// is worked out afterwards by subtracting one from another. That is why
-/// there is no watcher process and nothing running at login.
+/// One application as it stood at one moment: the unit of the append-only
+/// history. Nothing is updated in place; what changed is worked out by
+/// subtracting one snapshot from another.
 public struct InstallObservation: Equatable, Sendable, Codable {
     public let bundleID: String
     public let name: String
@@ -57,14 +51,9 @@ public struct InstallObservation: Equatable, Sendable, Codable {
     }
 }
 
-/// What is different since last time Brim looked.
-///
-/// Derived by subtraction, never watched. A resident process that
-/// notices installations is the thing every competitor ships and the
-/// thing nobody wants running: it costs battery, it needs permissions,
-/// and it is one more daemon on a Mac whose whole complaint is that it
-/// has too many. Two snapshots and a difference answer the same question
-/// for nothing.
+/// What is different since Brim last looked, derived by subtraction. Never
+/// watched: a resident process costs battery and permissions, and two
+/// snapshots answer the same question for nothing.
 public struct InstallChange: Equatable, Sendable, Codable, Identifiable {
     public enum Kind: Equatable, Sendable, Codable {
         case appeared

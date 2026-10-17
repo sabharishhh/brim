@@ -2,18 +2,8 @@ import BrimCore
 import Foundation
 
 /// System and network extensions: content filters, VPNs, DriverKit drivers.
-///
-/// These are the ones that survive hardest. A deactivation is owned by the
-/// host application, not by whoever happens to be uninstalling it, and
-/// macOS will not let a third party withdraw somebody else's extension.
-/// A VPN client removed by dragging it to the Trash characteristically
-/// leaves a dead network configuration that the person then cannot get
-/// rid of from Settings either.
-///
-/// So this surface reports and routes, and never acts. That is the
-/// specification's own wording for B6, and it is right: an action Brim
-/// cannot actually carry out is worse than an honest sentence naming what
-/// is there and who owns it.
+/// Only the host app can deactivate its extension, so this reports and
+/// routes and never acts.
 public struct SystemExtensionSurface: RegistrationSurface {
     public let kind: Registration.Kind = .systemExtension
 
@@ -54,9 +44,8 @@ public struct SystemExtensionSurface: RegistrationSurface {
         return Self.parse(output)
     }
 
-    /// `systemextensionsctl list` prints a header per category, then one
-    /// line per extension, then a count. An empty machine prints only
-    /// "0 extension(s)", which is a real answer and not a failure.
+    /// `systemextensionsctl list` prints a header per category, one line per
+    /// extension, then a count. "0 extension(s)" is a real answer.
     static func parse(_ output: String) -> [Registration] {
         var results: [Registration] = []
 
@@ -77,10 +66,8 @@ public struct SystemExtensionSurface: RegistrationSurface {
                 .filter { !$0.isEmpty }
             guard fields.count >= 4 else { continue }
 
-            // The bundle identifier is the first field shaped like one.
-            // Each field is reduced to its first token first, because the
-            // identifier column carries a version beside it:
-            // "com.example.vpn.extension (1.0/1.0)".
+            // The bundle identifier is the first field shaped like one, after reducing
+            // each field to its first token: "com.example.vpn.extension (1.0/1.0)".
             guard let identifier = fields
                 .compactMap({ $0.split(separator: " ").first.map(String.init) })
                 .first(where: {
@@ -99,10 +86,9 @@ public struct SystemExtensionSurface: RegistrationSurface {
                 label: identifier,
                 owningBundleID: identifier,
                 programPath: nil,
-                // Nothing here is judged stale. What state an extension is
-                // in is macOS's business and the host application's, and
-                // guessing from a status string would produce a row
-                // offering an action that cannot work.
+                // Nothing here is judged stale: an extension's state is macOS's and the
+                // host app's, and guessing from a status string would offer an action that
+                // cannot work.
                 targetExists: true,
                 recordPath: nil,
                 evidence: isTerminated

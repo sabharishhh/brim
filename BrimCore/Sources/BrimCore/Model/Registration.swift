@@ -1,13 +1,9 @@
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// An entry an application leaves in one of macOS's own databases, rather
-/// than on the filesystem.
-///
-/// These are what survive an ordinary uninstall: the background item still
-/// listed in System Settings, the accessibility grant for an app that is
-/// gone, the login item pointing at nothing. Deleting the bundle does not
-/// remove them, because they do not live in the bundle.
+/// An entry an application leaves in one of macOS's own databases rather
+/// than on the file system: a background item, a privacy grant, a login
+/// item. Deleting the bundle does not remove these.
 public struct Registration: Codable, Equatable, Sendable, Identifiable {
     /// Which macOS mechanism holds the entry. Each maps to a supported way
     /// of removing it; Brim never edits these databases directly.
@@ -30,20 +26,14 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         case installerReceipt
         /// A root-owned helper in /Library/PrivilegedHelperTools.
         case privilegedHelper
-        /// One of the many directory-based plug-in surfaces: preference
-        /// panes, screen savers, Quick Look generators, Spotlight
-        /// importers, Audio Units, Internet plug-ins, Services, Automator
-        /// actions, colour pickers, fonts, StartupItems, kernel
-        /// extensions. One kind rather than thirteen, because they differ
-        /// only in which folder they sit in, and the folder is named in
-        /// the row.
+        /// The directory-based plug-in surfaces (preference panes, screen savers,
+        /// Quick Look generators, Spotlight importers, Audio Units and more). One
+        /// kind, because they differ only by folder, which the row names.
         case bundlePlugin
         /// A login item from before Background Task Management, held in a
         /// shared file list.
         case legacyLoginItem
-        /// A line a tool appended to a shell profile. Reported, never
-        /// edited: silently rewriting somebody's shell configuration is
-        /// not acceptable.
+        /// A line a tool appended to a shell profile. Reported, never edited.
         case shellProfileLine
         /// A keychain entry. Reported, never touched.
         case keychainItem
@@ -98,27 +88,20 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
     public let recordPath: String?
     /// One sentence naming the mechanism, in the same voice as evidence.
     public let evidence: String
-    /// True when macOS owns this entry. Apple ships launchd jobs whose
-    /// programs are absent (cryptex-relocated or conditionally installed),
-    /// and they are neither stale in any useful sense nor removable. They
-    /// must never be offered as something to clean up.
+    /// True when macOS owns this entry. Apple ships launchd jobs whose programs
+    /// are absent (cryptex-relocated or conditionally installed); they are never
+    /// offered for cleanup.
     public let isSystemOwned: Bool
     /// What signs the code this points at, when Brim looked. Nil where the
     /// question does not arise, such as a record with no path at all.
     public let signing: SigningState?
-    /// What it would take to remove the record itself, where the record is
-    /// a file. Offering a removal without asking this is what produced an
-    /// authorization followed by "2 targets still remain".
+    /// What it would take to remove the record itself, where it is a file, so a
+    /// removal is never offered that cannot succeed.
     public let capability: Capability
-    /// Whether macOS launches this when the person signs in, as its own
-    /// record says. Optional so a registration saved before it existed
-    /// still decodes.
-    ///
-    /// Background Task Management keeps a record for every application
-    /// that has helpers, pointing at the application's bundle, whether or
-    /// not the application itself opens at login. Reading "points at an
-    /// app" as "opens at login" put Brim, ChatGPT and seven more under
-    /// that heading on a Mac where none of them did.
+    /// Whether macOS launches this at sign-in, as its own record says. Optional
+    /// for older saves. Background Task Management keeps a record for every app
+    /// with helpers whether or not it opens at login, so "points at an app" does
+    /// not mean "opens at login".
     public let atLogin: Bool?
 
     /// A login item, by its record's own type or by the older mechanism.
@@ -134,10 +117,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         return .loginItemsSettings
     }
 
-    /// The record's own location is part of the identity. Google Keystone
-    /// installs the same job twice, once for the user and once for the
-    /// machine, and without the path both copies claimed the same id: one
-    /// row in a SwiftUI list, and no way to tell which file was which.
+    /// The record's location is part of the identity: the same job can be
+    /// installed once for the user and once for the machine.
     public var id: String {
         "\(kind.rawValue):\(namespace ?? ""):\(recordIdentity ?? identifier):\(recordPath ?? programPath ?? "")"
     }
@@ -153,15 +134,10 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         RemovalTier.forRegistration(kind, ownerPresent: ownerPresent)
     }
 
-    /// Whether Brim will only ever describe this, never act on it.
-    ///
-    /// Two things are in this class and both for the same reason: acting
-    /// would be a worse mistake than leaving them. A keychain entry may
-    /// hold a licence the person paid for, and Reset deliberately
-    /// preserves licence material. A shell profile is a file somebody
-    /// wrote by hand, and editing it silently is not something a cleaning
-    /// tool gets to do. Both are shown with their location so the person
-    /// can act, which is the whole of Brim's job here.
+    /// Whether Brim only ever describes this. A keychain entry may hold a paid
+    /// licence, and a shell profile is a file someone wrote by hand, so acting
+    /// on either would be a worse mistake than leaving it. Both are shown with
+    /// their location.
     public var isReportOnly: Bool {
         kind == .keychainItem || kind == .shellProfileLine || kind == .backgroundItem
             || kind == .firewallEntry || kind == .systemExtension || kind == .legacyLoginItem
@@ -171,9 +147,7 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
             || kind == .privacyGrant
     }
 
-    /// A report-only entry is never a thing to sweep, however stale it
-    /// looks. Offering an action that does not exist is worse than not
-    /// mentioning it.
+    /// A report-only entry is never swept, however stale it looks.
     public var isActionable: Bool {
         !isReportOnly && !isSystemOwned
     }
@@ -183,9 +157,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
         targetPresence.isAbsent
     }
 
-    /// Stale *and* something the user could actually act on. The sweep shows
-    /// these; a stale system entry is noise the user cannot do anything
-    /// about, and presenting it as actionable would be a lie.
+    /// Stale and something the person could act on. A stale system entry is
+    /// noise nobody can do anything about.
     public var isActionableStale: Bool {
         isStale && isActionable
     }
@@ -229,18 +202,8 @@ public struct Registration: Codable, Equatable, Sendable, Identifiable {
 }
 
 public extension Registration {
-    /// What a screen reader should say for this row.
-    ///
-    /// The view builds a row out of seven separate pieces of text, and
-    /// left alone the accessibility tree hands a reader all seven as
-    /// unrelated fragments: a name, then a category, then a warning, then
-    /// a sentence, then a path, with nothing saying they describe one
-    /// thing. Composed here instead, so the row reads as a row.
-    ///
-    /// The path is deliberately left out and carried as the value instead.
-    /// Reading a full filesystem path aloud in the middle of every entry
-    /// buries the part that matters, and a reader can ask for the value
-    /// when they want it.
+    /// One sentence for VoiceOver, composed so the row reads as one thing rather
+    /// than seven fragments. The path is the value, not part of the label.
     var spokenDescription: String {
         var parts: [String] = [label, kind.displayName]
         if isSystemOwned {
@@ -261,12 +224,9 @@ public extension Registration {
         programPath ?? recordPath
     }
 
-    /// Whether this entry belongs to the given application.
-    ///
-    /// Matches on the bundle identifier, then on the program path pointing
-    /// inside the app's bundle. Deliberately not a name-substring match: a
-    /// registration is removed on evidence of ownership, never on a guess,
-    /// which is the same rule the evidence engine follows for files.
+    /// Whether this entry belongs to the given application: by bundle
+    /// identifier, then by a program path inside the app's bundle. Never by a
+    /// name substring; registrations are removed on evidence, not a guess.
     func belongs(to identity: Identity, bundleURL: URL?) -> Bool {
         // Launch Services unregisters one path. Its identifier can also
         // belong to another installed copy, which must keep its own record.
@@ -298,28 +258,19 @@ public extension Registration {
     }
 }
 
-/// Whether a surface was readable, so the UI can distinguish "nothing found"
-/// from "could not look". Milestone 5's gate requires every feature to
-/// report its own gaps.
+/// Whether a surface was readable, so "nothing found" and "could not look"
+/// are told apart.
 public struct RegistrationCoverage: Equatable, Sendable, Codable {
     /// Why a surface is not in the list, which decides what the person is
-    /// offered about it.
-    ///
-    /// These were one thing and it produced a wrong screen: the keychain,
-    /// which Brim deliberately does not read, appeared under "Part of
-    /// this list is missing" with a button offering to open Full Disk
-    /// Access. Full Disk Access was already granted, so the banner told
-    /// somebody their machine was misconfigured, pointed them at a switch
-    /// that was already on, and would have changed nothing if it had not
-    /// been. A boundary Brim has chosen is not a gap the person can close.
+    /// offered. A boundary Brim chose, such as the keychain, is not a gap the
+    /// person can close, so it never offers a permission.
     public enum Absence: String, Equatable, Sendable, Codable {
-        /// A permission the person can grant. Worth interrupting for, and
-        /// there is something to press.
+        /// A permission the person can grant: worth asking for, with something to
+        /// press.
         case needsPermission
         /// The mechanism did not answer. Worth saying, nothing to press.
         case couldNotRead
-        /// Brim will not read this on purpose. Not a fault, not missing,
-        /// and never presented as either.
+        /// Brim does not read this on purpose. Never presented as a fault.
         case byDesign
     }
 

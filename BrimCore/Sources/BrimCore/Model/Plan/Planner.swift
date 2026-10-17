@@ -85,8 +85,8 @@ public struct Planner: Sendable {
             if Self.hasAncestor(of: standardized, in: removedWhole) {
                 continue
             }
-            // Shown with the reason it stays whatever its tier, and never
-            // offered for ticking: nothing Brim may do would remove it.
+            // Shown with its reason whatever its tier, and never offered for ticking:
+            // nothing Brim may do would remove it.
             if HelperScope.signInFolders.contains(targetURL.deletingLastPathComponent().path),
                let kept = HelperScope.keptOut(targetPath, bytes: item.footprintItem.sizeBytes) {
                 excludedItems.append(kept)
@@ -96,9 +96,8 @@ public struct Planner: Sendable {
             switch item.selection {
             case .selected:
                 guard plannedPaths.insert(standardized).inserted else { continue }
-                // A receipt is forgotten below, which removes its files
-                // with it. Trashing the BOM as well offered a second row
-                // for one record, and one that belongs to root.
+                // The receipt is forgotten below, which accounts for its files; trashing
+                // the BOM as well would offer a second row for one record.
                 if item.footprintItem.evidence.mechanism == "InstallerReceiptSource",
                    intent.type == .uninstall, intent.explicitTargets.isEmpty {
                     continue
@@ -124,11 +123,9 @@ public struct Planner: Sendable {
                 let disposition = StepDisposition.default(for: item.costOfError)
                 let isReversible = disposition == .trash
 
-                // Root's folders need administrator cleanup, decided here so
-                // one selection can mix the person's files with root's in one
-                // plan and one review. Only what administrator cleanup will
-                // take becomes a step; the rest stays out with its reason. See
-                // `HelperScope.keptOut`.
+                // Root's folders need administrator cleanup, so one selection can mix the
+                // person's files and root's in one plan. Only what it will take becomes a
+                // step; the rest stays out with its reason (`HelperScope.keptOut`).
                 let needsPrivilege = item.footprintItem.capability == .needsHelper
                 if needsPrivilege, let kept = HelperScope.keptOut(targetPath, bytes: sizeBytes) {
                     expectedTotalBytes -= sizeBytes
@@ -136,11 +133,8 @@ public struct Planner: Sendable {
                     continue
                 }
 
-                // A locked file used to disappear from the plan: the safety
-                // checker refused it and said nothing, so the person saw a
-                // shorter list instead of a reason. Unlocking is now a step
-                // of its own, placed before the removal it exists to let
-                // through, and the review sheet shows it.
+                // A locked file gets its own unlock step before the removal, shown in the
+                // review, rather than silently dropping out of the plan.
                 if let lock = ArtifactLock.on(path: targetPath) {
                     if lock.canBeCleared {
                         steps.append(Step(
@@ -240,9 +234,8 @@ public struct Planner: Sendable {
                 }
 
             case .unselected:
-                // Described the way a step is, because the sheet offers it
-                // beside the steps, and a row a person is asked to decide on
-                // has to say how Brim knows.
+                // Described like a step, because the review offers it beside the steps and
+                // a row a person decides on has to say how Brim knows.
                 excludedItems.append(ExcludedItem(
                     target: targetPath,
                     reason: "Not ticked. Brim ticks only what it is sure belongs to the app.",

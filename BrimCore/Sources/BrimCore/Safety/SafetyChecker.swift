@@ -4,15 +4,12 @@ import Foundation
 public struct SafetyChecker: Sendable {
     public let root: FileSystemRoot
     
-    // Injected rather than read from Bundle.main, so a fixture tree can
-    // have its own Brim to protect.
+    // Injected rather than read from `Bundle.main`, so a fixture tree can have
+    // its own Brim to protect.
     public let brimAppURL: URL
 
     /// Brim's own bundle identifier, read from the bundle this checker was
-    /// given. Derived rather than listed, because the list was wrong: it
-    /// named `com.google.Brim` and a `devplaceholder` identifier, and the
-    /// application ships as `com.sabharishhh.brim`, so nothing matched and
-    /// Brim could not uninstall itself at all.
+    /// given rather than listed, so it is always the shipped one.
     public let brimBundleID: String?
 
     public init(root: FileSystemRoot, brimAppURL: URL) {
@@ -21,14 +18,11 @@ public struct SafetyChecker: Sendable {
         self.brimBundleID = Self.bundleIdentifier(at: brimAppURL)
     }
 
-    /// Whether this identity is the Brim that is running.
-    ///
-    /// Self-removal is the one case where Brim's own files may be touched,
-    /// so getting this wrong in one direction blocks "Uninstall Brim" and
-    /// in the other lets any application claiming Brim's identifier reach
-    /// them. It compares against the bundle on disk, and falls back to the
-    /// identifiers older builds shipped under so an upgrade can still
-    /// remove what they left.
+    /// Whether this identity is the Brim that is running. Self-removal is the
+    /// only case where Brim's files may be touched: wrong one way blocks
+    /// removing Brim, wrong the other lets any app claiming its identifier
+    /// reach them. Compares against the bundle on disk, and accepts identifiers
+    /// older builds used so an upgrade can clear what they left.
     public func isBrimItself(_ bundleID: String?) -> Bool {
         guard let bundleID else { return false }
         if let brimBundleID, bundleID == brimBundleID { return true }
@@ -66,8 +60,8 @@ public struct SafetyChecker: Sendable {
         // Get the relative components
         let relativeComponents = Array(urlComponents.dropFirst(rootComponents.count))
         
-        // The BTM archive holds many applications' records. It is never
-        // an app-owned file, even when a record attributes one of its entries.
+        // The Background Task Management archive holds many apps' records and is
+        // never one app's file.
         let protectedStores = [["var", "db", "com.apple.backgroundtaskmanagement"],
                                ["private", "var", "db", "com.apple.backgroundtaskmanagement"]]
         if protectedStores.contains(where: { store in
@@ -82,11 +76,9 @@ public struct SafetyChecker: Sendable {
             return false
         }
 
-        // Never the person's own folders, nor where credentials are kept,
-        // whatever claims them. An app's product.json may name any dot
-        // folder in the home folder as its data, and a declaration is Tier B,
-        // which is ticked: one naming `.ssh` had the person's keys selected
-        // for removal with it.
+        // Never the person's own folders or where credentials are kept, whatever
+        // claims them: an app's `product.json` can name any dot folder, including
+        // `.ssh`.
         if Self.isPersonal(relativeComponents, userName: root.userName) {
             return false
         }

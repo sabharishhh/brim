@@ -26,7 +26,7 @@ struct PrivilegedRecoveryStore {
         checkAncestors = true
     }
 
-    /// Fixtures inject their own store; the daemon always uses the fixed root.
+    /// Fixtures inject their own store; the administrator process always uses the fixed root.
     init(root: URL, expectedOwner: uid_t) {
         self.root = root
         self.expectedOwner = expectedOwner

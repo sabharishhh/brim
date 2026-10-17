@@ -1,17 +1,10 @@
 import BrimCore
 import Foundation
 
-/// Which plainly named folders in a system location belong to a third
-/// party, and whether that party still has software installed.
-///
-/// `/Library` is mostly macOS's, under names like `BTServer` and
-/// `iLifeMediaBrowser`, so the sweep only ever looked at names shaped like
-/// bundle identifiers there. Developers name their folders plainly too:
-/// `Microsoft` in `/Library/Logs` kept Teams' logs and AutoUpdate's after
-/// both had been removed. A plain name is a developer's when one of three
-/// records says so: an installed application, one Brim has seen before, or
-/// an installer receipt that put something inside a folder of that name.
-/// A name Apple's own applications use is never a third party's.
+/// Which plainly named folders in a system location belong to a third party,
+/// and whether it still has software installed. A plain name is a
+/// developer's when an installed app, one Brim has seen before, or an
+/// installer receipt says so. A name Apple's own apps use never is.
 struct SystemVendors: Sendable {
     enum Claim: Equatable {
         /// Named after one application. Judged like any other entry.
@@ -70,11 +63,9 @@ struct SystemVendors: Sendable {
         guard !name.isEmpty, name != "apple", !apple.contains(name),
               !apple.contains(where: { $0.hasPrefix(prefix) })
         else { return nil }
-        // A folder that is itself what an application is called is that
-        // application's, even when a longer name begins with it.
-        // `Application Support/SystemEQ` was opened as though SystemEQ were
-        // a developer, because the app was called "SystemEQ for Mac", and
-        // nothing inside it was ever offered.
+        // A folder that is itself what an application is called is that app's,
+        // even when a longer name begins with it: `SystemEQ` for "SystemEQ for
+        // Mac".
         if productKeys.contains(NameKey.of(name)) {
             return .application
         }

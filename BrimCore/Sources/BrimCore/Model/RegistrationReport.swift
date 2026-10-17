@@ -1,13 +1,8 @@
 import Foundation
 
-/// What macOS is holding on behalf of software, and how much of it Brim
-/// managed to read.
-///
-/// The coverage travels with the registrations on purpose. One of these
-/// surfaces cannot be read without an administrator password, so a report
-/// that carried only a list would let "Brim did not look" and "there is
-/// nothing there" render identically, which is the one mistake this whole
-/// area cannot afford.
+/// What macOS holds on behalf of software, and how much of it Brim managed
+/// to read. Coverage travels with the registrations, so "did not look" and
+/// "nothing there" are never shown the same way.
 public struct RegistrationReport: Sendable, Codable, Equatable {
     public let registrations: [Registration]
     public let coverage: [RegistrationCoverage]

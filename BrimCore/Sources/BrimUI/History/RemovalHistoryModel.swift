@@ -13,8 +13,7 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         plan.planId
     }
 
-    /// Removals from Remnants were recorded under its old name, Leftovers,
-    /// and the Journal showed a page that no longer exists.
+    /// Removals from Remnants were recorded under its old name, Leftovers.
     public var name: String {
         let recorded = plan.intent.subjectIdentity.name
         return recorded == "Leftovers" ? "Remnants" : recorded
@@ -50,13 +49,8 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         return plan.isReversible ? "No longer in the Trash" : "Deleted permanently"
     }
 
-    /// When it happened, written once.
-    ///
-    /// The row used to build this with `Text(date, format: .dateTime...)`,
-    /// which constructs and applies a `Date.FormatStyle` every time the row
-    /// is drawn. Date formatting is among the slowest things in Foundation,
-    /// and thirty-nine rows doing it on every frame of a scroll is the
-    /// whole reason this panel felt heavy. A record's date does not change.
+    /// When it happened, formatted once when the record is made rather than on
+    /// every draw.
     public let occurred: String
 
     public init(plan: Plan, recoverable: RecoverableItem?) {
@@ -66,31 +60,28 @@ public struct RemovalRecord: Identifiable, Equatable, Sendable {
         occurred = Self.dateStyle.format(plan.createdAt)
     }
 
-    /// Built once for the whole process rather than per row. A
-    /// `Date.FormatStyle` is cheap to reuse and expensive to construct.
+    /// Built once for the process: a `Date.FormatStyle` is cheap to reuse and
+    /// expensive to construct.
     private static let dateStyle = Date.FormatStyle.dateTime
         .month().day().hour().minute()
 }
 
-/// Backs the History view: what was removed, and what can still be put back.
-///
+/// Backs the Journal: what was removed, and what can still be put back.
 /// Recoverability is recomputed from the service rather than remembered, so
-/// emptying the Trash is reflected here as immediately as it is in the queue.
+/// emptying the Trash shows at once.
 @MainActor
 public final class RemovalHistoryModel: ObservableObject {
     @Published public private(set) var records: [RemovalRecord] = []
     /// Every installation the snapshots record, for the Journal.
     @Published public private(set) var installs: [InstallRecord] = []
     @Published public private(set) var isLoading = false
-    /// Why the removal history could not be read. Its own fact: a failed
-    /// read used to leave the list empty, and the Journal said "Nothing yet".
+    /// Why the removal history could not be read, so a failed read is not shown
+    /// as "Nothing yet".
     @Published public private(set) var loadError: String?
     @Published public private(set) var undoingPlanIds: Set<UUID> = []
     @Published public var errorMessage: String?
-    /// What the last Put Back of each record did, shown beside that record.
-    /// After a restore the record can no longer be undone, and without this
-    /// its row read "No longer in the Trash", which is true and says nothing
-    /// about the person's files having just come back.
+    /// What each record's last Put Back did, shown beside it, since a restored
+    /// record can no longer be undone.
     @Published public private(set) var putBackOutcomes: [UUID: PutBackOutcome] = [:]
 
     public enum PutBackOutcome: Equatable, Sendable {
@@ -114,9 +105,8 @@ public final class RemovalHistoryModel: ObservableObject {
         }.count
     }
 
-    /// Everything before this is cleared from the Journal, except removals
-    /// that can still be put back: hiding one of those would hide the only
-    /// way back to the person's files.
+    /// Everything before this is cleared from the Journal, except removals that
+    /// can still be put back: hiding one would hide the only way back.
     @Published public private(set) var clearedBefore: Date?
 
     private var service: (any BrimServiceProtocol)?
@@ -141,9 +131,8 @@ public final class RemovalHistoryModel: ObservableObject {
         return installs.filter { $0.installedAt > clearedBefore }
     }
 
-    /// What Brim's removals still hold in the Trash. None of it comes back
-    /// to the disk until the Trash is emptied, which is why Space shows it
-    /// apart from everything else.
+    /// What Brim's removals still hold in the Trash. It frees nothing until the
+    /// Trash is emptied, so Space shows it apart.
     public var bytesInTrash: Int64 {
         records.reduce(0) { $0 + ($1.recoverable?.bytes ?? 0) }
     }
@@ -153,8 +142,8 @@ public final class RemovalHistoryModel: ObservableObject {
         visibleRecords.contains { !$0.canUndo } || !visibleInstalls.isEmpty
     }
 
-    /// Clears the Journal up to now. Brim keeps its removal records, which
-    /// later checks of a removal read; they are no longer listed.
+    /// Clears the Journal up to now. The removal records stay, because later
+    /// checks read them; they are just no longer listed.
     public func clear(now: Date = Date()) {
         clearedBefore = now
         defaults.set(now.timeIntervalSinceReferenceDate, forKey: Self.clearedKey)
@@ -186,8 +175,8 @@ public final class RemovalHistoryModel: ObservableObject {
             plans = try await service.history()
             loadError = nil
         } catch {
-            // What was read before is still what is known; it is not
-            // replaced by an empty list that claims there is nothing.
+            // What was read before is still what is known, not replaced by an empty
+            // list.
             loadError = error.localizedDescription
             plans = records.map(\.plan)
         }
@@ -223,8 +212,8 @@ public final class RemovalHistoryModel: ObservableObject {
         await reload()
     }
 
-    /// Restores one removal. The service refuses cleanly when it cannot, and
-    /// that sentence is what the user sees.
+    /// Restores one removal. When the service refuses, its sentence is what the
+    /// person sees.
     public func undo(_ record: RemovalRecord) async {
         guard let service, !undoingPlanIds.contains(record.id) else { return }
 
@@ -241,8 +230,7 @@ public final class RemovalHistoryModel: ObservableObject {
             putBackOutcomes[record.id] = .failed(error.localizedDescription)
         }
 
-        // Reload either way: a failed undo usually means the world moved, and
-        // the list should show the new truth rather than what we assumed.
+        // Reload either way: a failed undo usually means something changed.
         await reload()
     }
 }

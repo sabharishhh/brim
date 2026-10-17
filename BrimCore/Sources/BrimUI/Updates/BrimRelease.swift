@@ -2,13 +2,9 @@ import BrimCore
 import Combine
 import Foundation
 
-/// Whether a newer Brim has been published on GitHub.
-///
-/// Brim 1.0 is not notarised and has no updater of its own, so without
-/// this nobody running it would learn that a fix had shipped. It asks
-/// GitHub for the latest release when the app opens, at most once a day,
-/// and when somebody chooses Check for Brim Updates. It only reports: the
-/// download is the person's to make, from the release page.
+/// Whether a newer Brim has been published on GitHub. Brim has no updater of
+/// its own, so it asks GitHub when it opens, at most once a day, and when
+/// asked. It only reports; downloading is the person's.
 @MainActor
 public final class BrimReleaseCheck: ObservableObject {
     public struct Release: Equatable, Sendable {
@@ -79,8 +75,8 @@ public final class BrimReleaseCheck: ObservableObject {
         return .newer(release)
     }
 
-    /// The release GitHub calls latest, which already leaves out drafts and
-    /// pre-releases. Tags are `v1.0.1`; the `v` is not part of the version.
+    /// The release GitHub calls latest, which leaves out drafts and
+    /// pre-releases. Tags look like `v1.0.1`; the `v` is not part of the version.
     nonisolated static func release(from data: Data) -> Release? {
         guard let payload = try? JSONDecoder().decode(BrimReleasePayload.self, from: data),
               payload.draft != true, payload.prerelease != true else { return nil }

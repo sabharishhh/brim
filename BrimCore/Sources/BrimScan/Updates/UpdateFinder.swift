@@ -1,20 +1,12 @@
 import BrimCore
 import Foundation
 
-/// Finds out, for every installed application, whether a newer version
-/// exists.
-///
-/// One source per application, the application's own first: an App Store
-/// receipt means Apple's catalogue, a Sparkle feed or an electron-builder
-/// feed is where the application itself looks, and Homebrew's public
-/// catalogue covers the rest, which is how Electron applications that set
-/// their feed in code get checked at all. A source that does not answer
-/// hands on to the next, and an application no source answers for is
-/// reported as not checked, never as up to date.
-///
-/// MacUpdater kept its own list of 60,000 applications and closed when the
-/// daily upkeep became too much; everything here is published by the
-/// developers or maintained by Homebrew's contributors.
+/// Finds whether a newer version exists for every installed app. One source
+/// per app, the app's own first: an App Store receipt means Apple's
+/// catalogue, a Sparkle or electron-builder feed is where the app looks, and
+/// Homebrew's public catalogue covers the rest. A source that does not
+/// answer hands on to the next; an app nothing answers for is "not
+/// checked", never "up to date".
 public struct UpdateFinder: Sendable {
     public typealias Fetch = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
@@ -120,10 +112,8 @@ public struct UpdateFinder: Sendable {
         }
     }
 
-    /// Applications something can update. macOS updates its own; an
-    /// application inside another is updated with it; a web app shim
-    /// belongs to its browser; Setapp updates its own catalogue; and a
-    /// bundle with no version has nothing to compare.
+    /// Apps something can update. Not macOS's own, an app inside another, a web
+    /// app shim, Setapp's catalogue, or a bundle with no version.
     static func candidate(_ application: InstalledApplication, among all: [InstalledApplication]) -> Candidate? {
         let contents = application.url.appendingPathComponent("Contents")
         let plist = NSDictionary(contentsOf: contents.appendingPathComponent("Info.plist")) as? [String: Any] ?? [:]
@@ -182,9 +172,8 @@ extension UpdateFinder {
             return answer
         }
         for answer in await [sparkle(candidate), electron(candidate)] where !answer.isSilent {
-            // A cask from a third-party tap is not in the public
-            // catalogue. The application's own feed says what is new, and
-            // Homebrew still installs it, so its records stay right.
+            // A cask from a third-party tap is not in the public catalogue, so the
+            // app's own feed says what is new and Homebrew still installs it.
             guard let cask, case let .update(update) = answer else { return answer }
             return .update(update.handled(by: .homebrew, cask: cask))
         }
@@ -205,9 +194,9 @@ extension UpdateFinder {
             return .noAnswer
         }
         guard VersionOrder.isNewer(listing.version, than: candidate.version) else { return .current }
-        // A shared listing's version may be the iPhone's. The Mac page
-        // decides, and a page that cannot be read means not checked,
-        // never an update the App Store will not offer.
+        // A shared listing's version may be the iPhone's, so the Mac page decides;
+        // an unreadable page means not checked, never an update the App Store will
+        // not offer.
         var latest = listing.version
         if listing.isShared {
             guard let url = AppStoreCatalog.macPageURL(trackID: listing.trackID, region: region),
@@ -244,10 +233,9 @@ extension UpdateFinder {
         var route = UpdateRoute.website
         let enclosure = item.enclosureURL.flatMap(URL.init(string:))
         if !item.informational, let enclosure, enclosure.scheme == "https" {
-            // An app that ships Sparkle's public key expects every update to
-            // be signed with it, and Sparkle refuses one that is not. Brim
-            // used to fall back to no check when a feed left the signature
-            // out, which is exactly what a feed in the wrong hands would do.
+            // An app shipping Sparkle's public key expects every update signed with
+            // it, and a feed that leaves the signature out is refused, as Sparkle
+            // would.
             let key = candidate.info["SUPublicEDKey"]
             if key != nil, item.edSignature == nil {
                 return .noAnswer
@@ -314,8 +302,7 @@ extension UpdateFinder {
     }
 
     private func update(_ candidate: Candidate, from cask: CatalogCask, origin: UpdateOrigin) -> Answer {
-        // Only strictly newer: the catalogue sometimes trails the
-        // developer, and an older version is not an update.
+        // Only strictly newer: the catalogue sometimes trails the developer.
         guard VersionOrder.isNewer(cask.displayVersion, than: candidate.version) else { return .current }
         guard let bundleID = candidate.bundleID, platform.canRun(minimum: cask.minimumSystem),
               let url = URL(string: cask.url)

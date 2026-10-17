@@ -4,12 +4,10 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// The recording around an install Brim makes. Nobody starts or finishes
-/// one by hand: installing from the preview starts it, and the installed
-/// app quitting, or Installer quitting, finishes it.
-///
-/// The first snapshot is kept by the service, so a recording outlives
-/// Brim: the next launch finds it still open and finishes it.
+/// The recording around an install Brim makes. Installing from the preview
+/// starts it, and the installed app or Installer quitting finishes it. The
+/// first snapshot is kept by the service, so an open recording survives a
+/// relaunch and is finished then.
 @MainActor
 public final class InstallRecordingModel: ObservableObject {
     public enum Phase: Equatable {
@@ -20,8 +18,7 @@ public final class InstallRecordingModel: ObservableObject {
     }
 
     @Published public private(set) var phase: Phase = .idle
-    /// What went wrong last, shown once. A failure never ends a recording
-    /// that is open: the first snapshot is still kept.
+    /// What went wrong last, shown once. A failure never ends an open recording.
     @Published public var problem: String?
     private var service: (any BrimServiceProtocol)?
     private var hasLoaded = false
@@ -37,8 +34,8 @@ public final class InstallRecordingModel: ObservableObject {
     }
 
     private var waiting: Waiting?
-    /// A recording just kept. The window reads Apps again on it, since a
-    /// package's app arrived through Installer rather than through Brim.
+    /// A recording just kept. Apps is read again, since a package's app arrived
+    /// through Installer rather than Brim.
     @Published public var keptQuietly: InstallRecording?
     /// Something to say once, such as an install that put nothing down.
     @Published public var notice: String?
@@ -64,9 +61,8 @@ public final class InstallRecordingModel: ObservableObject {
         self.service = service
         guard !hasLoaded else { return }
         hasLoaded = true
-        // A recording an earlier launch left open has nothing waiting on it
-        // any more, and nobody finishes one by hand: Brim finishes it now,
-        // keeping what links to an install or saying nothing was installed.
+        // A recording an earlier launch left open has nothing waiting on it, so
+        // Brim finishes it now.
         if phase == .idle, let since = await service.activeInstallRecording() {
             phase = .recording(since: since)
             await finishOnItsOwn()
@@ -108,8 +104,8 @@ public final class InstallRecordingModel: ObservableObject {
             try await service.keepInstallRecording(recording)
             phase = .idle
             stopWaiting()
-            // A package's file is offered to the Trash only once what it
-            // installed is known to be there.
+            // A package's file goes to the Trash only once what it installed is known
+            // to be there.
             if let package = pendingPackage {
                 Self.discardInstaller(package)
                 pendingPackage = nil
@@ -129,13 +125,10 @@ public final class InstallRecordingModel: ObservableObject {
         case failed(String)
     }
 
-    /// Installs what the person looked inside, recording around it.
-    ///
-    /// An app is copied into Applications by Brim; a package opens in
-    /// Apple's Installer, which runs its developer's scripts, not Brim. The
-    /// recording finishes on its own when the installed app first quits, or
-    /// when Installer does, while Brim is open. A recording the person
-    /// started is kept running and used.
+    /// Installs what the person looked inside, recording around it. Brim copies
+    /// an app into Applications; a package opens in Apple's Installer, which runs
+    /// its developer's scripts. The recording finishes when the installed app
+    /// first quits, or Installer does, while Brim is open.
     public func install(
         _ preview: InstallerPreview, service: any BrimServiceProtocol,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
@@ -184,10 +177,9 @@ public final class InstallRecordingModel: ObservableObject {
         }
     }
 
-    /// What Brim can install from a preview: a package, through Installer,
-    /// or an app on its own or alone at the top of a disk image when it is
-    /// not installed already. Updating an installed app is the Updates
-    /// page's, which checks the new copy against the one installed.
+    /// What Brim can install from a preview: a package through Installer, or an
+    /// app on its own or alone in a disk image when it is not installed yet.
+    /// Updating an installed app is the Updates page's job.
     public static func installable(_ preview: InstallerPreview) -> InstallerPreview? {
         let item: InstallerPreview? = switch preview.kind {
         case .application: preview
@@ -235,13 +227,9 @@ public final class InstallRecordingModel: ObservableObject {
         waiting = nil
     }
 
-    /// Takes the second snapshot and keeps what links to the install.
-    ///
-    /// Anything else that appeared meanwhile is left out rather than asked
-    /// about: nobody started this recording, so nobody should be asked to
-    /// judge it. It used to publish what it found first, which showed the
-    /// old review sheet, with its Keep Recording button, for as long as
-    /// saving took, and left it up when saving failed.
+    /// Takes the second snapshot and keeps what links to the install. Anything
+    /// else that appeared is left out rather than asked about, since nobody
+    /// started this recording by hand.
     func finishOnItsOwn() async {
         guard let service, let since else { return }
         phase = .finishing(since: since)
@@ -266,8 +254,7 @@ public final class InstallRecordingModel: ObservableObject {
         if let kept {
             keptQuietly = kept
         } else {
-            // Saving failed. The recording stays open, as any failure leaves
-            // it, and the next launch finishes it again.
+            // Saving failed. The recording stays open, and the next launch finishes it.
             phase = .recording(since: since)
         }
     }
@@ -285,9 +272,8 @@ public extension InstallerSignature.Verdict {
 
 public extension InstallRecordingModel {
     /// Moves an installer to the Trash once what it installed is in place,
-    /// without asking: almost nobody keeps one, and the Trash can put it
-    /// back. Only from the person's own folders, never from Applications
-    /// or another volume.
+    /// without asking: almost nobody keeps one, and the Trash can put it back.
+    /// Only from the person's own folders.
     static func discardInstaller(_ url: URL) {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path + "/"
         let path = url.standardizedFileURL.path

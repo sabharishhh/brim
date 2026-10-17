@@ -1,15 +1,7 @@
 import Foundation
 import BrimCore
 
-/// Not wired into the engine.
-///
-/// `BrimService` builds `EvidenceEngine` from eleven sources and this is not
-/// one of them, so nothing in the product has ever produced a piece of
-/// `HeuristicSource` evidence. It survived the scope cleanup that removed
-/// the duplicate finder and the BTM reset because, unlike those, it serves
-/// the thing Brim is for: it is unfinished core work rather than a feature
-/// that should not exist. Wire it or delete it; leaving it here unwired is
-/// the one option that helps nobody.
+/// Not used by the evidence engine; only its own tests run it.
 public struct HeuristicSource: EvidenceSource {
     public init() {}
     

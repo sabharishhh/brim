@@ -10,10 +10,8 @@ public enum SafeOpsError: Error {
     case pathOccupied
 }
 
-/// A removal's journal keeps `localizedDescription` for a step that failed
-/// and the result shows it, so each case says what happened. Without this
-/// a changed file read "The operation couldn't be completed
-/// (BrimOps.SafeOpsError error 1.)".
+/// A failed step's `localizedDescription` is kept in the journal and shown
+/// in the result, so each case says what happened.
 extension SafeOpsError: LocalizedError {
     public var errorDescription: String? {
         switch self {

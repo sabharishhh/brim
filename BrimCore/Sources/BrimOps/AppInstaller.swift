@@ -1,22 +1,13 @@
 import BrimCore
 import Foundation
 
-/// Puts an application the person has looked inside into Applications.
-///
-/// Only an app, loose or in a disk image: a package's scripts are its
-/// developer's to run, so packages open in Apple's Installer instead and
-/// Brim records around it. What is copied is checked again against what the
-/// preview showed, because the file could have changed in between: the same
-/// identifier, and Gatekeeper's approval when the preview said it had it.
-///
-/// Once Gatekeeper accepts the copy, its quarantine is removed. macOS runs
-/// a quarantined app from a hidden read-only copy (App Translocation)
-/// unless a person moved it in Finder, and clicking Open on the first
-/// launch warning does not change that: Figma's installer app, run from
-/// there, could not replace itself and asked to be moved to Applications.
-/// Brim has made the check the warning stands for, as Apple's Installer and
-/// the App Store have, and they leave no quarantine either. An app
-/// Gatekeeper does not accept keeps it, so macOS still warns or blocks.
+/// Puts an app the person looked inside into Applications. Only an app,
+/// loose or in a disk image: a package's scripts are its developer's to run,
+/// so packages open in Apple's Installer. The copy is checked again against
+/// the preview (same identifier, and Gatekeeper's approval if the preview
+/// had it). Once Gatekeeper accepts it, its quarantine is removed, as
+/// Installer and the App Store do, so macOS does not run it from a hidden
+/// translocated copy. An app Gatekeeper does not accept keeps it.
 public enum AppInstaller {
     public enum Failure: Error, Equatable, LocalizedError {
         case licence
@@ -58,8 +49,8 @@ public enum AppInstaller {
                     accepts: { UpdateInstaller.passesGatekeeper($0) }, progress: progress)
     }
 
-    /// `accepts` is Gatekeeper's verdict, replaceable so a test can reach
-    /// the accepted path without a notarised app.
+    /// `accepts` is Gatekeeper's verdict, replaceable so a test can reach the
+    /// accepted path without a notarised app.
     static func install(
         from source: URL, identifier: String?, trusted: Bool, applications: URL,
         accepts: (URL) -> Bool, progress: @escaping @Sendable (Double) -> Void = { _ in }
@@ -128,8 +119,8 @@ public enum AppInstaller {
     }
 
     /// Removes the quarantine from the bundle and everything in it, without
-    /// following links. Best effort: the bundle's own is what macOS reads
-    /// to decide whether to translocate.
+    /// following links. Best effort: the bundle's own attribute is what macOS
+    /// reads.
     static func clearQuarantine(in bundle: URL) {
         removexattr(bundle.path, "com.apple.quarantine", XATTR_NOFOLLOW)
         let items = FileManager.default.enumerator(at: bundle, includingPropertiesForKeys: nil)
@@ -138,8 +129,8 @@ public enum AppInstaller {
         }
     }
 
-    /// `ditto`, with how much of the app has arrived measured while it
-    /// runs: the bytes at the destination against the bytes of the app.
+    /// `ditto`, with progress measured as bytes at the destination against the
+    /// app's size.
     static func copy(_ app: URL, to destination: URL, progress: @escaping @Sendable (Double) -> Void) -> Bool {
         let total = max(ArtifactSizer.measure(at: app).logicalBytes, 1)
         let process = Process()

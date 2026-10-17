@@ -1,52 +1,30 @@
 import Foundation
 
-/// Everything one piece of software left behind, as a single thing.
-///
-/// The flat list showed `Codex` twice, once for `Application Support` and
-/// once for `Caches`, with no indication they were the same software, and
-/// the same for every vendor with more than one directory. A user cannot
-/// reason about "is this needed" one path at a time; the question is about
-/// the application, and the answer is the set of places it touched.
+/// Everything one piece of software left behind, as one thing. People reason
+/// about the application, not one path at a time.
 public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// What to call this on screen.
     public let displayName: String
     /// The bundle identifier, where one was resolved.
     public let identifier: String?
     public let items: [Leftover]
-    /// The key `groupedByOwner()` bucketed this group under.
-    ///
-    /// `id` used to be re-derived from `identifier ?? displayName`, and two
-    /// genuinely different groups only ever share a display name for the
-    /// same reason they needed grouping in the first place: neither carries
-    /// a bundle identifier strong enough to tell them apart on its own.
-    /// Seven distinct broken symlinks all pointing into a removed Docker,
-    /// each its own group with one item, all displaying "Docker.app", all
-    /// landing on the identical re-derived id `"docker.app"`. SwiftUI's
-    /// list identity then treated all seven as one element wearing seven
-    /// costumes, so ticking one toggled all seven and there was no way to
-    /// tell whether they even lived in the same place. `groupKey` is the
-    /// dictionary key `groupedByOwner()` already bucketed under, unique by
-    /// construction, so `id` can no longer collide by accident.
+    /// The key `groupedByOwner()` bucketed this group under, unique by
+    /// construction. An id derived from the display name collided: seven broken
+    /// links to a removed Docker all became one list element, and ticking one
+    /// ticked all seven.
     public let groupKey: String
 
     public var id: String {
         groupKey
     }
 
-    // Everything below is derived from `items`, and every one of them used
-    // to be a computed property.
-    //
-    // A group is immutable and built once a scan. A row reads six of these
-    // each time SwiftUI draws it, and `domains` and `regeneratedBytes` each
-    // walk every item calling `LeftoverDomain.of`, which is a substring
-    // search over a path. Thirty visible rows cost 2.9ms per redraw to
-    // answer questions whose answers could not have changed, and scrolling
-    // the list was visibly rough because of it. Worked out once, in `init`.
+    // Everything below is derived from `items` once, in `init`. As computed
+    // properties they were worked out on every redraw.
 
     public let totalBytes: Int64
 
-    /// A group is orphaned if anything in it is: the evidence that named a
-    /// departed owner applies to the whole set.
+    /// Orphaned if anything in it is: the evidence naming a departed owner
+    /// applies to the whole set.
     public let category: Leftover.Category
 
     /// Bytes that come back immediately, because the app rebuilds them.
@@ -61,21 +39,13 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
     /// item rather than repeated per row.
     public let evidence: String
 
-    /// True when Brim can act on every part of it. A group that is partly
-    /// blocked must not look actionable.
+    /// True when Brim can act on every part of it; a partly blocked group must
+    /// not look actionable.
     public let isFullyActionable: Bool
 
-    /// The one thing stopping the whole group, when one thing is stopping
-    /// all of it.
-    ///
-    /// Said once here rather than on every row. Fourteen broken commands in
-    /// `/usr/local/bin` share a single answer, and repeating it fourteen
-    /// times is how the refusal that came *after* the attempt became nine
-    /// hundred characters nobody could read. The group is also where a
-    /// person can act on it: the checkbox that will not tick is this one.
-    ///
-    /// Nil when the group is removable, and nil when its items are blocked
-    /// for different reasons, which the rows then have to say themselves.
+    /// The one thing stopping the whole group, said once here rather than on
+    /// every row. Nil when the group is removable, or when items are blocked for
+    /// different reasons, which the rows then say.
     public let sharedObstacle: Capability?
 
     public let lastAccessed: Date?
@@ -95,8 +65,7 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         self.items = items
         self.groupKey = groupKey
 
-        // One walk of `items`, not six, and `LeftoverDomain.of` once per
-        // item rather than once per item per property per redraw.
+        // One walk of `items`, calling `LeftoverDomain.of` once per item.
         var total: Int64 = 0
         var regenerated: Int64 = 0
         var orderedDomains: [LeftoverDomain] = []
@@ -152,12 +121,8 @@ public struct LeftoverGroup: Identifiable, Sendable, Equatable {
         return only
     }
 
-    /// What a screen reader should say for this entry.
-    ///
-    /// The row is built from a name, a lock, a size, a count, up to four
-    /// capsules and a warning, and a reader was handed all of them as
-    /// unrelated fragments. The size is carried as the value rather than
-    /// the label, so the name and the consequence come first.
+    /// One sentence for VoiceOver. The size is the value, so the name and the
+    /// consequence come first.
     public var spokenDescription: String {
         var parts = [displayName]
         parts.append(items.count == 1 ? "one location" : "\(items.count) locations")
@@ -197,28 +162,14 @@ private struct OwnerAliases {
 }
 
 public extension [Leftover] {
-    /// Collapses leftovers into one entry per piece of software.
-    ///
-    /// Keyed on the bundle identifier when the scan resolved one, and on the
-    /// directory name otherwise, which is what merges
-    /// `Application Support/Codex` with `Caches/Codex`, since neither
-    /// carries an identifier and both are named for the same tool.
+    /// Collapses leftovers into one entry per piece of software, keyed on the
+    /// bundle identifier when there is one and the folder name otherwise, so
+    /// `Application Support/Codex` and `Caches/Codex` merge.
     func groupedByOwner() -> [LeftoverGroup] {
         let aliases = OwnerAliases(items: self)
-        // Every name a leftover answers to, joined up.
-        //
-        // Keying on the single strongest name split software that resolves
-        // unevenly. Warp appeared twice on a real Mac, once from
-        // `Application Scripts/2BBY89MBSN.dev.warp` and once from
-        // `Group Containers/2BBY89MBSN.dev.warp`. Both resolved the owner
-        // name "Warp"; only one of them also resolved a bundle identifier.
-        // The identifier wins the key, so one landed under the identifier
-        // and the other under "warp", and the list showed one product as two
-        // rows of one location each, both called Warp.
-        //
-        // Joining them is the whole fix: a leftover carrying both an
-        // identifier and a name is evidence that those two names are the same
-        // software, so anything filed under either belongs in one group.
+        // Every name a leftover answers to, joined. A leftover with both an
+        // identifier and a name shows those are the same software, so anything
+        // filed under either belongs in one group.
         var parent: [String: String] = [:]
 
         func find(_ key: String) -> String {
@@ -286,39 +237,16 @@ public extension [Leftover] {
         return LeftoverGroup(displayName: name, identifier: identifier, items: items, groupKey: key)
     }
 
-    /// Bucketed on the strongest shared thing Brim already knows about the
-    /// owner, not on the leftover's own file name.
-    ///
-    /// A real bundle identifier wins outright. Short of one, `potentialOwner`
-    /// already carries the best name Brim resolved for this item, a broken
-    /// symlink's target, a matched Homebrew cask, and that name is exactly
-    /// what should merge several paths into one piece of software. Falling
-    /// back to the item's own file name only happens when nothing was
-    /// resolved at all, which is the original motivating case: neither
-    /// `Application Support/Codex` nor `Caches/Codex` carries an identifier,
-    /// so both fall through to "codex", their own shared name, and still
-    /// merge correctly. What changed is that seven broken symlinks named
-    /// `docker`, `kubectl`, `cagent` and so on, each pointing into the same
-    /// removed Docker, used to bucket into seven different keys because
-    /// each symlink's own name is different, only to display under the
-    /// identical resolved owner name and collide on `LeftoverGroup.id` as a
-    /// result. Grouping on the resolved name instead merges them honestly,
-    /// into one row saying seven locations, matching what the row already
-    /// claims about being organised by software rather than by path.
-    /// Every name this one leftover answers to, strongest first.
-    ///
-    /// More than one, because a leftover that resolves both an identifier and
-    /// a name is the evidence that ties those two names together. The file's
-    /// own name is only a key when nothing was resolved at all, which is the
-    /// original case: neither `Application Support/Codex` nor `Caches/Codex`
-    /// carries an identifier, so both fall through to "codex" and merge.
+    /// Every name this leftover answers to, strongest first: a real bundle
+    /// identifier, then the owner name Brim resolved (a broken link's target, a
+    /// matched cask), and the file's own name only when nothing was resolved.
+    /// Several links into one removed app then group as that app.
     static func groupingKeys(for leftover: Leftover) -> [String] {
         var keys: [String] = []
-        // An unclaimed identifier is only a spelling from the file name,
-        // not a resolved bundle identity. Keep one product namespace
-        // together without joining every vendor helper named "Helper".
-        // With nothing of the developer's installed, their leftovers are
-        // one thing, whatever product each was named for.
+        // An unclaimed identifier is only a spelling from the file name. Keep one
+        // product namespace together without joining every helper called
+        // "Helper"; with nothing of the developer's installed, their leftovers are
+        // one group.
         if leftover.category == .unclaimed, let vendor = leftover.vendor {
             return ["vendor:" + vendor]
         }

@@ -1,16 +1,9 @@
 import Foundation
 
-/// The installer's memory of what it put where.
-///
-/// A `.pkg` install leaves a receipt in `/var/db/receipts`: a plist and a
-/// BOM listing every file. Deleting the files does not remove the receipt,
-/// so `pkgutil --pkgs` keeps listing software that is long gone, and an
-/// installer offered the chance to "repair" reinstates a product the
-/// person thought they had removed.
-///
-/// Forgetting a receipt deletes no files. It is metadata, and that is what
-/// makes it both safe and irreversible: nothing is destroyed except the
-/// record, and the record cannot be reconstructed.
+/// The installer's record of what it put where: a plist and a BOM in
+/// `/var/db/receipts`. Deleting the files does not remove it, so
+/// `pkgutil --pkgs` keeps listing removed software. Forgetting deletes no
+/// files, but the record cannot be rebuilt.
 public enum PackageReceipts {
     public enum ForgetError: Error, LocalizedError, Equatable {
         case notAPackageIdentifier(String)
@@ -38,16 +31,12 @@ public enum PackageReceipts {
         }
     }
 
-    /// Where macOS keeps them. Root owned, and not writable by the person
-    /// running Brim, which is why this needs the helper.
+    /// Root owned, which is why forgetting needs administrator cleanup.
     public static let receiptDirectory = "/var/db/receipts"
 
-    /// Whether a string is a package identifier and nothing else.
-    ///
-    /// This value reaches `pkgutil` as an argument. It never touches a
-    /// shell, but a path separator or a leading dash would still let it
-    /// mean something other than a package, so the shape is checked rather
-    /// than trusted.
+    /// Whether a string is a package identifier and nothing else. It reaches
+    /// `pkgutil` as an argument, never a shell, but a path separator or leading
+    /// dash could still change its meaning.
     public static func isWellFormed(_ packageID: String) -> Bool {
         guard !packageID.isEmpty, packageID.count <= 256 else { return false }
         guard !packageID.hasPrefix("-"), !packageID.hasPrefix(".") else { return false }
@@ -72,11 +61,8 @@ public enum PackageReceipts {
             || fileManager.fileExists(atPath: base.appendingPathComponent("\(packageID).bom").path)
     }
 
-    /// Everything that has to be true before `pkgutil` is invoked.
-    ///
-    /// Separated from the call so the privileged daemon can apply exactly
-    /// the same rules from its own side, rather than trusting that the app
-    /// applied them.
+    /// Everything that must be true before `pkgutil` runs, separate from the
+    /// call so the administrator process applies the same rules itself.
     public static func check(
         _ packageID: String, fileManager: FileManager = .default
     ) throws {
@@ -91,8 +77,7 @@ public enum PackageReceipts {
         }
     }
 
-    /// Forgets one receipt. Requires root, and says so rather than failing
-    /// with something a person cannot act on.
+    /// Forgets one receipt. Requires root, and says so.
     public static func forget(
         packageID: String,
         fileManager: FileManager = .default,

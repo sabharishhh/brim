@@ -1,22 +1,14 @@
 import Foundation
 
-/// Watches the user's Trash and reports when its contents change, so the app
-/// reflects the user emptying it rather than waiting to be relaunched.
-///
-/// Two mechanisms, because one is not always available. Opening `~/.Trash`
-/// for event monitoring needs Full Disk Access, and without it the open fails
-/// with EPERM. So a kqueue source is used when permission allows, and
-/// otherwise the watcher falls back to polling. Statting a *known path inside*
-/// the Trash is allowed even when opening the directory is not, which is what
-/// makes the fallback work at all.
-///
-/// The fallback runs only while the app is active, so a backgrounded Brim is
-/// not waking the CPU to look at a directory nobody is watching.
+/// Watches the user's Trash and reports when its contents change. A kqueue
+/// source when Full Disk Access allows opening `~/.Trash`; otherwise polling,
+/// which works because statting a known path inside the Trash is allowed.
+/// Polling runs only while the app is active.
 public actor TrashWatcher {
     public typealias ChangeHandler = @Sendable () async -> Void
 
-    /// How this watcher is currently learning about changes. Exposed so the
-    /// app can report degraded behaviour instead of silently going stale.
+    /// How the watcher is learning about changes, so the app can say when it is
+    /// degraded.
     public enum Mode: Equatable, Sendable {
         /// Kernel events: immediate, no wakeups when nothing happens.
         case events
@@ -76,9 +68,8 @@ public actor TrashWatcher {
         handler = nil
     }
 
-    /// Polling is suspended while the app is inactive and resumed, with an
-    /// immediate check, when it becomes active again, so returning to Brim
-    /// after emptying the Trash in Finder is always up to date.
+    /// Polling pauses while the app is inactive and checks at once when it
+    /// becomes active again.
     public func setActive(_ active: Bool) {
         guard isActive != active else { return }
         isActive = active
@@ -107,8 +98,8 @@ public actor TrashWatcher {
             guard let self else { return }
             Task { await self.noteChange() }
         }
-        // Closing the descriptor here, and only here, is what keeps
-        // start/stop cycles from leaking file descriptors.
+        // Closing the descriptor here, and only here, keeps start and stop cycles
+        // from leaking it.
         source.setCancelHandler { [fd] in close(fd) }
 
         self.source = source

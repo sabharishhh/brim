@@ -2,20 +2,11 @@ import BrimCore
 import CoreServices
 import Foundation
 
-/// Retracting an application's Launch Services registration.
-///
-/// **Deleting a bundle does not unregister it.** Launch Services keeps the
-/// record (bundle identifier, document types, URL schemes, the path it was
-/// last seen at) until something explicitly retracts it or the database is
-/// rebuilt. That stale record is why a removed app still appears in "Open
-/// With", still claims its file types, and still answers when something
-/// resolves its bundle identifier.
-///
-/// **Order is the mirror image of `PrivacyGrants`.** A privacy reset must
-/// run while the bundle is present, because `tccutil` resolves the identifier
-/// *through* Launch Services. Unregistering must run once the bundle is gone,
-/// because Launch Services re-registers a bundle it can still see. So the two
-/// bracket the removal: grants first, registration last.
+/// Retracting an application's Launch Services registration. Deleting a
+/// bundle does not unregister it, which is why a removed app still appears
+/// in "Open With". The mirror of `PrivacyGrants`: grants are cleared while
+/// the bundle exists, registrations retracted once it is gone, because
+/// Launch Services re-registers a bundle it can still see.
 public enum LaunchServicesRegistration {
     public enum UnregisterError: Error, LocalizedError, Equatable {
         case failed(path: String, code: Int32)
@@ -29,17 +20,14 @@ public enum LaunchServicesRegistration {
         }
     }
 
-    /// An undocumented maintenance tool at a fixed framework location.
-    /// Its result never replaces an independent registration observation.
+    /// An undocumented tool at a fixed framework path. Its result never replaces
+    /// an independent check of the registration.
     public static let lsregisterPath =
         "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks"
             + "/LaunchServices.framework/Versions/A/Support/lsregister"
 
-    /// Unregisters one bundle path, and only that path.
-    ///
-    /// Deliberately *not* `lsregister -kill -r`: rebuilding the database
-    /// touches every application on the machine and can take minutes. That is
-    /// a repair the user asks for, never a side effect of one uninstall.
+    /// Unregisters one bundle path, and only that path. Never
+    /// `lsregister -kill -r`, which rebuilds the database for every app.
     public static func unregister(
         bundlePath: String,
         runner: ((String, [String]) throws -> Int32)? = nil
@@ -55,20 +43,14 @@ public enum LaunchServicesRegistration {
         }
     }
 
-    /// Registers a bundle, used to put back a registration an uninstall
-    /// retracted when that uninstall is undone.
-    /// Every application bundle inside a folder, found before the folder
-    /// is removed so their records can be retracted afterwards.
-    ///
-    /// Unregistering the application left the ones inside it registered:
-    /// after Muse went, Launch Services still listed Sparkle's `Updater.app`
-    /// inside `Muse.app` and two more copies Sparkle keeps in its cache
-    /// folder, all pointing at nothing.
+    /// Every application bundle inside a folder, found before the folder is
+    /// removed so their records can be retracted afterwards; unregistering the
+    /// app alone leaves the apps inside it registered.
     public static func nestedApplications(in path: String, limit: Int = 20000) -> [String] {
         var isDirectory: ObjCBool = false
-        // Relative paths, joined to the path as given: a URL enumerator
-        // answers `/private/var` for `/var`, and a record is retracted by
-        // the spelling it was registered under.
+        // Relative paths joined to the path as given: a record is retracted by the
+        // spelling it was registered under, and a URL enumerator answers
+        // `/private/var` for `/var`.
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
               let walk = FileManager.default.enumerator(atPath: path) else { return [] }
         var found: [String] = []
@@ -85,14 +67,9 @@ public enum LaunchServicesRegistration {
         return found
     }
 
-    /// Records Launch Services holds inside any of these paths that point
-    /// at nothing.
-    ///
-    /// Finding the applications inside a bundle before it goes misses the
-    /// ones an update already removed: Teams' embedded browser had moved to
-    /// a new version folder, and three helpers in the old one stayed
-    /// registered through its uninstall. Only the database knows those. A
-    /// full dump takes seconds, so this runs after a removal, not during.
+    /// Records Launch Services holds inside any of these paths that point at
+    /// nothing, including ones an earlier update orphaned, which only the
+    /// database knows. A full dump takes seconds, so this runs after a removal.
     public static func staleRecords(inside prefixes: [String], dump: String? = nil) async throws -> [String] {
         let prefixes = prefixes.map { $0.hasSuffix("/") ? $0 : $0 + "/" }
         guard !prefixes.isEmpty else { return [] }
@@ -106,11 +83,9 @@ public enum LaunchServicesRegistration {
         }).sorted()
     }
 
-    /// Whether the database holds a record for exactly this path.
-    ///
-    /// Asking by bundle identifier is not the same question: Launch
-    /// Services leaves out records whose bundle has gone, so eqMac's login
-    /// helper looked unregistered and its record was never retracted.
+    /// Whether the database has a record for exactly this path. Asking by bundle
+    /// identifier is a different question: it leaves out records whose bundle
+    /// has gone.
     public static func isRecorded(path: String, dump: String? = nil) async throws -> Bool {
         let listing: String = if let dump {
             dump
@@ -143,18 +118,14 @@ public enum LaunchServicesRegistration {
         }
     }
 
-    /// Compatibility lookup that discards errors. Use the checked lookup
-    /// for ownership decisions and absence verification.
-    ///
-    /// Read-only, and the only way to *check* this surface: the Launch
-    /// Services database has no supported reader, and `lsregister -dump`
-    /// takes seconds and returns megabytes of text.
+    /// A lookup that discards errors. Use the checked lookup for ownership
+    /// decisions and verification.
     public static func registeredApplicationURLs(forBundleID bundleID: String) -> [URL] {
         (try? checkedApplicationURLs(forBundleID: bundleID)) ?? []
     }
 
-    /// Unlike the compatibility reader, this preserves a failed query so a
-    /// review cannot present it as an empty registration.
+    /// Keeps a failed query as a failure, so a review never shows it as an empty
+    /// registration.
     public static func checkedApplicationURLs(forBundleID bundleID: String) throws -> [URL] {
         var error: Unmanaged<CFError>?
         guard let result = LSCopyApplicationURLsForBundleIdentifier(bundleID as CFString, &error) else {

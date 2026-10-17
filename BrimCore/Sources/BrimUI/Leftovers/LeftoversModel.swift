@@ -4,37 +4,27 @@ import Combine
 import Foundation
 import os
 
-/// Backs the Leftovers view.
-///
-/// The two categories are kept apart at every level (separate sections,
-/// separate selection, separate totals) because they answer different
-/// questions and carry different risk. **Orphaned** means a record named an
-/// owner and that owner has gone, which is evidence, so these may be
-/// pre-selected. **Unclaimed** means the search came back empty, which is
-/// not evidence of anything, so these are shown and never pre-selected.
-/// Collapsing them into one list would quietly pre-select the second kind.
+/// Backs Remnants. Orphaned and unclaimed items stay apart at every level:
+/// orphaned means a record named an owner that has gone, which is evidence,
+/// so they may be pre-selected; unclaimed means the search came back empty,
+/// which is not evidence, so they are never pre-selected.
 @MainActor
 public final class LeftoversModel: ObservableObject {
     @Published public private(set) var orphaned: [Leftover] = []
     @Published public private(set) var unclaimed: [Leftover] = []
     @Published public private(set) var isScanning = false
-    /// When the last scan finished, for "Checked 2 hours ago". Nil until
-    /// one has, which is "not checked", never "checked and empty".
+    /// When the last scan finished. Nil until one has: "not checked", never
+    /// "checked and empty".
     @Published public private(set) var checkedAt: Date?
     @Published public private(set) var errorMessage: String?
 
     /// Chosen for removal. Orphans start selected, unclaimed items never do.
-    ///
-    /// Written only through this model, so there is one place to work the
-    /// derived answers out. Every mutation below ends in `settle()`, which
-    /// is also why selecting every removed app's items costs one pass
-    /// rather than one per item.
+    /// Written only through this model; every change ends in `settle()`.
     @Published public private(set) var selection: Set<String> = []
 
-    /// The rows on screen are the last launch's, kept on disk, and this
-    /// launch's scan has not finished. They are shown so the page is never
-    /// empty, and none of them can be ticked or removed: a footprint is a
-    /// claim about the disk now, which a kept answer cannot support.
+    /// The rows shown are the last launch's and this launch's scan has not
+    /// finished. Shown, but none can be ticked or removed: a kept answer cannot
+    /// support a claim about the disk now.
     @Published public private(set) var isProvisional = false
 
     private var service: (any BrimServiceProtocol)?
@@ -64,15 +54,9 @@ public final class LeftoversModel: ObservableObject {
         unclaimed.contains { $0.url.path == RecoveryCopy.directory }
     }
 
-    /// One entry per piece of software rather than one per path. The list
-    /// was unreadable per-path: the same tool appeared several times with
-    /// nothing connecting the rows.
-    ///
-    /// Published rather than computed. As computed properties these grouped
-    /// two hundred and fifty items from scratch on every read, and they are
-    /// read several times per body evaluation: by Home's card, by each
-    /// section and by the command bar. Grouping is pure, so the
-    /// answer only changes when the arrays do, which is where it is done now.
+    /// One entry per piece of software rather than one per path. Published
+    /// rather than computed, because several views read it each pass and it
+    /// changes only when the arrays do.
     @Published public private(set) var orphanedGroups: [LeftoverGroup] = []
     @Published public private(set) var unclaimedGroups: [LeftoverGroup] = []
 
@@ -102,14 +86,11 @@ public final class LeftoversModel: ObservableObject {
         settle()
     }
 
-    /// What is ticked. Worked out when the selection or the scan changes,
-    /// which is the only time it can, rather than by filtering every
-    /// leftover on the Mac each time the footer is drawn.
+    /// What is ticked, worked out when the selection or the scan changes.
     @Published public private(set) var selectedItems: [Leftover] = []
 
-    /// Nothing Brim cannot remove is ever ticked: a group's tick and Review
-    /// All take only removable items, so a removal is never refused at the
-    /// end for something that was offered at the start.
+    /// Nothing Brim cannot remove is ever ticked, so a removal is never refused
+    /// at the end for something offered at the start.
     public var canRemoveSelection: Bool {
         !selectedItems.isEmpty
     }
@@ -126,22 +107,12 @@ public final class LeftoversModel: ObservableObject {
         settle()
     }
 
-    /// Rows Brim removed, kept so they can come back if the person does.
-    ///
-    /// Dropping a row is not the end of the story. Everything here went to
-    /// the Trash, and the Trash is a place people take things out of again.
-    /// Restoring one in Finder puts the file back exactly where it was, and
-    /// a list that had already forgotten it would go on claiming it was
-    /// gone until the next full scan.
+    /// Rows Brim removed, kept in case the person puts them back from the Trash,
+    /// which restores a file exactly where it was.
     private var removedButRecoverable: [Leftover] = []
 
-    /// Drops what a removal proved gone, right now.
-    ///
-    /// The scan is not re-run. `verify` re-observed every path with `lstat`
-    /// and said which ones survived, so the list already has its answer and
-    /// walking the whole Mac again to rediscover it is four hundred
-    /// milliseconds of making somebody wait for news they have been given.
-    /// Anything still on disk stays on screen, because it is still there.
+    /// Drops what a removal proved gone, without rescanning: `verify` already
+    /// re-observed every path. Anything still on disk stays on screen.
     public func forget(paths: Set<String>) {
         guard !paths.isEmpty else { return }
         let going = all.filter { paths.contains($0.url.path) }
@@ -154,12 +125,8 @@ public final class LeftoversModel: ObservableObject {
         regroup()
     }
 
-    /// Puts back anything that has reappeared on disk.
-    ///
-    /// Called when the Trash changes. Restoring from Finder writes the file
-    /// back to the path it came from, so the question is simply whether it
-    /// is there again, which is one `lstat` per row Brim removed and
-    /// nothing at all once that list is empty.
+    /// Puts back anything that reappeared on disk. Called when the Trash
+    /// changes: one `lstat` per row Brim removed.
     public func reconcileWithDisk() {
         guard !removedButRecoverable.isEmpty else { return }
         let back = removedButRecoverable.filter { PathExistence.exists(at: $0.url) }
@@ -172,11 +139,8 @@ public final class LeftoversModel: ObservableObject {
         regroup()
     }
 
-    /// The one place the two arrays become the two grouped lists.
-    ///
-    /// `load` used to do this inline, so anything else that changed the
-    /// arrays had to remember to redo the grouping and the selection by
-    /// hand. Removing a row is exactly that kind of change.
+    /// The one place the two arrays become the two grouped lists, so any change
+    /// to the arrays regroups and resettles.
     private func regroup() {
         orphanedGroups = orphaned.groupedByOwner()
         unclaimedGroups = unclaimed.groupedByOwner()
@@ -189,30 +153,25 @@ public final class LeftoversModel: ObservableObject {
         selectedItems = all.filter { selection.contains($0.id) }
     }
 
-    /// Scans when there is nothing confirmed to show, or when the result
-    /// is stale. Returning to a section is a change of view, not a reason
-    /// to walk the disk again.
+    /// Scans when there is nothing confirmed to show, or the result is stale.
+    /// Returning to the section is not a reason to walk the disk.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
-        // Coming back to the section is not a reason to walk the disk, but
-        // it is a reason to catch up on anything restored from the Trash
-        // while the person was elsewhere, which the view could not see
-        // because it was not on screen to be told.
+        // But catch up on anything restored from the Trash meanwhile.
         reconcileWithDisk()
         guard !hasLoaded || isStale, !isScanning else { return }
         await load(service: service)
     }
 
-    /// Something happened that can change what is left: an app arrived or
-    /// went, or Brim was away long enough. The next look scans again.
+    /// Something happened that can change what is left: an app arrived or went,
+    /// or Brim was away long enough. The next look scans again.
     public func markStale() {
         needsScan = true
     }
 
     private var needsScan = false
 
-    /// How long a result is taken as current without anything saying it
-    /// changed. Apps writing into Library do not count: they write all the
-    /// time, and scanning for every write is the cost this avoids.
+    /// How long a result counts as current without anything saying it changed.
+    /// Apps writing into Library do not count; they write all the time.
     public static let freshFor: TimeInterval = 3600
 
     public var isStale: Bool {
@@ -247,9 +206,8 @@ public final class LeftoversModel: ObservableObject {
         do {
             let found = try await service.leftovers()
             try Task.checkCancellation()
-            // A scan again, not the first: what the person ticked or
-            // unticked stays as they left it, and only something new is
-            // ticked the way a first scan would.
+            // A rescan keeps the person's ticks; only something new is ticked as a
+            // first scan would.
             let rescan = hasLoaded && !isProvisional
             let shownBefore = Set(all.map(\.id))
             let pickedBefore = selection
@@ -266,8 +224,7 @@ public final class LeftoversModel: ObservableObject {
             selection = rescan
                 ? pickedBefore.intersection(found.map(\.id)).union(preselected.subtracting(shownBefore))
                 : preselected
-            // A fresh scan is the truth, so nothing is being held back for
-            // a restore that the scan itself would have found.
+            // A fresh scan would have found any restore, so nothing is held back.
             removedButRecoverable = []
             regroup()
             errorMessage = nil
@@ -277,8 +234,7 @@ public final class LeftoversModel: ObservableObject {
             hasLoaded = false
             isProvisional = false
             checkedAt = nil
-            // A failed sweep must not leave the last run's rows on screen
-            // looking like this one's answer.
+            // A failed sweep must not leave the last run's rows looking like this one's.
             orphaned = []
             unclaimed = []
             selection = []
@@ -303,13 +259,10 @@ public final class LeftoversModel: ObservableObject {
         )
     }
 
-    /// The plan intent for the current selection.
-    ///
-    /// Named targets, not an identity: these items have no owner by
-    /// definition, so there is nothing to discover a footprint from. The
-    /// planner treats an intent with explicit targets as tidying rather than
-    /// uninstalling, which is exactly right: it must not clear privacy
-    /// grants or retract registrations for an app that is already gone.
+    /// The plan intent for the current selection: named targets, not an
+    /// identity, so the planner treats it as tidying rather than uninstalling
+    /// and does not clear privacy grants or registrations for an app that is
+    /// already gone.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
         guard !isScanning, !isProvisional, canRemoveSelection else { return nil }
         let targets = selectedItems.map(\.url)

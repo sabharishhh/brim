@@ -1,23 +1,11 @@
 import BrimCore
 import Foundation
 
-/// The dozen smaller plug-in folders, which differ only in their name.
-///
-/// Preference panes, Quick Look generators, Spotlight importers, Services,
+/// The smaller plug-in folders macOS watches, which differ only by name:
+/// preference panes, Quick Look generators, Spotlight importers, Services,
 /// Automator actions, colour pickers, screen savers, Internet plug-ins,
-/// Audio Units, StartupItems and kernel extensions. B10 lists them
-/// separately; they are one surface, because the mechanism is identical
-/// in every case: a bundle dropped in a folder macOS watches.
-///
-/// Each is enumerated with the folder named in the row, because "Adobe
-/// left a preference pane" is what a person reasons about and
-/// "kind 17" is not.
-///
-/// **Fonts are deliberately not here.** They are in B10's list, and this
-/// Mac has eighty-five of them. A font has no owning application and
-/// nothing about it is ever a leftover, so including them would add
-/// eighty-five rows of noise to a list whose value is that everything in
-/// it is worth reading.
+/// Audio Units, StartupItems and kernel extensions. Each row names its
+/// folder. Fonts are left out: no app owns a font.
 public struct BundlePluginSurface: RegistrationSurface {
     public let kind: Registration.Kind = .bundlePlugin
 
@@ -94,8 +82,7 @@ public struct BundlePluginSurface: RegistrationSurface {
             let path = url(for: $0, in: root).path
             return fm.fileExists(atPath: path) && fm.isReadableFile(atPath: path)
         }
-        // None of them existing is a normal, complete answer on a clean
-        // Mac, so this reports available rather than crying gap.
+        // None existing is a normal, complete answer on a clean Mac.
         return anyReadable || !Self.folders.contains(where: {
             fm.fileExists(atPath: url(for: $0, in: root).path)
         })
@@ -135,10 +122,8 @@ public struct BundlePluginSurface: RegistrationSurface {
                     label: (name as NSString).deletingPathExtension,
                     owningBundleID: Self.bundleIdentifier(at: item),
                     programPath: item.path,
-                    // The file is right there; it was just enumerated. A
-                    // plug-in is a leftover because its application is
-                    // gone, and proving that is the uninstall's job
-                    // through `belongs(to:bundleURL:)`, not a guess here.
+                    // The file was just enumerated. Whether its app is gone is the uninstall's
+                    // question, through `belongs(to:bundleURL:)`.
                     targetExists: true,
                     recordPath: item.path,
                     evidence: "A \(folder.singular) in \(Self.readablePath(directory.path)). "

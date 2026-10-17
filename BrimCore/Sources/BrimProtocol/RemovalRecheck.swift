@@ -1,13 +1,8 @@
 import Foundation
 
-/// A finished removal looked at again, some time after it was confirmed.
-///
-/// A removal's result is true when it is made, and the files it took can
-/// come back afterwards: a helper that was still running writes its
-/// settings again, a sync restores a folder, the person reinstalls. Brim
-/// only ever checked once, so a removal that had quietly come undone still
-/// read as done. This is the second look. It is never saved, because it is
-/// recomputed every time it is shown and a stored one would go stale.
+/// A finished removal looked at again later. Files can come back after a
+/// removal (a helper writes its settings again, a sync restores a folder),
+/// so this is the second look. Never saved: it is recomputed each time.
 public struct RemovalRecheck: Equatable, Sendable, Identifiable {
     public enum State: Equatable, Sendable {
         /// Everything the removal took is still gone.

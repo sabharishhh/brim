@@ -1,14 +1,10 @@
 import Foundation
 
 /// Everything Brim writes into the person's account, and the script that
-/// deletes it once Brim has quit.
-///
-/// Removing Brim through its own uninstall path sent its files to the Trash,
-/// where they stayed, and wrote a plan and a journal for the removal into the
-/// folder being removed. An uninstaller for an app whose purpose is leaving
-/// nothing behind cannot leave its own records in the Trash. So Brim removes
-/// itself by deleting, after it has quit: a running app writes its settings
-/// back as it exits, and `cfprefsd` would restore a deleted preferences file.
+/// deletes it once Brim has quit. Brim removes itself by deleting, not by
+/// the Trash, and only after quitting: a running app writes its settings
+/// back as it exits, and `cfprefsd` would restore a deleted preferences
+/// file.
 public enum BrimTraces {
     /// Places where Brim's identifiers name what it wrote.
     static let identifierDomains: [FileSystemRoot.Domain] = [
@@ -17,11 +13,10 @@ public enum BrimTraces {
         .userApplicationScripts, .userAutosaveInformation, .darwinUserCache, .darwinUserTemp
     ]
 
-    /// Every path Brim left in the person's account: anything named for one
-    /// of its identifiers or inside one, its support folder, its record of
-    /// recent documents and its crash reports. Containers are left out:
-    /// macOS keeps them as data vaults nobody but Finder can delete, and Brim
-    /// is not sandboxed, so the only ones carrying its name came from tests.
+    /// Every path Brim left in the person's account: anything named for one of
+    /// its identifiers, its support folder, its recent-documents record and its
+    /// crash reports. Not containers: macOS keeps them as data vaults only
+    /// Finder can delete, and Brim is not sandboxed.
     public static func paths(
         in root: FileSystemRoot, identifiers: [String], fileManager: FileManager = .default
     ) -> [URL] {
@@ -61,14 +56,11 @@ public enum BrimTraces {
         ["Brim", "brim", "BrimJobHelper"].contains { LocationInventory.Location.isReport(name, of: $0) }
     }
 
-    /// A shell script that waits for Brim to quit, then clears its preference
-    /// domains through `cfprefsd`, deletes every path, retracts the
-    /// application's Launch Services record and deletes itself.
-    ///
-    /// It waits by reading its standard input to the end. Brim holds the other
-    /// end of that pipe, and the kernel closes it when Brim's process ends,
-    /// whatever ends it. No process identifier is involved, which could be
-    /// reused by something else while the script waited.
+    /// A shell script that waits for Brim to quit, clears its preference
+    /// domains through `cfprefsd`, deletes every path, retracts Brim's Launch
+    /// Services record and deletes itself. It waits by reading standard input
+    /// to the end: the kernel closes Brim's end of the pipe when Brim exits. No
+    /// process identifier, which could be reused while it waits.
     public static func removalScript(
         paths: [URL], preferenceDomains: [String], unregistering bundle: URL?
     ) -> String {

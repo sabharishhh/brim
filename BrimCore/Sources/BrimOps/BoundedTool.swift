@@ -2,13 +2,8 @@ import Darwin
 import Foundation
 
 /// One of Apple's tools, run with a deadline and its output written to
-/// files.
-///
-/// Updates and installs ran `hdiutil`, `pkgutil`, `spctl` and `ditto`
-/// through a pipe that was read only once the tool had exited, with no
-/// time limit: a tool that wrote more than a pipe holds, or never finished,
-/// held the update for ever. A file never fills, and a tool past its
-/// deadline is stopped.
+/// files: a file never fills as a pipe does, and a tool past its deadline is
+/// stopped.
 enum BoundedTool {
     struct Outcome: Equatable {
         let status: Int32

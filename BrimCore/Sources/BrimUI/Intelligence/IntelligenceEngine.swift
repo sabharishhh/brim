@@ -2,17 +2,14 @@ import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
 
-/// Every request Brim makes of the on-device model goes through here.
-///
-/// - One at a time, in the order asked. The model serves one request at a
-///   time anyway; queueing here keeps each answer's wait predictable and
-///   lets a request nobody is waiting for leave before it runs.
-/// - The same question asked twice while it is running is asked once.
-/// - Answers are kept (`IntelligenceCache`), so each release or script is
-///   read once.
-/// - A rate limit is retried after a pause. Input too long for the window
-///   is cut further and asked once more. A refusal is remembered for a
-///   day, and a request that runs past its time is given up and not kept.
+/// Every request Brim makes of the on-device model goes through here:
+/// - one at a time, in order, and a request nobody is waiting for leaves
+///   before it runs;
+/// - the same question asked twice while running is asked once;
+/// - answers are kept (`IntelligenceCache`);
+/// - a rate limit is retried after a pause, input too long is cut further
+///   and asked once more, a refusal is remembered for a day, and a request
+///   that runs past its time is given up and not kept.
 public actor IntelligenceEngine {
     public enum Outcome<Value: Sendable>: Sendable {
         case done(Value)

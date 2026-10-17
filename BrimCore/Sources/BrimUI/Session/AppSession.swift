@@ -1,11 +1,9 @@
 import Foundation
 import Observation
 
-/// How current a surface's findings are.
-///
-/// Every surface says how old what it shows is, because a list with no
-/// age reads as live, and a list from last week that reads as live is how
-/// somebody removes a thing that has since come back into use.
+/// How current a surface's findings are. Every surface says how old what it
+/// shows is, because an old list that reads as live is how someone removes
+/// something that came back into use.
 public enum Freshness: Equatable, Sendable {
     /// Never looked. Not the same as having looked and found nothing.
     case notChecked
@@ -41,27 +39,23 @@ public extension Freshness {
         }
     }
 
-    /// Constructed once. Building one per row per frame is what made the
-    /// history list heavy.
+    /// Constructed once; building one per row per frame was expensive.
     private static let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter
     }()
 
-    /// "just now" under a minute, then "2 minutes ago", "3 hours ago". The
-    /// one way Brim says how old something is; shown with a minute's
-    /// refresh, never a second's.
+    /// "just now" under a minute, then "2 minutes ago", "3 hours ago". Refreshed
+    /// once a minute, never once a second.
     static func age(of date: Date, now: Date) -> String {
         now.timeIntervalSince(date) < 60 ? "just now" : relative.localizedString(for: date, relativeTo: now)
     }
 }
 
-/// What the whole window shares, and what outlives a launch.
-///
-/// Section models own their scans (`SectionModels`); this owns what is
-/// true of the person's use of Brim rather than of the Mac: what they
-/// have already seen, and the icons of apps that are gone.
+/// What the whole window shares and what outlives a launch: what the person
+/// has seen, and the icons of apps that are gone. Section models own their
+/// scans (`SectionModels`).
 @MainActor
 @Observable
 public final class AppSession {
@@ -78,9 +72,8 @@ public final class AppSession {
         .appendingPathComponent("Brim/Interface", isDirectory: true)
 }
 
-/// A small value saved as JSON beside the others. Missing or unreadable
-/// reads as empty: these are conveniences, and a corrupt file should cost
-/// someone their "new" dots, never their launch.
+/// A small value saved as JSON. Missing or unreadable reads as empty: these
+/// are conveniences, and a corrupt file must never cost a launch.
 struct JSONFile<Value: Codable> {
     let url: URL?
 

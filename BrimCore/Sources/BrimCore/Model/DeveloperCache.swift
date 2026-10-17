@@ -1,24 +1,15 @@
 import Foundation
 
-/// Build caches, and how safe each one is to clear.
-///
-/// These are the largest reclaimable things on most developer machines and
-/// the least visible: Xcode's derived data and device support alone reach
-/// tens of gigabytes, and nothing tells you. They are also the easiest
-/// category to get wrong, because two directories that look alike can mean
-/// very different things. Deleting `DerivedData` costs a rebuild. Deleting
-/// the CoreSimulator device set costs every simulator you have set up.
-///
-/// So this is a named list rather than a pattern match on the word "cache".
-/// Each entry says what it is, what clearing it costs, and how it comes
-/// back, and anything Brim does not recognise is left alone.
+/// Build caches, and how safe each one is to clear. A named list rather than
+/// a match on the word "cache", because similar folders differ: deleting
+/// `DerivedData` costs a rebuild, deleting the simulator device set loses
+/// every simulator. Anything not on the list is left alone.
 public struct DeveloperCache: Codable, Sendable, Equatable, Identifiable {
-    /// T-5.7's three classes, which decide what Brim is allowed to do.
+    /// Three classes, which decide what Brim is allowed to do.
     public enum Cost: String, Sendable, Codable {
         /// Regenerable. Brim removes these itself.
         case rebuilt
-        /// Owned by a tool that has its own cleanup. Brim runs that command
-        /// rather than deleting the directory underneath it, because
+        /// Owned by a tool with its own cleanup. Brim runs that command, because
         /// removing a module cache by hand leaves the tool confused.
         case refetched
         /// Project dependencies with a restore record. Local changes and offline
@@ -48,9 +39,8 @@ public struct DeveloperCache: Codable, Sendable, Equatable, Identifiable {
     /// The tool's own cleanup, where it has one. Present only for the
     /// delegated class.
     public let cleanupID: String?
-    /// That command exactly as it would be typed, carried alongside the
-    /// identifier so the view can show it without linking the table that
-    /// knows how to run it.
+    /// The command as it would be typed, carried so the view can show it
+    /// without linking the table that runs it.
     public let cleanupCommand: String?
     public let manualCleanupReason: String?
     /// For a project's build output, when it was last built. Nil for a
@@ -77,10 +67,8 @@ public struct DeveloperCache: Codable, Sendable, Equatable, Identifiable {
         url.path
     }
 
-    /// What a screen reader should say for this row, as one sentence
-    /// rather than the five fragments the view is built from. The size
-    /// rides as the value and the path is left out of the label, the same
-    /// way the other lists handle theirs.
+    /// One sentence for VoiceOver. The size is the value and the path is left
+    /// out of the label, as in the other lists.
     public var spokenDescription: String {
         SpokenText.sentences([tool, name, explanation])
     }

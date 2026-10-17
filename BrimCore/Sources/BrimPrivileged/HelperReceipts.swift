@@ -43,9 +43,9 @@ extension Helper {
         }
     }
 
-    /// A fixed tool with fixed arguments. The package identifier has
-    /// already been checked to contain nothing but identifier characters,
-    /// and it is passed as an argument rather than through a shell.
+    /// A fixed tool with fixed arguments. The identifier was already checked to
+    /// hold only identifier characters, and is passed as an argument, never
+    /// through a shell.
     func runPkgutil(forgetting packageID: String) async throws -> Int32 {
         let result = try await NativeCommandRunner.run(
             executable: "/usr/sbin/pkgutil", arguments: ["--forget", packageID],

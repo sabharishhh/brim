@@ -28,8 +28,8 @@ public struct LaunchdSource: EvidenceSource {
         // Other installed applications from the same developer, looked up
         // once and only if a job turns out to be matched on the team alone.
         var siblings: [Identity]?
-        // Worked out once: `Identity` derives these on every read, and there
-        // are several hundred job files to test against them.
+        // Worked out once: `Identity` derives these on every read, and there are
+        // hundreds of job files to test.
         let embeddedIDs = identity.searchBundleIdentifiers.filter { $0 != targetBundleID }
         let declaredLabels = Set(identity.capabilitySurface?.declarations
             .filter { $0.capability == .launchdJob }
@@ -54,32 +54,11 @@ public struct LaunchdSource: EvidenceSource {
                     continue
                 }
 
-                // Proof that the job is this application's: its label is
-                // named after the application, or the program it runs lives
-                // inside the application's bundle.
-                //
-                // Named after means the identifier itself, or the identifier
-                // followed by a dot. It used to be any label that merely
-                // started with it, with nothing required after, and on the
-                // Mac this was found on that made the News application
-                // (`com.apple.news`) the owner of `com.apple.newsyslog`, the
-                // system's log rotation daemon, and Clock the owner of
-                // `com.apple.clocksyncd`. Tier A is ticked by default and a
-                // ticked job is unloaded, so for anybody else's applications
-                // `com.example.app` would take `com.example.applet` with it.
-                // The rest of the codebase already draws the line here:
-                // `LocationInventorySource` matches the identifier and a dot.
-                //
-                // Kept strict on purpose. A developer who names a helper
-                // `com.example.appHelper` or `com.example.app-helper` loses
-                // the label match, and nothing is lost for it: a helper that
-                // runs from inside the bundle is proven by the program path
-                // below, and a privileged helper blessed with `SMJobBless`
-                // carries its own bundle identifier as its label, which is
-                // conventionally the application's with a dot. What the
-                // boundary costs on this Mac is Apple's own agents named
-                // without one, `com.apple.SafariLaunchAgent` and `newsd`
-                // among them, for applications Brim cannot remove anyway.
+                // Proof the job is this application's: its label is the identifier or the
+                // identifier and a dot, or its program lives inside the app's bundle. A
+                // bare prefix made `com.apple.news` own `com.apple.newsyslog`, and a ticked
+                // job is unloaded. Strict on purpose: a helper whose label misses still
+                // proves itself through the program path below.
                 var proven = plistIdentity.launchdLabel.map { label in
                     label == targetBundleID || label.hasPrefix(targetBundleID + ".")
                 } ?? false
@@ -91,16 +70,10 @@ public struct LaunchdSource: EvidenceSource {
                 if embeddedMatch {
                     proven = false
                 }
-                // The program running from inside this application's bundle
-                // is proof whatever the label says, and it is what keeps the
-                // strict label boundary above from costing recall. So it has
-                // to look in every bundle this application could be, which
-                // `AppBundleSource` has always taken to include the
-                // Applications folder inside the home folder; it used to
-                // look only in `/Applications`, so a per-user install's
-                // helper went unproven. And inside means the bundle followed
-                // by a slash: this compared with a bare `hasPrefix`, so a
-                // program in `App.apple.app` proved a job belonged to `App`.
+                // The program running from inside this application's bundle proves the job
+                // whatever the label says. Checked against every bundle location the app
+                // could have, including `~/Applications`, and "inside" means the bundle
+                // path followed by a slash.
                 if !proven, let program = plistIdentity.launchdProgramPath {
                     proven = SymlinkIntoBundleSource.verifiedBundleLocations(for: identity, in: root)
                         .contains { program.hasPrefix($0.path + "/") }
@@ -118,16 +91,10 @@ public struct LaunchdSource: EvidenceSource {
                     continue
                 }
 
-                // A label that starts with the team identifier says which
-                // developer registered the job and nothing about which of
-                // their applications it serves. This used to be Tier A,
-                // which means unloaded by default along with whichever of a
-                // developer's applications was being removed. It never ran,
-                // because the team identifier never resolved; fixing that
-                // made it reachable. Handled the way `TeamIDSource` handles
-                // a group container matched the same way: vetoed while a
-                // sibling from the same developer is installed, and shown
-                // but never ticked otherwise.
+                // A label starting with the team identifier names the developer, not
+                // which of their apps the job serves. Vetoed while a sibling from the same
+                // developer is installed, and shown but never ticked otherwise, as
+                // `TeamIDSource` treats group containers.
                 guard let teamID = identity.teamID,
                       let label = plistIdentity.launchdLabel,
                       label == teamID || label.hasPrefix(teamID + ".")

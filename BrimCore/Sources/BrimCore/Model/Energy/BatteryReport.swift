@@ -2,25 +2,16 @@ import Foundation
 import IOKit
 import IOKit.ps
 
-/// The battery as it is right now, and what the whole Mac is drawing.
-///
-/// Every figure is one macOS already shows somewhere, read the way macOS
-/// reads it, so Brim never disagrees with System Settings. The battery's
-/// maximum capacity is the clearest case: the raw registry gives 4561 of a
-/// designed 4629 mAh on this Mac, which is 98.5%, while Settings says 100%.
-/// A figure Brim worked out itself would contradict the one people check
-/// it against, so the condition, capacity and cycle count come from
-/// `system_profiler`, which reports exactly what Settings does.
-///
-/// Nothing here looks forward. Any figure about the hours ahead depends on
-/// what the Mac does next, which is why macOS stopped showing one, and why
-/// this type never reads the registry's estimates.
+/// The battery now, and what the whole Mac is drawing. Every figure is read
+/// the way System Settings reads it, so Brim never disagrees with it:
+/// condition, capacity and cycles come from `system_profiler`, not the raw
+/// registry. Nothing looks forward: Brim never turns the charge into a time.
 public struct BatteryReport: Sendable, Equatable {
     public enum Charging: Sendable, Equatable {
         case onBattery
         case charging
-        /// On the adapter and holding its charge, which is what a charge
-        /// limit or Optimized Battery Charging looks like from outside.
+        /// On the adapter and holding its charge: a charge limit or Optimized
+        /// Battery Charging.
         case pluggedInNotCharging
         case charged
     }
@@ -66,8 +57,8 @@ public struct BatteryReport: Sendable, Equatable {
         read(powerSource: internalBattery(), registry: smartBattery(), profiler: profilerOutput())
     }
 
-    /// Assembles the report from the three readings. Each reading is
-    /// optional on its own: a missing one drops its facts and nothing else.
+    /// Assembles the report from three readings. A missing reading drops its
+    /// own facts and nothing else.
     public static func read(
         powerSource: [String: Any]?, registry: [String: Any]?, profiler: Data?
     ) -> BatteryReport? {

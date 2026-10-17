@@ -59,8 +59,7 @@ public struct AppGrouper {
     }
 
     /// Unopened for three months, as far as can be proved. An app with no
-    /// Spotlight record at all is never counted: that is "did not look",
-    /// and calling it unused would be a claim nothing supports.
+    /// Spotlight record is never counted: that is "did not look".
     func isUnused(_ app: InstalledApplication) -> Bool {
         if app.isMigratedAndUnopened {
             return true
@@ -85,16 +84,9 @@ public struct AppGrouper {
 
     // MARK: - Smart
 
-    /// Two groups, by the one question that decides what can be done:
-    /// the apps you installed, which Brim can remove, and the ones that
-    /// cannot go, macOS's own and apps shipped inside another. Each is
-    /// ordered by use, most recent first, so what you live in is at the top
-    /// and what you have forgotten sinks.
-    ///
-    /// This replaced six smart groups (recently installed, unused, larger
-    /// than 1 GB, suites, opened this week, everything else). Each was true
-    /// and together they scattered one list across the page, with no group
-    /// that answered what someone opens Apps to find.
+    /// Two groups by what can be done: the apps the person installed, which
+    /// Brim can remove, and those that cannot go (macOS's own, and apps inside
+    /// another). Each ordered by use, most recent first.
     private func smart(_ apps: [InstalledApplication]) -> [ItemGroup<InstalledApplication>] {
         Grouping.assign(
             apps,
@@ -106,8 +98,8 @@ public struct AppGrouper {
         )
     }
 
-    /// Most recently opened first. Apps Spotlight has no date for follow,
-    /// by name, rather than being placed as though they were never used.
+    /// Most recently opened first. Apps Spotlight has no date for follow, by
+    /// name, rather than being placed as never used.
     static func byUse(_ lhs: InstalledApplication, _ rhs: InstalledApplication) -> Bool {
         switch (lhs.lastOpened, rhs.lastOpened) {
         case let (left?, right?): left > right
@@ -179,8 +171,7 @@ public struct AppGrouper {
                     order: Self.byName
                 )
             ],
-            // No Spotlight record at all: Brim cannot say, which is its own
-            // group rather than a guess in either direction.
+            // No Spotlight record at all: Brim cannot say, so it is its own group.
             otherwise: GroupRule(
                 id: "unknown", title: "No record of use", collapsed: true, matches: { _ in true }, order: Self.byName
             )
