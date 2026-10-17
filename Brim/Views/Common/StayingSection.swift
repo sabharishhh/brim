@@ -1,12 +1,8 @@
 import BrimCore
 import SwiftUI
 
-/// What only the person can finish, with the reason, shown before
-/// approval, and a way straight to it in Finder.
-///
-/// Both review sheets need it. Without it, something only an administrator
-/// could move was left out of an uninstall plan and the result then said
-/// nothing was left.
+/// What only the person can finish, with the reason, shown before approval
+/// with a way to it in Finder.
 struct StayingSection: View {
     let items: [ExcludedItem]
 

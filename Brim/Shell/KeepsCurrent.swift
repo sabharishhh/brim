@@ -2,25 +2,15 @@ import AppKit
 import BrimUI
 import SwiftUI
 
-/// Keeps every page current while Brim's window is open, without anyone
-/// pressing Check Again and without reading anything on a timer that macOS
-/// could have announced.
-///
-/// - The Applications folders are watched. An install, an update or a
-///   removal changes the Apps list within about two seconds; an app that
-///   arrived or left makes Remnants stale, and Updates drops a row the disk
-///   has already answered.
-/// - The background job folders and the Background Task Management store
-///   are watched, so a login item or launch agent appears or goes while
-///   Background is open.
-/// - Coming back to Brim, or the Mac waking, catches up what has no event:
-///   privacy entries edited in System Settings, a Remnants result over half
-///   an hour old, an Updates check past its age, free space.
-/// - Free space is read every thirty seconds while Space or Home is shown,
+/// Keeps every page current while the window is open, without a refresh
+/// button and without polling what macOS can announce:
+/// - the Applications folders, background job folders and the Background
+///   Task Management store are watched;
+/// - becoming active or waking catches up what has no event (privacy
+///   entries, stale Remnants and Updates results, free space);
+/// - free space is read every thirty seconds while Space or Home is shown,
 ///   and when a disk is mounted or ejected.
-///
-/// All of it lives as long as the window's tasks and stops with them, so
-/// nothing watches once Brim has quit.
+/// Everything lives with the window's tasks, so nothing watches after quit.
 struct KeepsCurrent: ViewModifier {
     let models: SectionModels
     let shell: ShellState

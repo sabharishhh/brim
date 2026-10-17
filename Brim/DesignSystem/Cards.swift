@@ -2,13 +2,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// A dot for a card's state: green when all is well, orange when something
-/// wants a look.
-///
-/// Home's cards draw it `plain`: one off-white dot beside every phrase. A
-/// card holds one fact, and its phrase already says whether it is well, so
-/// a green or orange dot there repeated the words, and the grey one for a
-/// plain fact looked switched off rather than calm.
+/// A dot for a card's state. Home's cards use `plain`, because the card's
+/// phrase already says whether all is well.
 struct StatusDot: View {
     let status: CardStatus
     var plain = false
@@ -48,8 +43,7 @@ struct MeterSegment: Identifiable {
 struct MeterBar: View {
     let segments: [MeterSegment]
     var showsLegend = true
-    /// How a segment's value is said. Sizes unless told otherwise: the
-    /// battery's bar was read out as "Charge 80 bytes".
+    /// How a segment's value is read out. Sizes unless told otherwise.
     var format: (Int64) -> String = ByteText.short
 
     private var total: Int64 {
@@ -240,12 +234,8 @@ struct FlowLayout: Layout {
     }
 }
 
-/// How a card answers the pointer: a third of the pointer light along its
-/// edge, and nothing else. One modifier, so the cards on Home, Space and
-/// Energy answer alike. A full light read as the page lighting up rather
-/// than the card answering; a rise and a shadow on every card under the
-/// pointer was motion on something people do constantly, which Apple's
-/// guidance keeps off.
+/// A card's hover response: a third-strength pointer light along its edge
+/// and nothing else, the same on every card.
 private struct HoverLift: ViewModifier {
     let cornerRadius: CGFloat
 

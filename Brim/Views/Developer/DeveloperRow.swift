@@ -4,9 +4,8 @@ import BrimUI
 import SwiftUI
 
 extension DeveloperCache {
-    /// "Xcode derived data": the tool and the cache, as a person says it.
-    /// Only an ordinary word is lowered: a name such as IntelliSense keeps
-    /// its own capitals, and lowering all of it wrote "intellisense".
+    /// "Xcode derived data": the tool and the cache, as a person says it. Only
+    /// ordinary words are lowered, so IntelliSense keeps its capitals.
     var title: String {
         let words = name.split(separator: " ", omittingEmptySubsequences: false).map { word in
             word.dropFirst().contains(where: \.isUppercase) ? String(word) : word.lowercased()
@@ -30,8 +29,7 @@ extension DeveloperCache {
         if cost == .configured {
             return "Keeps your settings"
         }
-        // Where the project is. Two worktrees of one project read as two
-        // identical rows; what restoring costs is in the details.
+        // Where the project is, so two worktrees of one project read differently.
         if cost == .restored, isProject {
             let project = url.deletingLastPathComponent().path
             return "In " + PathText.abbreviated(project)
@@ -57,8 +55,8 @@ extension DeveloperCache {
         }
     }
 
-    /// "Built today", "Built 11 days ago": whether you are still working
-    /// on it is the whole question for a project's build output.
+    /// "Built today", "Built 11 days ago": whether the project is still being
+    /// worked on is what matters for its build output.
     static func built(_ date: Date, now: Date = Date()) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
@@ -75,7 +73,7 @@ extension DeveloperCache {
         return "Built \(days / 30) months ago"
     }
 
-    /// The developer's groups (plan §8), by what clearing each costs.
+    /// The developer's groups, by what clearing each costs.
     static func sections(_ caches: [DeveloperCache]) -> [ItemGroup<DeveloperCache>] {
         let order: (DeveloperCache, DeveloperCache) -> Bool = {
             $0.tool == $1.tool ? $0.sizeBytes > $1.sizeBytes
@@ -251,8 +249,7 @@ struct DeveloperInspector: View {
                 .capsuleAction(prominent: true)
                 .buttonBorderShape(.capsule)
         case .refetched:
-            // The exact command, shown before anything is approved:
-            // delegating is not a silent handoff (T-5.7).
+            // The exact command, shown before anything is approved.
             if cache.cleanupID == "homebrew.cleanup" {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Completed downloads can be moved to the Trash. Files still downloading stay.")

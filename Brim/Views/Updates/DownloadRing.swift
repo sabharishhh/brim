@@ -1,13 +1,9 @@
 import BrimUI
 import SwiftUI
 
-/// A download's progress ring that stops the download when clicked.
-///
-/// Under the pointer the ring turns into a cross, so the one control says
-/// both how far the download has come and how to stop it. What arrived is
-/// kept for a day, so Update afterwards carries on from there. A real
-/// button, so it can be reached by keyboard and VoiceOver as well as by
-/// hovering.
+/// A download's progress ring that stops the download when clicked; under
+/// the pointer it shows a cross. What arrived is kept for a day, so Update
+/// resumes from there. A real button, reachable by keyboard and VoiceOver.
 struct DownloadRing: View {
     let fraction: Double
     let stop: () -> Void
@@ -31,8 +27,8 @@ private struct RingStyle: ButtonStyle {
     }
 }
 
-/// Hover is answered inside the button's own body, as `ActionStyle` does:
-/// an overlay or a tracking view on a button never sees the pointer.
+/// Hover is answered inside the button's own body, as in `ActionStyle`: an
+/// overlay or tracking view on a button never sees the pointer.
 private struct RingBody: View {
     let fraction: Double
     let isPressed: Bool

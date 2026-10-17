@@ -12,10 +12,9 @@ extension SectionModels {
             return true
         }
         guard let app = urls.first(where: { $0.pathExtension == "app" }) else { return false }
-        // An app that is installed opens in Apps. One that is not, still in
-        // Downloads or on a disk image, is something about to be installed.
-        // One in an Applications folder is installed even if the list has
-        // not caught up with it yet.
+        // An app in an Applications folder is installed even if the list has not
+        // caught up; one elsewhere, such as Downloads or a disk image, is about to
+        // be installed.
         let installed = app.resolvingSymlinksInPath().pathComponents.contains("Applications")
         let selected = applications.selectApplication(at: app)
         if selected || installed {
@@ -34,9 +33,8 @@ extension SectionModels {
 }
 
 extension LeftoverGroup {
-    /// An owner row's icon (plan §9.1): the owner's saved icon once its app
-    /// is gone, otherwise a monogram. Never Finder's folder, which would
-    /// make every owner look the same.
+    /// An owner row's icon: its saved icon once the app is gone, otherwise a
+    /// monogram, never Finder's folder.
     var ownerIcon: IconSource {
         IconResolver.source(
             for: IconSubject(name: displayName, kind: .folder, ownerName: displayName, ownerBundleID: identifier),

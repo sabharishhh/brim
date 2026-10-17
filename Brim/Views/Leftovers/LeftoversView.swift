@@ -5,23 +5,16 @@ import SwiftUI
 
 // swiftformat:disable wrapMultilineStatementBraces
 
-/// Remnants: apps that have left this Mac and what each one left behind.
-///
-/// Called "Removed" until 29 Sep, which named the apps rather than what
-/// the page is about, and read as a list of things already dealt with.
-///
-/// One row per app, named and shown as the app was, with when Brim saw it
-/// go. The one action finishes the removal: it opens the same review an
-/// uninstall uses, where what is certain is ticked and what is not is
-/// shown and left. Traces nobody can be named for sit in one collapsible
-/// section and are never counted.
+/// Remnants: apps that have left this Mac, and what each left behind. One
+/// card per app, shown as the app was, with when Brim saw it go. Its action
+/// opens the same review an uninstall uses. Traces nobody can be named for
+/// sit in one collapsible section and are never counted.
 struct LeftoversView: View {
     @ObservedObject var model: LeftoversModel
-    /// The Trash, shared with Home and the Journal because the Trash is one
-    /// thing and two watchers would poll it twice.
+    /// The Trash, shared with Home and the Journal so it is watched once.
     @ObservedObject var recovery: RecoveryStatusModel
-    /// Without it most of Library is unread, and "nothing left behind"
-    /// would be a claim about places Brim never looked.
+    /// Without it most of Library is unread, so "nothing left behind" would be
+    /// a claim about places Brim never looked.
     @ObservedObject var access: FullDiskAccessModel
     @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @SwiftUI.Environment(\.brimService) private var service
@@ -107,9 +100,7 @@ struct LeftoversView: View {
 private extension LeftoversView {
     // MARK: - List
 
-    /// Brim's own protected recovery copies were listed among the Unknown
-    /// items, under a caption saying nobody could be named for them. They
-    /// have their own heading now.
+    /// Brim's own protected recovery copies, listed under their own heading.
     private static func isRecovery(_ group: LeftoverGroup) -> Bool {
         group.items.contains { $0.url.path == RecoveryCopy.directory }
     }
@@ -160,11 +151,8 @@ private extension LeftoversView {
         }
     }
 
-    /// Two kinds of thing, drawn as two kinds of thing. An app that left
-    /// something is a card: its icon, when it went, and the places it left
-    /// folded inside. What nobody can be named for is a plain, quieter list
-    /// beneath, open by default and never counted. They used to be the same
-    /// row in two sections, so the page read as one list of equals.
+    /// An app that left something is a card; what nobody can be named for is a
+    /// plain, quieter list beneath it, open by default and never counted.
     private var list: some View {
         List {
             Group {
@@ -353,9 +341,8 @@ private struct LeftoverBatchActions: View {
                 Button("Clear", action: clear).buttonStyle(.borderless)
             }
             Spacer()
-            // Both open a review, and what is approved there goes to the
-            // Trash first. They said Delete, which promised more than happens
-            // and less than the review asks.
+            // Both open a review, and what is approved there goes to the Trash first,
+            // so the button does not say Delete.
             Button("Review All…", action: removeAll)
                 .capsuleAction()
                 .disabled(!canRemoveAll)
@@ -443,8 +430,7 @@ private struct RemnantCard: View {
         .overlay(RoundedRectangle(cornerRadius: Metrics.rowRadius + 2).strokeBorder(Palette.well, lineWidth: 0.5))
     }
 
-    /// The app's own icon when Brim saved one, otherwise the kind of place
-    /// its largest item is in. Letters on a colour said nothing.
+    /// The app's saved icon, otherwise the kind of place its largest item is in.
     @ViewBuilder private var ownerIcon: some View {
         if case .monogram = group.ownerIcon,
            let largest = group.items.max(by: { $0.size < $1.size }) {
@@ -474,10 +460,8 @@ private struct RemnantCard: View {
     private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 
     private var facts: String {
-        // An app replaced at its own path by one of the same name is the
-        // installed app's earlier copy. Figma's small installer, swapped
-        // for Figma itself, read "Figma, Removed, Replaced by Figma" while
-        // Figma was open on the same screen.
+        // An app replaced at its own path by one of the same name is the installed
+        // app's earlier copy, not a removed app.
         if let replacement = group.replacedBy, NameKey.of(replacement.name) == NameKey.of(group.displayName) {
             return "Earlier copy, replaced by the \(replacement.name) now installed"
         }
@@ -544,9 +528,8 @@ private struct UnknownRow: View {
                     .opacity(0.7)
             }
             VStack(alignment: .leading, spacing: 1) {
-                // The folder's own name. A guessed owner, title-cased from
-                // the folder ("Openai chat", "Adobe acc", "Sh"), read like an
-                // app Brim had identified, under a heading saying none was.
+                // The folder's own name. A title-cased guess read like an app Brim had
+                // identified.
                 Text(group.items.count == 1 ? (group.items.first?.url.lastPathComponent ?? group.displayName)
                     : group.displayName)
                     .foregroundStyle(Palette.inkSecondary)

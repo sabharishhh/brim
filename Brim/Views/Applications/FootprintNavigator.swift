@@ -19,8 +19,7 @@ struct FootprintNavigator: View {
         .accessibilityLabel("Footprint groups")
     }
 
-    /// Rows of equal groups with no orphan: four groups are two by two,
-    /// not three and one left hanging.
+    /// Rows of equal groups with none left over: four groups are two by two.
     private var columns: Int {
         sections.count == 4 ? 2 : max(1, min(sections.count, 3))
     }

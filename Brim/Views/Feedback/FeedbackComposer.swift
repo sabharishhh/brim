@@ -42,8 +42,8 @@ struct FeedbackComposer: View {
                         dictates: true
                     )
                     if feedback.draft.kind == .bug {
-                        // The whole line opens it. A disclosure group's own
-                        // label answers only on its chevron.
+                        // The whole line opens it; a disclosure group's own label answers only on
+                        // its chevron.
                         DisclosureGroup(isExpanded: $showsSteps) {
                             VStack(spacing: 16) {
                                 FeedbackTextInput(

@@ -11,10 +11,8 @@ struct ContentView: View {
     /// Saved with the window, so it reopens where it was left.
     @SceneStorage("destination") private var savedDestination = Destination.home.rawValue
     @SceneStorage("appsLens") private var savedLens = AppsLens.all.rawValue
-    /// The same place, kept outside the window's saved state. Granting Full
-    /// Disk Access makes macOS quit and reopen Brim, and a window that is
-    /// not restored (with "Close windows when quitting" on, or when Brim
-    /// reopens itself) loses its scene storage. See `resumeAfterAccess`.
+    /// Kept outside scene storage: granting Full Disk Access relaunches Brim,
+    /// and a window that is not restored loses its scene storage.
     @AppStorage("place.destination") private var lastDestination = Destination.home.rawValue
     @AppStorage("place.appsLens") private var lastLens = AppsLens.all.rawValue
     @SwiftUI.Environment(\.openSettings) private var openSettings
@@ -27,12 +25,11 @@ struct ContentView: View {
     private let requests = ExternalRequests.shared
     @SwiftUI.Environment(\.brimService) private var service
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Setup runs once and then never again, whether or not the person
-    /// accepted everything in it. Asking again next launch is how an app
-    /// trains people to dismiss without reading.
+    /// Setup runs once, whatever the person accepted. Asking every launch
+    /// teaches people to dismiss it.
     @AppStorage("hasFinishedSetup") private var hasFinishedSetup = false
-    /// nil until asked. Somebody who enrolled before this flag existed has
-    /// already been through setup and should not see it again.
+    /// Nil until asked. People who enrolled before this flag existed have
+    /// already been through setup.
     @State private var needsSetup: Bool?
 
     var body: some View {
@@ -55,12 +52,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas)
             .overlay(alignment: .top) { ActivityLine(activity: models.activity) }
-            // Keyed to the page, so a change of page is animated and
-            // nothing inside one inherits it: an animation over the whole
-            // column would animate every scroll and every checkbox too.
-            // A fade replaces the old blur, scale and drift, which made the
-            // page swim for 280 ms after every click; from the keyboard
-            // the new page is simply there.
+            // Keyed to the page, so only a page change animates, not every scroll and
+            // checkbox inside it.
             .animation(
                 shell.navigatedByKeyboard ? nil : Motion.resolved(Motion.navigate, reduceMotion: reduceMotion),
                 value: shell.selection
@@ -103,33 +96,11 @@ struct ContentView: View {
             models.openApplication(from: urls, shell: shell)
         }
         .modifier(InstallerSheets(model: models.recording, shell: shell, applications: models.applications))
-        // A minimum, and deliberately no ideal.
-        //
-        // This carried `idealWidth: 1200, idealHeight: 800` for the reason
-        // written here before: without a concrete ideal the content said it
-        // would take any width and the window opened at whatever the
-        // display allowed. `.defaultSize` on the scene answers that now and
-        // the ideal had become a second, redundant hint.
-        //
-        // It was also the single biggest cost in the app. An ideal size on
-        // the root makes SwiftUI measure the *entire* content tree to
-        // produce it, and hand the answer to AppKit as an intrinsic size,
-        // so every scroll in any panel walked the whole view graph and then
-        // ran a window-wide constraint solve. Profiling the Applications
-        // list put 43% of the main thread in `GraphHost.flushTransactions`,
-        // 25% in `-[NSWindow layoutIfNeeded]` and 14% in
-        // `ViewGraphRootValueUpdater._sizeThatFits`, with not one sample
-        // containing any of Brim's own code: no view body was running,
-        // SwiftUI was re-measuring everything. Every panel had it, which is
-        // why removing an HSplitView here and a ScrollView there each
-        // helped a little and none of it fixed the feel.
-        //
-        // A minimum is a constant and costs nothing to answer.
-        // The narrowest the layout holds together: the sidebar (200), a
-        // list column (440) and a review pane (440), with room to spare.
-        // Every column's minimum must add up to less than this, or a column
-        // asking for more than the window has grows the window and the new
-        // size is saved.
+        // A minimum and deliberately no ideal size: an ideal on the root makes
+        // SwiftUI measure the whole view tree on every pass, so every scroll ran a
+        // window-wide constraint solve. `.defaultSize` sets the opening size.
+        // Column minimums must add up to less than this, or a column grows the
+        // window and the larger size is saved.
         .frame(minWidth: Metrics.windowMinWidth, minHeight: Metrics.windowMinHeight)
         .focusedSceneValue(\.shell, shell)
         .environment(shell)
@@ -274,9 +245,8 @@ struct ContentView: View {
 
     // MARK: - Full Disk Access
 
-    /// The launch after a request for Full Disk Access goes back to where
-    /// the request was made: the same page, and the Settings window if it
-    /// was asked from there. Setup keeps its own step. Once, per launch.
+    /// After a Full Disk Access relaunch, return to the page (and Settings) the
+    /// request came from. Once per launch.
     private func resumeAfterAccess() {
         guard !Self.resumed, let origin = FullDiskAccess.pendingRequest else { return }
         Self.resumed = true
@@ -294,9 +264,8 @@ struct ContentView: View {
 
     @MainActor private static var resumed = false
 
-    /// Access arrived while Brim was running, which macOS often allows
-    /// without the reopen it offers. Everything read without it is read
-    /// again, so no page keeps saying Library could not be read.
+    /// Access granted while Brim runs, which macOS often allows without a
+    /// relaunch: read everything again.
     private func readAgainWithAccess() async {
         shell.show(ToastMessage(symbol: "checkmark.circle", text: "Full Disk Access is on"))
         async let leftovers: Void = models.leftovers.load(service: service)
@@ -359,12 +328,9 @@ private struct ActivityLine: View {
     }
 }
 
-/// Removed apps with something new left behind since the last visit, on
-/// the Dock icon, when the person asked for it in Settings. Opening
-/// Remnants acknowledges them, which clears it. It counted every path,
-/// Unknown items included, under a setting that says removed apps. Its own
-/// view, observing the model directly: read through `SectionModels` it
-/// would never hear of a change: nested observable objects do not pass it up.
+/// Removed apps with something new left behind, on the Dock icon when
+/// enabled in Settings. Observes the model directly, because nested
+/// observable objects do not pass changes up.
 private struct DockBadge: View {
     @ObservedObject var leftovers: LeftoversModel
     let isOn: Bool

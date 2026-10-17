@@ -2,19 +2,12 @@ import AppKit
 import SwiftUI
 
 /// A soft light along the inside edge of a card, following the pointer.
-///
-/// The cursor light from the interaction specification, shared rather than
-/// owned by one button: about a third of the card's width lit at once, a
-/// 1 point rim and a faint fill, fading in over 100 ms and out over 120 ms,
-/// following on a zero-bounce spring. A resting pointer leaves nothing
-/// moving. It is decoration only: no hit testing, nothing for VoiceOver, and
-/// the label, bounds and focus ring never move. An inactive window, a
-/// disabled control, Reduce Motion, Reduce Transparency and Increase
-/// Contrast all leave it off.
+/// Decoration only: no hit testing or accessibility, and off in an inactive
+/// window, on a disabled control, and under Reduce Motion, Reduce
+/// Transparency or Increase Contrast.
 private struct PointerLight: ViewModifier {
     let cornerRadius: CGFloat
-    /// A third of a full light, everywhere: brighter read as the page
-    /// lighting up rather than the card answering.
+    /// A third of full strength; brighter read as the page lighting up.
     private let strength = 0.3
     /// Where the pointer is, in this view's points.
     @State private var location: CGPoint?
@@ -91,16 +84,9 @@ private struct PointerLight: ViewModifier {
     }
 }
 
-/// Brim's action buttons: flat monochrome capsules.
-///
-/// They were Liquid Glass for a day, and Apple's guidance is plain that glass
-/// belongs to the controls floating above content, not to content: a glass
-/// Open Journal on a card was glass in the content layer. The main action is
-/// a snow capsule with dark text, every other one a faint white capsule, and
-/// neither takes the person's system accent, which turned them red. Hover
-/// brightens the fill, a press dims it, disabled fades it, and Increase
-/// Contrast draws an edge. The toolbar, the tray, the toast and the command
-/// bar keep the system's glass.
+/// Brim's action buttons: flat monochrome capsules, never glass and never
+/// the system accent. The main action is a snow capsule with dark text,
+/// others are faint capsules. Glass is for controls floating over content.
 struct ActionStyle: ButtonStyle {
     var prominent = false
 
@@ -202,22 +188,16 @@ struct PointerTracking: NSViewRepresentable {
             false
         }
 
-        /// The part of this view the pointer can be over: its bounds, cut to
-        /// what is on screen. AppKit reports the visible rect of a view
-        /// SwiftUI hosts as the whole window (an 880 by 69 point card read
-        /// 1200 by 800), so an `inVisibleRect` tracking area covered the
-        /// whole window. Every card then held the pointer wherever it was,
-        /// lit the edge nearest it, and let go only when the pointer left the
-        /// window.
+        /// The bounds cut to what is visible. AppKit reports a SwiftUI-hosted view's
+        /// visible rect as the whole window, so an `inVisibleRect` area covered the
+        /// window and cards never let go of the pointer.
         private var area: CGRect {
             bounds.intersection(visibleRect)
         }
 
-        /// An area rebuilt under the pointer (the card's own lift moves this
-        /// view; so does scrolling) never saw the pointer enter, and AppKit
-        /// reports leaving only an area it saw entered, so it is rebuilt with
-        /// `assumeInside` when the pointer is in it. `PointerWatch` checks
-        /// every move as well, which lets the card go whatever AppKit reports.
+        /// An area rebuilt under the pointer never sees it enter, and AppKit reports
+        /// an exit only after an entry, so rebuild with `assumeInside` when the
+        /// pointer is inside. `PointerWatch` re-checks every move as well.
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             trackingAreas.forEach(removeTrackingArea)

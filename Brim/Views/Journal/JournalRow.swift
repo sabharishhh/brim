@@ -34,12 +34,12 @@ struct JournalRow: View {
             .lineLimit(1)
             .accessibilityHidden(true)
             Spacer(minLength: 8)
-            // Reserved width, so Put Back, its progress and its outcome take
-            // turns in one place and the time beside them never moves.
+            // Reserved width, so Put Back, its progress and its outcome share one place
+            // and the time beside them never moves.
             trailing
                 .frame(minWidth: 120, alignment: .trailing)
-            // Wide enough for "Oct 3, 7:08 PM", which rows in a month show,
-            // and one width for every row so the times line up.
+            // Wide enough for "Oct 3, 7:08 PM", and one width for every row so the
+            // times line up.
             Text(entry.time)
                 .font(.brimFacts)
                 .monospacedDigit()
@@ -88,8 +88,8 @@ struct JournalRow: View {
             return "Installed"
         case let .removed(record):
             let items = record.itemCount == 1 ? "1 item" : "\(record.itemCount) items"
-            // Broken links take no space, and "Empty" beside a count of
-            // items reads as though nothing was there.
+            // Broken links take no space, and "Empty" beside a count reads as though
+            // nothing was there.
             guard record.bytes > 0 else { return "Removed · \(items)" }
             return "Removed · \(items) · \(ByteText.short(record.bytes))"
         }
@@ -144,8 +144,7 @@ struct JournalRow: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Putting back")
             } else if outcome == .restored {
-                // What actually happened, in place of the button: the files
-                // are back where they were.
+                // Put Back done: the files are back where they were.
                 Label("Put back", systemImage: "checkmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(Palette.inkSecondary, Palette.success)
@@ -168,15 +167,13 @@ struct JournalRow: View {
                         .frame(width: 300, alignment: .leading)
                 }
             } else if record.canUndo {
-                // Only where it would do something: a disabled button on
-                // every row is thirty-nine controls that do nothing.
+                // Only where it would do something.
                 Button("Put Back", action: putBack)
                     .capsuleAction()
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
             } else if cameBack {
-                // What came back is shown by the full check, which names
-                // each path and offers what Remnants would.
+                // The full check names each returned path and offers what Remnants would.
                 Button("Review", action: review)
                     .capsuleAction()
                     .buttonBorderShape(.capsule)
@@ -191,8 +188,8 @@ struct JournalRow: View {
         }
     }
 
-    /// One sentence for the row, so a reader hears one event rather than
-    /// four fragments. Put Back, where there is one, stays its own button.
+    /// One sentence for VoiceOver, so the row is heard as one event. Put Back
+    /// stays its own button.
     private var spoken: String {
         switch entry.event {
         case .installed:

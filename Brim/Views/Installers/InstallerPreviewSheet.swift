@@ -3,12 +3,9 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// What an installer would put on this Mac, before it is run.
-///
-/// Opened by dropping a package, disk image or app that is not installed on
-/// the window or the Dock icon, from Home, or from File › Look Inside an
-/// Installer. Nothing is installed: a package is read from its own file
-/// list, a disk image is mounted hidden and read-only and then ejected.
+/// What an installer would put on this Mac, before it runs. Nothing is
+/// installed: a package is read from its own file list, and a disk image is
+/// mounted hidden and read-only, then ejected.
 struct InstallerPreviewSheet: View {
     let request: InstallerRequest
     @ObservedObject var recording: InstallRecordingModel
@@ -44,10 +41,8 @@ struct InstallerPreviewSheet: View {
             }
             footer
         }
-        // An explicit size, never an ideal one, so the list's measurement
-        // never feeds the window's. It
-        // follows what the sheet holds, up to the old fixed height: a disk
-        // image with one app sat in 660 points with most of them empty.
+        // An explicit size, never an ideal one, so the list's measurement never
+        // feeds the window's. It follows the content, up to 660 points.
         .frame(width: 620, height: min(max(contentHeight + Self.footerHeight, 300), 660))
         .task(id: request.id) { await read() }
     }
@@ -177,9 +172,8 @@ struct InstallerPreviewSheet: View {
             : "Install \(name)? It is not notarized."
     }
 
-    /// Installs, and stays open to show it happening and offer the app.
-    /// The installer goes to the Trash on its own, and the recording around
-    /// the install finishes on its own; neither is asked about.
+    /// Installs and stays open to offer the app. The installer goes to the
+    /// Trash and the recording finishes on their own.
     private func install() {
         guard case let .read(preview) = phase else { return }
         isInstalling = true
@@ -208,9 +202,8 @@ struct InstallerPreviewSheet: View {
 
     private func read() async {
         phase = .reading
-        // A package's scripts are described by the on-device model; it
-        // loads while the package is read, so its words are not a second
-        // wait.
+        // The model loads while the package is read, so describing its scripts is
+        // not a second wait.
         let engine = ["pkg", "mpkg"].contains(request.url.pathExtension.lowercased()) ? intelligence : nil
         async let warm: Void = engine?.prewarm(for: .installScript) ?? ()
         do {

@@ -17,9 +17,8 @@ struct FeedbackComposerFooter: View {
                     .accessibilityLabel("Report not confirmed. \(problem)")
                     .transition(.opacity)
             }
-            // Why Send is unavailable, said where a keyboard or VoiceOver
-            // user finds it rather than only in the button's hover help.
-            // Not for an empty draft, which has not been started yet.
+            // Why Send is unavailable, where a keyboard or VoiceOver user finds it.
+            // Not shown for a draft that has not been started.
             if feedback.problem == nil, !feedback.draft.isEmpty, let missing = feedback.draft.validationMessage {
                 Text(missing)
                     .font(.caption)

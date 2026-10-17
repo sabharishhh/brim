@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Every keyboard shortcut, under Help (plan §14).
+/// Every keyboard shortcut, under Help.
 struct ShortcutsView: View {
     private struct Shortcut: Identifiable {
         let keys: String

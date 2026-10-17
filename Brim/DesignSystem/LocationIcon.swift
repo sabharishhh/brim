@@ -2,9 +2,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// What a location is, drawn so it reads at a glance in a review: an
-/// application by its own icon, everything else by the kind of thing it
-/// is. Finder's folder and document icons made every row look the same.
+/// An application by its own icon and anything else by its kind, so review
+/// rows are told apart at a glance.
 struct LocationIcon: View {
     let url: URL
     var size: CGFloat = 22

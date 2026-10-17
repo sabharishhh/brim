@@ -3,17 +3,12 @@ import BrimUI
 import SwiftUI
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// The first page: this Mac at a glance, then in depth one click away.
-///
-/// A grid of four columns. Space and Energy share the top row at two
-/// columns each, the four counts follow one column each, then installing
-/// and the Journal at two each, then recently installed apps across. A
-/// narrow window has two columns, so nothing is squeezed and no card grows
-/// tall. Short phrases only, and no number that was not measured: every
-/// figure waits for its scan.
+/// The first page: this Mac at a glance, each card opening its page. Four
+/// columns, two in a narrow window. Short phrases only, and every figure
+/// waits for its scan.
 struct HomeView: View {
-    // Each model observed directly. Nested `ObservableObject`s do not
-    // propagate, so observing `SectionModels` alone would never redraw.
+    // Each model observed directly; nested `ObservableObject`s do not
+    // propagate.
     @ObservedObject private var leftovers: LeftoversModel
     @ObservedObject private var applications: ApplicationsModel
     @ObservedObject private var recovery: RecoveryStatusModel
@@ -49,9 +44,8 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            // Centred with spacers, not `.frame(maxWidth: .infinity)`, which
-            // reports the content as willing to take any width and once made
-            // the window open at half the display.
+            // Centred with spacers, not `.frame(maxWidth: .infinity)`, which reports
+            // the content as willing to take any width.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
                 VStack(alignment: .leading, spacing: Self.spacing) {
@@ -74,8 +68,7 @@ struct HomeView: View {
                     }
                 }
                 .frame(maxWidth: Self.pageWidth, alignment: .leading)
-                // The page padding every page uses, so the cards start under
-                // the title; at 32 they sat eight points to its right.
+                // The page padding every page uses, so the cards start under the title.
                 .padding(Metrics.pagePadding)
                 Spacer(minLength: 0)
             }
@@ -138,9 +131,8 @@ struct HomeView: View {
             phrase: volume.map { "of \(ByteText.short($0.capacity)) on \($0.name)" } ?? "Checking",
             isRefreshing: storage.isLoading && volume != nil, fillsRow: true
         ) {
-            // Three facts, never added into one: what is used, what macOS
-            // will release when it needs to, and what is free. What changed
-            // and the largest app are the Space page's, not an overview's.
+            // Three facts, never added into one: used, what macOS will release when it
+            // needs to, and free.
             if let volume {
                 MeterBar(segments: [
                     MeterSegment(label: "Used", value: volume.used, color: Palette.snow),
@@ -170,17 +162,14 @@ struct HomeView: View {
             status: failed || !size.isComplete ? .partial : summary.status,
             phrase: failed ? "Could not check remnants"
                 : (size.isComplete ? summary.phrase : "Some locations could not be measured"),
-            // A figure and a phrase, like the cards beside it. How much is
-            // data and how much rebuilds itself is Remnants' to show.
+            // A figure and a phrase, like the cards beside it.
             isRefreshing: leftovers.isScanning && checked, fillsRow: true
         ) { shell.go(to: .leftovers) }
     }
 
     private var backgroundCard: some View {
-        // A first load shows placeholders; a reload keeps the last figures,
-        // greyed, until the new ones arrive. Not loading is not the same as
-        // loaded: before the first load starts, an empty list said "0 listed"
-        // and "All belong to installed apps" for a moment.
+        // A first load shows placeholders; a reload keeps the last figures, greyed.
+        // Before the first load, nothing has been measured, so nothing is shown.
         let hasData = background.hasLoaded
         let summary = HomeStatus.background(leftOver: background.stale.count, hasChecked: hasData,
                                             hasFaults: !background.faults.isEmpty)
@@ -195,8 +184,8 @@ struct HomeView: View {
     private var developerCard: some View {
         let count = developer.caches.count
         let firstLoad = !developer.hasLoaded && developer.caches.isEmpty
-        // A size that is still measuring, or could only be read in part, is
-        // an estimate short of the truth, and the dot says so.
+        // A size still measuring, or read in part, is short of the truth, and the
+        // dot says so.
         let measured = developer.caches.allSatisfy { $0.sizeMeasurement.map { $0.state == .complete } ?? true }
         return StatCard(
             title: "Developer", symbol: "hammer",
@@ -260,9 +249,8 @@ struct HomeView: View {
 // MARK: - Layout
 
 extension HomeView {
-    /// Rows of equally wide cards, each row as tall as its tallest card.
-    /// A `Grid` divided its columns by what each card asked for, so the
-    /// counts were squeezed until "Updates" broke across two lines.
+    /// Rows of equally wide cards, each row as tall as its tallest card. A
+    /// `Grid` squeezed columns to what each card asked for.
     private var grid: some View {
         VStack(spacing: Self.spacing) {
             if isNarrow {

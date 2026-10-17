@@ -5,13 +5,10 @@ import os
 
 private let log = Logger(subsystem: "com.sabharishhh.brim", category: "self-removal")
 
-/// Removes Brim and everything it wrote, leaving nothing behind and nothing
-/// in the Trash.
-///
-/// What only root can clear goes first, through the temporary administrator
-/// process, while the bundle is still there for `tccutil` to find. Then a
-/// script waits for Brim to quit and deletes the rest, so nothing Brim does
-/// on its way out can write a file back.
+/// Removes Brim and everything it wrote, leaving nothing in the Trash.
+/// What only root can clear goes first, while the bundle still exists for
+/// `tccutil` to find. Then a script waits for Brim to quit and deletes the
+/// rest, so nothing Brim does on its way out can write a file back.
 @MainActor
 enum SelfRemoval {
     static let confirmationTitle = "Remove Brim completely?"
@@ -59,9 +56,8 @@ enum SelfRemoval {
             return "Brim could not start removing itself. \(error.localizedDescription)"
         }
         await QuitRequest.shared.quit()
-        // Still running: a window would not close. The script waits for
-        // Brim to quit, so left alone it would delete Brim at some later,
-        // unrelated quit. It is stopped instead, and the person told.
+        // Quit was refused. Left running, the script would delete Brim at some
+        // later quit, so it is stopped and the person told.
         process.terminate()
         try? FileManager.default.removeItem(at: file)
         return "Brim could not quit while a window was open, so it is still installed. "
