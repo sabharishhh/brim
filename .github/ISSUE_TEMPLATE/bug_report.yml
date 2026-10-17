@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in Brim did not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Brim
+        2. ...
+  - type: textarea
+    id: wrong-owner
+    attributes:
+      label: Wrong item offered for removal
+      description: If Brim offered to remove something it should not have, give the item's path and the app Brim said it belonged to.
+  - type: input
+    id: brim-version
+    attributes:
+      label: Brim version
+      description: Shown in About Brim.
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+    validations:
+      required: true

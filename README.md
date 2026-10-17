@@ -73,7 +73,7 @@ You need Xcode 27 and an Apple ID signed in to Xcode.
 ```bash
 git clone https://github.com/sabharishhh/brim.git
 cd brim
-xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
+make run
 ```
 
 Brim and its administrator process check that both were signed by the same
@@ -84,7 +84,9 @@ identifier.
 ## Contributing
 
 Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md)
-explains how to report a problem, run the tests and send a change.
+explains how to report a problem, run the tests and send a change, and
+[ARCHITECTURE.md](ARCHITECTURE.md) is a map of the code. Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 

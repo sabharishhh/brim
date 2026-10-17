@@ -27,9 +27,8 @@ Open an [issue](https://github.com/sabharishhh/brim/issues) and include:
 
 ## Reporting a security problem
 
-Please do not report a security vulnerability in a public issue. Use
-**Report a vulnerability** on the repository's Security tab, which sends a
-private report to the maintainer.
+Please do not report a security vulnerability in a public issue. See
+[SECURITY.md](SECURITY.md) for how to report one privately.
 
 ## Setting up
 
@@ -38,13 +37,12 @@ You need macOS 27 or later, Xcode 27 and an Apple ID signed in to Xcode.
 ```bash
 git clone https://github.com/sabharishhh/brim.git
 cd brim
-xcodebuild -project Brim.xcodeproj -scheme brim -configuration Debug build
+make run
 ```
 
-The app is built to
-`~/Library/Developer/Xcode/DerivedData/Brim-<identifier>/Build/Products/Debug/Brim.app`.
-Open it from that path rather than by name, so that macOS does not start an
-older copy.
+`make run` builds the app and opens that build by its path, so macOS does
+not start an older copy. `make build`, `make test` and `make lint` run the
+steps on their own.
 
 Brim and its administrator process check that both were signed by the same
 team. To test removals that need administrator access with your own signing
@@ -52,18 +50,8 @@ team, replace `9LY29YLFG2` in
 `BrimCore/Sources/BrimPrivileged/HelperInterface.swift` with your team
 identifier.
 
-The project is laid out as follows:
-
-- `Brim/` holds the app and its interface.
-- `BrimCore/` is a Swift package. Detection lives in `BrimScan`, changes to
-  the disk in `BrimOps`, and the rules both rely on in `BrimCore`.
-- `Helper/` is the temporary administrator process.
-- `scripts/` holds the release build and the lint check, with the release
-  steps in [RELEASING.md](RELEASING.md). It also has three tools for
-  development: `coverage_diff.sh` lists what a removal left on disk without
-  relying on Brim's own search, `ax_tree.swift` prints the app's
-  accessibility tree, and `stale_builds.sh` finds and removes old copies of
-  Brim that macOS could open instead of the one you built.
+[ARCHITECTURE.md](ARCHITECTURE.md) explains how the project is laid out,
+what each module does and where to start for common changes.
 
 ## Making a change
 
@@ -78,16 +66,16 @@ The project is laid out as follows:
 ## Checks
 
 ```bash
-swift test --package-path BrimCore
-python3 scripts/lint_changes.py --base origin/main
+make test
+make lint
 ```
 
 Continuous integration runs the same tests and lint, and builds the app with
 strict concurrency checking. A pull request that adds lint or formatting
 findings does not pass.
 
-Tests that read or change the real Mac run only when `BRIM_REAL_ENV=1` is
-set. Run them in a user account or virtual machine you can spare, never on
+Tests that read or change the real Mac run only with `make test-real`,
+which sets `BRIM_REAL_ENV=1`. Run them in a user account or virtual machine you can spare, never on
 data you would mind losing.
 
 ## Code and writing
@@ -119,11 +107,11 @@ who wrote part of it.
 Give a pull request a title written like a commit subject. In the
 description, say what the problem was, what the change does, and how you
 tested it, including anything you did not test. A few short paragraphs are
-enough; there is no template to fill in.
+enough; the pull request template only reminds you of these.
 
 ## Conduct
 
-Please keep issues and reviews respectful and on topic.
+Please follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Licence
 
