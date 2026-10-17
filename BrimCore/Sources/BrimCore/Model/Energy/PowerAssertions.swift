@@ -2,19 +2,10 @@ import Foundation
 import IOKit
 import IOKit.pwr_mgt
 
-/// What is stopping this Mac from going to sleep, and which software asked.
-///
-/// The most useful thing in an energy panel and the thing nothing else says
-/// plainly. System Settings shows a charge graph and a line reading "No Apps
-/// Using Significant Energy". Activity Monitor has a Preventing Sleep column
-/// that answers Yes or No and stops there. Neither says which kind of sleep
-/// is being held off, what the program called the assertion, or how long it
-/// has been held, and those three are the whole answer to "why was my
-/// battery flat this morning".
-///
-/// `IOPMCopyAssertionsByProcess` is a documented public IOKit call that
-/// returns exactly that, grouped by the process holding it. No entitlement,
-/// no helper, no sudo.
+/// What is stopping this Mac from sleeping, and which software asked: the
+/// kind of sleep held off, the assertion's name and how long it has been
+/// held. From `IOPMCopyAssertionsByProcess`, a public IOKit call that needs
+/// no entitlement or privileges.
 public struct PowerAssertions: Sendable, Equatable {
 
     /// One thing a process is holding.
@@ -28,14 +19,9 @@ public struct PowerAssertions: Sendable, Equatable {
         /// informative thing on the row: "Playing audio", "Backup in
         /// progress", "com.apple.WebKit wants to keep the display on".
         public let reason: String?
-        /// Whether quitting the owner would release it.
-        ///
-        /// Read on this Mac: `Music` holding one for `com.apple.Music.playback`
-        /// and `Claude` holding one for `Electron` are both a person's to
-        /// stop. `powerd` holding "Prevent sleep while display is on" and
-        /// `coreaudiod` holding one for the headphone output are macOS's own
-        /// bookkeeping, downstream of the first two, and listing them as
-        /// equals would send somebody after the wrong thing.
+        /// Whether quitting the owner would release it. Assertions macOS holds while
+        /// the screen is on or audio is routed follow from the person's apps, so
+        /// they are not listed as equals.
         public let isYours: Bool
 
         public var id: String { "\(pid):\(kind.rawValue):\(reason ?? "")" }
@@ -53,11 +39,8 @@ public struct PowerAssertions: Sendable, Equatable {
         }
     }
 
-    /// The two that cost a person something, and nothing else.
-    ///
-    /// macOS defines a dozen assertion types, most of which are internal
-    /// bookkeeping that would fill the list with noise. These are the two
-    /// that change what the Mac does overnight.
+    /// The two assertion types that change what the Mac does overnight. The
+    /// rest are internal bookkeeping.
     public enum Kind: String, Sendable, Equatable, CaseIterable {
         /// The whole Mac stays awake. The expensive one.
         case systemAwake
@@ -118,9 +101,8 @@ public struct PowerAssertions: Sendable, Equatable {
 
     public static let notRead = PowerAssertions(held: [], wasRead: false)
 
-    /// Whatever is keeping the machine awake, worst first, one row per
-    /// process and kind rather than one per assertion. A browser holds one
-    /// per playing tab and a list of nine identical rows helps nobody.
+    /// What keeps the Mac awake, worst first, one row per process and kind
+    /// rather than one per assertion.
     public static func current(
         resolve: (Int32) -> (name: String, bundlePath: String?, isYours: Bool)? = Self.resolveProcess
     ) -> PowerAssertions {
@@ -190,9 +172,8 @@ public struct PowerAssertions: Sendable, Equatable {
         guard wasRead else { return nil }
         guard !held.isEmpty else { return nil }
 
-        // Led by what a person can act on. macOS holds its own assertions
-        // whenever the screen is on and whenever audio is routed, and those
-        // are consequences of the first list rather than causes.
+        // Led by what a person can act on. macOS's own assertions follow from those
+        // rather than cause them.
         let yours = held.filter(\.isYours)
         let candidates = yours.isEmpty ? held : yours
 

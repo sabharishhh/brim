@@ -131,10 +131,9 @@ public struct AppUpdate: Codable, Equatable, Sendable, Identifiable {
         self.pageURL = Self.openable(pageURL)
     }
 
-    /// An address from a feed that Brim may open: a web page, or the App
-    /// Store's own. A feed is written by whoever controls it, and any app
-    /// can name its own, so a `file://` path or another app's URL scheme
-    /// behind the Website button would open whatever it pointed at.
+    /// An address from a feed that Brim may open: a web page or the App Store.
+    /// Any app can name its own feed, so a `file://` path or another app's URL
+    /// scheme is never opened.
     public static func openable(_ url: URL?) -> URL? {
         guard let url, let scheme = url.scheme?.lowercased() else { return nil }
         switch scheme {
@@ -244,8 +243,8 @@ public enum UpdateOutcome: Codable, Equatable, Sendable {
 }
 
 /// Orders version strings the way Sparkle does, closely enough: numbers
-/// compare as numbers, a pre-release word sorts below the release it
-/// precedes, and separators are ignored.
+/// compare as numbers, a pre-release word sorts below its release, and
+/// separators are ignored.
 public enum VersionOrder {
     public static func compare(_ left: String, _ right: String) -> ComparisonResult {
         let leftTokens = tokens(left), rightTokens = tokens(right)
@@ -275,10 +274,9 @@ public enum VersionOrder {
         compare(candidate, installed) == .orderedDescending
     }
 
-    /// What the extra parts of the longer version make it. Zeros change
-    /// nothing, a number makes it newer, and a word first makes it a
-    /// pre-release of the shorter one: 1.2.0 is 1.2, 1.2.1 is newer, and
-    /// 1.2b1 is older.
+    /// What the longer version's extra parts make it: zeros change nothing, a
+    /// number makes it newer, a word makes it a pre-release. 1.2.0 is 1.2,
+    /// 1.2.1 is newer, 1.2b1 is older.
     private static func remainder(_ rest: ArraySlice<Token>) -> ComparisonResult {
         for token in rest {
             if token.isNumber {
@@ -336,9 +334,7 @@ private extension ComparisonResult {
     }
 }
 
-/// How far a download has got, in bytes, so a large update reads as moving
-/// rather than stuck. ChatGPT's is 1.3 GB, and "52%" for minutes looked
-/// like nothing was happening.
+/// How far a download has got, in bytes, so a large update reads as moving.
 public struct DownloadProgress: Sendable, Equatable {
     public let received: Int64
     /// Zero when the server did not say how large the download is.

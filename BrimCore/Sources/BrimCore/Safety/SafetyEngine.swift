@@ -51,15 +51,9 @@ public struct SafetyEngine: Sendable {
     }
 
     public func evaluate(footprint: Footprint) async -> EvaluatedFootprint {
-        // A timed-out scan narrows the plan
-        // rather than removing shared leftovers, and Brim's own invariant
-        // says degrade, never fail. This is the concrete form of it.
-        //
-        // The rule is not "be careful when the scan was slow". A
-        // footprint is a claim about what is on the disk, and a search
-        // that did not finish cannot support the claim, so nothing found
-        // in an unfinished pass is selected for the person. Everything is
-        // still shown, and every row can still be ticked by hand.
+        // A footprint is a claim about what is on the disk, and a search that did
+        // not finish cannot support it, so nothing from an unfinished pass is
+        // selected. Everything is still shown, and every row can be ticked by hand.
         let searchFinished = footprint.completeness.isComplete
 
         let evaluatedItems = footprint.items.map { item -> EvaluatedItem in
@@ -77,18 +71,14 @@ public struct SafetyEngine: Sendable {
                 )
             }
 
-            // Note: in a real implementation, we would check if it's on a strictly protected volume,
-            // or outside the known domain map here if SafetyChecker didn't catch it.
-
             // 2. Cost-of-error annotation based on path
             let cost = item.artifactClassification?.costOfError ?? evaluateCostOfError(url: url)
             if let kept = Self.preservedData(item, identity: footprint.identity) {
                 return kept
             }
 
-            // 3. Tier defaults. S is not a confidence level: it says
-            // something else on this Mac claims this item, so it leaves
-            // the selection and cannot re-enter it.
+            // 3. Tier defaults. S is not a confidence: something else on this Mac
+            // claims the item, so it leaves the selection and cannot re-enter it.
             let selection: SelectionState = switch item.evidence.tier {
             case .S:
                 .excluded(
@@ -117,14 +107,9 @@ public struct SafetyEngine: Sendable {
         return await vetoEngine.applyVeto(to: preVeto)
     }
 
-    /// The folders an application keeps its own data in, where a folder
-    /// clearly named for it is its own and goes with it.
-    ///
-    /// A name match was never ticked, so `Application Support/SystemEQ for
-    /// Mac` was found and stayed behind, in the folder people open first
-    /// when they check whether a removal was complete. Elsewhere a name can
-    /// mean more than one thing (`~/.docker` holds credentials, Services
-    /// can be the person's own), so those stay suggestions.
+    /// The folders an app keeps its own data in, where a folder clearly named
+    /// for it goes with it. Elsewhere a name can mean more (`~/.docker` holds
+    /// credentials), so it stays a suggestion.
     static let namedDataFolders = [
         "Library/Application Support", "Library/Caches", "Library/Logs", "Library/HTTPStorages",
         "Library/WebKit", "Library/Saved Application State"
@@ -168,9 +153,9 @@ public struct SafetyEngine: Sendable {
     private func evaluateCostOfError(url: URL) -> CostOfError {
         let path = url.path
 
-        // A path named Caches or tmp can contain settings and local changes.
-        // Permanent removal requires a positive artifact classification.
-        // Documents or iCloud drives are very high cost
+        // A path named Caches or tmp can hold settings and local changes, so
+        // permanent removal needs a positive classification. Documents and iCloud
+        // Drive are the highest cost.
         if path.contains("/Documents/") || path.contains("/Mobile Documents/") {
             return .high
         }

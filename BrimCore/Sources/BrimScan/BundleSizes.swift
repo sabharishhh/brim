@@ -1,16 +1,9 @@
 import Foundation
 
 /// Each app bundle's size, remembered with what the bundle looked like when
-/// it was measured, so an unchanged bundle is not walked again.
-///
-/// Measuring every file of every bundle was nearly all of the Apps list's
-/// wait: 1.08 of 1.15 seconds for 87 apps on this Mac, at every launch, for
-/// bundles that had not changed since the last one. A bundle is measured
-/// again when anything that changes with its contents changes: the folder's
-/// identity (an update that swaps the bundle gives it a new one), or the
-/// modification time of the bundle, its `Contents`, its `Info.plist` or its
-/// `MacOS` folder. Kept in Brim's caches folder, because all of it can be
-/// measured again.
+/// measured, so an unchanged bundle is not walked again. Measured again when
+/// the folder's identity or the modification time of the bundle, `Contents`,
+/// `Info.plist` or `MacOS` changes. Kept in Brim's caches folder.
 public final class BundleSizes: @unchecked Sendable {
     struct Fingerprint: Codable, Equatable {
         let device: Int64

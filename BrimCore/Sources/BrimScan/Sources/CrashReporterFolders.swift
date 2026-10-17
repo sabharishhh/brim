@@ -2,17 +2,11 @@ import BrimCore
 import CryptoKit
 import Foundation
 
-/// The folders crash reporting frameworks keep for an application inside
-/// their own cache folder, which nothing in the application's name or
-/// identifier leads to.
-///
-/// eqMac ships Sentry, and after its removal two of Sentry's folders were
-/// still on the disk: `Caches/SentryCrash/eqMac`, named with the bundle
-/// name, and `Caches/io.sentry/a456d41a…`, named with the SHA-1 of the
-/// address eqMac sends its reports to. Each counts only because the
-/// bundle ships the framework that writes it, and the second only when
-/// that address is in the application's own executable and hashes to the
-/// folder's name exactly.
+/// The folders crash reporting frameworks keep for an app inside their own
+/// cache folder: `Caches/SentryCrash/<bundle name>`, and
+/// `Caches/io.sentry/<SHA-1 of the DSN>`. Each counts only because the
+/// bundle ships the framework, and the second only when the DSN is in the
+/// app's executable and hashes to the folder's name.
 struct CrashReporterFolders {
     /// Frameworks that name an application's folder with its bundle name.
     static let byBundleName = [

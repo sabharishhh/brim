@@ -17,15 +17,12 @@ public enum CardStatus: Equatable, Sendable {
     case neutral
 }
 
-/// What each Home card says, in a few words.
-///
-/// A card never claims a result nobody measured: until its scan finishes it
-/// says it is checking, and without Full Disk Access Leftovers says its view
-/// is partial rather than clear, because an unreadable Library is not an
-/// empty one.
+/// What each Home card says, in a few words. A card never claims a result
+/// nobody measured: it says it is checking until its scan finishes, and
+/// without Full Disk Access Remnants says its view is partial.
 public enum HomeStatus {
-    /// Changes is a short activity record. Large size drift belongs to the
-    /// application detail; here only installations, removals and updates count.
+    /// Recent installs, removals and updates only; size changes belong to each
+    /// app's detail.
     public static func changes(_ history: InstallHistory, now: Date = Date()) -> [InstallChange] {
         guard history.snapshots >= 2 else { return [] }
         let cutoff = now.addingTimeInterval(-7 * 86400)

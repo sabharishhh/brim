@@ -37,8 +37,8 @@ public final class DeveloperModel: ObservableObject {
         hasLoaded = false
     }
 
-    /// The rows on screen are the last launch's, kept on disk, and this
-    /// launch's scan has not reported yet. Shown, never selectable.
+    /// The rows shown are the last launch's, and this launch's scan has not
+    /// reported yet. Shown, never selectable.
     @Published public private(set) var isProvisional = false
     private let cache: PageCache<[DeveloperCache]>?
 
@@ -195,11 +195,9 @@ public final class DeveloperModel: ObservableObject {
         excludedFolders.contains { ArtifactSizer.rootsOverlap(url, $0) }
     }
 
-    /// Removal covers currently eligible artifacts only.
-    ///
-    /// The guard is here as well as in `toggle` because this is the last
-    /// point before a plan exists, and T-5.7 turns on nothing in class
-    /// three ever reaching one.
+    /// Removal covers currently eligible artifacts only. Checked here as well
+    /// as in `toggle`, because this is the last point before a plan exists and
+    /// nothing stateful may ever reach one.
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
         guard !isProvisional else { return nil }
         let targets = selectedCaches.map(\.url)

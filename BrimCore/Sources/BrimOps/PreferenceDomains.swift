@@ -1,24 +1,12 @@
 import Foundation
 
-/// Preferences, which do not go away just because the file did.
-///
-/// `cfprefsd` holds preference domains in memory and owns the files on
-/// disk. Unlinking a `.plist` without telling the daemon leaves it holding
-/// the domain, and the next time anything touches that domain the daemon
-/// writes the file straight back out. An uninstall that only removed the
-/// file can watch it reappear, which reads as Brim having failed when what
-/// actually happened is that Brim asked the wrong component.
-///
-/// So the domain is removed through the preferences API as well as the
-/// file being trashed. Both, in that order: the API call invalidates the
-/// daemon's copy, and the trash step is what makes the removal
-/// recoverable.
+/// Preferences, which do not go away with the file. `cfprefsd` holds each
+/// domain in memory and writes the file back if the plist is unlinked while
+/// it still holds it. So the domain is cleared through the preferences API
+/// first, then the file goes to the Trash, which keeps the removal undoable.
 public enum PreferenceDomains {
-    /// Whether a path is a preferences file, and which domain it holds.
-    ///
-    /// Only files directly inside a `Preferences` folder count.
-    /// `ByHost` ones carry a hardware UUID in the name and are handled by
-    /// stripping it, because the domain is the part before.
+    /// Whether a path is a preferences file directly inside a `Preferences`
+    /// folder, and its domain. A ByHost file's hardware UUID is stripped.
     public static func domain(forPlistAt path: String) -> String? {
         let url = URL(fileURLWithPath: path)
         guard url.pathExtension == "plist" else { return nil }
@@ -49,25 +37,15 @@ public enum PreferenceDomains {
             && candidate.allSatisfy(\.isHexDigit)
     }
 
-    /// Tells `cfprefsd` to forget a domain.
-    ///
-    /// Deliberately not a delete of anything: this clears the daemon's
-    /// copy so it stops writing the file back. The file itself goes to
-    /// the Trash through the ordinary step, which is what keeps the
-    /// removal undoable.
-    ///
-    /// Best effort by design. Failing to invalidate a cache must never
-    /// abandon an uninstall whose files are already gone; the journal
-    /// records it and the person is told the preference may return.
+    /// Tells `cfprefsd` to forget a domain, so it stops writing the file back.
+    /// Deletes nothing itself. Best effort: failing to clear a cache must never
+    /// abandon an uninstall, and the journal records it.
     @discardableResult
     public static func forget(_ domain: String) -> Bool {
         guard isPlausibleDomain(domain) else { return false }
         let application = domain as CFString
 
-        // Both host scopes. A ByHost plist and an ordinary one are the
-        // same domain to an application and two separate stores to the
-        // daemon, so clearing one and not the other leaves half of it
-        // cached and half of it written back.
+        // Both host scopes: one domain to the app, two stores to the daemon.
         var cleared = false
         for host in [kCFPreferencesAnyHost, kCFPreferencesCurrentHost] {
             let keys = CFPreferencesCopyKeyList(
@@ -88,13 +66,8 @@ public enum PreferenceDomains {
         ) == nil
     }
 
-    /// Guards against handing `cfprefsd` something that is not a domain.
-    ///
-    /// `kCFPreferencesAnyApplication` and the global domain are the two
-    /// that would do real damage: clearing `.GlobalPreferences` resets
-    /// system-wide settings that belong to no application at all.
-    /// A property list holding an empty dictionary: what `cfprefsd` writes
-    /// for a domain that has been cleared. It holds no settings.
+    /// A property list holding an empty dictionary: what `cfprefsd` writes for a
+    /// cleared domain. It holds no settings.
     public static func isEmptyStub(atPath path: String) -> Bool {
         guard let data = FileManager.default.contents(atPath: path), data.count <= 4096,
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
@@ -102,17 +75,9 @@ public enum PreferenceDomains {
         return plist.isEmpty
     }
 
-    /// Removes the empty copy `cfprefsd` writes back after a domain is
-    /// cleared and its file trashed.
-    ///
-    /// Clearing the keys is what stops the daemon writing the settings
-    /// back, and it also marks the domain changed, so about nine seconds
-    /// later the daemon writes the now empty domain out to the path the
-    /// file was moved from. Measured on every attempt with a test domain;
-    /// on the first real uninstall it left IINA a 42 byte plist and a
-    /// result screen saying something remained. Nothing orders around it,
-    /// so this waits for it. Only an empty dictionary is removed: a file
-    /// that comes back with settings in it is reported, not hidden.
+    /// Removes the empty copy `cfprefsd` writes back about nine seconds after a
+    /// domain is cleared and its file trashed. Only an empty dictionary is
+    /// removed; a file that comes back with settings is reported, not hidden.
     public static func removeEmptyWriteBack(at paths: [String], within seconds: TimeInterval = 15) async {
         var waiting = Set(paths)
         let deadline = Date().addingTimeInterval(seconds)

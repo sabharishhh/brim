@@ -24,10 +24,9 @@ public struct InstalledBundleInventory: Sendable {
         for directory in directories {
             reader.walk(directory, depth: 0)
         }
-        // Applications a package put beside the Applications folders, the
-        // same ones the Apps list shows. The two lists had drifted: Microsoft
-        // AutoUpdate was listed as installed and still invisible here, so its
-        // own folder could be offered as a leftover while it ran.
+        // Applications a package put beside the Applications folders, the same
+        // ones the Apps list shows, so their folders are never offered as
+        // leftovers while they run.
         for folder in packageInstallFolders(in: root) {
             reader.bundles += reader.entries(folder).filter { $0.pathExtension.lowercased() == "app" }
         }
@@ -48,9 +47,9 @@ public struct InstalledBundleInventory: Sendable {
                                                    timedOut: Array(reader.timedOut)))
     }
 
-    /// Folders under `/Library` that a non-Apple package installed into,
-    /// read from its receipt and held to the helper's rule, so whatever is
-    /// found there is also something Brim can take away.
+    /// Folders under `/Library` a non-Apple package installed into, read from
+    /// its receipt and held to administrator cleanup's rule, so anything found
+    /// there can also be removed.
     public static func packageInstallFolders(in root: FileSystemRoot) -> [URL] {
         let receipts = root.url(for: .systemReceipts)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: receipts.path)) ?? []

@@ -1,12 +1,8 @@
 import Foundation
 
-/// An application present on this machine, as the Applications view lists it.
-///
-/// Deliberately thin: the bundle's own identity and location, plus the size of
-/// the bundle itself. The *footprint*, everything the app has scattered
-/// elsewhere, is not computed here. Discovering that is expensive and is what
-/// `inspect(identity:)` is for, so the list stays fast and the depth is paid
-/// for only when the user asks about one app.
+/// An application on this Mac, as the Applications view lists it: its
+/// identity, location and bundle size. The footprint is found only by
+/// `inspect(identity:)`, so the list stays fast.
 public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
     public let identity: Identity
     public let url: URL
@@ -27,25 +23,16 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
     public var lastOpened: Date?
     /// When the bundle arrived where it is, as Spotlight records it.
     public var addedAt: Date?
-    /// When it was installed, and only when Brim can prove it: the
-    /// snapshot it first appeared in. Nil for anything that was already
-    /// here the first time Brim looked.
-    ///
-    /// Not `addedAt`. Spotlight's date added moves whenever an updater
-    /// replaces the bundle, and on this Mac it called Figma, Visual Studio
-    /// Code, Teams and eleven more "recently installed" when every one of
-    /// them had only been updated.
+    /// When it was installed, only when Brim can prove it: the snapshot it first
+    /// appeared in. Not Spotlight's date added, which moves on every update.
     public var installedAt: Date?
-    /// The application this one ships inside, when it is nested: Icon
-    /// Composer, Instruments and FileMerge live in Xcode's
-    /// `Contents/Applications`. Such an app is listed, because people look
-    /// for it, and never removed on its own, because that would break the
-    /// signature of the app that carries it.
+    /// The application this one ships inside, such as Xcode's
+    /// `Contents/Applications`. Listed, because people look for it, but never
+    /// removed on its own, which would break the host's signature.
     public var enclosingApp: String?
 
-    /// The bundle that carries this one: `Host.app` above
-    /// `Contents/Applications/This.app`. Removing this app means removing
-    /// that one, so this is where a removal goes.
+    /// The bundle that carries this one. Removing this app means removing that
+    /// one.
     public var hostURL: URL? {
         guard enclosingApp != nil else { return nil }
         return url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -78,17 +65,10 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
         addedAt != nil || lastOpened != nil
     }
 
-    /// Came across from another Mac and has not been opened here: the
-    /// usage record travelled with the bundle, so it predates the bundle's
-    /// arrival.
-    ///
-    /// The gap has to be a month. macOS rewrites the date added for every
-    /// bundle in /Applications at once, a re-index or an update, and on
-    /// 29 Sep it moved all nine to 11:04 that morning, so VS Code, opened at
-    /// 4 a.m., read "Not opened on this Mac" and was grouped with apps
-    /// nobody uses. A migrated app carries a use from weeks before it
-    /// arrived: IINA's was 38 days. Saying a used app is unused costs more
-    /// than the reverse, so the rule errs towards "Opened".
+    /// Came from another Mac and has not been opened here: the usage record
+    /// predates the bundle's arrival. The gap must be a month, because macOS
+    /// rewrites every bundle's date added at once on a re-index or update, and
+    /// calling a used app unused costs more than the reverse.
     public var isMigratedAndUnopened: Bool {
         guard let lastOpened, let addedAt else { return false }
         return addedAt.timeIntervalSince(lastOpened) > Self.migrationGap

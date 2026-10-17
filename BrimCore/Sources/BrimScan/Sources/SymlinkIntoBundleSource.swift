@@ -1,31 +1,14 @@
 import BrimCore
 import Foundation
 
-/// A command on the path that is really a link into an application bundle.
-///
-/// The leftovers sweep already reads links the other way round: a link whose
-/// target has gone is dangling, and a dangling link is residue. Run forwards,
-/// the same fact answers a question the uninstall path could not: Visual
-/// Studio Code installs `/usr/local/bin/code` pointing at
-/// `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,
-/// and removing the application without the link is how a Mac ends up with a
-/// `code` command that reports "no such file or directory".
-///
-/// This is deliberately not a rule in `LocationInventory`. Everything in
-/// `/usr/local/bin` is floored to Tier C there, and rightly: the only thing
-/// tying a bare binary to an application is a shared name, and two products
-/// called Studio is ordinary. A symbolic link is not a shared name. It names
-/// the bundle outright, and following it is proof rather than inference, so
-/// it earns Tier B on its own evidence.
-///
-/// Only the link is ever evidence. What a link points at inside the bundle
-/// goes when the bundle goes, and a link pointing somewhere else entirely is
-/// somebody else's.
+/// A command that is really a link into an application bundle, such as
+/// `/usr/local/bin/code` into Visual Studio Code. Not a `LocationInventory`
+/// rule, where `/usr/local/bin` is floored to Tier C: a link names the bundle
+/// outright, so following it is proof and earns Tier B. Only the link is
+/// evidence; what it points at goes with the bundle.
 public struct SymlinkIntoBundleSource: EvidenceSource {
-    /// Where a command installed beside an application tends to be put. Each
-    /// is listed rather than walked, one level deep: these directories hold
-    /// commands, not trees, and a recursive walk of `/usr/local` on a
-    /// developer's Mac is its own kind of mistake.
+    /// Where a command installed beside an application tends to go. Listed one
+    /// level deep, not walked.
     static let linkDomains: [FileSystemRoot.Domain] = [
         .usrLocalBin, .usrLocalSbin, .userDotLocalBin
     ]
@@ -39,7 +22,7 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
     public func scan(for identity: Identity, in root: FileSystemRoot) async -> EvidenceFindings {
         let fm = FileManager.default
 
-        // The bundles this application could be. Resolved so a link through
+        // The bundles this application could be, resolved so a link through
         // `/private` or a relative hop still compares equal.
         let bundles = Self.verifiedBundleLocations(for: identity, in: root)
             .filter { fm.fileExists(atPath: $0.path) }
@@ -75,24 +58,14 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
         return EvidenceFindings(evidence: results, completeness: ScanCompleteness(unreadable: unreadable))
     }
 
-    /// Where this application's bundle could be sitting: its file name, in
-    /// the Applications folder and in the one inside the home folder, which
-    /// is exactly what `AppBundleSource` claims as the application itself.
-    ///
-    /// **The file name only.** This used to look under every name in
-    /// `searchNames`, which includes `CFBundleName`, and `CFBundleName` says
-    /// what an application calls itself, not where its bundle lives. Visual
-    /// Studio Code calls itself "Code", so with an unrelated application
-    /// called `Code.app` installed, every command linked into that other
-    /// application was claimed for Visual Studio Code at Tier B and would have
-    /// been trashed with it. The name that finds support folders is the wrong
-    /// one for finding bundles.
-    ///
-    /// Also the one place `LaunchdSource` asks, so a link and a launchd job
-    /// are proven by pointing into the same bundles.
+    /// Where this application's bundle could be: its file name, in
+    /// `/Applications` and `~/Applications`, as `AppBundleSource` claims it. The
+    /// file name only: `CFBundleName` says what an app calls itself, not where
+    /// its bundle is, and a different `Code.app` would have been claimed for
+    /// Visual Studio Code. `LaunchdSource` asks here too.
     public static func bundleLocations(for identity: Identity, in root: FileSystemRoot) -> [URL] {
-        // A selected installation is authoritative. Looking up its name
-        // again can add another copy with the same identifier to removal.
+        // A selected installation is authoritative; looking up its name again
+        // could add another copy with the same identifier.
         if let path = identity.bundlePath {
             return [URL(fileURLWithPath: path)]
         }
@@ -112,12 +85,9 @@ public struct SymlinkIntoBundleSource: EvidenceSource {
         }
     }
 
-    /// Where a link actually lands, relative hops and all, or nil when the
-    /// path is not a link at all.
-    ///
-    /// Read with `lstat` semantics on purpose. `resolvingSymlinksInPath` on a
-    /// plain file returns the file, so using it alone would treat every
-    /// binary in the directory as a link to itself.
+    /// Where a link lands, relative hops and all, or nil when the path is not a
+    /// link. `resolvingSymlinksInPath` alone would treat every plain binary as a
+    /// link to itself.
     static func target(of link: URL, fm: FileManager) -> String? {
         guard let destination = try? fm.destinationOfSymbolicLink(atPath: link.path) else {
             return nil

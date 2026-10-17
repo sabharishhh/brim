@@ -1,28 +1,23 @@
 import Foundation
 
-/// The search that must come back empty before anything is called a leftover,
-/// and whose result decides which kind of leftover it is.
-///
-/// The distinction the product rests on is not "is this file still wanted"
-/// but "can an owner be found for it". Those are different questions, and
-/// only the second one can be answered with evidence. So this names every
-/// place an owner can be recorded, and the verdict carries the sentence
-/// explaining which of them answered.
+/// The search that must come back empty before anything is called a
+/// leftover, and whose result decides which kind. The question is not
+/// whether a file is still wanted but whether an owner can be found, which
+/// evidence can answer. The verdict carries the sentence saying which source
+/// answered.
 public enum Ownership: Equatable, Sendable {
     /// An owner is installed and present, so this is not a leftover at all.
     case present(owner: URL)
 
-    /// Something recorded an owner as installed and it is no longer there.
-    /// This is the definition of *orphaned*: not "nobody claims it" but
-    /// "somebody did, and they have gone".
+    /// Something recorded an owner and it has gone: the definition of orphaned.
     case recordedButGone(evidence: String)
 
     /// An owner lookup failed. Older absence records cannot resolve whether
     /// another installed copy now claims this data.
     case unknown(evidence: String)
 
-    /// Nothing anywhere claims it. *Unclaimed*: shown, never pre-selected,
-    /// because an absence of evidence is not evidence of absence.
+    /// Nothing claims it. Unclaimed: shown, never pre-selected, because no
+    /// evidence of an owner is not evidence there is none.
     case unattributable
 
     public var category: Leftover.Category? {
@@ -35,10 +30,7 @@ public enum Ownership: Equatable, Sendable {
 }
 
 /// Resolves ownership for an identifier against every source that can record
-/// one.
-///
-/// Every source is injected rather than read here, so the ordering below can
-/// be tested without a machine that happens to have the right software on it.
+/// one. Sources are injected so the ordering can be tested.
 public struct OwnershipSearch: Sendable {
     /// Bundle identifiers of applications found on disk, across all mounted
     /// volumes and every readable user account, not just `/Applications`.
@@ -53,12 +45,9 @@ public struct OwnershipSearch: Sendable {
     public let receiptBundleIDs: Set<String>
     /// Identifiers Brim itself has removed, from its own ledger.
     public let previouslyRemovedBundleIDs: Set<String>
-    /// Identifiers named by a registration (a launchd job, a background
-    /// item, an installer receipt) whose program is no longer on disk,
-    /// mapped to the sentence describing that registration. The strongest
-    /// everyday orphan evidence there is: macOS is still holding a record
-    /// of software that has gone, which is precisely what a user notices as
-    /// "I uninstalled this and it is still here".
+    /// Identifiers named by a registration (a launchd job, a background item,
+    /// an installer receipt) whose program is gone, with the sentence describing
+    /// it: macOS still holding a record of software that has left.
     public let staleRegistrationOwners: [String: String]
     /// Launch Services' answer for an identifier: every location it still
     /// associates with that bundle.
@@ -85,12 +74,9 @@ public struct OwnershipSearch: Sendable {
         self.exists = exists
     }
 
-    /// Looks for an owner, strongest evidence first.
-    ///
-    /// The order is deliberate. Presence beats every other signal, and it is
-    /// checked against real applications on real volumes before Launch
-    /// Services is asked, because an app on an unmounted or unusual volume
-    /// must never be reported as orphaned on the strength of a database.
+    /// Looks for an owner, strongest evidence first. Presence on real volumes is
+    /// checked before Launch Services, so an app on an unusual volume is never
+    /// called orphaned on the strength of a database.
     public func ownership(of identifier: String) -> Ownership {
         let installed = installedBundleIDs.contains(identifier) || installedNames.contains(identifier.lowercased())
             || installedNameKeys.contains(NameKey.of(identifier))
@@ -98,10 +84,9 @@ public struct OwnershipSearch: Sendable {
             return .present(owner: URL(fileURLWithPath: "/"))
         }
 
-        // Launch Services answers both questions at once. A record whose
-        // bundle is still there is an owner the directory walk missed; a
-        // record whose bundle has gone is the cleanest orphan evidence there
-        // is, because macOS itself recorded the app as installed.
+        // A Launch Services record whose bundle is still there is an owner the walk
+        // missed; one whose bundle has gone is the cleanest orphan evidence, since
+        // macOS itself recorded the app as installed.
         let registered: [URL]
         do {
             registered = try launchServicesLookup(identifier)

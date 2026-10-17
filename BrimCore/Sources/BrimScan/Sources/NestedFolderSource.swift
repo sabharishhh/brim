@@ -1,19 +1,11 @@
 import BrimCore
 import Foundation
 
-/// What an application keeps one level inside a folder that is not its
-/// own (Tier B).
-///
-/// The locations Brim knows are read at their top level, and an app that
-/// files its data inside another folder was invisible. Antigravity keeps
-/// 244 MB in `~/.gemini/antigravity`, inside the folder the Gemini tools
-/// share, and SDKs keep one child per app inside their own cache folder.
-/// So the children of the home folder's dot folders and of the places apps
-/// keep data are read as well, and a child counts in one of two ways only:
-/// it is named with one of the application's identifiers, or it is named
-/// for the application and macOS records the application as having written
-/// it. A name alone never counts. `~/Documents/antigravity` is somebody's
-/// project, and the person's own folders are never read.
+/// What an application keeps one level inside a folder that is not its own
+/// (Tier B), such as `~/.gemini/antigravity`. A child of a dot folder or a
+/// data folder counts only when it is named with one of the app's
+/// identifiers, or named for the app and recorded by macOS as written by it.
+/// A name alone never counts, and the person's own folders are never read.
 public struct NestedFolderSource: EvidenceSource {
     private let budget: @Sendable () -> ScanBudget
 
@@ -42,8 +34,8 @@ public struct NestedFolderSource: EvidenceSource {
                 evidence += found
                 continue
             }
-            // A folder named for the application is the application's
-            // already, and macOS's own folders hold nothing of anyone else's.
+            // A folder named for the application is already its own, and macOS's own
+            // folders hold nothing of anyone else's.
             let skipParent = ProvenanceSource.isNamed(parentName, identifiers: identifiers, names: names)
                 || LeftoversScanner.isAppleOwned(parentName)
             if skipParent {
@@ -53,9 +45,8 @@ public struct NestedFolderSource: EvidenceSource {
                 guard search.canContinue(at: parent) else { break }
                 let url = parent.appendingPathComponent(child)
                 if let matched = Self.identifier(naming: child, identifiers) {
-                    // An identifier in another developer's namespace ships
-                    // in other applications too, so inside a folder that is
-                    // not this one's it is a name match, as it is at the top.
+                    // An identifier in another developer's namespace ships in other apps too,
+                    // so here it is a name match.
                     evidence.append(Evidence(
                         url: url, tier: identity.ownsIdentifier(matched) ? .B : .C,
                         mechanism: "NestedFolderSource",

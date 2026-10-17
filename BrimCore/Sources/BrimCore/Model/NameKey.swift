@@ -2,16 +2,10 @@ import CoreServices
 import Foundation
 import Synchronization
 
-/// The one way a file's name is compared with an application's.
-///
-/// Developers spell the same name several ways on disk. ChatGPT keeps
-/// `Caches/Codex` while its identifier says `codex`, Visual Studio Code is
-/// `Code`, `VSCode` and `vscode`, and an Electron app can write
-/// `visual-studio-code` beside `Visual Studio Code`. Every rule compared
-/// exact strings, so whether a folder was found depended on how its
-/// developer happened to type the name, and the Leftovers sweep, which
-/// compared in lower case, disagreed with the removal, which did not.
-/// Lower case with only letters and digits left is what all of those share.
+/// The one way a file's name is compared with an application's: lower case,
+/// letters and digits only. Developers spell names several ways on disk
+/// (`Code`, `VSCode`, `visual-studio-code`), and every part of Brim must
+/// agree on whose a folder is.
 public enum NameKey {
     public static func of(_ name: String) -> String {
         let folded = name.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
@@ -21,11 +15,9 @@ public enum NameKey {
         }))
     }
 
-    /// Whether a name is an ordinary word in the system dictionary. A word
-    /// like "Reader" or "Codex" names many things, so a folder sharing it
-    /// with an application's identifier is not, on its own, that
-    /// application's. "SystemEQ" is not a word, and a folder called that
-    /// beside SystemEQ for Mac is.
+    /// Whether a name is an ordinary dictionary word. A word like "Reader" names
+    /// many things, so a folder sharing it with an identifier is not on its own
+    /// that app's; "SystemEQ" is not a word.
     public static func isOrdinaryWord(_ name: String) -> Bool {
         let word = name.trimmingCharacters(in: .whitespaces)
         guard !word.isEmpty else { return false }

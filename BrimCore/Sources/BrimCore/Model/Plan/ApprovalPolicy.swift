@@ -2,11 +2,8 @@ import Foundation
 
 extension StepKind {
     /// Whether this kind of step destroys something `undo` cannot put back.
-    ///
-    /// Not the same as `Step.reversible`, which records what the planner
-    /// believed about one target. This is about the mechanism: a privacy
-    /// grant cleared with `tccutil` is gone for good, while a Launch
-    /// Services registration is put back by `undo` along with the bundle.
+    /// About the mechanism, not one target: a privacy grant cleared with
+    /// `tccutil` is gone, a Launch Services registration comes back with undo.
     public var destroysWithoutRecovery: Bool {
         switch self {
         case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
@@ -22,12 +19,9 @@ extension StepKind {
 }
 
 extension Step {
-    /// Whether this step is worth interrupting a human for.
-    ///
-    /// Two conditions, both required. It must destroy something nothing can
-    /// restore, and it must matter. A recreatable cache is deleted outright
-    /// by design, and asking for a fingerprint before clearing one is how a
-    /// user learns to approve without reading.
+    /// Whether this step is worth interrupting a person for: it must destroy
+    /// something nothing can restore, and it must matter. Asking before clearing
+    /// a recreatable cache teaches people to approve without reading.
     public var warrantsHumanPresence: Bool {
         guard costOfError != .low else { return false }
         return kind.destroysWithoutRecovery || effectiveDisposition == .delete
@@ -40,33 +34,18 @@ extension Plan {
         steps.contains { $0.executionPhase == .appBundle }
     }
 
-    /// The steps that make this plan worth authenticating for, if any.
-    ///
-    /// Plan-aware rather than step-local, because one step changes meaning
-    /// depending on what runs beside it.
+    /// The steps that make this plan worth authenticating for. Plan-aware,
+    /// because one step's meaning depends on what runs beside it.
     public var stepsWarrantingHumanPresence: [Step] {
         let theApplicationIsLeaving = intent.type == .uninstall && removesTheApplicationBundle
 
         return steps.filter { step in
             guard step.warrantsHumanPresence else { return false }
 
-            // A privacy grant is a permission macOS holds *for a bundle*. Let
-            // it go along with the bundle and nothing is lost that anybody
-            // could want back: the grant is inert without the application,
-            // macOS asks again from scratch if the application ever returns,
-            // and declining the prompt would not keep anything either, since
-            // the application is being removed regardless.
-            //
-            // This step is emitted for every uninstall of every application
-            // that has an identifier, which is very nearly all of them, so
-            // treating it as prompt-worthy made a fingerprint the price of
-            // the product's main action. That is the failure this whole file
-            // exists to prevent, arrived at by being careful rather than by
-            // being careless.
-            //
-            // Clearing grants on their own is a different matter and still
-            // asks, because there the permissions are the only thing changing
-            // and the application stays behind without them.
+            // A privacy grant is inert without its app, and macOS asks again if the app
+            // ever returns, so clearing grants during an uninstall loses nothing and
+            // needs no fingerprint. Clearing grants alone, with the app staying, still
+            // asks.
             if step.kind == .resetPrivacyGrants && theApplicationIsLeaving { return false }
 
             return true
@@ -74,26 +53,14 @@ extension Plan {
     }
 }
 
-/// When Brim asks a human to prove they are there.
-///
-/// Authentication is not consent: the review sheet is consent, and the user
-/// has already read what will happen and pressed a button saying to do it.
-/// A fingerprint proves something narrower: that a person is at the machine
-/// at this moment, rather than software driving the app. That is worth one
-/// interruption before something is destroyed beyond recovery, and worth
-/// nothing at all before a file is moved to the Trash.
-///
-/// The failure this exists to prevent is not an unauthorised deletion. It is
-/// a user who has been asked so often that they approve without looking, at
-/// which point every prompt in the product has become decoration.
+/// When Brim asks a person to prove they are there. The review is the
+/// consent; a fingerprint only proves a person is at the Mac rather than
+/// software driving the app. Worth one interruption before something is
+/// destroyed beyond recovery, and none before a move to the Trash.
 public struct ApprovalPolicy: Sendable, Equatable {
 
-    /// How long a successful authentication covers further destructive work.
-    ///
-    /// The same idea as `sudo`'s timestamp and macOS's own
-    /// `authenticate-user` timeout: a person who proved they were present a
-    /// moment ago is still present. Without it, clearing three applications
-    /// in a row costs three interruptions for one decision.
+    /// How long a successful authentication covers further destructive work,
+    /// like `sudo`'s timestamp, so three removals in a row cost one prompt.
     public let graceWindow: TimeInterval
 
     public init(graceWindow: TimeInterval = 300) {
@@ -136,23 +103,14 @@ public struct ApprovalPolicy: Sendable, Equatable {
         return .humanPresence(reason: Self.reason(for: destructive, in: plan))
     }
 
-    /// What the system prompt says Brim is trying to do.
-    ///
-    /// macOS renders this as "Brim is trying to _____", so it must be a
-    /// lowercase verb phrase with no trailing full stop. Written as a
-    /// sentence it comes out as "Brim is trying to Remove Figma, clear the
-    /// privacy permissions….", which is how the first version read.
-    ///
-    /// It names what cannot be undone, because that is the only thing the
-    /// prompt is asking about.
+    /// What the system prompt says Brim is trying to do. macOS shows "Brim is
+    /// trying to ___", so this is a lowercase verb phrase with no full stop. It
+    /// names only what cannot be undone.
     static func reason(for destructive: [Step], in plan: Plan) -> String {
         let subject = plan.intent.subjectIdentity.name
         let grantsCleared = destructive.contains { $0.kind == .resetPrivacyGrants }
         let receipts = destructive.filter { $0.kind == .forgetReceipt }.count
-        // Receipts are counted separately below. Rolling them into "items"
-        // said "permanently delete 1 item" about a step that deletes no file
-        // at all, which is the kind of small inaccuracy that teaches somebody
-        // the prompt is not worth reading.
+        // Receipts are counted separately: forgetting one deletes no file.
         let permanentCount = destructive
             .filter { $0.effectiveDisposition == .delete && $0.kind != .forgetReceipt }
             .count
@@ -175,8 +133,8 @@ public struct ApprovalPolicy: Sendable, Equatable {
         }
 
         guard !clauses.isEmpty else {
-            // Nothing recognised, which should not happen, but a prompt that
-            // names nothing is worse than a general one.
+            // Nothing recognised, which should not happen; a general phrase is better
+            // than naming nothing.
             return "make a change to \(subject) that cannot be undone"
         }
 

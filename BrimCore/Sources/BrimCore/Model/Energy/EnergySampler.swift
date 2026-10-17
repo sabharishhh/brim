@@ -11,34 +11,20 @@ public struct EnergySample: Codable, Sendable {
     public let diskWriteBytes: UInt64
     public let wakeups: UInt64
 
-    /// Energy the process has used since it started, in nanojoules.
-    ///
-    /// The real thing, from `ri_energy_nj`. It was sitting in the same
-    /// `rusage_info_v6` the sampler was already reading, unused, while
-    /// the view showed a synthetic score made of CPU time plus wakeups
-    /// plus bytes times ten. That number could be compared against itself
-    /// and against nothing else: it had no unit, so it could not be
-    /// turned into a share of a battery, added up over a week, or
-    /// checked against anything. Measured on this Mac, every one of 530
-    /// readable processes reports it.
+    /// Energy the process has used since it started, in nanojoules, from
+    /// `ri_energy_nj`.
     public let energyNanojoules: UInt64
-    /// The part of it spent on performance cores, from `ri_penergy_nj`.
-    /// Worth separating because the same work costs several times more
-    /// there, and software that never yields to the efficiency cores is
-    /// the software worth knowing about.
+    /// The part spent on performance cores, from `ri_penergy_nj`. The same work
+    /// costs several times more there.
     public let performanceCoreNanojoules: UInt64
-    /// When the process started, in Mach absolute time. Two processes can
-    /// share a pid over a machine's uptime, so accumulating without this
-    /// attributes a new process's energy to the one that held the pid
-    /// before it.
+    /// When the process started, in Mach absolute time. A pid can be reused, so
+    /// accumulating without this would credit one process's energy to another.
     public let startedAt: UInt64
 
     /// Joules, for arithmetic that has to read as arithmetic.
     public var joules: Double { Double(energyNanojoules) / 1_000_000_000 }
 
-    /// Milliwatt-hours, which is what a battery is measured in. 1 Wh is
-    /// 3600 J, so this is the only conversion in the product and it is
-    /// here rather than in a view.
+    /// Milliwatt-hours, what a battery is measured in. 1 Wh is 3600 J.
     public var milliwattHours: Double { joules / 3.6 }
 
     public init(
@@ -95,12 +81,8 @@ public actor EnergySampler {
             
             var pathBuffer = [CChar](repeating: 0, count: 4096)
             let pathRet = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-            // A process whose path cannot be read is a gap, not a row. It
-            // used to fall back to the literal string "unknown", which the
-            // grouping then turned into an application called Unknown sitting
-            // in the energy list with real joules against it. Energy that
-            // cannot be attributed is energy Brim does not list, and the
-            // count of them is shown beside the total instead.
+            // A process whose path cannot be read is a gap, not a row: energy that
+            // cannot be attributed is counted as a gap, never listed as "unknown".
             guard pathRet > 0 else {
                 gaps += 1
                 continue

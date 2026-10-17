@@ -1,24 +1,13 @@
 import Foundation
 
-/// Whether Brim can actually take a path away, as it is running.
-///
-/// The rule is Unix's, and it is easy to get backwards: **removing a file
-/// needs write permission on the directory holding it, not on the file.**
-/// The name lives in the directory, and unlinking it edits the directory.
-/// So a world-writable file in a root-owned folder cannot be removed, and a
-/// read-only file in your own folder can.
-///
-/// Brim asked the file, which happened to give the right answer for
-/// `/Library/LaunchAgents/com.google.keystone.agent.plist` because both it
-/// and its directory refuse, and would have given the wrong one the moment
-/// the two disagreed. The cost of that was a screen offering to remove two
-/// jobs, an authorization, and then "2 targets still remain" with no reason
-/// given.
+/// Whether Brim can take a path away, as it is running. Removing a file
+/// needs write permission on the folder holding it, not on the file: the
+/// name lives in the folder. So a world-writable file in a root-owned folder
+/// cannot be removed, and a read-only file in your own folder can.
 public enum RemovalCapability {
-    /// Flags only macOS can set, under System Integrity Protection. WebKit
-    /// makes its per-app folders in the per-user temporary folder with
-    /// `SF_NOUNLINK`, and eqMac's removal planned three of them and had all
-    /// three refused. Nobody can remove such an item, root included.
+    /// Flags only macOS can set, under System Integrity Protection, such as
+    /// `SF_NOUNLINK` on WebKit's per-app temporary folders. Nobody can remove
+    /// such an item, root included.
     static let systemProtectionFlags = UInt32(SF_RESTRICTED) | UInt32(SF_NOUNLINK)
 
     /// Something macOS protects for itself. It is never an app's to remove,
@@ -34,24 +23,17 @@ public enum RemovalCapability {
         guard !parent.isEmpty else { return .refusedByOS }
 
         if access(parent, W_OK) == 0 {
-            // The directory allows it. A restricted flag on the item
-            // itself still wins, and no permission overrides that one.
-            //
-            // `lstat`, because the flags that matter are the ones on the
-            // thing being unlinked. `stat` follows a symbolic link and
-            // answers about the target, which for a broken link fails
-            // outright and skipped this check entirely.
+            // The folder allows it, but a restricted flag on the item still wins.
+            // `lstat`, because the flags on the thing being unlinked matter; `stat`
+            // follows a link and fails outright for a broken one.
             var info = stat()
             let described = lstat(path, &info) == 0
             if described, (info.st_flags & systemProtectionFlags) != 0 {
                 return .refusedByOS
             }
-            // A folder is moved, not unlinked, and moving one to another
-            // parent rewrites its own `..` entry, so the folder has to
-            // allow writes as well. A file or a link does not: checked on
-            // a real Mac, a read-only file and a broken link both move out
-            // of a folder you own and a read-only folder does not. Only
-            // the folder itself is asked, never through a link.
+            // Moving a folder rewrites its own `..` entry, so the folder itself must be
+            // writable too; a file or link does not need that. Asked of the folder
+            // itself, never through a link.
             if described, (info.st_mode & S_IFMT) == S_IFDIR, access(path, W_OK) != 0 {
                 return errno == EPERM ? .needsFullDiskAccess : .needsHelper
             }
@@ -59,40 +41,25 @@ public enum RemovalCapability {
         }
 
         switch errno {
-        // Not ours to write to. A root-owned directory needs something
-        // running as root, which is what the helper is for.
+        // A root-owned folder needs administrator cleanup.
         case EACCES: return .needsHelper
-        // The directory is there but the process is not allowed to look,
-        // which on macOS is usually the privacy layer rather than the
-        // permission bits.
+        // The folder is there but this process may not look: on macOS usually the
+        // privacy layer, not the permission bits.
         case EPERM: return .needsFullDiskAccess
         default: return .needsHelper
         }
     }
 
-    /// Why a whole folder refuses, for a refusal that covers several
-    /// things at once.
-    ///
-    /// `explanation` is written about one item, which is right on a row and
-    /// wrong in a summary: fourteen commands in one directory produced
-    /// fourteen copies of "This sits in a folder that belongs to the
-    /// system, so removing it needs an administrator", and pluralising the
-    /// sentence around it left "This sits ... removing it ... They are all
-    /// in /usr/local/bin". Anchoring the sentence on the folder instead
-    /// makes one wording correct for one item and for fourteen.
-    ///
-    /// Nil where the folder is not the reason. A restricted flag belongs to
-    /// the item, and saying the directory is at fault would send somebody
-    /// after the wrong thing.
+    /// Why a whole folder refuses, worded about the folder so one sentence is
+    /// right for one item or fourteen. Nil where the folder is not the reason:
+    /// a restricted flag belongs to the item.
     public static func folderExplanation(_ capability: Capability, folder: String) -> String? {
         switch capability {
         case .ok:
             return nil
         case .needsHelper:
-            // In a person's own Library the folder is theirs; an installer
-            // that ran as an administrator left the item owned by root.
-            // Adobe's setup did this in HTTPStorages, and the sentence said
-            // the person's own folder belonged to the system.
+            // In a person's own Library the folder is theirs; an installer that ran as
+            // an administrator left the item owned by root.
             if folder.hasPrefix("/Users/") || folder.hasPrefix("~/") {
                 return "An installer left this owned by an administrator. Finder can move it to the Trash "
                     + "and asks for your password."

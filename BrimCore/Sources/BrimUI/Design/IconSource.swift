@@ -33,9 +33,9 @@ public enum ItemKind: String, Sendable, CaseIterable {
         }
     }
 
-    /// A record in a database or a job, rather than a file a person would
-    /// recognise from Finder. These get their symbol before Finder's icon,
-    /// because Finder would draw every launch agent as the same plist.
+    /// A record in a database or a job, not a file a person would recognise.
+    /// These get their symbol before Finder's icon, which draws every launch
+    /// agent as the same plist.
     var isRegistration: Bool {
         switch self {
         case .folder, .file, .application: false
@@ -83,15 +83,11 @@ public struct IconSubject: Equatable, Sendable {
     }
 }
 
-/// One icon rule for every row in the product.
-///
-/// An icon says what a thing is before its name is read, so nothing is
-/// drawn as a bare string. The first match wins:
-///
-/// 1. The owner application, while it is installed.
-/// 2. The owner's icon as Brim saved it, once the owner is gone.
+/// One icon rule for every row. The first match wins:
+/// 1. The owner application, while installed.
+/// 2. The owner's saved icon, once it is gone.
 /// 3. The item's own bundle, for a plug-in, driver or other bundle.
-/// 4. A symbol for a kind of registration: a login item, a job, a record.
+/// 4. A symbol for a kind of registration.
 /// 5. Finder's icon for a file or folder that exists.
 /// 6. A monogram of the owner, or of the item.
 public enum IconResolver {

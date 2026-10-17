@@ -1,16 +1,10 @@
 import Foundation
 
-/// Keeps rows where they were for the length of a visit (plan §8, rule 6).
-///
-/// A rescan, a keep or a removal elsewhere can change how a group sorts,
-/// and a row that moves under the pointer is how somebody ticks the wrong
-/// thing. So the order a page first showed is remembered, rows keep those
-/// positions within their groups, and anything that arrived since goes at
-/// the end of its group, where its new marker says what it is. The order
-/// settles the next time the page is opened.
-///
-/// Only the order within a group is held. Which group a row is in is a
-/// fact about it, and a kept row belongs under Kept at once.
+/// Keeps rows where they were for the length of a visit: a row that moves
+/// under the pointer is how someone ticks the wrong thing. Rows keep their
+/// first positions within their groups, and anything new goes at the end of
+/// its group. Only the order within a group is held; which group a row is
+/// in is a fact about it.
 public enum StableOrder {
     /// Each item's position, in the order the groups show them.
     public static func positions<Item: Identifiable>(_ groups: [ItemGroup<Item>]) -> [Item.ID: Int] {

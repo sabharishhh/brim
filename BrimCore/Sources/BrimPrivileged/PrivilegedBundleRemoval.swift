@@ -1,20 +1,12 @@
 import Foundation
 import Security
 
-/// The helper's rules for an installed bundle that belongs to root.
-///
-/// An installer package runs as root, so what it installs is root's:
-/// Microsoft Teams in `/Applications` is `root:wheel` and read-only to its
-/// own user, and so is the audio driver its installer puts in
-/// `/Library/Audio/Plug-Ins/HAL`. Finder asks for an administrator to move
-/// either. Brim had no way to, so its review said the application "stays
-/// where it is" and the uninstall removed a container and nothing else.
-///
-/// Like the job and link rules, this decides from what it can see and
-/// takes nothing on trust: a place installers put bundles, a plain name
-/// with the extension that place holds, a real folder rather than a link,
-/// and a bundle that is not Apple's and not Brim. It never deletes. The
-/// bundle is set aside where an administrator can still reach it.
+/// The rules for an installed bundle that belongs to root, as anything an
+/// installer package installs does. Decided from what can be seen, nothing
+/// on trust: a place installers put bundles, a plain name with that place's
+/// extension, a real folder rather than a link, and a bundle that is not
+/// Apple's and not Brim. It never deletes; the bundle is set aside where an
+/// administrator can still reach it.
 public enum PrivilegedBundleRemoval {
     public enum Domain: String, Sendable, CaseIterable {
         case applications
@@ -33,8 +25,8 @@ public enum PrivilegedBundleRemoval {
             }
         }
 
-        /// What a bundle in this place is called. Anything else there is
-        /// not an installed bundle, whatever it is.
+        /// What a bundle in this place is called; anything else there is not an
+        /// installed bundle.
         public var extensions: Set<String> {
             switch self {
             case .applications: ["app"]
@@ -86,9 +78,9 @@ public enum PrivilegedBundleRemoval {
         return URL(fileURLWithPath: domain.directory).appendingPathComponent(name)
     }
 
-    /// Whose the bundle is, read from the bundle. Its identifier, and for
-    /// anything that says it is not Apple's, its signature as well: an
-    /// identifier is a string anybody can write.
+    /// Whose the bundle is, read from the bundle: its identifier and, for
+    /// anything claiming not to be Apple's, its signature too, since an
+    /// identifier is a string anyone can write.
     public static func check(bundle: URL) throws {
         let name = bundle.lastPathComponent
         let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))

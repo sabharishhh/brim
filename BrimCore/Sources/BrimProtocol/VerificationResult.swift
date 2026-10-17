@@ -14,15 +14,8 @@ public struct VerificationResult: Codable, Equatable, Sendable, Identifiable {
     /// Nil in saved results recorded before fresh observation times were kept.
     public let observedAt: Date?
 
-    /// Every path the plan named that is still on the disk, re-observed with
-    /// `lstat` after the removal ran.
-    ///
-    /// The check has always worked this out and then thrown it away, keeping
-    /// only a yes or no and a sentence. That left the screens with nothing
-    /// to act on: the leftovers list could not tell which of the rows it had
-    /// just removed were actually gone, so it re-scanned the whole Mac to
-    /// find out, four hundred milliseconds after the person pressed Done.
-    /// The answer was already here.
+    /// Every path the plan named that is still on disk, re-observed with `lstat`
+    /// after the removal, so the lists can drop what went without rescanning.
     public let remainingPaths: Set<String>
     /// Nil in results written before the removal ceiling was reported.
     public let followUpActions: [RemovalFollowUp]?

@@ -1,14 +1,9 @@
 import Foundation
 
-/// Turns a package's file list into the things a person would name.
-///
-/// A payload is thousands of paths. What someone wants to know is that it
-/// adds an application, a launch daemon and a folder in Application
-/// Support. So every path is reduced to the outermost thing the installer
-/// *creates*: a bundle is one thing however many files it holds, a launch
-/// job is its property list, and anything else is the first folder on the
-/// path that is not already on this Mac. A path that is entirely there
-/// already is a file being replaced.
+/// Turns a package's file list into the things a person would name: a
+/// bundle is one thing however many files it holds, a launch job is its
+/// property list, and anything else is the first folder on the path not
+/// already on this Mac. A path entirely there already is a file replaced.
 public enum InstallerLayout {
     /// One line of `lsbom -p fms`: path, octal mode and, for a file, size.
     public struct Entry: Sendable, Equatable {
@@ -23,9 +18,8 @@ public enum InstallerLayout {
         }
     }
 
-    /// Reads `lsbom -p fms` output, placing each path under the package's
-    /// install location. AppleDouble entries (`._name`) carry a copied
-    /// file's extended attributes and are not things anyone installs.
+    /// Reads `lsbom -p fms` output under the package's install location.
+    /// AppleDouble entries (`._name`) hold extended attributes and are skipped.
     public static func entries(lsbom text: String, installLocation: String) -> [Entry] {
         let base = installLocation.hasSuffix("/") ? String(installLocation.dropLast()) : installLocation
         return text.split(separator: "\n").compactMap { line in
@@ -121,9 +115,8 @@ public enum InstallerLayout {
         return entry.isDirectory ? nil : (entry.path, false)
     }
 
-    /// What lands in each of macOS's own folders. Read before the
-    /// extension, because a launch job's property list says nothing by its
-    /// extension.
+    /// What lands in each of macOS's own folders. Checked before the extension,
+    /// because a launch job's property list says nothing by its extension.
     static let byFolder: [String: (InstallerPreview.Group, String)] = [
         "/Library/LaunchDaemons": (.background, "Launch daemon, starts with the Mac"),
         "/Library/LaunchAgents": (.background, "Launch agent, starts at every login"),
@@ -168,9 +161,9 @@ public enum InstallerLayout {
         return (.files, isDirectory ? "Folder" : "File")
     }
 
-    /// What an application in the payload carries that it registers once
-    /// it runs, read from the paths inside it. Nothing is unpacked, so this
-    /// knows a job by its file and not by its label.
+    /// What an application in the payload will register once it runs, read
+    /// from the paths inside it. Nothing is unpacked, so a job is known by its
+    /// file, not its label.
     public static func embedded(in app: String, entries: [Entry]) -> [InstallerPreview.Item] {
         let contents = app + "/Contents/"
         let name = (app as NSString).lastPathComponent

@@ -2,25 +2,15 @@ import BrimCore
 import CoreServices
 import Foundation
 
-/// Copies of updates that apps downloaded to install themselves.
-///
-/// An app that updates itself downloads the whole new version first, and
-/// the copy often stays after it is installed. Antigravity kept the same
-/// 181 MB update twice, and VS Code and Claude together held 2.3 GB of
-/// updates already installed. There are three ways apps do this, and one
-/// rule reads all of them:
-///
-/// - Squirrel keeps `update.*` beside its state in `<identifier>.ShipIt`.
-/// - electron-updater keeps a zip in a `pending` folder, and sometimes an
-///   `update.zip` beside it, in a cache named for the app.
+/// Copies of updates apps downloaded to install themselves, which often
+/// stay after installing. One rule reads all three ways apps do this:
+/// - Squirrel keeps `update.*` beside its state in `<identifier>.ShipIt`;
+/// - electron-updater keeps a zip in a `pending` folder in the app's cache;
 /// - Sparkle keeps `org.sparkle-project.Sparkle` inside the app's cache.
-///
-/// Only updates for an app still installed are listed here; the rest are
-/// what a removed app left behind. Brim clears a copy itself only when it
-/// is spent: the app was put in place after the download, the staged
-/// version is not newer than the one installed, or the download never
-/// finished and has sat for a week. An update waiting for its app to
-/// restart is shown and left alone.
+/// Only updates for installed apps are listed here. Brim clears a copy
+/// itself only when it is spent: the app was put in place after the
+/// download, the staged version is not newer, or the download never
+/// finished and is a week old. One waiting for a restart is left alone.
 public struct UpdateDownloadScanner: Sendable {
     public typealias Resolve = @Sendable (_ identifierOrName: String) -> URL?
 
@@ -63,9 +53,8 @@ public struct UpdateDownloadScanner: Sendable {
         }
     }
 
-    /// electron-updater's zip carries no version, so the dates decide: a
-    /// download the installed app is newer than has been installed. Each
-    /// zip is its own row, and the small note beside it that names the file
+    /// electron-updater's zip has no version, so dates decide: a download older
+    /// than the installed app has been installed. The small note naming the file
     /// stays; without the file the updater downloads again.
     func electron(_ folder: URL, app: URL, now: Date) -> [DeveloperCache] {
         let pending = Self.children(of: folder.appendingPathComponent("pending")).filter { $0.pathExtension == "zip" }
@@ -145,8 +134,8 @@ public struct UpdateDownloadScanner: Sendable {
         }.max() ?? .distantPast
     }
 
-    /// When the installed copy of the app was put where it is. An updater
-    /// replaces the whole bundle, so this moves with every update.
+    /// When the installed app was put where it is. An updater replaces the whole
+    /// bundle, so this moves with every update.
     static func placed(_ app: URL) -> Date {
         let values = try? app.resourceValues(forKeys: [.addedToDirectoryDateKey, .creationDateKey])
         return values?.addedToDirectoryDate ?? values?.creationDate ?? .distantPast

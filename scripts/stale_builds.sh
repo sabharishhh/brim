@@ -2,11 +2,7 @@
 # Lists every copy of Brim on this Mac except the one being worked on, and
 # with --remove deletes them and retracts their Launch Services records.
 #
-# Builds piled up across worktrees, release rehearsals and test runs: four
-# Xcode build folders, two AppBuild folders, a Release build beside the
-# Debug one, the installed 1.0 in /Applications and 41 test Trash folders,
-# 85 Launch Services records in all. Opening "Brim" could start any of
-# them, and a fix looked absent because an old build was the one running.
+# With several copies registered, opening "Brim" can start an old build.
 #
 #   scripts/stale_builds.sh <the build to keep>             list
 #   scripts/stale_builds.sh <the build to keep> --remove    remove

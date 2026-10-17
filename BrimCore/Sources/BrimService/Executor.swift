@@ -13,17 +13,14 @@ public actor Executor {
     private let launchdRuntime: LaunchdRuntimeClient
 
     /// Removes something this process cannot reach, through administrator
-    /// cleanup. Nil when this copy of Brim has none, which is not an error:
-    /// the step then records that it needed it, and the plan says so rather
-    /// than half succeeding.
-    ///
-    /// Injected rather than imported so the executor knows nothing about
-    /// how root is reached, and so a test can stand in for root.
+    /// cleanup. Nil when unavailable, which is not an error: the step records
+    /// that it needed it. Injected, so the executor knows nothing about how root
+    /// is reached and a test can stand in for it.
     private var privilegedRemover: (@Sendable (String) async -> String?)?
 
-    /// Forgets an installer receipt through administrator cleanup. Nil
-    /// without it: receipts live in a folder that belongs to root, so the
-    /// step then tries the bounded `pkgutil` route and records what it got.
+    /// Forgets an installer receipt through administrator cleanup. Nil without
+    /// it; the step then tries the bounded `pkgutil` route and records the
+    /// result.
     private var privilegedReceiptForgetter: (@Sendable (String) async -> String?)?
 
     private var recoveryRemover: (@Sendable (String, TargetFingerprint) async -> String?)?
@@ -58,16 +55,14 @@ public actor Executor {
         let sortedSteps = plan.executionOrderedSteps
 
         var hasFailures = false
-        // What keeps the app bundle in place. Every failure does, except
-        // macOS refusing an ordinary support file: that says nothing about
-        // whether the app can go. WhatsApp's removal left the whole app
-        // because macOS would not move its extension's temporary folder.
+        // What keeps the app bundle in place. Every failure does, except macOS
+        // refusing an ordinary support file, which says nothing about whether the
+        // app can go.
         var blocksBundle = false
         var stoppedJobs = Set<String>()
         var clearedPreferenceFiles: [String] = []
         defer {
-            // Not awaited: the daemon's empty copy arrives seconds after
-            // the removal has finished, and nobody should wait for it.
+            // Not awaited: `cfprefsd`'s empty copy arrives seconds after the removal.
             if !clearedPreferenceFiles.isEmpty {
                 let files = clearedPreferenceFiles
                 Task.detached { await PreferenceDomains.removeEmptyWriteBack(at: files) }
@@ -82,16 +77,10 @@ public actor Executor {
                 }
             }
 
-            // Steps whose target is an identifier rather than a path are not
-            // subject to the "already gone" check; a bundle id is not a file,
-            // and skipping it here would silently drop the reset.
-            //
-            // Unregistering is exempt for the opposite reason: its target is
-            // a path, but the whole point is that the bundle is already gone
-            // while its registration is not.
-            // `PathExistence`, not `fileExists`: the latter follows a
-            // symlink, so a step to remove a broken one was recorded as
-            // `already_gone` while the link stayed on the disk.
+            // Identifier targets skip the "already gone" check: a bundle id is not a
+            // file. Unregistering is exempt because its bundle is meant to be gone
+            // already. `PathExistence`, not `fileExists`, so a broken link is still
+            // there.
             if step.kind.targetIsPath,
                step.kind != .unregisterLaunchServices,
                RecoveryCopy.identifier(for: step.target) == nil,
@@ -108,10 +97,8 @@ public actor Executor {
                     try await Self.removeRecoveryCopy(step, using: recoveryRemover)
                     journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .trashPathPrivileged {
-                    // Something in a folder that belongs to root. The
-                    // administrator process applies its own rules and moves
-                    // the file to a holding folder rather than deleting it.
-                    // Brim cannot put it back from there.
+                    // In a folder that belongs to root. The administrator process applies its
+                    // own rules and moves the item to a holding folder rather than deleting it.
                     guard let privilegedRemover else {
                         journal.stepOutcomes[step.index] = "needs_helper_not_set_up"
                         hasFailures = true
@@ -139,16 +126,9 @@ public actor Executor {
                         )
                     }
 
-                    // Preferences are owned by cfprefsd, not by the file.
-                    // Unlinking the plist and leaving the daemon holding
-                    // the domain means the daemon writes it straight back
-                    // out, and the person watches a setting they removed
-                    // reappear. Told first, so the cache is invalid before
-                    // the file goes.
-                    //
-                    // Best effort on purpose: failing to invalidate a cache
-                    // is not a reason to abandon an uninstall, and the
-                    // journal records it either way.
+                    // `cfprefsd` owns preferences, not the file: unlinked while it holds the
+                    // domain, it writes the file straight back. Told first, so the cache is
+                    // invalid before the file goes. Best effort, recorded either way.
                     var preferenceDomainForgotten: Bool?
                     if let domain = PreferenceDomains.domain(forPlistAt: step.target) {
                         preferenceDomainForgotten = PreferenceDomains.forget(domain)
@@ -169,8 +149,7 @@ public actor Executor {
                             journal.stepTrashedURLs?[step.index] = url
                         }
                     case .delete:
-                        // Permanent: no trashed URL is recorded, so undo knows
-                        // there is nothing to put back for this step.
+                        // Permanent: no trashed URL is recorded, so undo has nothing to put back.
                         try SafeOps.deleteItem(targetPath: step.target, expectedDev: fp.dev, expectedIno: fp.ino)
                     }
                     if preferenceDomainForgotten == false {
@@ -182,14 +161,10 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "ok"
                     }
                 } else if step.kind == .resetPrivacyGrants {
-                    // Must run while the bundle is still on disk; the plan's
-                    // privacyReset phase sorts ahead of every removal so that
-                    // holds. The target is a bundle identifier, not a path.
-                    //
-                    // Recorded but never fatal: the user asked for the app to
-                    // be removed, and refusing to remove it because a grant
-                    // could not be cleared would be the wrong trade. The
-                    // outcome is journalled so the result can say so.
+                    // Runs while the bundle is still on disk (the privacy reset phase sorts
+                    // first). The target is a bundle identifier. Recorded, never fatal:
+                    // refusing to remove an app because a grant could not be cleared would be
+                    // the wrong trade.
                     do {
                         try await Self.resetPrivacy(step: step, plan: plan)
                         journal.stepOutcomes[step.index] = "ok"
@@ -197,10 +172,7 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "privacy_grants_not_cleared: \(error.localizedDescription)"
                     }
                 } else if step.kind == .delegateToolCleanup {
-                    // The target names which cleanup to run, never the
-                    // command. The vocabulary forbids a caller-supplied
-                    // command string, and this is the step most tempted by
-                    // one.
+                    // The target names which cleanup to run, never the command.
                     do {
                         guard plan.intent.type == .toolCleanup,
                               let request = plan.intent.toolCleanup, let binding = plan.toolCleanupBinding,
@@ -219,20 +191,10 @@ public actor Executor {
                             "cleanup_execution_failed: \(error.localizedDescription)"
                     }
                 } else if step.kind == .unregisterLaunchServices {
-                    // Only the path the app was installed at. A bundle that
-                    // went to the Trash keeps its name, so Launch Services
-                    // registers it there, but that record is *accurate*:
-                    // the app really is in the Trash, and macOS does the same
-                    // for any app dragged there by hand. Retracting it is the
-                    // Trash's lifecycle, not this step's, and racing Launch
-                    // Services to do it here loses: `lsregister -u` exits
-                    // non-zero because the record does not exist yet, and the
-                    // daemon creates it a moment later.
-                    //
-                    // Recorded, never fatal, for the same reason as the
-                    // privacy reset. The files are already gone; refusing the
-                    // whole uninstall over a registration would be the wrong
-                    // trade, and the journal says what happened either way.
+                    // Only the path the app was installed at. A trashed bundle is registered in
+                    // the Trash, accurately, and retracting that belongs to emptying the
+                    // Trash: racing Launch Services here fails because the record does not
+                    // exist yet. Recorded, never fatal.
                     journal.stepOutcomes[step.index] = await Self.unregisterComponent(
                         step: step, plan: plan, outcomes: journal.stepOutcomes
                     )
@@ -246,10 +208,7 @@ public actor Executor {
                         blocksBundle = true
                     }
                 } else if step.kind == .clearImmutableFlag {
-                    // Locked files used to vanish from the plan: the safety
-                    // checker refused them and said nothing, so a person saw
-                    // a shorter list rather than a reason. Now it is a step,
-                    // and one the review sheet shows before it happens.
+                    // Unlocking is its own step, shown in the review before it happens.
                     guard let fp = step.targetFingerprint else {
                         throw NSError(
                             domain: "BrimSecurity", code: 401,
@@ -263,18 +222,14 @@ public actor Executor {
                         )
                         journal.stepOutcomes[step.index] = "ok"
                     } catch {
-                        // Fatal for the plan: whatever came next wanted this
-                        // file unlocked, and a removal that carries on will
-                        // fail in a less legible way.
+                        // Fatal for the plan: what came next needed this file unlocked.
                         journal.stepOutcomes[step.index] =
                             "still_locked: \(error.localizedDescription)"
                         hasFailures = true
                         blocksBundle = true
                     }
                 } else if step.kind == .revealVendorUninstaller {
-                    // Brim opens Finder and stops. It never runs a vendor's
-                    // uninstaller: that is somebody else's executable doing
-                    // who knows what, and the point of the step is that the
+                    // Brim opens Finder and stops. It never runs a vendor's uninstaller; the
                     // person decides.
                     do {
                         try VendorUninstaller.reveal(at: step.target)
@@ -291,10 +246,8 @@ public actor Executor {
                         journal.stepOutcomes[step.index] = "receipt_kept_for_remaining_payload"
                         continue
                     }
-                    // Deletes no files. It removes the installer's record,
-                    // so `pkgutil --pkgs` stops listing software that is
-                    // gone and an installer cannot offer to repair it back
-                    // into existence. The target is a package identifier.
+                    // Deletes no files: removes the installer's record, so `pkgutil --pkgs`
+                    // stops listing software that is gone. The target is a package identifier.
                     if let forgetter = privilegedReceiptForgetter {
                         if let refusal = await forgetter(step.target) {
                             journal.stepOutcomes[step.index] = "receipt_remains: \(refusal)"
@@ -306,9 +259,8 @@ public actor Executor {
                             try await PackageReceipts.forgetBounded(packageID: step.target)
                             journal.stepOutcomes[step.index] = "ok"
                         } catch {
-                            // Recorded, never fatal. The files are gone; the
-                            // record outliving them is worth reporting and
-                            // not worth abandoning the removal over.
+                            // Recorded, never fatal: the files are gone, and the record outliving them
+                            // is worth reporting, not abandoning the removal over.
                             journal.stepOutcomes[step.index] =
                                 "receipt_remains: \(error.localizedDescription)"
                         }
@@ -340,19 +292,14 @@ public actor Executor {
                 hasFailures = true
             }
 
-            // Record after each step to handle crashes mid-way.
-            // AUDIT H-6 FIX: Swallow write errors to avoid aborting execution.
+            // Record after each step, so a crash mid-way can be reconciled. A failed
+            // write must not abort the removal.
             do {
                 try await journalStore.write(entry: journal)
             } catch {
-                // Swallowed so a write failure cannot abort a removal the
-                // person asked for, which means this is the only trace of
-                // it. The journal is what reconciles a crash mid-apply, so
-                // one that stopped being written is the first thing to look
-                // for when a relaunch cannot make sense of an open run.
-                // One literal: `OSLogMessage` is built by the compiler from
-                // an interpolated string, so a concatenation will not type
-                // check here.
+                // Swallowed so a write failure cannot abort a removal the person asked
+                // for; this log line is then the only trace. One literal, because
+                // `OSLogMessage` is built from an interpolated string.
                 log.error("could not write the journal at step \(step.index): \(error.localizedDescription)")
             }
         }

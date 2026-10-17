@@ -1,25 +1,12 @@
 import Foundation
 
-/// Represents the level of confidence for a piece of evidence belonging to an app.
 /// How Brim knows an item belongs to an application, and whether anything
-/// else has a claim on it.
-///
-/// A, B and C are one scale: how sure Brim is. **S is not on that scale.**
-/// S means Shared: something else installed on this Mac also claims this
-/// item, so it is removed from the selection whatever the confidence was.
-///
-/// The letters used to disagree with the specification, and dangerously.
-/// `S` meant "cryptographically guaranteed" here and mapped to selected,
-/// while T-1.9 and T-3.4 define it as the shared-file veto that may only
-/// ever *deselect*. Anybody following the specification and writing
-/// `tier: .S` to keep an item out of a plan would have put it in. Nothing
-/// emitted `.S`, which is the only reason this never fired.
+/// else has a claim on it. A, B and C are one scale of confidence. S is not
+/// on it: it means something else installed claims the item, so it leaves
+/// the selection whatever the confidence was.
 public enum EvidenceTier: String, Codable, Equatable, Sendable, CaseIterable {
-    /// Shared with something else on this Mac, so Brim will not remove it.
-    ///
-    /// One way only. This tier can take an item out of the default
-    /// selection and can never put one in, which is what stops a suite
-    /// uninstall taking a component its sibling still needs.
+    /// Shared with something else on this Mac. One way only: it can take an item
+    /// out of the default selection and never put one in.
     case S
     /// A direct structural link: the bundle itself, a receipt's file list,
     /// a sandbox container, a path that is the bundle identifier.
@@ -30,21 +17,13 @@ public enum EvidenceTier: String, Codable, Equatable, Sendable, CaseIterable {
     /// the application's own name in its own data folders.
     case C
 
-    /// Whether this tier is a statement of confidence at all. S is not:
-    /// it is a claim about somebody else, and code that ranks or compares
-    /// confidence has to leave it out rather than sort it to one end.
+    /// Whether this tier states confidence. S does not, so ranking code must
+    /// leave it out rather than sort it to one end.
     public var isConfidence: Bool { self != .S }
 }
 
-/// Represents a single piece of evidence found on disk.
-/// Who a path belongs to, when the path itself says so.
-///
-/// An app extension, a helper, a login item and a broken symlink all live
-/// inside somebody's bundle, and that enclosing bundle is the thing a person
-/// recognises. `NotificationService` means nothing; `Prime Video` does.
-///
-/// One implementation, in `BrimCore`, because both the sweep and the
-/// registrations list need the same answer and had each grown their own.
+/// Who a path belongs to, when the path itself says so: the enclosing
+/// bundle a person recognises, used by both the sweep and registrations.
 public enum EnclosingBundle {
 
     /// The name of the innermost enclosing bundle, without its extension.

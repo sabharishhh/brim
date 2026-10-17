@@ -1,13 +1,9 @@
 import CryptoKit
 import Foundation
 
-/// A finished, checked download kept because its app would not quit.
-///
-/// Claude's update downloaded 384 MB, passed every check, and failed at the
-/// last step because Claude stayed open; the download was thrown away with
-/// the rest of the attempt, so Try Again fetched all of it again. It is now
-/// kept here for a day, one folder per address, and the next attempt checks
-/// it against the source's checksum again before using it.
+/// A finished, checked download kept for a day because its app would not
+/// quit, so trying again does not download it all again. The next attempt
+/// checks it against the source's checksum before using it.
 enum ReadyDownloads {
     static func folder(in workspace: URL) -> URL {
         workspace.appendingPathComponent("Ready", isDirectory: true)

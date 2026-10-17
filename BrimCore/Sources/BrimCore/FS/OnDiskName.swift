@@ -2,12 +2,8 @@ import Darwin
 import Foundation
 
 /// The name a file has on disk, which on a case-insensitive volume need not
-/// be the name it was asked for by.
-///
-/// Brim found ChatGPT's `Caches/Codex` by asking for `Caches/codex`, the
-/// volume said yes, and the row and the plan carried a spelling that is not
-/// on the disk. Two sources asking with different spellings is also how one
-/// file turned into two rows.
+/// be the name it was asked for by. Rows use it, so a plan names what is
+/// really there and two spellings never become two rows.
 public enum OnDiskName {
     /// The URL with its last component spelled as stored. Links are not
     /// followed, and anything that cannot be read comes back unchanged.

@@ -1,18 +1,9 @@
 import Foundation
 
-/// Every place software puts things, and how Brim would know it was this
-/// application's.
-///
-/// A path on its own is not enough. The specification is explicit about
-/// it: *each new location needs an evidence rule, not just a path, and a
-/// location Brim can only name-match on is a Tier C location and must be
-/// labelled as one.* A list of sixty-five directories with no rule per
-/// directory is how a tool ends up deleting a folder because
-/// somebody else's product happened to share a word with yours.
-///
-/// So the table carries the rule and the tier together. Adding a location
-/// means deciding how a match there is proved, which is the part that
-/// takes the judgement and the part that keeps the claim honest.
+/// Every place software puts things, and how Brim would know a match there
+/// is this application's. Each location carries its rule and tier together:
+/// adding a path means deciding how a match there is proved, or a folder
+/// gets deleted for sharing a word with an app.
 public struct LocationInventory: Sendable {
     /// How something in a location is shown to belong to an application.
     public enum Rule: Sendable, Equatable {
@@ -29,49 +20,35 @@ public struct LocationInventory: Sendable {
         /// A suffix separated from the identifier, such as
         /// `com.example.editor-helper`. Name-derived and therefore Tier C.
         case bundleIdentifierDelimitedPrefix(String)
-        /// Anything named inside the bundle identifier in the per-user
-        /// folders: `<identifier>.<anything>`, or `.<identifier>.<anything>`,
-        /// which is how `mkdtemp` and Chromium name scratch folders that are
-        /// often never removed. ChatGPT had 682 of them, 47 MB, and Teams'
-        /// installer left `com.microsoft.teams2.installer_telemetry`; no
-        /// rule matched either.
+        /// Anything named inside the bundle identifier in the per-user folders,
+        /// `<identifier>.<anything>` or `.<identifier>.<anything>`: how `mkdtemp` and
+        /// Chromium name scratch folders that are often never removed.
         case temporaryDirectory
-        /// A folder a system service keeps on the application's behalf,
-        /// named `<service>+<identifier>`. WebKit's helper processes make
-        /// three for every application that shows a web view
-        /// (`com.apple.WebKit.GPU+com.meta.endo` and its Networking and
-        /// WebContent siblings), and they outlived Muse's uninstall.
+        /// A folder a system service keeps for the application, named
+        /// `<service>+<identifier>`, such as WebKit's three per app that shows a web
+        /// view.
         case clientOfService
         /// A group explicitly declared by the bundle, or an unverified
         /// `group.<bundle id>` name when no declaration could be read.
         case groupContainer
         /// A file or folder named exactly the application's name.
         case applicationName
-        /// A file or folder named the application's name in lower case.
-        ///
-        /// The convention outside `~/Library` is a lowercased name:
-        /// `~/.local/share/claude`, `~/.config/gh`. Most Macs have a
-        /// case-insensitive volume and would match these by accident, which
-        /// is worse than not matching them, because the accident stops on a
-        /// case-sensitive volume and the developers most likely to have one
-        /// are the people whose `~/.cache` is measured in gigabytes.
+        /// The application's name in lower case, the convention outside `~/Library`
+        /// (`~/.local/share/claude`). Matched exactly, because a case-insensitive
+        /// volume would match by accident and stop on a case-sensitive one.
         case applicationNameLowercased
         /// A name followed by a clear separator, such as
         /// `Claude - ask.workflow` or `Claude-3p`.
         case applicationNameDelimitedPrefix(String)
-        /// A bundle in this folder whose own `Info.plist` declares the
-        /// identifier. The only way to attribute an audio plug-in, whose
-        /// file name says nothing at all.
+        /// A bundle in this folder whose own `Info.plist` declares the identifier:
+        /// the only way to attribute an audio plug-in.
         case identifierInsideBundle
         /// A dot folder in the home folder: one the bundle declares as its
         /// own, or `.<name>` and `.<name>-<anything>` in lower case, which
         /// is how Electron editors name theirs (`.antigravity-ide`).
         case homeDotFolder
-        /// A crash or resource report named for one of the application's
-        /// processes and stamped with a date: `Tally-2026-09-29-090414.ips`
-        /// or `Tally_2026-09-29-090414_host.cpu_resource.diag`. The name
-        /// is never the application's alone, so the exact-name rule these
-        /// folders had matched nothing at all.
+        /// A crash or resource report named for one of the application's processes
+        /// and a date: `Tally-2026-09-29-090414.ips`.
         case diagnosticReport
     }
 
@@ -80,9 +57,7 @@ public struct LocationInventory: Sendable {
         public let rule: Rule
         /// What a person would call the thing found here.
         public let describes: String
-        /// How sure this makes Brim. Derived from the rule and then
-        /// floored by the domain: a location that can only ever be
-        /// name-matched is Tier C however it is written down here.
+        /// How sure this makes Brim: derived from the rule, floored by the domain.
         public let tier: EvidenceTier
         public let sentence: String
 
@@ -97,13 +72,10 @@ public struct LocationInventory: Sendable {
             tier = Self.tier(for: rule, in: domain)
         }
 
-        /// The rule decides the tier, and the domain can only weaken it.
-        ///
-        /// A bundle identifier is a reverse-DNS name nobody else uses, so
-        /// a path component equal to one is strong evidence. A human name
-        /// is not: two products called "Studio" are ordinary, which is
-        /// why a name match is selected only where `SafetyEngine` finds it
-        /// clearly the application's and nothing else installed shares it.
+        /// The rule decides the tier and the domain can only weaken it. A bundle
+        /// identifier is a name nobody else uses; a human name is not, so a name
+        /// match is selected only where `SafetyEngine` finds it clearly the
+        /// application's.
         static func tier(for rule: Rule, in domain: FileSystemRoot.Domain) -> EvidenceTier {
             if FileSystemRoot.onlyNameMatchable(domain) {
                 return .C
@@ -162,9 +134,8 @@ public struct LocationInventory: Sendable {
 
         public func matchTier(name: String, subject: Subject, declaredIdentifier: String? = nil) -> EvidenceTier? {
             switch rule {
-            // In any case and spacing: `Caches/Codex` is ChatGPT's although
-            // its identifier says `codex`, and an exact comparison found it
-            // only because the volume happened to ignore case.
+            // In any case and spacing: `Caches/Codex` belongs to an app whose
+            // identifier says `codex`.
             case .applicationName, .applicationNameLowercased:
                 subject.nameKeys.contains(NameKey.of(name)) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
@@ -300,12 +271,8 @@ public struct LocationInventory: Sendable {
         }
     }
 
-    /// What one identity answers to, worked out once.
-    ///
-    /// `Identity` derives its identifiers and names every time it is asked,
-    /// and matching asked once per file per location. Xcode carries 135
-    /// identifiers, so finding what it keeps took six seconds, nearly all
-    /// of it rebuilding the same sorted list.
+    /// What one identity answers to, worked out once. `Identity` derives its
+    /// identifiers each time it is asked, and an app like Xcode has 135 of them.
     public struct Subject: Sendable {
         public let identifiers: [String]
         let identifierSet: Set<String>
@@ -361,18 +328,10 @@ public struct LocationInventory: Sendable {
         }
     }
 
-    /// The domains a sweep for leftovers should walk.
-    ///
-    /// Derived from the same table the uninstall path uses, so the two
-    /// questions cannot drift apart again. They already had: removing an
-    /// application by name looked in sixty places while sweeping for what
-    /// software had left behind looked in eight, so the whole system
-    /// domain, every installer receipt and every command line tool was
-    /// invisible to the question they were most relevant to.
-    ///
-    /// Leaves out what a sweep cannot reason about: the folders
-    /// applications themselves live in, other volumes, other accounts,
-    /// and the system's own temporary directory.
+    /// The domains a sweep for leftovers walks, derived from the same table the
+    /// uninstall uses so the two cannot drift apart. Leaves out what a sweep
+    /// cannot reason about: application folders, other volumes and accounts,
+    /// and the system's temporary directory.
     public static var sweepDomains: [FileSystemRoot.Domain] {
         var seen: Set<FileSystemRoot.Domain> = []
         var result: [FileSystemRoot.Domain] = []
@@ -392,12 +351,9 @@ public struct LocationInventory: Sendable {
         // Fonts have no owning application, and a sweep of them is a list
         // of every typeface somebody has ever installed.
         .userFonts, .systemFonts,
-        // Per-boot scratch space. Every running process writes here and
-        // macOS empties it, so a sweep of it is a thousand rows of
-        // transient files that will be gone by morning. It stays in the
-        // inventory because a folder there named after a bundle is a
-        // genuine part of that application's footprint; it is only
-        // useless as an answer to "what has been left behind".
+        // Per-boot scratch space every process writes to and macOS empties. It
+        // stays in the inventory for uninstalls, but sweeping it lists only
+        // transient files.
         .darwinUserTemp
     ]
 
@@ -407,15 +363,7 @@ public struct LocationInventory: Sendable {
         self.locations = locations
     }
 
-    /// The inventory Brim actually uses.
-    ///
-    /// Grew from nineteen domains, which was less than Sample reaches.
-    /// The ones that matter most are the invisible ones: `ByHost`
-    /// preferences are a second copy of an application's settings that a
-    /// scan of `Preferences` walks straight past, the Darwin per-user
-    /// folders hold caches nothing else enumerates, and an audio plug-in
-    /// keeps its identifier inside the bundle so no path match can ever
-    /// see it.
+    /// The inventory Brim uses.
     public static let standard = LocationInventory(locations: [
         // Settings and state, keyed by identifier.
         Location(domain: .userPreferences, rule: .bundleIdentifierPrefix,
@@ -430,18 +378,10 @@ public struct LocationInventory: Sendable {
                  describes: "preferences for every user",
                  sentence: "Preferences set for every user on this Mac, keyed to the bundle "
                      + "identifier."),
-        // Prefixed rather than exact, and the difference is an updater.
-        // An application installed by any route can switch to updating
-        // itself afterwards, and Squirrel leaves `<identifier>.ShipIt` in
-        // Caches. An exact rule walks straight past it, and three of the
-        // six applications measured on this Mac were carrying one. The same
-        // shape catches a helper that keeps its own folder under the
-        // application's identifier, which is the ordinary case for anything
-        // shipping an XPC service.
-        //
-        // The prefix is the identifier and a dot, so `com.example.app` does
-        // not reach `com.example.applet`, and it is still an identifier
-        // match, so it is still Tier B.
+        // Prefixed rather than exact: an app that updates itself leaves
+        // `<identifier>.ShipIt`, and a helper often keeps its folder under the
+        // app's identifier. The prefix is the identifier and a dot, so
+        // `com.example.app` does not reach `com.example.applet`. Still Tier B.
         Location(domain: .userApplicationSupport, rule: .bundleIdentifierPrefix,
                  describes: "supporting files",
                  sentence: "Application Support keyed to the bundle identifier."),
@@ -466,19 +406,14 @@ public struct LocationInventory: Sendable {
         Location(domain: .systemCaches, rule: .bundleIdentifierPrefix,
                  describes: "caches for every user",
                  sentence: "A cache folder for every user, keyed to the bundle identifier."),
-        // Caches and Logs had an identifier rule and no name rule at all,
-        // so a folder an application named after itself was not so much
-        // missed as never looked for. Antigravity keeps 7 MB in
-        // `Caches/Antigravity` and Claude 2.8 MB in `Logs/Claude`, and
-        // neither appeared in its own uninstall. A name is a name, so these
-        // are Tier C, ticked only when clearly the application's own.
+        // A folder named for the application in Caches or Logs. A name match, so
+        // Tier C, ticked only when clearly the application's.
         Location(domain: .userCaches, rule: .applicationName,
                  describes: "caches",
                  sentence: "A cache folder named after the application rather than its "
                      + "identifier."),
-        // Beginning with the name and a hyphen, which is how an editor's
-        // extensions name theirs: `Caches/vscode-cpptools` is Visual Studio
-        // Code's C++ extension, and no rule for Caches could see it.
+        // The name and a hyphen, how an editor's extensions name theirs:
+        // `Caches/vscode-cpptools`.
         Location(domain: .userCaches, rule: .applicationNameDelimitedPrefix("-"),
                  describes: "caches",
                  sentence: "A cache folder beginning with the application's name."),
@@ -499,15 +434,9 @@ public struct LocationInventory: Sendable {
         Location(domain: .userSavedApplicationState, rule: .bundleIdentifierPrefix,
                  describes: "saved windows",
                  sentence: "The windows and documents macOS reopens for this application."),
-        // Keyed exactly on the bundle identifier, and missing from all six
-        // footprints measured on this Mac because no location named the
-        // directory it lives in.
-        //
-        // This one is a list of the person's own files and it still goes.
-        // The record belongs to the application; the documents it names
-        // belong to the person and outlive it. Delete the record, never
-        // what it points at. `RecordedPathTests` went in before this row
-        // did, which is the only order in which that guard means anything.
+        // The recent-documents record, keyed on the bundle identifier. The record
+        // goes with the application; the documents it names never do
+        // (`RecordedPathTests`).
         Location(domain: .userRecentDocuments, rule: .bundleIdentifierFile("sfl4"),
                  describes: "recently opened documents",
                  sentence: "The list macOS keeps of documents this application opened. The "
@@ -515,8 +444,8 @@ public struct LocationInventory: Sendable {
         Location(domain: .userHTTPStorages, rule: .bundleIdentifierPrefix,
                  describes: "stored web data",
                  sentence: "Cookies and web storage macOS keeps for this application."),
-        // A process with no bundle of its own gets its web storage under its
-        // executable's name. ChatGPT's helper left `ChatGPTHelper.binarycookies`.
+        // A process with no bundle of its own gets web storage under its
+        // executable's name, such as `ChatGPTHelper.binarycookies`.
         Location(domain: .userHTTPStorages, rule: .applicationName,
                  describes: "stored web data",
                  sentence: "Web storage named after one of this application's processes."),
@@ -697,17 +626,8 @@ public struct LocationInventory: Sendable {
         Location(domain: .darwinUserCache, rule: .bundleIdentifierDelimitedPrefix("-"),
                  describes: "a per-boot cache",
                  sentence: "A cache beginning with the application's identifier."),
-        // Outside `~/Library` entirely, which is where cross-platform
-        // software actually keeps its data. A tool written for Linux first
-        // looks in `~/.config` and `~/.local/share` because that is where
-        // its other builds look, and rewriting that for macOS is work
-        // almost nobody does. Nothing in Brim read `$HOME` directly, so
-        // Claude's 189 MB under `~/.local/share/claude` was invisible to
-        // every evidence source at once.
-        //
-        // Lower case on purpose. The convention here is a lowercased name,
-        // and a case-insensitive volume would paper over the difference
-        // until somebody ran Brim on a case-sensitive one.
+        // Outside `~/Library`, where cross-platform software keeps its data.
+        // Lower case on purpose, matching the convention there.
         Location(domain: .userDotConfig, rule: .applicationNameLowercased,
                  describes: "settings",
                  sentence: "Settings kept the way cross-platform software keeps them, outside "
@@ -740,9 +660,8 @@ public struct LocationInventory: Sendable {
         Location(domain: .darwinUserCache, rule: .clientOfService,
                  describes: "web view caches",
                  sentence: "Kept by a macOS service on the application's behalf, and named for it."),
-        // WebKit makes the same three folders in the temporary sibling as
-        // in the cache folder. eqMac's removal took the cache copies and
-        // left these.
+        // WebKit makes the same three folders in the temporary sibling as in the
+        // cache folder.
         Location(domain: .darwinUserTemp, rule: .clientOfService,
                  describes: "web view scratch folders",
                  sentence: "Kept by a macOS service on the application's behalf, and named for it."),

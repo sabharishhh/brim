@@ -3,30 +3,25 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// Backs the Storage section.
-///
-/// Holds two things that must not be added together: what the volumes
-/// report about themselves, and what Brim believes it could clear. The
-/// first is measured, the second is a claim Brim has to stand behind, and
-/// a single "you could free 12 GB" number made of both would be neither.
+/// Backs Space. Holds two things never added together: what the volumes
+/// report, which is measured, and what Brim could clear, which is a claim
+/// Brim must stand behind.
 @MainActor
 public final class StorageModel: ObservableObject {
     @Published public private(set) var volumes: [VolumeAccount] = []
     @Published public private(set) var isLoading = false
 
-    /// What Brim has actually found and could remove, taken from the
-    /// leftovers scan rather than estimated.
+    /// What Brim found and could remove, from the Remnants scan, not estimated.
     @Published public private(set) var brimCanClear: Int64 = 0
     @Published public private(set) var brimCanClearCount = 0
 
     @Published public private(set) var estimateUnavailable = false
-    /// The first volume result can arrive before the leftovers estimate.
-    /// A pending estimate must not be presented as an empty scan.
+    /// The first volume result can arrive before the estimate; a pending
+    /// estimate is not an empty scan.
     @Published public private(set) var hasEstimate = false
 
-    /// Remnants, whose result the estimate is taken from. Space used to
-    /// run a scan of its own for the same answer, which cost a second
-    /// four-second walk whenever Space opened after Remnants had finished.
+    /// Remnants, whose result the estimate comes from, so Space never runs a
+    /// second scan.
     private weak var leftovers: LeftoversModel?
     private var estimateWatch: AnyCancellable?
 
@@ -98,8 +93,8 @@ public final class StorageModel: ObservableObject {
         estimate(from: leftovers?.filter { $0.category == .orphaned })
     }
 
-    /// Free space alone, read again: a few milliseconds, so it can follow
-    /// the disk while Space or Home is on screen.
+    /// Free space alone: a few milliseconds, so it can follow the disk while
+    /// Space or Home is shown.
     public func readVolumes(service: any BrimServiceProtocol) async {
         let newVolumes = await service.volumes()
         if newVolumes != volumes {
@@ -107,10 +102,9 @@ public final class StorageModel: ObservableObject {
         }
     }
 
-    /// Only what a record ties to a removed app counts, in apps, the same
-    /// way Home and Remnants count. Something nobody can be named for is
-    /// shown in the list and never added to a figure. Nil is a scan that
-    /// failed.
+    /// Only what a record ties to a removed app counts, as on Home and Remnants;
+    /// unnamed items are listed but never added to a figure. Nil is a failed
+    /// scan.
     private func estimate(from orphaned: [Leftover]?) {
         estimateUnavailable = orphaned == nil || (orphaned ?? []).contains { $0.sizeIsKnown == false }
         brimCanClear = (orphaned ?? []).reduce(0) { $0 + $1.size }

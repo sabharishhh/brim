@@ -1,33 +1,10 @@
 import os
 
-/// Where Brim says what it could not do.
-///
-/// One subsystem, so somebody diagnosing a removal that did not finish can
-/// ask Console for everything Brim said rather than having to know which of
-/// several names to ask for.
-///
-/// **Nothing here is for tracing.** Brim carried ten raw `print` calls into
-/// release builds, and for most of them the fix was deletion rather than a
-/// logger: `SMAppServiceSource` named every installed application on every
-/// scan, the verifier printed the list of surviving paths it was about to
-/// return to its caller, and `TargetFingerprint`'s `==` printed from inside
-/// an equality operator, so it fired on comparisons that were not safety
-/// decisions at all and carried no plan or step to attribute itself to. A
-/// value already on its way to the caller does not also need announcing.
-///
-/// What is left are failures that are deliberately swallowed so they cannot
-/// abort something the person asked for. Those have to go somewhere or they
-/// go nowhere, and a journal that could not be written is exactly what
-/// somebody wants to find after a crash that would not reconcile.
-///
-/// `os.Logger` interpolates a string as private and a number as public,
-/// which is the right way round for a utility whose every string is a path
-/// off somebody's disk. Write `privacy:` where the default would be wrong,
-/// and never to widen a path to `.public`.
-///
-/// The privileged daemon keeps its own logger and its own subsystem, because
-/// `BrimPrivileged` deliberately depends on nothing and a root process
-/// should stay small enough to read in one sitting.
+/// Where Brim logs what it could not do: failures deliberately swallowed so
+/// they cannot abort something the person asked for. Not for tracing.
+/// `os.Logger` keeps interpolated strings private, which is right for paths;
+/// never widen a path to `.public`. The administrator process has its own
+/// logger, because `BrimPrivileged` depends on nothing.
 public enum BrimLog {
 
     public static let subsystem = "com.sabharishhh.brim"
@@ -36,11 +13,7 @@ public enum BrimLog {
         Logger(subsystem: subsystem, category: category)
     }
 
-    /// Intervals for the waits a person feels: launch to a usable window,
-    /// listing apps, inspecting one, planning a review, scanning for
-    /// remnants. They appear in Instruments' Points of Interest lane, so a
-    /// measurement names the work rather than guessing it from a stack, and
-    /// cost nothing unless a trace is recording. Never a substitute for the
-    /// failures logged above.
+    /// Intervals for the waits a person feels, in Instruments' Points of
+    /// Interest lane. They cost nothing unless a trace is recording.
     public static let signposter = OSSignposter(subsystem: subsystem, category: .pointsOfInterest)
 }

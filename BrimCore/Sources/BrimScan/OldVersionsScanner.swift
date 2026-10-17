@@ -1,22 +1,11 @@
 import BrimCore
 import Foundation
 
-/// Versions of a command line tool that nothing runs any more.
-///
-/// Tools that update themselves often keep each release in a `versions`
-/// folder and point the command at one of them: `~/.local/bin/claude` is a
-/// link to `~/.local/share/claude/versions/2.1.260`. Every other release in
-/// that folder is unused, and the evidence is exact rather than inferred:
-/// which version the command runs, and that no link names the rest.
-///
-/// The rule only speaks where the link does. A tool that picks its version
-/// some other way, from a shell hook or a project file the way nvm and mise
-/// do, leaves no link, so nothing in its folder is offered. Every link into
-/// the folder counts as in use, from the command folders and from inside
-/// the versions folder itself, so a `current` or `latest` pointer protects
-/// what it points at. Only folders in the home folder are read, and only
-/// while the command still resolves; a broken command is a different
-/// finding, and no version is spare when it is not clear which one runs.
+/// Versions of a command line tool that nothing runs any more. A tool that
+/// updates itself may keep each release in a `versions` folder and link the
+/// command to one; every other release there is unused. Only spoken where a
+/// link says which version runs: any link into the folder counts as in use,
+/// and nothing is offered when the command is broken or its version unclear.
 public struct OldVersionsScanner: Sendable {
     private let commandFolders: [URL]
 
@@ -83,9 +72,9 @@ public struct OldVersionsScanner: Sendable {
         return found.sorted { $0.sizeBytes > $1.sizeBytes }
     }
 
-    /// The `versions` folder a path runs through, and the version named in
-    /// it: `…/claude/versions/2.1.260/bin/claude` gives
-    /// (`…/claude/versions`, `2.1.260`). The last `versions` component wins.
+    /// The `versions` folder a path runs through and the version in it:
+    /// `.../claude/versions/2.1.260/bin/claude` gives
+    /// (`.../claude/versions`, `2.1.260`). The last `versions` component wins.
     static func versionsFolder(of path: URL) -> (URL, String)? {
         let parts = path.standardizedFileURL.pathComponents
         guard let index = parts.lastIndex(of: "versions"), index + 1 < parts.count, index > 1 else { return nil }

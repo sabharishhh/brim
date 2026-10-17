@@ -2,11 +2,8 @@ import BrimCore
 import Foundation
 
 /// Every launchd agent and daemon, in every domain, and what each points at.
-///
-/// T-3.2. The evidence engine already finds a plist when it can guess the
-/// path from an identity; this enumerates the domains instead, which is what
-/// catches a job whose plist is named after something other than its owner:
-/// and a job whose program is gone entirely.
+/// Enumerating the domains catches a job whose plist is named for something
+/// other than its owner, and a job whose program is gone.
 public struct LaunchdRegistrationSurface: RegistrationSurface {
     public let kind: Registration.Kind = .launchdJob
 
@@ -24,9 +21,8 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
             (root.url(for: .systemLibrary).appendingPathComponent("LaunchAgents"), "local"),
             (root.url(for: .systemLaunchDaemons), "local")
         ]
-        // Protected OS folders also contain configuration plists that are
-        // not job declarations. They are outside an application's removal
-        // scope and must not invalidate an application-job inventory.
+        // Protected system folders also hold plists that are not job declarations,
+        // outside any app's removal scope.
         guard includeSystemJobs else { return applicationDomains }
         return applicationDomains + [
             (root.rootURL.appendingPathComponent("System/Library/LaunchAgents"), "system"),
@@ -111,9 +107,8 @@ public struct LaunchdRegistrationSurface: RegistrationSurface {
         return Job(label: definition.label, program: definition.program)
     }
 
-    /// launchd labels are conventionally the bundle identifier, sometimes with
-    /// a suffix. Only an exact reverse-DNS prefix is treated as ownership:
-    /// a substring match would attribute `com.foo.bar` to `com.foo`.
+    /// A label is usually the bundle identifier, sometimes with a suffix. Only
+    /// an exact reverse-DNS prefix counts, so `com.foo.bar` is not `com.foo`'s.
     static func bundleID(fromLabel label: String) -> String? {
         let parts = label.split(separator: ".")
         guard parts.count >= 3 else { return nil }

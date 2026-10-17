@@ -1,16 +1,8 @@
 import Foundation
 
-/// What a location in the Library is *for*, and therefore what removing it
-/// actually costs.
-///
-/// This is the question the leftovers list was failing to answer. A row
-/// reading `/Users/x/Library/Caches/Codex 118.8 MB` tells a user nothing
-/// they can act on: they cannot tell it apart from the `Application Support`
-/// entry beside it, and nothing on screen says one is rebuilt automatically
-/// while the other holds settings and licences.
-///
-/// The answer does not require judgement or a model. macOS assigns meaning
-/// to these directories, and that meaning is a fact about the path.
+/// What a location in the Library is for, and so what removing it costs:
+/// a cache is rebuilt, Application Support holds settings and licences.
+/// macOS assigns these meanings, so they are facts about the path.
 public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
     case cache
     case applicationSupport
@@ -34,11 +26,6 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
             path.contains("/Library/\(component)/")
         }
 
-        // `LocationInventory` has scanned `darwinUserCache` and
-        // `darwinUserTemp` for some time and this classifier did not know
-        // them, so everything found there arrived in the list badged "Other"
-        // over the sentence "An unrecognised location." Brim recognised it
-        // well enough to go looking; only the description did not.
         if isDarwinPerUser(path) { return .darwinPerUser }
 
         if inLibrary("Caches") { return .cache }
@@ -53,12 +40,8 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         return .other
     }
 
-    /// Recognised by shape rather than by a stored path.
-    ///
-    /// There is no path to hard-code: macOS answers `confstr` with a
-    /// different `/var/folders/<xx>/<yyyy>` per user and per boot, and the
-    /// fixture root uses stand-ins under the same prefix. Matching the
-    /// structure covers both, and covers a path recorded on a previous boot.
+    /// Recognised by shape, not a stored path: `confstr` answers differently per
+    /// user and per boot, and fixtures use stand-ins under the same prefix.
     static func isDarwinPerUser(_ path: String) -> Bool {
         guard let range = path.range(of: "/var/folders/") else { return false }
         let rest = path[range.upperBound...]
@@ -115,8 +98,8 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         }
     }
 
-    /// Whether the app regenerates this on its own. The single most useful
-    /// fact for deciding, and the one the flat list never showed.
+    /// Whether the app regenerates this on its own: the most useful fact for
+    /// deciding.
     public var isRegenerated: Bool {
         switch self {
         case .cache, .logs, .savedState, .darwinPerUser: return true
@@ -125,15 +108,8 @@ public enum LeftoverDomain: String, Sendable, Codable, Equatable, CaseIterable {
         }
     }
 
-    /// A short verdict for the row. Deliberately about consequence rather
-    /// than a recommendation: Brim says what is lost, the user decides.
-    ///
-    /// Shown on every location while nothing has been removed yet, so it
-    /// has to read as what *would* happen, not as a claim about the Trash
-    /// right now. The previous wording, "Gone once you empty the Trash",
-    /// read as a present-tense statement about existing Trash contents to
-    /// someone whose Trash was empty at the time, when it was only ever
-    /// describing where a removal goes.
+    /// A short verdict for the row about consequence, not a recommendation.
+    /// Worded as what would happen, since it shows before anything is removed.
     public var consequence: String {
         isRegenerated ? "Comes back on its own" : "Goes to the Trash when removed"
     }

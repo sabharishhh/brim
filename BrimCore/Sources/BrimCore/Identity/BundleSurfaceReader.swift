@@ -70,11 +70,8 @@ public enum BundleSurfaceReader {
             "Contents/Library/LaunchDaemons", "Contents/SharedSupport", "Contents/MacOS",
             "Helpers", "XPCServices", "PlugIns"
         ]
-        /// Folders whose helpers can be a bare executable rather than a
-        /// bundle. Teams' background agent is one: a signed, sandboxed
-        /// binary in `Contents/Library/LaunchAgents` with its own identifier
-        /// and its own container, which nothing read, so the container
-        /// outlived every uninstall.
+        /// Folders whose helpers can be a bare executable rather than a bundle,
+        /// with their own identifier and container.
         private static let rawHelperFolders: Set<String> = [
             "Contents/Library/LaunchServices", "Contents/Library/LaunchAgents",
             "Contents/Library/LaunchDaemons"
@@ -132,10 +129,8 @@ public enum BundleSurfaceReader {
                     }
                 }
             }
-            // Applications shipped as resources rather than as helpers.
-            // ChatGPT carries its Computer Use app six folders down inside
-            // a Node module, with its own identifier and its own caches,
-            // preferences and group container; none of them were found.
+            // Applications shipped as resources rather than helpers, possibly deep
+            // inside a Node module, with their own identifier and data.
             if url.standardizedFileURL.path == bundle.standardizedFileURL.path {
                 for nested in nestedApplications(in: url.appendingPathComponent("Contents/Resources")) {
                     visit(nested, signature: signature)
@@ -212,9 +207,9 @@ public enum BundleSurfaceReader {
             return data
         }
 
-        /// Application bundles anywhere under a resources folder, not
-        /// looking inside any bundle, bounded so a folder of Node modules
-        /// cannot take the scan with it.
+        /// Application bundles anywhere under a resources folder, without looking
+        /// inside any bundle, bounded so a large Node module tree cannot stall the
+        /// scan.
         mutating func nestedApplications(in resources: URL) -> [URL] {
             guard !budget.hasRunOut,
                   let walk = FileManager.default.enumerator(

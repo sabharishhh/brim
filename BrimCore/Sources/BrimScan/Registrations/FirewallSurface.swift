@@ -57,10 +57,8 @@ public struct FirewallSurface: RegistrationSurface {
         ), readerVersion: 1)
     }
 
-    /// An app is named as Finder names it: the firewall lists WhatsApp as
-    /// `/Applications/WhatsApp.app`, and its row read "WhatsApp.app" beside
-    /// rows for the same app saying "WhatsApp". Only `.app` is dropped; a
-    /// tool such as `python3.12` keeps its whole name.
+    /// An app is named as Finder names it, without `.app`; a tool such as
+    /// `python3.12` keeps its whole name.
     static func label(for path: String) -> String {
         let url = URL(fileURLWithPath: path)
         return url.pathExtension == "app" ? url.deletingPathExtension().lastPathComponent : url.lastPathComponent

@@ -1,22 +1,12 @@
 import Foundation
 
-/// What a volume's space is actually doing.
-///
-/// Disk space on an APFS volume is not one number, and every utility that
-/// pretends otherwise ends up lying to somebody. "Free space" in Finder
-/// already counts space macOS would reclaim under pressure, which is why
-/// deleting a large file can leave the figure unchanged and why a cleaner
-/// can claim to have freed gigabytes that never appear.
-///
-/// So this keeps them apart and names each one:
-///
-/// - **used** and **capacity**, the plain facts.
-/// - **freeRightNow**, space genuinely unoccupied this second.
-/// - **reclaimableByTheSystem**, space macOS is holding in caches and local
-///   snapshots and will give back when something needs it. Real, but not
-///   yours to plan with, and not something deleting files adds to.
-///
-/// Finder's headline figure is `freeRightNow + reclaimableByTheSystem`.
+/// What a volume's space is doing, as separate facts that are never added
+/// together:
+/// - **used** and **capacity**;
+/// - **freeRightNow**, space unoccupied this second;
+/// - **reclaimableByTheSystem**, caches and snapshots macOS will give back
+///   when needed, which deleting files does not add to.
+/// Finder's free space is `freeRightNow + reclaimableByTheSystem`.
 public struct VolumeAccount: Sendable, Equatable, Identifiable {
     public let name: String
     public let url: URL
@@ -54,13 +44,8 @@ public struct VolumeAccount: Sendable, Equatable, Identifiable {
     }
 }
 
-/// One local snapshot.
-///
-/// Deliberately carries no size. macOS exposes no supported way to ask how
-/// many bytes a snapshot is holding: `tmutil` lists names, `diskutil apfs
-/// listSnapshots` adds whether each is purgeable, and neither reports a
-/// figure. Inventing one would be worse than admitting it, so the view says
-/// what is known and says what is not.
+/// One local snapshot. Carries no size: macOS has no supported way to ask
+/// how much a snapshot holds.
 public struct VolumeSnapshot: Sendable, Equatable, Identifiable {
     public let name: String
     /// Whether macOS will discard it when it needs the room.

@@ -2,21 +2,14 @@ import BrimCore
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// A place macOS records that an application exists, other than the
-/// filesystem.
-///
-/// Mirrors `EvidenceSource`, deliberately: one surface per mechanism, each
-/// enumerating what it knows about and saying in a sentence how it knows.
-/// One enumeration then serves both questions: *what belongs to this app*,
-/// for an uninstall, and *what belongs to nothing*, for the stale sweep.
+/// A place macOS records that an application exists, other than the file
+/// system. One surface per mechanism, like `EvidenceSource`, serving both
+/// questions: what belongs to this app, and what belongs to nothing.
 public protocol RegistrationSurface: Sendable {
     var kind: Registration.Kind { get }
 
-    /// Everything this mechanism currently holds.
-    ///
-    /// Returns an empty list rather than throwing when the mechanism is
-    /// unavailable; `coverage` reports why, so a surface that could not be
-    /// read is never mistaken for one that found nothing.
+    /// Everything this mechanism holds. Empty rather than throwing when
+    /// unavailable; `coverage` says why.
     func registrations(in root: FileSystemRoot) async -> [Registration]
 
     /// Whether this surface could be read at all on this machine.
@@ -69,20 +62,10 @@ public actor RegistrationInventory {
                                   coverage: ordered.map(\.coverage))
     }
 
-    /// Every registration on the machine, from every readable surface.
-    ///
-    /// The surfaces run together. Each one waits on something different and
-    /// none of them needs any of the others: `pluginkit` is a subprocess,
-    /// Background Task Management is a file read, the launchd folders and
-    /// the plug-in folders are directory walks, and the privileged helper
-    /// surface verifies code signatures. Run one after another they added
-    /// up to the slowest thing the app does at launch; run together the
-    /// scan costs about what its slowest member costs.
-    ///
-    /// `RegistrationSurface` is `Sendable` and every surface is a value
-    /// with no shared mutable state, which is what makes this safe rather
-    /// than hopeful. The result is sorted afterwards, so the order does not
-    /// depend on which task finished first.
+    /// Every registration on the machine, from every readable surface, run
+    /// together: none depends on another, and each is a `Sendable` value with no
+    /// shared mutable state. Sorted afterwards, so the order does not depend on
+    /// which finished first.
     public func all(in root: FileSystemRoot) async -> [Registration] {
         let surfaces = surfaces
         let results = await withTaskGroup(of: [Registration].self) { group in
@@ -108,18 +91,9 @@ public actor RegistrationInventory {
     }
 
     /// The registrations belonging to one application, minus anything a
-    /// surviving application also claims.
-    ///
-    /// The shared-file veto applies to registrations, not only to files.
-    /// The specification says it in
-    /// B4 and in `strategy.md`: a suite installs one login-item helper
-    /// and several applications register against it, so uninstalling one
-    /// of them and deregistering the helper breaks the two that remain.
-    /// The file veto never saw these, because a registration is a record
-    /// in a database and has no file to veto.
-    ///
-    /// One way only, exactly as Tier S is. This can take a registration
-    /// out of the set and can never put one in.
+    /// surviving application also claims. The shared veto applies to records as
+    /// well as files: a suite registers several apps against one helper, and
+    /// deregistering it for one breaks the others. One way only, like Tier S.
     public func owned(
         by identity: Identity,
         bundleURL: URL?,
@@ -139,8 +113,8 @@ public actor RegistrationInventory {
         }
     }
 
-    /// Which surviving applications claim a registration as well, so the
-    /// exclusion can name them rather than saying "shared" and stopping.
+    /// Which surviving applications also claim a registration, so the exclusion
+    /// can name them.
     public func alsoClaiming(
         _ registration: Registration,
         besides identity: Identity,
@@ -165,21 +139,14 @@ public actor RegistrationInventory {
         return otherPath.resolvingSymlinksInPath().path == subjectPath.resolvingSymlinksInPath().path
     }
 
-    /// Registrations pointing at something no longer installed, whichever
-    /// application left them, excluding entries macOS owns.
-    ///
-    /// On a real machine Apple ships several launchd jobs whose programs are
-    /// absent; they are not leftovers and cannot be removed, so surfacing
-    /// them as cleanable would be both wrong and impossible to act on.
+    /// Registrations pointing at something no longer installed, excluding
+    /// entries macOS owns, which cannot be removed.
     public func stale(in root: FileSystemRoot) async -> [Registration] {
         await all(in: root).filter(\.isActionableStale)
     }
 
-    /// Which surfaces could be read, in the order the surfaces were given.
-    ///
-    /// Together, like `all`, and indexed rather than appended because a
-    /// task group finishes in whatever order it finishes in and this list
-    /// is shown to a person.
+    /// Which surfaces could be read, in the order given. Indexed rather than
+    /// appended, because a task group finishes in any order.
     public func coverage(in root: FileSystemRoot) async -> [RegistrationCoverage] {
         let surfaces = surfaces
         return await withTaskGroup(of: (Int, RegistrationCoverage).self) { group in

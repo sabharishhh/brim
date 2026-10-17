@@ -1,13 +1,9 @@
 import CryptoKit
 import Foundation
 
-/// What the model has already said, so a release or a script is read once.
-///
-/// Keyed by a hash of the question, its inputs and the prompt's version,
-/// so a changed prompt is a new question. Kept in Brim's caches folder,
-/// because all of it can be asked again. Refusals are remembered for a day,
-/// so a page that is opened often does not ask for the same refusal each
-/// time.
+/// What the model has already said, so each release or script is read once.
+/// Keyed by a hash of the question, its inputs and the prompt's version, in
+/// Brim's caches folder. Refusals are remembered for a day.
 struct IntelligenceCache {
     struct Entry: Codable {
         let value: Data

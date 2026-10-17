@@ -57,14 +57,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// The durable store. Written and never read used to be the whole of
-    /// it: the schema existed, the module compiled, and the service did
-    /// not import it, so there was no history and nothing that needed
-    /// one could be built.
-    ///
-    /// Optional because a database that will not open must not stop Brim
-    /// listing what is on the disk. History is a better product, not a
-    /// working one.
+    /// The history database. Optional because a database that will not open
+    /// must not stop Brim listing what is on the disk.
     private let index: Index?
 
     public init(
@@ -82,9 +76,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         self.presence = presence
         self.automatedConsentAllowed = automatedConsentAllowed
 
-        // The production search, and what kept recordings say each app
-        // created. The recording source reads its file directly, because a
-        // search cannot wait on another actor.
+        // The production search, plus what kept recordings say each app created.
+        // The recording source reads its file directly, because a search cannot
+        // wait on another actor.
         let recordingsDirectory = journalStoreDirectory.deletingLastPathComponent()
             .appendingPathComponent("Recordings", isDirectory: true)
         recordingStore = InstallRecordingStore(directory: recordingsDirectory)
@@ -103,9 +97,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         planStore = PlanStore(directoryURL: planStoreDirectory)
         let tokensDir = planStoreDirectory.deletingLastPathComponent().appendingPathComponent("Tokens")
         try? FileManager.default.createDirectory(at: tokensDir, withIntermediateDirectories: true)
-        // Tokens live in memory only. The directory is still here because
-        // `PresenceStore` writes to it, and presence, unlike approval, is
-        // meant to survive a relaunch.
+        // Tokens live in memory only. The directory is for `PresenceStore`, since
+        // presence, unlike approval, survives a relaunch.
         self.tokenStore = tokenStore
         presenceStore = PresenceStore(directoryURL: tokensDir)
 
@@ -140,9 +133,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return plan
     }
 
-    /// Projects, evaluates and plans an intent *without* persisting the
-    /// result. `apply` re-plans to revalidate the footprint, and that
-    /// throwaway plan must not land in the store beside the real one.
+    /// Projects, evaluates and plans an intent without saving the result.
+    /// `apply` re-plans to revalidate, and that plan must not be stored.
     private func makePlan(intent: PlanIntent) async throws -> Plan {
         if intent.type == .toolCleanup {
             return try await makeToolCleanupPlan(intent)
@@ -249,57 +241,41 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     #if DEBUG
-        /// True when this process is a test run rather than the real app.
-        ///
-        /// Detected by the XCTest framework being loaded, not by an environment
-        /// variable: `XCTestConfigurationFilePath` is set by Xcode's runner but
-        /// not by SwiftPM's, so `swift test` would otherwise demand a fingerprint
-        /// for every plan it applies on a Mac with working Touch ID.
-        ///
-        /// There was a second way in, an environment variable belonging to the
-        /// MCP server's test harness. That server is gone and nothing sets the
-        /// variable any more, so what was left was an approval shortcut a debug
-        /// build would honour for anything able to set a variable.
+        /// True when this process is a test run. Detected by XCTest being loaded,
+        /// not by an environment variable: Xcode's runner sets
+        /// `XCTestConfigurationFilePath` but SwiftPM's does not.
         static let isAutomatedRun: Bool = NSClassFromString("XCTestCase") != nil
     #endif
 
-    /// When the owner enrolled, and when presence was last proved. Persisted,
-    /// so relaunching Brim is not by itself a reason to ask again.
+    /// When the owner enrolled, and when presence was last proved. Saved, so a
+    /// relaunch is not by itself a reason to ask again.
     private let presenceStore: PresenceStore
     private let approvalPolicy = ApprovalPolicy()
 
-    /// Requests waiting for a person. Held in memory, expiring in minutes,
-    /// and carrying no authority of their own.
+    /// Requests waiting for a person: in memory, expiring in minutes, carrying
+    /// no authority.
     private var pendingApprovals: [UUID: ApprovalRequestReceipt] = [:]
 
-    /// The only thing in this process that can ask a person. Nil in any
-    /// process that is not Brim's app, which is why nothing outside the
-    /// app can approve anything.
+    /// The only thing in this process that can ask a person. Nil in any process
+    /// that is not Brim's app, so nothing outside the app can approve anything.
     private var consent: ConsentSource?
 
-    /// How presence is proved. Nil means the real thing, which is a system
-    /// dialog; a test supplies its own so the gate can be exercised
-    /// without one.
+    /// How presence is proved. Nil means a real system dialog; tests supply
+    /// their own.
     private let presence: PresenceCheck?
 
-    /// Lets a test turn off the debug automation shortcut, so the gate can
-    /// be examined as it behaves in a shipped build. Has no effect outside
-    /// a debug build, where the shortcut does not exist at all.
+    /// Lets a test turn off the debug automation shortcut, to check the gate as
+    /// a shipped build behaves. Has no effect outside a debug build.
     private let automatedConsentAllowed: Bool
 
-    /// Whether first-run setup has happened. Nothing is withheld until it
-    /// does; the UI uses this to decide whether to offer it.
+    /// Whether first-run setup has happened. Nothing is withheld until then.
     public func isEnrolled() async -> Bool {
         await presenceStore.isEnrolled
     }
 
-    /// First-run setup: the owner confirms once, at the machine, that Brim is
-    /// theirs. Asked a single time and never again.
-    ///
-    /// This is deliberately not a gate. It establishes who set Brim up, and
-    /// it does not stand in for the confirmation before a permanent
-    /// deletion: an authentication at launch proves nothing about the person
-    /// present an hour later, which is when it would matter.
+    /// First-run setup: the owner confirms once that Brim is theirs. Not a gate,
+    /// and not a substitute for confirming a permanent deletion: authenticating
+    /// at launch proves nothing about who is present an hour later.
     public func enroll() async throws {
         #if DEBUG
             if Self.isAutomatedRun {
@@ -311,17 +287,14 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let context = LAContext()
         var authError: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
-            // No biometrics and no password policy available. Enrolment is
-            // setup, not a gate, so this must not lock anyone out.
+            // No biometrics or password policy available. Setup must not lock anyone
+            // out.
             await presenceStore.recordEnrolment()
             return
         }
         let success = try await context.evaluatePolicy(
             .deviceOwnerAuthentication,
-            // macOS renders this as "Brim is trying to <reason>", so it has
-            // to be a short lowercase verb phrase. The previous wording was
-            // a full sentence and came out as "Brim is trying to Confirm
-            // this Mac is yours, so Brim can set itself up..".
+            // macOS shows "Brim is trying to <reason>", so a lowercase verb phrase.
             localizedReason: "complete first-time setup"
         )
         guard success else {
@@ -333,25 +306,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     // MARK: - Approval
 
-    /// Requests that a person approve a plan. Returns an acknowledgement.
-    ///
-    /// This deliberately cannot approve anything. It records that a
-    /// decision is pending, describes what the decision is about, and hands
-    /// back a receipt with no authority in it. The only thing that turns a
-    /// receipt into a token is `grantApproval(for:)`, which is not on this
-    /// protocol and not reachable across a process boundary.
-    ///
-    /// The old version minted a token here whenever `ApprovalPolicy`
-    /// decided the plan was reversible, which is almost every plan. In the
-    /// app that was defensible, because the review sheet had already been
-    /// read and confirmed. Anywhere else there is no review sheet, so a
-    /// caller could plan, request and apply without a person ever being
-    /// involved. That is the one thing the product promises cannot happen.
+    /// Asks for a person's approval of a plan and returns a receipt with no
+    /// authority in it. Only `grantApproval(for:)`, which is not on the
+    /// protocol, turns a receipt into a token.
     public func requestApproval(planId: UUID, requesterIdentity: String) async throws -> ApprovalRequestReceipt {
-        // Only a plan this process made, still as it made it. The request
-        // used to hash whatever the file said when Remove was pressed, after
-        // the review, so a rewritten plan was approved in the reviewed one's
-        // place, administrator password included.
+        // Only a plan this process made, unchanged since; otherwise a plan
+        // rewritten after the review would be approved in its place.
         guard await planStore.isUnchangedSinceWritten(planId: planId) else {
             throw ApprovalError.planChangedSinceRequest
         }
@@ -374,14 +334,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return receipt
     }
 
-    /// Turns an answered request into a token. The only mint site there is.
-    ///
-    /// Three things have to hold, in this order. Something in this process
-    /// has to be able to ask a person, or there is nothing here that can
-    /// approve. The plan has to still say what it said when the request was
-    /// made, or the answer was given about something else. And where the
-    /// plan destroys something nothing can restore, a person has to prove
-    /// they are at the machine right now.
+    /// Turns an answered request into a token: the only mint there is. Three
+    /// things must hold, in order: something in this process can ask a person;
+    /// the plan still says what it said when the request was made; and where
+    /// the plan destroys something nothing can restore, a person proves they
+    /// are at the Mac now.
     public func grantApproval(for receipt: ApprovalRequestReceipt) async throws -> ApprovalToken {
         try beginOperation(planId: receipt.planId)
         defer { activePlans.remove(receipt.planId) }
@@ -393,8 +350,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
               Date() < receipt.expiresAt else {
             throw ApprovalError.requestNotPending
         }
-        // Single use, whatever happens next. A request that has been
-        // answered is spent.
+        // Single use: an answered request is spent.
         pendingApprovals.removeValue(forKey: receipt.requestId)
 
         guard await planStore.isUnchangedSinceWritten(planId: receipt.planId) else {
@@ -406,10 +362,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw ApprovalError.planChangedSinceRequest
         }
 
-        // A test run must never block on a human, and must never be able to
-        // stand in for one either. Debug-only on purpose: a release build
-        // has no path to a token that does not pass through `consent`, least
-        // of all one an environment variable can switch on.
+        // A test run must never block on a person, nor stand in for one. Debug
+        // only: a release build has no path to a token that skips `consent`.
         var automated = false
         #if DEBUG
             automated = Self.isAutomatedRun && automatedConsentAllowed
@@ -422,31 +376,25 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             try await authenticateApproval(plan)
         }
 
-        // The one mint in the product, and it is downstream of every check
-        // above. `ApprovalGateTests` fails if a second one appears.
+        // The one mint in the product, after every check above.
+        // `ApprovalGateTests` fails if a second one appears.
         return await tokenStore.mintToken(
             planId: receipt.planId, planHash: hash, requesterIdentity: receipt.requester
         )
     }
 
     private func authenticateApproval(_ plan: Plan) async throws {
-        // Not every plan is worth interrupting a human for. The review
-        // sheet is the consent; a fingerprint proves only that a person
-        // is at the machine right now, which is worth one interruption
-        // before something is destroyed beyond recovery and worth
-        // nothing before a file is moved to the Trash.
-        //
-        // The failure this guards against is not an unauthorised
-        // deletion. It is a user asked so often that they stop reading,
-        // at which point every prompt in the product has become
-        // decoration.
+        // Not every plan is worth interrupting a person for. The review is the
+        // consent; a fingerprint only proves a person is at the Mac, worth one
+        // interruption before something is destroyed beyond recovery and none
+        // before a move to the Trash.
         let requirement = await approvalPolicy.requirement(
             for: plan, lastAuthenticated: presenceStore.lastPresence
         )
         if plan.steps.contains(where: { $0.capability == .needsHelper }), let beginPrivilegedBatch {
-            // macOS administrator authentication and the signed root peer
-            // prove presence before approval is minted. Retain this exact
-            // connection for the selection rather than asking twice.
+            // Administrator authentication and the signed root peer prove presence
+            // before approval is minted. This connection is kept for the selection
+            // rather than asking twice.
             if let problem = await beginPrivilegedBatch() {
                 throw NSError(domain: "BrimApproval", code: 403,
                               userInfo: [NSLocalizedDescriptionKey: problem])
@@ -469,7 +417,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     /// Installs the thing that can ask a person. Brim's app calls this at
-    /// launch; nothing else does, and nothing else can.
+    /// launch; nothing else does.
     public func useConsentSource(_ source: ConsentSource?) {
         consent = source
     }
@@ -478,9 +426,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let context = LAContext()
         var authError: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
-            // No authentication mechanism at all. In a release build that is
-            // a refusal, because the whole point of the prompt is that it
-            // cannot be skipped.
+            // No authentication mechanism at all. In a release build that is a
+            // refusal: the prompt must not be skippable.
             #if DEBUG
                 print("LAContext unavailable, allowing fallback for tests")
                 return
@@ -500,9 +447,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 throw NSError(domain: "BrimService", code: 403,
                               userInfo: [NSLocalizedDescriptionKey: "Authentication failed."])
             }
-            // Proving presence once covers the next few minutes of
-            // destructive work, the way sudo's timestamp does, including
-            // across a relaunch, which is why it is persisted.
+            // Proving presence covers the next few minutes of destructive work, like
+            // sudo's timestamp, across a relaunch too.
             await presenceStore.recordPresence()
         } catch let error as LAError where error.code == .userCancel {
             throw NSError(domain: "BrimService", code: 403,
@@ -551,12 +497,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// Whether anything belonging to this plan's subject is running.
-    ///
-    /// Only for a whole-application uninstall. Tidying one leftover cache
-    /// while the app happens to be open is not the same hazard, and
-    /// refusing it would be the kind of prompt people learn to route
-    /// around.
+    /// Whether anything belonging to this plan's subject is running. Only for a
+    /// whole-app uninstall; tidying one cache while the app is open is not the
+    /// same hazard.
     private func runningApplicationRefusal(for plan: Plan) -> String? {
         guard plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty else {
             return nil
@@ -624,13 +567,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
 
-        // Checked before the token is spent, so quitting the app and
-        // asking again is the whole remedy.
-        //
-        // Removing a running application does not stop it. It keeps its
-        // state in memory and writes it back out when it quits, so the
-        // preferences and caches just removed reappear minutes later and
-        // the removal looks as though it silently failed.
+        // Checked before the token is spent, so quitting the app and asking again
+        // is the whole remedy. A running app keeps its state in memory and writes
+        // it back when it quits, so files removed underneath it reappear.
         if plan.intent.type == .uninstall, plan.intent.explicitTargets.isEmpty {
             _ = await RunningApplications.quitBackgroundParts(
                 bundleID: plan.intent.subjectIdentity.bundleID,
@@ -658,14 +597,14 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             throw ApplyError.validationFailed(problem)
         }
         do {
-            // --- T-2.4 Independent Re-validation ---
-            // Re-run the evidence scanner and planner to ensure the footprint hasn't mutated (e.g. symlink swap).
-            // Deliberately not via plan(intent:): this result is compared and discarded, never stored.
+            // Re-run discovery and planning to check the footprint has not changed
+            // (a swapped link, for one). Not via `plan(intent:)`: this result is
+            // compared and discarded, never stored.
             let revalidatedPlan = try await makePlan(intent: plan.intent)
             try validateReviewedPlan(plan, rebuilt: revalidatedPlan)
 
-            // Revalidation awaits other work, so another application of this plan
-            // may have completed while the actor was suspended.
+            // Revalidation awaits other work, so another apply of this plan may have
+            // finished meanwhile.
             guard !appliedPlanIds.contains(planId) else { throw ApplyError.planAlreadyApplied }
             appliedPlanIds.insert(planId)
 
@@ -718,9 +657,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
 
         // Steps must match exactly: count, targets and fingerprints. These
-        // sentences reach the person under "Stopped", so they say what
-        // changed on the disk rather than which array index disagreed, or a
-        // fingerprint printed as `Optional(TargetFingerprint(dev: ...))`.
+        // sentences reach the person, so they say what changed on the disk.
         guard plan.steps.count == revalidatedPlan.steps.count else {
             throw ApplyError.validationFailed("Something was added or removed since the review.")
         }
@@ -733,9 +670,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 throw ApplyError.validationFailed("\(originalStep.target) is no longer what the review found.")
             }
 
-            // One guard, not the two that were here. They tested the same
-            // thing, so the first always threw and the second, which is the
-            // one that says what the fingerprints actually were, never ran.
+            // One guard, which says what the fingerprints were.
             let sameAction = originalStep.kind == newStep.kind
                 && originalStep.effectiveDisposition == newStep.effectiveDisposition
                 && originalStep.capability == newStep.capability
@@ -790,9 +725,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
         let freeSpaceMeasured = journal?.freeSpaceBefore != nil && journal?.freeSpaceAfter != nil
 
-        // Re-observe targets using lstat to avoid traversing symlinks.
-        // Only path-targeted steps: a bundle identifier is not a file, and
-        // lstat-ing one resolves it against the working directory.
+        // Re-observe targets with `lstat`, so links are not followed. Only
+        // path-targeted steps: a bundle identifier is not a file.
         var pathsRemaining = Set<String>()
         var unknownPaths = Set<String>()
         let recoveryObservations = await recoveryPresence(for: plan)
@@ -826,9 +760,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let survivingExtensions = followUpResult.survivingExtensions
         followUps += Self.registrationRoutes(plan: plan, observations: postChecks)
         followUps.removeAll { $0 == .vendorUninstaller }
-        // A failed step whose path is still there is explained with that
-        // path. Saying "some planned actions could not be completed" as
-        // well added a vaguer copy of the same news.
+        // A failed step whose path is still there is explained with that path, so
+        // no vaguer copy of the same news is added.
         let otherActionsFailed = journal != nil && plan.steps.contains { step in
             guard step.kind != .resetPrivacyGrants else { return false }
             guard !(step.kind.targetIsPath && pathsRemaining.contains(step.target)) else { return false }
@@ -852,8 +785,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let reason = [observedReason, receiptReason]
             .compactMap(\.self).joined(separator: "\n\n")
 
-        // Teams' device was still offered in every app's microphone list
-        // after its driver had gone, because Core Audio had it loaded.
+        // Core Audio keeps a removed driver's device listed until it restarts.
         let removedDriver = plan.steps.contains { step in
             step.kind.targetIsPath && !pathsRemaining.contains(step.target)
                 && (step.target as NSString).deletingLastPathComponent.hasSuffix("/Audio/Plug-Ins/HAL")
@@ -1123,14 +1055,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return plans
     }
 
-    /// Deletes for good what one removal put in the Trash, and nothing
-    /// else there.
-    ///
-    /// Emptying the whole Trash would take the person's own files with
-    /// Brim's. Only the items this removal recorded, and only while they
-    /// are still in a Trash folder, are deleted, and the removal can no
-    /// longer be put back afterwards. Registrations of bundles that are now
-    /// gone are retracted, as they are when the Trash is emptied by hand.
+    /// Deletes for good what one removal put in the Trash, and nothing else.
+    /// Only items this removal recorded, still in a Trash folder, are deleted,
+    /// and it can no longer be put back. Registrations of bundles now gone are
+    /// retracted, as when the Trash is emptied by hand.
     public func deleteFromTrash(planId: UUID) async throws {
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }
@@ -1177,9 +1105,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
         let trashedURLs = journal.stepTrashedURLs ?? [:]
 
-        // Refuse up front rather than restoring some steps and failing on the
-        // rest. Two ways a plan cannot be undone: nothing was trashed to begin
-        // with, or the Trash has since been emptied.
+        // Refuse up front rather than restoring some steps and failing on the rest:
+        // nothing was trashed, or the Trash has since been emptied.
         guard plan.isReversible else {
             throw UndoError.planWasPermanent
         }
@@ -1253,10 +1180,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private func restoreApplicationRegistrations(plan: Plan, journal: JournalEntry) async throws {
         let planId = plan.planId
         let trashedURLs = journal.stepTrashedURLs ?? [:]
-        // Put the registration back with the bundle. The uninstall retracted
-        // it deliberately, so restoring the files alone would leave a working
-        // application macOS does not know about (no "Open With", no document
-        // types) until something happens to rescan it.
+        // Put the registration back with the bundle, or the restored app would be
+        // unknown to macOS (no "Open With", no document types) until a rescan.
         for step in plan.steps where step.kind == .unregisterLaunchServices {
             // An offline filesystem cannot restore the host Mac's registry.
             guard root.rootURL.standardizedFileURL.path == "/" else { continue }
@@ -1270,8 +1195,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 continue
             }
             guard PathExistence.exists(atPath: step.target) else { continue }
-            // Older plans retracted folders that only had an app's name, and
-            // a folder has no registration to put back.
+            // Older plans retracted folders that only had an app's name; a folder has
+            // no registration to put back.
             guard ApplicationBundle.isBundle(atPath: step.target) else {
                 try await journalStore.recordRestoreOutcome(planId: planId, stepIndex: step.index, outcome: "ok")
                 continue
@@ -1300,18 +1225,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// Gives the executor a way to reach administrator cleanup.
-    ///
-    /// Set by the application once, through `HelperRoute`. Nothing else in
-    /// the service knows how protected items are removed, which keeps the
-    /// privileged path to one line in one place.
+    /// Gives the executor a way to reach administrator cleanup. Set once by the
+    /// app through `HelperRoute`, so the privileged path is in one place.
     public func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async {
         privilegedRemover = remover
         await executor.setPrivilegedRemover(remover)
     }
 
-    /// Kept for updates, which replace a root-owned application the same
-    /// way a removal sets one aside.
+    /// Kept for updates, which replace a root-owned app the way a removal sets
+    /// one aside.
     var recoveryVerifier: (@Sendable () async throws -> [RecoveryCopy])?
     private var authenticatedPrivilegedPlans: [UUID: UUID] = [:]
 
@@ -1333,10 +1255,6 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     /// Every mechanism macOS records software in, in one place.
-    ///
-    /// Two of these were wired up and the other seven were written and
-    /// never called, which is the same failure as a step kind nothing
-    /// emits: the code existed, the product did not have the feature.
     static let everySurface: [any RegistrationSurface] = [
         LaunchdRegistrationSurface(includeSystemJobs: false),
         FirewallSurface(), BackgroundItemSurface(),
@@ -1351,37 +1269,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
     public func registrations() async -> RegistrationReport {
         let inventory = RegistrationInventory(surfaces: Self.everySurface)
-        // Both questions at once. These were two sequential awaits, and
-        // every surface answers them from the same read: asking what
-        // `pluginkit` holds and then asking whether `pluginkit` answered
-        // ran the subprocess twice, and the same doubling applied to the
-        // Background Task Management store and every directory walk.
+        // Both questions from one read of each surface, so no subprocess or walk
+        // runs twice.
         return await inventory.snapshot(in: root)
     }
 
-    /// Names what is still there and what stopped it going.
-    ///
-    /// "2 targets still remain" was the whole message, and it was useless:
-    /// it did not say which two, or why, and the answer in the case that
-    /// produced it was that both sat in a root-owned directory and no
-    /// amount of retrying would have helped. A count is not a finding.
-    ///
-    /// Then it went the other way. Naming every item and repeating its
-    /// reason produced, for fourteen broken commands in one directory,
-    /// fourteen copies of the same sentence in a single paragraph: nine
-    /// hundred characters of which eight hundred were duplicates, clipped
-    /// mid-word by the panel it was shown in. One reason held for all
-    /// fourteen and the shape of the text hid that completely.
-    ///
-    /// So: the reason once, the place once, and then the names. Somebody
-    /// reading it learns what went wrong in the first line and which things
-    /// it happened to in the last.
-    ///
-    /// What was recorded when the step ran comes first. Working the reason
-    /// out again afterwards from the folder's permissions is how three
-    /// links the journal had marked `needs_helper_not_set_up` were reported
-    /// as "macOS did not say why": the folder allowed the removal, so the
-    /// after-the-fact reading had nothing to say.
+    /// Names what is still there and what stopped it going: the reason once,
+    /// the place once, then the names, so fourteen items sharing one answer are
+    /// one paragraph. What was recorded when the step ran comes first; working
+    /// the reason out afterwards from the folder's permissions can miss it.
     static func whyTheseRemain(
         _ paths: Set<String>,
         recorded: [String: String] = [:],
@@ -1391,11 +1287,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             ? "One thing is still there."
             : "\(paths.count) things are still there."
 
-        // Grouped by the folder and the reason, because together they are
-        // what somebody can act on. Fourteen names sharing one answer is
-        // one paragraph, not fourteen.
-        // The folder and what was said about it, as a key rather than two
-        // strings joined by a NUL and split apart again.
+        // Grouped by folder and reason, which together are what someone can act
+        // on.
         enum Said: Hashable {
             case recorded(String)
             case capability(Capability)
@@ -1420,9 +1313,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             let folder = key.folder
             let these = names[key] ?? []
 
-            // The folder is the subject wherever the folder is the reason,
-            // so one sentence is right for one item and for fourteen. What
-            // is left over is per item, and there the item is the subject.
+            // The folder is the subject wherever it is the reason, so one sentence fits
+            // one item or fourteen. Otherwise the item is the subject.
             let reason: String = switch key.said {
             case let .capability(capability):
                 RemovalCapability.folderExplanation(capability, folder: folder)
@@ -1445,10 +1337,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         plan: Plan, journal: JournalEntry?, remaining: Set<String>
     ) -> [String: String] {
         var recorded: [String: String] = [:]
-        // One path can carry several steps: an app bundle is moved, and its
-        // Launch Services record retracted after. The step that moves the
-        // file answers for it. Reading the retraction's "ok" said WhatsApp's
-        // bundle had been removed and written back, when it was never moved.
+        // One path can carry several steps (a bundle moved, then its Launch
+        // Services record retracted). The step that moves the file answers for it.
         for step in plan.steps where step.kind.targetIsPath && remaining.contains(step.target) {
             guard let outcome = journal?.stepOutcomes[step.index] else { continue }
             if step.kind == .unregisterLaunchServices, recorded[step.target] != nil {
@@ -1476,15 +1366,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         if outcome == "skipped_due_to_prior_failures" {
             return "Not attempted, because something before it in the same removal could not go."
         }
-        // The folder's permissions may say nothing, as a sandboxed app's
-        // temporary folder's did, and then "nothing was recorded to say why"
-        // sat above a report saying macOS had refused it.
+        // macOS refused, even where the folder's permissions say nothing.
         if outcome == "refusedByOS" {
             return "macOS would not let Brim move this."
         }
-        // The step worked and the file is back: something wrote it again
-        // after it went. IINA's preferences were reported as "nothing was
-        // recorded to say why" when the journal had recorded exactly that.
+        // The step worked and the file is back: something wrote it again after it
+        // went.
         if outcome == "ok" || outcome.hasPrefix("ok_but_preferences_may_return") {
             return "Brim removed this, and something wrote it back afterwards."
         }
@@ -1541,10 +1428,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         let applications = await applicationInventoryRead().value
         try Task.checkCancellation()
 
-        // Every enumeration is written down, so "what changed" is the
-        // last two snapshots differenced and nothing has to watch for
-        // installations. Best effort: a history that could not be
-        // written must not stop the list being returned.
+        // Every listing is recorded, so "what changed" is the last two snapshots
+        // differenced. Best effort: a failed write must not stop the list.
         await recordSnapshot(of: applications)
         return await withInstallDates(applications)
     }
@@ -1553,17 +1438,16 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         await (try? index?.installRecords()) ?? []
     }
 
-    /// Apps and Updates can open together. Share their active read, then drop
-    /// it so a later check always describes the filesystem again. The service
-    /// owns the task; cancelling one waiter cannot stop the other one's read.
+    /// Apps and Updates can open together, so they share one read, dropped after
+    /// so a later check reads the disk again. The service owns the task, so one
+    /// waiter cancelling does not stop the other's read.
     func applicationInventoryRead() -> Task<[InstalledApplication], Never> {
         if let applicationInventoryTask {
             return applicationInventoryTask
         }
         let task = Task {
-            // Recovery can put a staged application back. Finish it before
-            // either caller describes the installed bundles, and keep the
-            // interrupted results until Updates has had a chance to show them.
+            // Recovery can put a staged app back, so finish it before describing the
+            // bundles, and keep interrupted results until Updates can show them.
             let interrupted: [String: String] = if let updateRecoveryReader {
                 await updateRecoveryReader()
             } else if root.rootURL.standardizedFileURL.path == "/" {
@@ -1587,7 +1471,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     /// Injected reads keep concurrency tests away from the person's update
-    /// recovery directory and make overlapping enumerations reproducible.
+    /// recovery folder.
     func useApplicationInventory(
         reader: @escaping @Sendable () async -> [InstalledApplication],
         recovery: @escaping @Sendable () async -> [String: String]
@@ -1596,18 +1480,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         updateRecoveryReader = recovery
     }
 
-    /// Each application's latest recorded installation. A return after a
-    /// snapshot confirmed its absence starts another installation period.
-    ///
-    /// First appearing is not the same as arriving. When the inventory
-    /// began listing the apps inside Xcode, Icon Composer, FileMerge and
-    /// five more were in the next snapshot and not the one before, and
-    /// Home announced them all as installed today, years after Xcode put
-    /// them there. So an appearance counts only when nothing shows the
-    /// bundle was already on the disk at Brim's previous look: Spotlight's
-    /// date added can move later on an update but never earlier, so a date
-    /// before that look is proof. An app inside another arrives with its
-    /// host and takes the host's date.
+    /// Each application's latest recorded installation; a return after a
+    /// snapshot confirmed its absence starts another period. First appearing is
+    /// not arriving: an appearance counts only when nothing shows the bundle was
+    /// already on disk at the previous look. Spotlight's date added can move
+    /// later but never earlier, so a date before that look is proof. An app
+    /// inside another takes its host's date.
     private func withInstallDates(_ applications: [InstalledApplication]) async -> [InstalledApplication] {
         let windows = await (try? index?.appearanceWindows()) ?? [:]
         let byPath = Dictionary(applications.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
@@ -1646,17 +1524,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         do {
             try await index.recordInstalled(observations)
         } catch {
-            // History is snapshots and subtraction, so a snapshot that was
-            // not written is a comparison that will silently be made against
-            // the wrong pair later.
+            // A snapshot not written would make a later comparison against the wrong
+            // pair, silently.
             log.error("could not write the install snapshot: \(error.localizedDescription)")
         }
     }
 
-    /// Whether each application has a newer version, from its own source.
-    ///
-    /// Reaches the network: Apple's catalogue, the feeds applications read
-    /// themselves, and Homebrew's public catalogue revalidated for this check.
+    /// Whether each application has a newer version, from its own source. Goes
+    /// to the network: Apple's catalogue, the apps' own feeds, and Homebrew's
+    /// public catalogue.
     public func checkForUpdates() async -> UpdateCheck {
         let applications = await applicationInventoryRead().value
         let interrupted = pendingInterruptedUpdates
@@ -1668,13 +1544,10 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return check
     }
 
-    /// Applications that took a new version in the last two weeks.
-    ///
-    /// When is read off the bundle: the App Store rewrites an app's receipt
-    /// when it updates it, and anything else that puts a new copy in place
-    /// sets the date it was added. Only an app Brim's snapshots saw at an
-    /// older version before then counts, so a fresh install is not called
-    /// an update.
+    /// Applications that took a new version in the last two weeks, dated from
+    /// the bundle (the App Store rewrites its receipt; anything else sets the
+    /// date added). Only an app Brim's snapshots saw at an older version counts,
+    /// so a fresh install is not called an update.
     func recentUpdates(_ applications: [InstalledApplication], now: Date = Date()) async -> [RecentUpdate] {
         guard let index else { return [] }
         let window = now.addingTimeInterval(-14 * 86400)
@@ -1698,8 +1571,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return recent.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// Puts one update in place. Homebrew updates what it installed; the
-    /// rest Brim downloads, checks and swaps, or hands to Installer.
+    /// Installs one update. Homebrew updates what it installed; the rest Brim
+    /// downloads, checks and swaps, or hands to Installer.
     public func installUpdate(
         _ update: AppUpdate, progress: @escaping @Sendable (DownloadProgress) -> Void
     ) async -> UpdateOutcome {
@@ -1734,12 +1607,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             .appendingPathComponent("com.sabharishhh.brim/Updates", isDirectory: true)
     }
 
-    /// Casks Homebrew still tracks whose application is gone.
-    ///
-    /// Found by subtracting what is installed from what Homebrew lists.
-    /// Nothing else looks here: the application is in the Trash, so every
-    /// scan of the disk says it is gone, while Homebrew goes on offering
-    /// to upgrade it.
+    /// Casks Homebrew still tracks whose application is gone: Homebrew's list
+    /// minus what is installed.
     func orphanedCaskNames() async -> Set<String> {
         let inventory = await Self.homebrewInventory(in: root)
         guard inventory.completeness.isComplete else { return [] }
@@ -1754,12 +1623,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         })
     }
 
-    /// Installations, removals and updates observed in the past week.
-    ///
-    /// Empty on a first run, which is the honest answer: there is
-    /// nothing to compare against, and inventing a list of "new"
-    /// applications the first time somebody opens Brim would make every
-    /// later list untrustworthy.
+    /// Installs, removals and updates seen in the past week. Empty on a first
+    /// run: with nothing to compare, inventing "new" apps would make every later
+    /// list untrustworthy.
     public func whatChanged() async -> InstallHistory {
         guard let index else { return InstallHistory(changes: [], snapshots: 0) }
         let now = Date()
@@ -1776,8 +1642,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             try Task.checkCancellation()
             return result
         }
-        // Review and Storage can request the same read concurrently. Share only
-        // in-flight work; a later rescan always reads the filesystem again.
+        // Remnants and Space can ask at the same time; only work in flight is
+        // shared, and a later rescan reads the disk again.
         let task = Task { try await self.scanLeftovers() }
         leftoversTask = task
         defer { leftoversTask = nil }
@@ -1787,10 +1653,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private func scanLeftovers() async throws -> [Leftover] {
-        // A registration whose program has gone names an owner that was
-        // recorded present and is not there now: the spec's definition of
-        // orphaned, and the thing a user actually notices as "I uninstalled
-        // this and it is still here". The sweep already enumerates these.
+        // A registration whose program has gone names an owner that was recorded
+        // present and is not there now: orphan evidence.
         var staleRegistrationOwners: [String: String] = [:]
         let inventory = RegistrationInventory(surfaces: Self.everySurface)
         for registration in await inventory.all(in: root) where registration.isStale && !registration.isSystemOwned {
@@ -1798,26 +1662,15 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             staleRegistrationOwners[owner] = registration.evidence
         }
 
-        // Launch Services is one of the four sources T-5.1 requires be
-        // searched for an owner, and the only one that can answer both
-        // questions at once: a record whose bundle is still there names an
-        // owner the directory walk missed, and a record whose bundle has
-        // gone *is* the orphan evidence.
-        // A package manager's record of something it installed, whose
-        // application is gone, is evidence of an owner. Nothing was
-        // reading it, so a folder Homebrew could have named sat under
-        // "nobody claims this" instead.
+        // A package manager's record of something it installed whose app is gone
+        // names an owner.
         let orphanCasks = await orphanedCaskNames()
 
-        // An app Brim's own snapshots saw installed and no longer see is the
-        // plainest record there is that it was here and has gone. Teams and
-        // Microsoft AutoUpdate were removed, Home said so, and what they left
-        // was still listed as owner unknown.
+        // An app Brim's snapshots saw installed and no longer see is the plainest
+        // record that it was here and has gone.
         let removedApps = await (try? index?.removedApplications()) ?? [:]
-        // What Brim has seen applications called. Without it a leftover
-        // was named from its identifier alone, so Teams' would read "Teams2"
-        // although Brim had recorded "Microsoft Teams" for weeks. Read once:
-        // the same query ran again a few lines below for the scanner.
+        // What Brim has seen applications called, so a leftover is named as the app
+        // was rather than from its identifier.
         let recorded = await (try? index?.recordedNames()) ?? [:]
         for (id, seen) in removedApps where staleRegistrationOwners[id] == nil {
             let name = recorded[id.lowercased()] ?? id
@@ -1834,8 +1687,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 .claimedPaths(home: root.url(for: .userLibrary).deletingLastPathComponent()),
             removedApplications: removedApps,
             protectedAppURL: brimAppURL,
-            // A week, and only on the real disk: a fixture tree is written
-            // moments before it is scanned, so every folder in it is new.
+            // A week, and only on the real disk: a fixture tree is written moments
+            // before it is scanned.
             inUseWithin: root.rootURL.path == "/" ? 7 * 24 * 60 * 60 : nil
         )
         var knownPastBundleIDs = Set(removedApps.keys)
@@ -1865,9 +1718,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         return await attachingReplacements(to: found) + recoveryLeftovers()
     }
 
-    /// Says which installed app replaced a removed one, where that is
-    /// proven: a record of where the removed app was, an installed app with
-    /// another identifier at exactly that path, and the same developer.
+    /// Says which installed app replaced a removed one, where proven: a record
+    /// of where the old app was, a different installed app at exactly that path,
+    /// and the same developer.
     private func attachingReplacements(to leftovers: [Leftover]) async -> [Leftover] {
         let owners = Set(leftovers.compactMap { $0.potentialOwner?.bundleID })
         guard !owners.isEmpty else { return leftovers }
@@ -1895,9 +1748,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// Past removals that could still be undone, judged by what is actually
-    /// in the Trash right now rather than by what the journal once recorded.
-    /// Emptying the Trash therefore changes this immediately.
+    /// Past removals that can still be undone, judged by what is in the Trash
+    /// now, so emptying it changes this at once.
     public func recoverableItems() async throws -> [RecoverableItem] {
         var items: [RecoverableItem] = []
 
@@ -1916,8 +1768,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             }
             guard !trashedURLs.isEmpty || pendingRegistration else { continue }
 
-            // Only count steps whose trashed copy survives; a partially
-            // emptied Trash makes the plan unrestorable, not half-restorable.
+            // Only steps whose trashed copy survives count; a partly emptied Trash
+            // makes the plan unrestorable, not half restorable.
             let survivors = trashedURLs.filter { PathExistence.exists(at: $0.value) }
             guard survivors.count == trashedURLs.count else { continue }
 
@@ -2000,20 +1852,11 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         }
     }
 
-    /// Clears Launch Services records that went stale since the last look.
-    ///
-    /// An uninstall retracts the record for the path an app was installed
-    /// at, but a bundle moved to the Trash keeps its name, so macOS
-    /// registers it there, accurately, while it is still recoverable.
-    /// Emptying the Trash removes the file and leaves that record pointing
-    /// at nothing, and macOS does not reliably prune it: a record for
-    /// `~/.Trash/…app` was observed surviving the file by some minutes.
-    /// That is the moment it becomes a leftover, so that is where it is
-    /// cleared.
-    ///
-    /// Called on every Trash change, so it stays cheap: no Launch Services
-    /// lookup at all unless a plan has actually lost a trashed bundle, and
-    /// retracting an already-retracted record is a no-op.
+    /// Clears Launch Services records that went stale. A trashed bundle keeps
+    /// its name, so macOS registers it in the Trash; emptying the Trash leaves
+    /// that record pointing at nothing, and macOS does not reliably prune it.
+    /// Called on every Trash change, so it does no lookup unless a plan lost a
+    /// trashed bundle.
     public func reconcileRegistrations() async {
         let fm = FileManager.default
 

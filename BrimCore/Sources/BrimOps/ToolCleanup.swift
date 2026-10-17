@@ -1,20 +1,14 @@
 import Foundation
 
-/// The cleanup commands build tools provide for themselves.
-///
-/// Some stores should not be deleted from underneath the tool that owns
-/// them. Removing `~/go/pkg/mod` by hand leaves read-only directories and
-/// a confused module cache; `go clean -modcache` does the same job and
-/// leaves Go in a state it understands. Same for npm, pip and Homebrew.
-///
-/// The commands live here, keyed by a stable identifier, because the step
-/// vocabulary forbids a caller-supplied command string. A plan names which
-/// cleanup to run. It cannot describe one.
+/// The cleanup commands build tools provide for themselves. Some stores
+/// should not be deleted from under their tool: `go clean -modcache` leaves
+/// Go in a state it understands, deleting `~/go/pkg/mod` does not. Keyed by
+/// a stable identifier, because a plan names which cleanup to run and can
+/// never describe one.
 public enum ToolCleanup {
     public struct Command: Sendable, Equatable {
         public let id: String
-        /// What the user sees before approving, exactly as it would be
-        /// typed. The spec is explicit that this is shown first.
+        /// What the person sees before approving, exactly as it would be typed.
         public let displayed: String
         let executable: String
         let arguments: [String]
@@ -110,8 +104,8 @@ public enum ToolCleanup {
         }
     }
 
-    /// Runs a cleanup by identifier. No command string crosses this
-    /// boundary, and nothing reaches a shell.
+    /// Runs a cleanup by identifier. No command string crosses this boundary,
+    /// and nothing reaches a shell.
     public static func run(
         id: String,
         runner: (@Sendable (String, [String]) async throws -> Int32)? = nil
@@ -161,10 +155,8 @@ public enum ToolCleanup {
         }
     }
 
-    /// An app opened from Finder gets only the system folders on its PATH,
-    /// so `env` could not find npm, pnpm, brew or uv wherever Homebrew or
-    /// the tool's own installer put them, and every cleanup that needed one
-    /// said the tool was not on this Mac.
+    /// An app opened from Finder gets only the system folders on its PATH, so
+    /// tools installed by Homebrew or their own installers are added.
     static func environment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let home = FileManager.default.homeDirectoryForCurrentUser.path
