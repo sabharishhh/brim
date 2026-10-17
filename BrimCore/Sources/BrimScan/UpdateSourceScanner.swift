@@ -88,7 +88,7 @@ public struct UpdateSourceScanner: Sendable {
     }
 
     /// A readable exact record can survive an unrelated receipt gap. Unknown
-    /// competing paths and duplicate exact records still refuse attribution.
+    /// conflicting paths and duplicate exact records still refuse attribution.
     public static func ownership(
         at application: URL, among inventory: HomebrewCaskInventory
     ) -> (installation: HomebrewInstallation?, completeness: ScanCompleteness) {
@@ -202,7 +202,7 @@ private enum HomebrewRecordReader {
     }
 
     /// Incomplete receipts cannot authorize a match. Their app links can
-    /// still expose a competing target or rule out a clearly unrelated record.
+    /// still expose a conflicting target or rule out a clearly unrelated record.
     private static func defensiveTargets(
         in cask: URL, budget: ScanBudget
     ) -> (targets: Set<String>, completeness: ScanCompleteness) {

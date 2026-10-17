@@ -48,24 +48,24 @@ enum Palette {
 
     /// The light that sweeps across loading placeholders.
     static let shimmer = Color.white.opacity(0.06)
-    // Status colours from the colour-blind-safe palette, whose hues stay apart under
+    // Status colours from a colour-blind-safe palette, whose hues stay apart under
     // protanopia, deuteranopia and tritanopia and differ in lightness too.
     // Each is checked against the canvas and cards: 4.5:1 or more where it
     // colours text, 3:1 for marks. Every status also has a word or a symbol,
     // and selection and progress never use these.
 
-    /// Done and checked. bluish green #009E73, lifted 6% toward
+    /// Done and checked. Bluish green #009E73, lifted 6% toward
     /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
     static let success = Color(hex: 0x0FA47B)
-    /// Staying, needs a look. orange #E69F00 (6.4:1 on a card).
+    /// Staying, needs a look. Orange #E69F00 (6.4:1 on a card).
     static let caution = Color(hex: 0xE69F00)
     /// Permanent deletion, stopped work and errors, as a mark only.
-    /// vermilion #D55E00 (3.7:1 on a card), so never body text:
+    /// Vermilion #D55E00 (3.7:1 on a card), so never body text:
     /// the words beside it carry the meaning.
     static let destructive = Color(hex: 0xD55E00)
-    /// Neutral information. sky blue #56B4E9 (6.2:1 on a card).
+    /// Neutral information. Sky blue #56B4E9 (6.2:1 on a card).
     static let info = Color(hex: 0x56B4E9)
-    /// Low Power Mode. yellow #F0E442, the colour macOS gives the
+    /// Low Power Mode. Yellow #F0E442, the colour macOS gives the
     /// battery in that mode, and readable on the dark canvas.
     static let lowPower = Color(hex: 0xF0E442)
 

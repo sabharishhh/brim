@@ -61,9 +61,9 @@ public struct AppcastItem: Equatable, Sendable {
     }
 }
 
-/// Reads an appcast the way Sparkle chooses from it: by build number, within
-/// each item's macOS range and architecture requirements, ignoring channels
-/// the person never subscribed to and items with no download.
+/// Chooses from an appcast by build number, within each item's macOS range
+/// and architecture requirements, ignoring channels the person never
+/// subscribed to and items with no download.
 public enum SparkleAppcast {
     public static func items(in data: Data) -> [AppcastItem] {
         let reader = Reader()

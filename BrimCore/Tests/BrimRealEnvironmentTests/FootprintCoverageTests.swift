@@ -181,7 +181,7 @@ final class FootprintCoverageTests: XCTestCase {
                 "\(item.path) is \(item.app)'s and is not in its footprint."
             )
         }
-        try XCTSkipIf(checked == 0, "No XDG-style directories for the measured applications.")
+        try XCTSkipIf(checked == 0, "No data folders outside Library for the measured applications.")
     }
 
     /// A command linked into the bundle goes with the bundle.
