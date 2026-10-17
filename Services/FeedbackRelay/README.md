@@ -33,7 +33,7 @@ sent.
 Tests need no dependencies:
 
 ```sh
-node --test Support/FeedbackRelay/worker.test.mjs
+node --test Services/FeedbackRelay/worker.test.mjs
 ```
 
 ## Request format

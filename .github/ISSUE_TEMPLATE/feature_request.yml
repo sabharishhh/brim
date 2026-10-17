@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest something Brim could do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Brim does two things, showing what software has left on a Mac and confirming it is gone once removed. Ideas that serve one of these are the most likely to be taken up.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, and what got in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like Brim to do
+    validations:
+      required: true
