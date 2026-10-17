@@ -73,8 +73,8 @@ final class DatabaseManagerTests: XCTestCase {
             for _ in 1...50 {
                 group.addTask {
                     let name = try await index.fetchIdentity(bundleID: "com.brim.dummy50")
-                    // It might be nil if the write hasn't finished, or the name if it has. Both are valid.
-                    // The key is that it doesn't crash or throw a locking error.
+                    // Nil or the name are both valid depending on whether the write finished;
+                    // what matters is no crash and no locking error.
                     _ = name
                 }
             }

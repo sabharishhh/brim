@@ -36,8 +36,8 @@ final class FootprintProjectorTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(item.sizeBytes, 0)
         }
 
-        // Now let's test the "query, never a stored object" invalidation invariant
-        // Delete the group container
+        // A footprint is read fresh each time: delete the group container and it
+        // must be gone from the next projection.
         let groupContainerURL = tempRoot.appendingPathComponent("Library/Group Containers/group.com.brim.sandboxed")
         try FileManager.default.removeItem(at: groupContainerURL)
 

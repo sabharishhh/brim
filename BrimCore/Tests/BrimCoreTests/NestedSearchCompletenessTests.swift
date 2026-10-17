@@ -3,8 +3,8 @@ import BrimCore
 import Foundation
 import Testing
 
-/// The nested search used to skip refused reads and every child after 500,
-/// then report a complete footprint. These fixtures stay in a temporary tree.
+/// Refused reads and children past the limit make the nested search
+/// incomplete, never a complete footprint.
 struct NestedSearchCompletenessTests {
     private final class Fixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

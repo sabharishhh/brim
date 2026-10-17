@@ -110,8 +110,8 @@ final class FeedbackTests: XCTestCase {
         XCTAssertFalse(model.draft.isEmpty)
     }
 
-    /// A timeout can arrive after the server has created an issue. Retrying
-    /// the same text, even after relaunch, must keep its idempotency key.
+    /// A timeout can arrive after the server created an issue, so a retry keeps
+    /// its idempotency key, even after relaunch.
     func testFailedDeliveryReusesTheReportIDAfterRelaunch() async {
         let defaults = defaults()
         let attempts = FeedbackAttempts()

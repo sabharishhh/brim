@@ -4,8 +4,7 @@ import Foundation
 import Testing
 
 struct ApplicationInventorySharingTests {
-    /// Home opened Apps and Updates together, and each enumerated and sized
-    /// every installed bundle. Keep the shared read gated until both join it.
+    /// Simultaneous reads share one enumeration; later reads are fresh.
     @Test func simultaneousReadsShareRecoveryAndEnumerationButLaterReadsAreFresh() async {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -1,13 +1,8 @@
 import XCTest
 @testable import BrimCore
 
-/// Snapshots are read for count and purgeability, never for size.
-///
-/// macOS exposes no supported way to ask how many bytes a snapshot holds.
-/// `tmutil listlocalsnapshots` gives names only, `diskutil apfs
-/// listSnapshots` adds whether each is disposable, and neither reports a
-/// figure. The parser exists so the view can say what is known without
-/// inventing what is not.
+/// Snapshots are read for count and purgeability, never size: macOS has no
+/// supported way to ask how many bytes one holds.
 final class VolumeSnapshotTests: XCTestCase {
 
     func testAPinningSnapshotIsReadAsSuch() {
@@ -56,8 +51,7 @@ final class VolumeSnapshotTests: XCTestCase {
     }
 
     func testASnapshotWithNoPurgeableLineIsTreatedAsPinning() {
-        // The cautious reading: if macOS did not say it would discard it,
-        // do not tell the user it will.
+        // If macOS did not say it would discard a snapshot, do not say it will.
         let snapshots = VolumeAccountant.parseSnapshots("""
         +-- AAA
             Name:        com.apple.something

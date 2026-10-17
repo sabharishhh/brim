@@ -1,10 +1,8 @@
 @testable import BrimCore
 import XCTest
 
-/// Grouping, and what a location means. Both exist because the flat list
-/// could not be reasoned about: the same software appeared several times
-/// with nothing to connect the rows, and nothing on screen distinguished a
-/// cache that rebuilds itself from the folder holding an app's licence.
+/// Grouping by software, and what a location means, so the same software is
+/// one row and a rebuilt cache is told apart from an app's licence.
 final class LeftoverGroupingTests: XCTestCase {
     private func leftover(
         _ path: String,
@@ -46,9 +44,7 @@ final class LeftoverGroupingTests: XCTestCase {
     // MARK: - Grouping
 
     func testTheSameToolInTwoPlacesIsOneEntry() {
-        // The case that prompted this: Codex appeared twice, 147 MB in
-        // Application Support and 119 MB in Caches, with nothing saying
-        // they were the same thing.
+        // `Codex` in Application Support and in Caches is one product.
         let groups = [
             leftover("\(home)/Application Support/Codex", size: 147),
             leftover("\(home)/Caches/Codex", size: 119)
@@ -73,15 +69,8 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(groups[0].displayName, "Acme Tool", "The human name, not the identifier")
     }
 
-    /// Seven broken symlinks left by an uninstalled Docker, each pointing
-    /// into `Docker.app`, each its own file with its own name (`docker`,
-    /// `kubectl`, `cagent`...), none carrying a bundle identifier. Before
-    /// this fix each one bucketed under its own file name into seven
-    /// single-item groups, all displaying the resolved owner name
-    /// "Docker.app" and all re-deriving the identical `id` from that shared
-    /// display name, so SwiftUI's list treated seven distinct rows as one
-    /// element: selecting one silently selected all seven, and there was no
-    /// way to tell whether they even lived in the same place.
+    /// Several broken links into one removed app, each with its own name and no
+    /// identifier, group under the resolved owner, as one row with its own id.
     func testSeveralUnidentifiedItemsSharingAResolvedOwnerNameMergeIntoOneGroup() {
         let owner = Identity(bundleID: nil, name: "Docker.app")
         let leftovers = [
@@ -97,10 +86,8 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(groups[0].displayName, "Docker.app")
     }
 
-    /// `id` used to be re-derived from `displayName` after grouping had
-    /// already happened, so a future change to how a name is chosen could
-    /// silently make two distinct groups collide again. Pinning `id` to the
-    /// actual bucket key, unique by construction, holds that shut for good.
+    /// `id` is the bucket key, unique by construction, so two groups cannot
+    /// collide on a display name.
     func testGroupIdenityNeverCollidesAcrossDistinctOwners() {
         let groups = [
             leftover("\(home)/Caches/Codex"),
@@ -116,13 +103,8 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(ids.count, 3, "Every distinct group must have a distinct id")
     }
 
-    /// Warp appeared as two rows on a real Mac, each saying "1 location",
-    /// both called Warp: `Application Scripts/2BBY89MBSN.dev.warp` and
-    /// `Group Containers/2BBY89MBSN.dev.warp`. One resolved a bundle
-    /// identifier as well as the name and the other resolved only the name,
-    /// so the stronger key put them in different buckets. The leftover that
-    /// carries both is itself the evidence that the two names are one
-    /// product.
+    /// One product that resolves unevenly (one item with identifier and name,
+    /// another with only the name) is still one row.
     func testOneProductThatResolvesUnevenlyIsStillOneRow() {
         let withIdentifier = Identity(bundleID: "dev.warp.Warp", name: "Warp")
         let nameOnly = Identity(bundleID: nil, name: "Warp")
@@ -139,8 +121,7 @@ final class LeftoverGroupingTests: XCTestCase {
     }
 
     func testJoiningOwnerNamesDoesNotChainUnrelatedSoftwareTogether() {
-        // The join is transitive by design, so the guard is that a name only
-        // links what actually carries it.
+        // The join is transitive, so a name only links what actually carries it.
         let groups = [
             leftover("\(home)/Caches/A", owner: Identity(bundleID: "com.a.app", name: "Alpha")),
             leftover("\(home)/Caches/B", owner: Identity(bundleID: "com.b.app", name: "Beta")),
@@ -195,8 +176,7 @@ final class LeftoverGroupingTests: XCTestCase {
     }
 
     func testAGroupIsNotActionableWhenAnyPartIsBlocked() {
-        // A group that is partly removable must not look removable, or the
-        // user authorises something that half happens.
+        // A partly removable group must not look removable.
         let group = [
             leftover("\(home)/Caches/Tool"),
             leftover("\(home)/Containers/Tool", capability: .needsFullDiskAccess)
@@ -219,12 +199,8 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(LeftoverDomain.of(URL(fileURLWithPath: "/tmp/x")), .other)
     }
 
-    /// `LocationInventory` has scanned `darwinUserCache` and `darwinUserTemp`
-    /// since they were added, and this classifier did not know them, so every
-    /// real find there reached the list badged "Other" above the sentence "An
-    /// unrecognised location." Seen on this Mac: Sample's 50 KB under
-    /// `/private/var/folders/…/C/com.example.Sample`. Two places
-    /// reading one fact, and only one of them had been told.
+    /// The Darwin per-user folders are recognised, not called "an unrecognised
+    /// location".
     func testTheDarwinPerUserFoldersAreRecognisedAndNotCalledUnrecognised() {
         let cache = URL(fileURLWithPath:
             "/private/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/C/com.example.Sample")
@@ -235,8 +211,7 @@ final class LeftoverGroupingTests: XCTestCase {
         XCTAssertEqual(LeftoverDomain.of(temp), .darwinPerUser)
         XCTAssertFalse(LeftoverDomain.darwinPerUser.whatItHolds.contains("unrecognised"))
 
-        // The fixture root's stand-ins answer the same way, or a test tree
-        // and the real machine disagree about the same folder.
+        // The fixture root's stand-ins answer the same way as the real folders.
         XCTAssertEqual(
             LeftoverDomain.of(URL(fileURLWithPath: "/tmp/root/private/var/folders/DarwinUserCache/x")),
             .darwinPerUser
@@ -259,8 +234,8 @@ final class LeftoverGroupingTests: XCTestCase {
     }
 
     func testWhatComesBackByItselfIsSeparatedFromWhatDoesNot() {
-        // The number that actually answers "what do I lose": a group of two
-        // where only one holds anything the app would have remembered.
+        // What is lost: a group of two where only one holds anything the app would
+        // have remembered.
         let group = [
             leftover("\(home)/Caches/Tool", size: 900),
             leftover("\(home)/Application Support/Tool", size: 100)

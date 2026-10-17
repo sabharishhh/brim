@@ -4,18 +4,15 @@ import BrimProtocol
 import Foundation
 import Testing
 
-/// Energy took one reading and then never changed until someone pressed a
-/// button. It now follows the Mac while the page is on screen, and reads
-/// nothing while Brim cannot be seen.
+/// Energy follows the Mac while the page is on screen, and reads nothing
+/// while Brim cannot be seen.
 @MainActor struct LiveEnergyTests {
     @Test func `the apps' draw keeps updating while the page is shown`() async {
         let service = Counters()
         let model = EnergyModel(gap: .milliseconds(5), tick: .milliseconds(5))
         let following = Task { await model.follow(service: service, visible: { true }) }
-        // Only an upper bound: the loop leaves at the fifth sample, a few
-        // tens of milliseconds on an idle Mac. Each sample also reads the
-        // battery at utility priority, and on a loaded CI runner two
-        // seconds was not always enough for five of them.
+        // Only an upper bound; a loaded CI runner can take seconds for five
+        // samples.
         let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         while await service.calls < 5, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(5))

@@ -1,23 +1,11 @@
 import XCTest
 @testable import BrimCore
 
-/// What a group says when Brim cannot remove any of it.
-///
-/// Brim's root daemon is deliberately confined to job files in the two
-/// machine-wide launchd folders, so a broken command in `/usr/local/bin` is
-/// not Brim's to take. Finder can take it, and the person has already been
-/// shown the lock. What they need next is the files, selected, so one
-/// password prompt covers all of them: opening the folder and leaving
-/// somebody to find six names among twenty-seven is not help.
-///
-/// The obstacle belongs to the group because the remedy does. Six broken
-/// Python shims share one reason, one folder and one trip to Finder.
-///
-/// Since then the helper takes dead command links, so those shims are
-/// Brim's after all and read from this Mac's real `/usr/local/bin` they
-/// made this group actionable. The rows now sit in a root-owned folder the
-/// helper does not touch, which is still the case the group has to speak
-/// for.
+/// What a group says when Brim cannot remove any of it. The obstacle belongs
+/// to the group because the remedy does: one reason, one folder, one trip to
+/// Finder, with the files selected so one password prompt covers them. The
+/// rows here sit in a root-owned folder the administrator process does not
+/// touch.
 final class SharedObstacleTests: XCTestCase {
 
     private func leftover(_ name: String, _ capability: Capability) -> Leftover {
@@ -49,8 +37,7 @@ final class SharedObstacleTests: XCTestCase {
         XCTAssertFalse(blocked.isFullyActionable)
     }
 
-    /// Said by the rows instead, because one sentence cannot cover two
-    /// different remedies.
+    /// Said by the rows instead, because one sentence cannot cover two remedies.
     func testAMixedGroupHasNothingToSayAtTheTop() {
         XCTAssertNil(group([
             leftover("python3t", .needsHelper),
@@ -65,8 +52,7 @@ final class SharedObstacleTests: XCTestCase {
         ]).sharedObstacle)
     }
 
-    /// A removable group must not grow an orange panel explaining a problem
-    /// it does not have.
+    /// A removable group has no obstacle panel.
     func testAGroupBrimCanRemoveHasNoObstacle() {
         let fine = group([leftover("a", .ok), leftover("b", .ok)])
         XCTAssertNil(fine.sharedObstacle)

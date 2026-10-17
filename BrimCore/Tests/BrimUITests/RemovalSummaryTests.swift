@@ -3,11 +3,7 @@ import BrimProtocol
 @testable import BrimUI
 import XCTest
 
-/// eqMac's removal took the app, its audio driver, settings and caches, and
-/// its device left the Sound menu at once. The result still read as a
-/// partial removal: a caution mark over "could not check" rows for
-/// configuration profiles, VPN settings and privacy grants, none of which
-/// the app had.
+/// A clean removal reads as one: no caution over kinds the app never had.
 final class RemovalSummaryTests: XCTestCase {
     private let app = "/Applications/X.app"
 

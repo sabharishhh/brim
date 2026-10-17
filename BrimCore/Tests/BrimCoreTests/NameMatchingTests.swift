@@ -3,14 +3,9 @@
 import Foundation
 import XCTest
 
-/// **SystemEQ for Mac.** Its removal left `Application Support/SystemEQ`
-/// untouched and `Application Support/SystemEQ for Mac` unticked, in the
-/// folder people open first to check a removal. Where Brim looked was
-/// fine. How it compared names was not: a folder counted only when its name
-/// was exactly one of the app's names, in the same case, and even then it
-/// was never ticked. These hold the three parts of that: one comparison,
-/// more of the names an app answers to, and ticking a folder clearly
-/// named for it in its own data folders.
+/// An app's own folder must be found and ticked however its name is
+/// written: one comparison (`NameKey`), more of the names an app answers
+/// to, and ticking a folder clearly named for it in its own data folders.
 final class NameMatchingTests: XCTestCase {
     private var rootURL: URL!
 
@@ -65,8 +60,8 @@ final class NameMatchingTests: XCTestCase {
     }
 
     /// Ticked when the name is one the app declares, in any spelling, or a
-    /// derived one that is not an ordinary word. ChatGPT's identifier ends in
-    /// `codex`, a word, so `Caches/Codex` stays a suggestion.
+    /// derived name that is not an ordinary word. `codex` is a word, so
+    /// `Caches/Codex` stays a suggestion.
     func testOnlyAClearNameIsTicked() {
         let systemEQ = Identity(bundleID: "com.denzam.SystemEQ", name: "SystemEQ for Mac")
         XCTAssertTrue(systemEQ.isClearlyNamed("SystemEQ"))
@@ -77,8 +72,7 @@ final class NameMatchingTests: XCTestCase {
             .isClearlyNamed("Code"))
     }
 
-    /// Found as it is spelled. Asking the volume for `codex` found `Codex`,
-    /// and the row named a path that is not on the disk.
+    /// Found as it is spelled on disk, not as it was asked for.
     func testAFolderSpelledDifferentlyIsFoundAsItIsSpelled() throws {
         try makeFolder(.userCaches, "Codex")
         try makeFolder(.userApplicationSupport, "systemeq")
@@ -108,8 +102,7 @@ final class NameMatchingTests: XCTestCase {
                        "A name outside the data folders was ticked")
     }
 
-    /// A folder two installed applications both answer to belongs to neither
-    /// by default, now that a name match can be ticked.
+    /// A folder two installed apps both answer to belongs to neither by default.
     func testAFolderAnotherInstalledAppIsNamedForIsLeftAlone() async throws {
         let bundle = try makeBundle(file: "Studio Pro", name: "Studio", identifier: "com.example.pro")
         try makeBundle(file: "Studio", name: "Studio", identifier: "com.other.studio")
@@ -121,8 +114,8 @@ final class NameMatchingTests: XCTestCase {
         XCTAssertTrue(reason.contains("Studio"), reason)
     }
 
-    /// Once the app is gone its bundle cannot be read, so the sweep has only
-    /// what history kept. It used to keep one name.
+    /// Once an app is gone, every name history recorded for it finds what it
+    /// left.
     func testARemovedAppsRecordedNamesFindWhatItLeft() async throws {
         let kept = try makeFolder(.userApplicationSupport, "SystemEQ")
         let leftovers = try await LeftoversScanner(root: root).scanLeftovers(
@@ -132,10 +125,8 @@ final class NameMatchingTests: XCTestCase {
         XCTAssertTrue(leftovers.contains { $0.url.lastPathComponent == kept.lastPathComponent })
     }
 
-    /// A folder that is itself what a removed app was called is that app's,
-    /// though a longer name begins with it. `SystemEQ` was opened as though
-    /// it were a developer's folder, because the app was "SystemEQ for Mac",
-    /// and `presets` inside it was judged on its own and never offered.
+    /// A folder that is what a removed app was called is that app's, not a
+    /// developer's folder, even when a longer name begins with it.
     func testAFolderNamedForARemovedAppIsNotTakenForADevelopersFolder() async throws {
         let presets = try makeFolder(.userApplicationSupport, "SystemEQ/presets")
         let leftovers = try await LeftoversScanner(root: root).scanLeftovers(
@@ -145,10 +136,8 @@ final class NameMatchingTests: XCTestCase {
         XCTAssertTrue(offered.contains(presets.deletingLastPathComponent().standardizedFileURL.path), "\(offered)")
     }
 
-    /// **ChatGPT's own folder offered while it ran.** "Codex Computer Use"
-    /// begins with "Codex", so `Application Support/Codex` was opened as a
-    /// developer's folder, and Chromium's lock links inside it, which point
-    /// at tokens rather than files, were each listed as a removed app.
+    /// An installed app's folder is never opened as a developer's folder, and
+    /// Chromium's lock links inside it are not leftovers.
     func testAnInstalledAppsFolderIsNeverOpenedAndItsLocksAreNotLeftovers() async throws {
         try makeBundle(file: "ChatGPT", name: "ChatGPT", identifier: "com.openai.codex")
         try makeBundle(file: "Codex Computer Use", name: "Codex Computer Use", identifier: "com.openai.sky.CUAService")

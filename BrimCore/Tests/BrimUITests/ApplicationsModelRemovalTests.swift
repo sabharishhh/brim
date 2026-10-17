@@ -3,9 +3,8 @@ import BrimProtocol
 @testable import BrimUI
 import XCTest
 
-/// Removing an application must take its row off screen at once. Waiting for
-/// a full re-enumeration leaves a removed app visible for seconds after the
-/// sheet says nothing remains.
+/// A removed app leaves the list at once, without waiting for a full
+/// re-enumeration.
 @MainActor
 final class ApplicationsModelRemovalTests: XCTestCase {
     private func app(at url: URL) -> InstalledApplication {
@@ -45,9 +44,7 @@ final class ApplicationsModelRemovalTests: XCTestCase {
         XCTAssertNil(model.footprint)
     }
 
-    /// eqMac stayed in the inspector with its old footprint and a Remove
-    /// button after it was removed, because the panel that removed it went
-    /// away without reporting the finish. A fresh list settles it.
+    /// A fresh list without the selected app clears the selection.
     func testAReloadWithoutTheSelectedAppClearsTheSelection() async {
         let gone = app(at: URL(fileURLWithPath: "/Applications/Gone.app"))
         let still = app(at: URL(fileURLWithPath: "/Applications/Still.app"))
@@ -60,9 +57,7 @@ final class ApplicationsModelRemovalTests: XCTestCase {
     }
 
     func testTheSharedTierIsLabelledSharedRatherThanGuaranteed() {
-        // It read "Guaranteed", which is the opposite of what Tier S means
-        // and would have read to a person as a reason to remove the item
-        // with confidence. S says another application claims it.
+        // S says another application claims the item.
         XCTAssertEqual(EvidenceTier.S.shortLabel, "Shared")
         XCTAssertEqual(EvidenceTier.A.shortLabel, "Direct")
     }

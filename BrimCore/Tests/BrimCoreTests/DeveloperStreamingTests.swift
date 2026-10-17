@@ -33,8 +33,8 @@ struct DeveloperStreamingTests {
         #expect(final.allSatisfy { $0.sizeMeasurement?.state == .complete })
         #expect(await meter.maximum == 4)
         #expect(await meter.totalStarted == 6)
-        // A fixed six-row sizing fixture establishes latency without asserting
-        // scheduler-sensitive timings. The old list arrived after all sizes.
+        // A fixed fixture shows rows arrive before their sizes, without timing
+        // assertions that depend on the scheduler.
         let firstSnapshot = String(describing: firstLatency)
         let allSizes = began.duration(to: clock.now)
         print("Developer fixture first snapshot: \(firstSnapshot); all sizes: \(allSizes)")

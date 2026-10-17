@@ -50,9 +50,9 @@ final class VerifierTests: XCTestCase {
         let hash = try manualPlan.contentHash()
         let token = await service.tokenStore.mintToken(planId: manualPlan.planId, planHash: hash, requesterIdentity: intent.requesterIdentity)
         
-        // Under T-2.4, apply re-validates the plan. Since it's now immutable, 
-        // the safety engine drops it from the footprint, causing a step count mismatch during re-validation.
-        // Therefore, apply should throw validationFailed and never execute.
+        // `apply` revalidates the plan. The safety engine now drops the immutable
+        // item, so the step count differs and `apply` throws `validationFailed`
+        // without executing.
         do {
             try await service.apply(planId: manualPlan.planId, token: token)
             XCTFail("Apply should have thrown validationFailed because the target became immutable and was dropped by SafetyEngine")

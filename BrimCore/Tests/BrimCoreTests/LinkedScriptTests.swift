@@ -3,11 +3,9 @@
 import Foundation
 import Testing
 
-/// `pkgutil --expand` keeps a script that is a symbolic link. Followed, a
-/// `postinstall` pointing at a file the package's own payload installs read
-/// as missing, so the preview showed no script at all while Installer would
-/// run it as root, and a link to a file on this Mac showed that file as the
-/// script.
+/// `pkgutil --expand` keeps a script that is a symbolic link. It must be
+/// reported as a link, never followed: a link to a payload file read as
+/// missing, and a link to a file on this Mac showed that file.
 struct LinkedScriptTests {
     @Test func `a script that is a link is shown as one, and never followed`() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("scripts-\(UUID().uuidString)")

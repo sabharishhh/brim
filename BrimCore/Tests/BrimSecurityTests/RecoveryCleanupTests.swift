@@ -172,8 +172,8 @@ final class RecoveryCleanupTests: XCTestCase {
 }
 
 struct RecoveryRegistrationTests {
-    /// Protected cleanup removed both selected files but reported a failed
-    /// unregister because the reviewed bundle identifier was lost from the plan.
+    /// The recovery registration keeps its bundle identifier and checks only
+    /// its own path.
     @Test func recoveryRegistrationRetainsItsIdentifierAndChecksOnlyItsPath() async throws {
         let path = RecoveryCopy.directory + "/stamp/Applications/Example.app"
         let copy = RecoveryCopy(path: path, name: "Example.app", bundleID: "org.example.app",
@@ -200,9 +200,8 @@ struct RecoveryRegistrationTests {
         }
     }
 
-    /// eqMac's login helper was reported already unregistered because the
-    /// lookup by identifier leaves out records whose bundle has gone, and
-    /// its record outlived the removal. The database dump still lists it.
+    /// The lookup by identifier leaves out records whose bundle has gone; the
+    /// database dump still lists them.
     @Test func aRecordWhoseBundleHasGoneIsStillRecorded() async throws {
         let helper = "/Applications/Gone.app/Contents/Library/LoginItems/Helper.app"
         let dump = """

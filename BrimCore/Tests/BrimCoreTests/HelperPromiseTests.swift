@@ -1,15 +1,9 @@
 @testable import BrimCore
 import XCTest
 
-/// A plan hands the helper only what the helper will take.
-///
-/// Anything that needed an administrator became a step for the helper,
-/// wherever it was. The helper is confined to dead job files and dead
-/// command links, so a preference file in a root-owned folder was
-/// approved, handed over, refused or never attempted, and reported
-/// afterwards as still there with no reason anyone could act on. The
-/// review is where that has to be said, so the item stays out of the plan
-/// and says why.
+/// A plan hands administrator cleanup only what it will take. Anything else
+/// that needs an administrator stays out of the plan and says why in the
+/// review, rather than failing after approval.
 final class HelperPromiseTests: XCTestCase {
     private let identity = Identity(bundleID: nil, name: "Leftovers")
 

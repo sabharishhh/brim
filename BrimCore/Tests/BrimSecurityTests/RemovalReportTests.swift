@@ -4,9 +4,8 @@
 import XCTest
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// The report after a removal keeps three facts apart: checked and gone,
-/// declared none by the app, and kept by macOS. One sentence used to cover
-/// all three, which is how a removal claims more than it checked.
+/// The report keeps three facts apart: checked and gone, declared none by
+/// the app, and kept by macOS.
 final class RemovalReportTests: XCTestCase {
     private func step(_ index: Int, _ target: String) -> Step {
         Step(index: index, kind: .trashPath, target: target, targetFingerprint: nil, tier: .A,
@@ -120,9 +119,8 @@ final class RemovalReportTests: XCTestCase {
         XCTAssertEqual(report.failedActions, ["Permission reset command did not complete."])
     }
 
-    /// WhatsApp's bundle was never moved, and the result said Brim had
-    /// removed it and something wrote it back: the retraction of its Launch
-    /// Services record shares the path and its "ok" was read instead.
+    /// The step that moves a path explains it, not a Launch Services retraction
+    /// that shares the path.
     func testTheStepThatMovesAPathExplainsIt() {
         let app = "/Applications/WhatsApp.app"
         let subject = Plan(
@@ -143,9 +141,8 @@ final class RemovalReportTests: XCTestCase {
                        "skipped_due_to_prior_failures")
     }
 
-    /// Antigravity's removal said "Nothing left" while four name matches the
-    /// person had not ticked were still on the disk. The report names them,
-    /// and leaves out a vetoed item and one that has since gone.
+    /// Unticked items still on disk are named, so "Nothing left" is never said
+    /// over them. Vetoed and since-gone items are left out.
     func testUntickedItemsStillOnDiskAreReported() throws {
         let subject = plan([step(0, "/u/Library/Caches/x")], excluded: [
             ExcludedItem(target: "/u/.x-ide", reason: "", canBeTickedByHand: true, tier: .C),

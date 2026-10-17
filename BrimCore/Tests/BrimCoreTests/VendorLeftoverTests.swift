@@ -3,14 +3,9 @@ import BrimCore
 import Foundation
 import XCTest
 
-/// A developer's leftovers are one thing when nothing of theirs is installed.
-///
-/// On 6 October seven of Adobe's folders sat in `HTTPStorages` with no Adobe
-/// software left on the Mac. The sweep found all seven, but grouped them by
-/// product into seven rows of a few kilobytes each, and Remnants lists an
-/// unclaimed group only from a megabyte up. Only the one an installer had
-/// left owned by root was listed, because it could not be removed, and the
-/// rest were found by hand in Finder.
+/// A developer's leftovers are one thing when nothing of theirs is
+/// installed, so several small folders in their namespace become one row
+/// rather than many rows each under the size threshold.
 final class VendorLeftoverTests: XCTestCase {
     private let names = [
         "com.vendorco.setup", "com.vendorco.desktop.helper", "com.vendorco.crashreporter",
@@ -72,8 +67,8 @@ final class VendorLeftoverTests: XCTestCase {
         XCTAssertEqual(OwnerNamespace.vendorDisplayName("com.vendorco"), "Vendorco")
     }
 
-    /// Remnants offered Microsoft's `UBF8T346G9.ms` while Visual Studio Code,
-    /// signed by the same team, was installed and its removal held it.
+    /// A team's shared container stays while an app signed by that team is
+    /// installed.
     func testATeamsSharedContainerStaysWhileATeamAppIsInstalled() {
         let teams: Set = ["UBF8T346G9"]
         XCTAssertTrue(LeftoversScanner.isActiveGroup("UBF8T346G9.ms", groups: [], teams: teams, bundleIDs: [],
@@ -89,9 +84,8 @@ final class VendorLeftoverTests: XCTestCase {
     }
 }
 
-/// An installer that ran as an administrator left a folder owned by root
-/// in the person's own `HTTPStorages`, and the reason given was that their
-/// own folder belonged to the system.
+/// A root-owned folder an installer left in the person's own Library is not
+/// described as the system's.
 final class AdministratorOwnedItemWordingTests: XCTestCase {
     func testAnItemLeftOwnedByRootInAHomeFolderIsNotCalledTheSystems() throws {
         let home = try XCTUnwrap(RemovalCapability.folderExplanation(.needsHelper,

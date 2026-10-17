@@ -3,15 +3,8 @@ import XCTest
 
 final class EnergySamplerTests: XCTestCase {
     
-    /// Energy is joules now, not a score.
-    ///
-    /// This used to assert a synthetic figure: CPU nanoseconds plus
-    /// wakeups times a million plus bytes times ten. That number could be
-    /// compared against itself and against nothing else. It had no unit,
-    /// so it could not become a share of a battery, could not be added up
-    /// over a week and could not be checked against anything. The real
-    /// figure was in the same `rusage_info_v6` the sampler was already
-    /// reading, in `ri_energy_nj`, unused.
+    /// Energy is real joules from `ri_energy_nj`, which convert to what a
+    /// battery is measured in.
     func testEnergyIsMeasuredInJoulesAndConvertsToWhatABatteryIsMeasuredIn() {
         let sample = EnergySample(
             pid: 1234,
@@ -38,10 +31,8 @@ final class EnergySamplerTests: XCTestCase {
             ProcessInfo.processInfo.environment["BRIM_REAL_ENV"] == "1",
             "Physical energy counters require an opted-in real Mac."
         )
-        // Every one of 530 readable processes reported a non-zero
-        // ri_energy_nj when this was written. A build where the field
-        // came back empty would render a view full of zeroes, and the
-        // synthetic score it replaced would have hidden that.
+        // Every readable process reports a non-zero `ri_energy_nj`; a build where it
+        // came back empty would show a list of zeros.
         let result = await EnergySampler().sample()
         let withEnergy = result.samples.filter { $0.energyNanojoules > 0 }
 

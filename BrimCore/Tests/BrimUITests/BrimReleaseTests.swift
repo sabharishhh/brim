@@ -1,8 +1,8 @@
 @testable import BrimUI
 import XCTest
 
-/// The check for a newer Brim on GitHub. Brim 1.0 is not notarised and has
-/// no updater, so this is the only way anyone running it hears of a fix.
+/// The check for a newer Brim on GitHub, the only way someone running it
+/// hears of a fix.
 @MainActor
 final class BrimReleaseTests: XCTestCase {
     private func payload(_ tag: String, prerelease: Bool = false) -> Data {

@@ -3,13 +3,9 @@ import BrimCore
 import CryptoKit
 import XCTest
 
-/// What stands between a download and the installed application.
-///
-/// A catalogue or a feed only says where to download from. What is
-/// accepted is decided here, against the installed copy, the same way
-/// Sparkle's installer decides it: the download matches what was published,
-/// and the application inside is the same application from the same
-/// developer.
+/// What stands between a download and the installed application: the
+/// download matches what was published, and the app inside is the same app
+/// from the same developer.
 final class UpdateInstallerTests: XCTestCase {
     private var folder: URL!
 
@@ -44,8 +40,7 @@ final class UpdateInstallerTests: XCTestCase {
         XCTAssertFalse(try UpdateInstaller.matches(file, .edDSA(signature: signature, publicKey: stranger)))
     }
 
-    /// Visual Studio Code's download is called `stable`, so the kind of
-    /// archive is read from its first bytes.
+    /// Archives are recognised by their first bytes, not their name.
     func testArchivesAreRecognisedByContentNotName() throws {
         let zip = folder.appendingPathComponent("stable")
         try Data([0x50, 0x4B, 0x03, 0x04, 0, 0]).write(to: zip)
@@ -74,9 +69,8 @@ final class UpdateInstallerTests: XCTestCase {
 
     // MARK: - Cut off part way
 
-    /// An update can stop at any point: Brim quits, the Mac sleeps, the
-    /// power goes. The app must be there afterwards, old or new, and the
-    /// next check settles whatever was left.
+    /// An update can stop at any point. The app must be there afterwards, old
+    /// or new, and the next check settles what was left.
     func testAnUpdateCutOffPartWayIsSettledNextTime() throws {
         let workspace = folder.appendingPathComponent("workspace")
         let apps = folder.appendingPathComponent("Applications")
@@ -127,9 +121,7 @@ final class UpdateInstallerTests: XCTestCase {
             .contains { $0.hasPrefix("intent-") })
     }
 
-    /// The version an update replaced is deleted, not trashed: ChatGPT's
-    /// old 1.6 GB copy sat in the Trash after an update that nobody was
-    /// ever going to roll back from.
+    /// The replaced version is deleted, not trashed.
     func testTheReplacedVersionIsDeletedRatherThanTrashed() throws {
         let old = try bundle("Old", "com.example.app", "1.0")
         let trash = try XCTUnwrap(SafeOps.standInTrash())
@@ -140,8 +132,7 @@ final class UpdateInstallerTests: XCTestCase {
         XCTAssertEqual(trashed(), before, "nothing went to the Trash")
     }
 
-    /// Every update that went through Installer left its package in Brim's
-    /// cache. They go once Installer has quit, and never while it is open.
+    /// Packages kept for Installer go once it has quit, never while it is open.
     func testPackagesKeptForInstallerAreClearedOnceItHasQuit() throws {
         let workspace = folder.appendingPathComponent("workspace")
         let packages = workspace.appendingPathComponent("Packages")
@@ -164,9 +155,8 @@ final class UpdateInstallerTests: XCTestCase {
         return url
     }
 
-    /// A refusal from macOS is App Management's, and the row offers that
-    /// setting. Anything else stays a plain failure with its own sentence,
-    /// so a full disk is never sent to Privacy & Security.
+    /// Only a permission refusal points at App Management; a full disk is never
+    /// sent to Privacy & Security.
     func testOnlyAPermissionRefusalAsksForAppManagement() {
         let folder = URL(fileURLWithPath: "/Applications")
         XCTAssertEqual(UpdateInstaller.refusal(POSIXError(.EPERM), folder: folder), .notAllowed(folder: "Applications"))

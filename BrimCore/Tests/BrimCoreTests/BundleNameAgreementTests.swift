@@ -2,23 +2,13 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// The name an application answers to is read in two modules, and they have
-/// to give one answer.
-///
-/// `LeftoversScanner` learned that a bundle's `CFBundleName` is what names
-/// its support folder, and kept the knowledge to itself: it gathered the
-/// name in a private array beside the identities rather than on `Identity`.
-/// So the sweep correctly refused to offer up `Application Support/Code`
-/// while Visual Studio Code was installed, and `LocationInventorySource`
-/// correctly failed to remove the same 143 MB when it was uninstalled. One
-/// fact, two readings, opposite halves of the same product disagreeing about
-/// whether a folder belonged to anybody.
-///
-/// `Identity.searchNames` is now the single reading. These tests hold both
-/// modules to it.
+/// The name an app answers to is read in two modules, which must agree:
+/// `CFBundleName` names its support folder (Visual Studio Code is "Code"),
+/// and `Identity.searchNames` is the one reading both the sweep and the
+/// uninstall use.
 final class BundleNameAgreementTests: XCTestCase {
-    /// A bundle whose file name and `CFBundleName` differ, which is the only
-    /// case where the defect shows.
+    /// A bundle whose file name and `CFBundleName` differ, the only case where
+    /// the defect shows.
     private func makeBundle(
         fileName: String, bundleName: String, identifier: String
     ) throws -> (root: FileSystemRoot, bundle: URL) {
@@ -41,8 +31,7 @@ final class BundleNameAgreementTests: XCTestCase {
         return (FileSystemRoot(rootURL: root), bundle)
     }
 
-    /// **The 143 MB.** A folder named after `CFBundleName` has to be in the
-    /// footprint the uninstall path builds.
+    /// A folder named for `CFBundleName` is in the uninstall's footprint.
     func testTheUninstallPathLooksForTheNameTheBundleCallsItself() async throws {
         let (root, bundle) = try makeBundle(
             fileName: "Visual Studio Code", bundleName: "Code", identifier: "com.microsoft.VSCode"
@@ -63,11 +52,9 @@ final class BundleNameAgreementTests: XCTestCase {
         )
     }
 
-    /// A name match is Tier C wherever it comes from, and the row says it
-    /// rests on a name. A short `CFBundleName` like "Code" is exactly the
-    /// string that makes name matching dangerous. It is ticked only because
-    /// it is the bundle's own name in its own data folder and nothing else
-    /// installed answers to it, which `NameMatchingTests` holds.
+    /// A name match is Tier C and the row says so. A short name like "Code" is
+    /// ticked only because it is the bundle's own name in its own data folder
+    /// and nothing else answers to it (`NameMatchingTests`).
     func testAFolderFoundByNameIsRatedAsANameMatch() async throws {
         let (root, bundle) = try makeBundle(
             fileName: "Visual Studio Code", bundleName: "Code", identifier: "com.microsoft.VSCode"
@@ -95,10 +82,9 @@ final class BundleNameAgreementTests: XCTestCase {
         )
     }
 
-    /// A name match that is not clearly the application's own stays
-    /// optional. The review can promote the row explicitly, so lowering its
-    /// confidence does not make it unreachable. The folder named exactly for
-    /// the application is ticked; one only beginning with its name is not.
+    /// A name match that is not clearly the app's own stays optional but can be
+    /// included in the review. A folder named exactly for the app is ticked; one
+    /// only beginning with its name is not.
     func testTheFileNameMatchCanBeIncludedWithoutBeingPreselected() async throws {
         let (root, bundle) = try makeBundle(
             fileName: "Figma", bundleName: "Figma", identifier: "com.figma.Desktop"
@@ -139,8 +125,7 @@ final class BundleNameAgreementTests: XCTestCase {
         XCTAssertTrue(manual.steps.contains { $0.target == support.path })
     }
 
-    /// Both halves resolve the same set of names for the same bundle, which
-    /// is the invariant that was broken rather than any one of its symptoms.
+    /// Both halves resolve the same names for the same bundle.
     func testBothHalvesAnswerToTheSameNames() async throws {
         let (root, bundle) = try makeBundle(
             fileName: "Visual Studio Code", bundleName: "Code", identifier: "com.microsoft.VSCode"
@@ -166,8 +151,7 @@ final class BundleNameAgreementTests: XCTestCase {
         )
     }
 
-    /// An application whose two names agree gets one candidate, not the same
-    /// one twice, or every name-matched row appears in the plan in duplicate.
+    /// When the two names agree there is one candidate, not a duplicate row.
     func testANameThatAgreesWithItselfIsNotSearchedTwice() async throws {
         let (root, bundle) = try makeBundle(
             fileName: "Obsidian", bundleName: "Obsidian", identifier: "md.obsidian"
@@ -178,8 +162,7 @@ final class BundleNameAgreementTests: XCTestCase {
         XCTAssertEqual(identity.searchNames, ["Obsidian"])
     }
 
-    /// A bundle with no `CFBundleName` still answers to its file name. Most
-    /// applications are this case and none of them may regress.
+    /// A bundle without `CFBundleName` still answers to its file name.
     func testABundleWithoutADeclaredNameStillAnswersToItsFileName() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BrimNames-\(UUID().uuidString)")
@@ -200,9 +183,8 @@ final class BundleNameAgreementTests: XCTestCase {
         XCTAssertEqual(identity.searchNames, ["Plain"])
     }
 
-    /// SystemEQ for Mac (`com.denzam.SystemEQ`) kept its presets in
-    /// `Application Support/SystemEQ`, which none of its displayed names
-    /// reach, so the folder never appeared in its review. A generic last
+    /// The identifier's product label is searched too:
+    /// `com.denzam.SystemEQ` keeps `Application Support/SystemEQ`. A generic
     /// label, as in `dev.recordly.app`, adds nothing.
     func testTheIdentifiersProductLabelIsSearchedToo() {
         XCTAssertEqual(Identity(bundleID: "com.denzam.SystemEQ", name: "SystemEQ for Mac").searchNames,

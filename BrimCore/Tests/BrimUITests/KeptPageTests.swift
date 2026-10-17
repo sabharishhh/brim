@@ -56,8 +56,7 @@ import Testing
         #expect(PageCache<[Leftover]>("remnants", version: 2, folder: folder).load() == nil)
     }
 
-    /// Space ran its own remnants scan for its estimate, a second
-    /// four-second walk whenever it opened after Remnants had finished.
+    /// Space's estimate follows Remnants rather than running a second scan.
     @Test func `the Space estimate comes from Remnants and follows it without scanning again`() async {
         let service = KeptReads(leftovers: [orphan("Gone", bytes: 300)])
         let remnants = LeftoversModel()

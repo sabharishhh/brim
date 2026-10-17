@@ -36,8 +36,7 @@ final class AppExtensionSurfaceTests: XCTestCase {
     }
 
     func testAPathWithSpacesSurvives() {
-        // The path is everything after the third tab, not the last
-        // whitespace-separated field, because real ones contain spaces
+        // The path is everything after the third tab; real paths contain spaces
         // and non-ASCII.
         let entry = AppExtensionSurface.parse(
             "     net.example.Ext(1.0)\tU\td\t/Applications/uBlock Origin Lite.app/Contents/PlugIns/uBlock Origin Lite Extension.appex"
@@ -125,8 +124,7 @@ final class AppExtensionSurfaceTests: XCTestCase {
 final class SystemExtensionSurfaceTests: XCTestCase {
 
     func testAnEmptyMachineIsACompleteAnswer() async {
-        // `systemextensionsctl list` prints exactly this on a Mac with
-        // none, which is a real answer and not a failure to look.
+        // `systemextensionsctl list` prints this on a Mac with none: a real answer.
         let surface = SystemExtensionSurface(read: { "0 extension(s)\n" })
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
@@ -160,8 +158,7 @@ final class SystemExtensionSurfaceTests: XCTestCase {
     }
 
     func testNothingHereIsJudgedStale() {
-        // Guessing staleness from a status string would produce a row
-        // offering an action that cannot work.
+        // Staleness is never guessed from a status string.
         let output = """
         enabled\tactive\tteamID\tbundleID (version)\tname\t[state]
         *\t*\tABCDE12345\tcom.example.gone.extension (1.0/1.0)\tGone\t[terminated waiting to uninstall on reboot]
@@ -210,9 +207,7 @@ final class ShellProfileSurfaceTests: XCTestCase {
     }
 
     func testAnythingNeedingAShellIsLeftAlone() {
-        // Working out what these mean requires running them, and running
-        // somebody's shell configuration to find out what it does is the
-        // thing this surface exists to avoid.
+        // Resolving shell expansion would mean running the person's configuration.
         XCTAssertNil(ShellProfileSurface.pathReferenced(in: "source $HOME/.cargo/env"))
         XCTAssertNil(ShellProfileSurface.pathReferenced(in: "source `brew --prefix`/x"))
         XCTAssertNil(ShellProfileSurface.pathReferenced(in: "source /opt/*/init.sh"))
@@ -237,8 +232,7 @@ final class ReportOnlyTests: XCTestCase {
     }
 
     func testKeychainAndShellLinesAreNeverSwept() {
-        // Both are stale by the letter of it, and offering an action that
-        // does not exist is worse than not mentioning one.
+        // Report-only kinds are never offered an action, however stale.
         for kind in [Registration.Kind.keychainItem, .shellProfileLine] {
             let entry = registration(kind)
             XCTAssertTrue(entry.isStale)
@@ -263,14 +257,8 @@ final class ReportOnlyTests: XCTestCase {
     }
 }
 
-/// A boundary is not a fault.
-///
-/// The keychain, which Brim deliberately does not read, appeared in the
-/// running app under "Part of this list is missing" with a button
-/// offering to open Full Disk Access. Full Disk Access was already
-/// granted, so the screen told somebody their Mac was misconfigured,
-/// pointed them at a switch that was already on, and would have changed
-/// nothing if it had not been.
+/// A boundary is not a fault: the keychain, which Brim does not read on
+/// purpose, must never be reported as missing or offer Full Disk Access.
 final class CoverageAbsenceTests: XCTestCase {
 
     func testSomethingBrimWillNotReadIsNotReportedAsAFault() {
@@ -294,9 +282,8 @@ final class CoverageAbsenceTests: XCTestCase {
     }
 
     func testAToolThatDidNotAnswerIsAFaultWithNothingToPress() {
-        // Worth saying, because the list is short by an unknown amount.
-        // Not worth a Settings button: no permission unblocks a tool that
-        // failed to run.
+        // Worth saying, since the list is short by an unknown amount, but no
+        // permission would fix a tool that failed to run.
         let gap = RegistrationCoverage.unavailable(
             .appExtension, "pluginkit did not answer."
         )

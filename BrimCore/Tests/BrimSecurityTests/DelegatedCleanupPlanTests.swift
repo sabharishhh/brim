@@ -94,11 +94,8 @@ struct DelegatedCleanupPlanTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.journal(plan.planId).path))
     }
 
-    /// A stored policy altered on the disk is never put up for approval:
-    /// approval covers only a plan this process wrote, as it wrote it. This
-    /// test used to have the altered plan approved and showed that
-    /// rebuilding the command still refused it; that layer remains, and
-    /// the request now stops first.
+    /// A stored policy altered on disk is never put up for approval, and
+    /// rebuilding the command would still refuse it.
     @Test func newlyApprovedAlteredPolicyCannotDefineAnOperation() async throws {
         let fixture = try Fixture()
         defer { fixture.destroy() }

@@ -3,24 +3,9 @@
 import Darwin
 import XCTest
 
-/// A broken symlink is standing right there, and `fileExists` says it is not.
-///
-/// The incident: fourteen broken links on a real Mac, left by a removed Zed,
-/// a removed Docker and a removed Python framework. `/usr/local/bin/zed`
-/// points at `/Applications/Zed.app/Contents/MacOS/cli` and that application
-/// has gone. The sweep found all fourteen, grouped them, and ticked them.
-/// Pressing Review and Remove opened a sheet with an empty list, "Frees now:
-/// Empty", and an Authorize button.
-///
-/// `FootprintProjector` guarded on `fileExists(atPath:)`, which follows the
-/// link and asks about the target. False for every one, so nothing reached
-/// the plan. `Executor` had the same guard and would have written
-/// `already_gone` a second time. `verify` was already using `lstat`, with a
-/// comment explaining exactly why, so one component knew and three did not.
-///
-/// The shape of the failure is the bad part: Brim would have reported a
-/// successful removal having removed nothing, and the links would still be
-/// there.
+/// A broken symbolic link is there, and `fileExists` says it is not. A
+/// guard on `fileExists` dropped broken links from the plan, so a removal
+/// reported success having removed nothing.
 final class PathExistenceTests: XCTestCase {
     private var directory: URL!
 
@@ -86,9 +71,8 @@ final class PathExistenceTests: XCTestCase {
 
     // MARK: - The part that actually broke
 
-    /// The projector is where the fourteen items were lost. Naming them as
-    /// explicit targets is exactly what the Leftovers screen does when
-    /// somebody ticks rows and presses Review and Remove.
+    /// Broken links named for removal reach the footprint, as Remnants names
+    /// them.
     func testBrokenLinksNamedForRemovalReachTheFootprint() async throws {
         let links = try (1 ... 3).map { try danglingLink(named: "cli-\($0)") }
 
@@ -110,8 +94,7 @@ final class PathExistenceTests: XCTestCase {
         )
     }
 
-    /// A broken link still stores its destination path. Logical size counts
-    /// those bytes, never the absent target, and does not promise freed space.
+    /// A broken link counts its own stored bytes, never the absent target.
     func testABrokenLinkCountsOnlyItsOwnStoredBytes() async throws {
         let link = try danglingLink()
         let footprint = try await FootprintProjector(engine: EvidenceEngine(sources: []))

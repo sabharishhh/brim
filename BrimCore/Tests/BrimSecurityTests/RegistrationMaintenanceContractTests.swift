@@ -7,9 +7,8 @@ struct RegistrationMaintenanceContractTests {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: package.appendingPathComponent("Sources/BrimService/BrimService.swift"),
                                 encoding: .utf8)
-        // The concrete method returned [URL] while the protocol returned Void.
-        // Home's existential therefore ran the default no-op, even though the
-        // concrete real-environment test successfully cleared registrations.
+        // The concrete method and the protocol must share a signature, or the
+        // existential calls the default no-op.
         let signature = try NSRegularExpression(
             pattern: #"public\s+func\s+reconcileRegistrations\(\)\s+async\s*(?:->\s*(?:Void|\(\))\s*)?\{"#
         )

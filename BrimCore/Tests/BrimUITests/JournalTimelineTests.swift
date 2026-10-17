@@ -27,8 +27,7 @@ final class JournalTimelineTests: XCTestCase {
         XCTAssertEqual(groups.map(\.items.count), [1, 1, 1, 1, 1])
     }
 
-    /// Rows under "This week" and a month said only "12:01 PM", so which
-    /// day was anyone's guess. Each row adds what its heading leaves out.
+    /// Each row adds what its heading leaves out, such as the day.
     func testARowSaysTheDayWhenItsHeadingDoesNot() throws {
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 28, hour: 12)))
         let dates = [0, -3, -20].compactMap { calendar.date(byAdding: .day, value: $0, to: now) }

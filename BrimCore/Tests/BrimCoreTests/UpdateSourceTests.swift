@@ -2,10 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// Which Homebrew cask an application came from, read from the disk.
-///
-/// A wrong answer here sends an update to Homebrew for something it did
-/// not install, or leaves Homebrew believing a removed app is still there.
+/// Which Homebrew cask an application came from, read from the disk. A
+/// wrong answer sends an update or an uninstall to the wrong cask.
 final class UpdateSourceTests: XCTestCase {
 
     private var directory: URL!
@@ -58,8 +56,8 @@ final class UpdateSourceTests: XCTestCase {
     }
 
     func testASimilarNameIsNotACask() throws {
-        // A loose match would tell somebody to run brew uninstall on a
-        // cask that installed something else.
+        // A loose match would run brew uninstall on a cask that installed
+        // something else.
         let app = try makeApp("Notch", bundleID: "com.example.notch")
         XCTAssertNil(UpdateSourceScanner.matchingCask(for: app, among: ["boring-notch"]))
     }
@@ -81,12 +79,8 @@ final class UpdateSourceTests: XCTestCase {
 
     // MARK: - The acceptance criterion
 
-    /// T-5.8: a test asserts no update check occurs without a user action.
-    ///
-    /// Read from the source rather than exercised, because the failure
-    /// being guarded against is somebody adding a convenience later: one
-    /// feed fetch during a scan, and a list somebody opened to audit
-    /// their Mac has quietly told four vendors they are still running.
+    /// No update check without a person asking. Read from the source, because
+    /// one feed fetch added to a scan would tell vendors their apps still run.
     func testNothingInTheScannerReachesTheNetwork() throws {
         let scanner = Self.repositoryRoot()
             .appendingPathComponent("BrimCore/Sources/BrimScan/UpdateSourceScanner.swift")

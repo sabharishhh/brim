@@ -3,8 +3,7 @@ import BrimCore
 @testable import BrimScan
 import BrimOps
 
-/// The inverse query that motivated the product: registrations left behind by
-/// applications that are already gone.
+/// Registrations left behind by applications that are already gone.
 final class RegistrationSweepTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -13,11 +12,8 @@ final class RegistrationSweepTests: XCTestCase {
 
     private var root: FileSystemRoot { FileSystemRoot(rootURL: URL(fileURLWithPath: "/")) }
 
-    /// The store on this Mac, read the way the app reads it.
-    ///
-    /// This is the check that matters for the change that removed
-    /// `sfltool`: the fixtures prove the decoding, only the real store
-    /// proves it decodes what macOS actually wrote.
+    /// The fixtures prove the decoding; only the real store proves it decodes
+    /// what macOS wrote.
     func testTheRealStoreDecodes() throws {
         let records = try XCTUnwrap(
             BTMStore().records(),
@@ -34,9 +30,8 @@ final class RegistrationSweepTests: XCTestCase {
         XCTAssertTrue(records.allSatisfy { $0.uuid.count == 36 }, "Each record carries its UUID")
     }
 
-    /// What the Background section actually shows, grouped the way it
-    /// groups it. The complaint was duplicate rows: an app beside its own
-    /// background tasks, and Keystone four times over.
+    /// The Background list grouped by application, with no duplicate rows for
+    /// an app and its own tasks.
     func testTheListGroupsByApplication() async throws {
         let inventory = RegistrationInventory(surfaces: [
             LaunchdRegistrationSurface(), BackgroundItemSurface()
@@ -85,12 +80,7 @@ final class RegistrationSweepTests: XCTestCase {
     }
 }
 
-/// The leftovers surface, measured against this machine.
-///
-/// Synthetic fixtures can prove the ownership rules; only a real Library can
-/// show what they classify. Every failure here names a specific item, so a
-/// rule that is too eager shows up as "this belongs to something installed"
-/// rather than as a number that looks plausible.
+/// The leftovers surface against this machine. Every failure names an item.
 final class LeftoversOnThisMachineTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -149,9 +139,8 @@ final class LeftoversOnThisMachineTests: XCTestCase {
     }
 
     func testEveryOrphanNamesTheRecordThatOrphanedIt() async throws {
-        // The category is a claim about evidence. An orphan with no sentence
-        // is Brim asserting rather than showing, which is the one thing this
-        // product may not do.
+        // An orphan with no sentence naming its record is an assertion, not
+        // evidence.
         for item in try await scan() where item.category == .orphaned {
             XCTAssertFalse(
                 item.evidence.isEmpty,
@@ -161,9 +150,8 @@ final class LeftoversOnThisMachineTests: XCTestCase {
     }
 
     func testNothingBelongingToAnInstalledApplicationIsListed() async throws {
-        // The expensive mistake: offering to delete the data of software the
-        // user still has. Cross-checks every leftover against Launch
-        // Services independently of the scan that produced it.
+        // Every leftover is cross-checked against Launch Services, independently
+        // of the scan that produced it.
         let leftovers = try await scan()
         var wronglyListed: [String] = []
 
@@ -184,8 +172,7 @@ final class LeftoversOnThisMachineTests: XCTestCase {
     }
 
     func testTheTwoCategoriesAreNeverMerged() async throws {
-        // T-5.1 acceptance. Orphaned is pre-selectable, unclaimed is not, so
-        // collapsing them would pre-select things nobody can attribute.
+        // Orphaned is pre-selectable and unclaimed is not, so the two stay apart.
         let leftovers = try await scan()
         for item in leftovers {
             XCTAssertTrue(
@@ -200,8 +187,7 @@ final class LeftoversOnThisMachineTests: XCTestCase {
     }
 }
 
-/// Does consulting Launch Services actually change the answer on a real
-/// machine, or is it ceremony? Measured rather than assumed.
+/// Measures whether consulting Launch Services changes the answer.
 final class LaunchServicesContributionTests: XCTestCase {
 
     override func setUpWithError() throws {

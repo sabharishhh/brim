@@ -2,10 +2,8 @@
 import Foundation
 import XCTest
 
-/// The Apps list measures every bundle at each launch, so the walk was
-/// rewritten for speed. These hold it to the answer the old enumerator
-/// gave: every file, hidden or not, and a link counted as itself, never
-/// followed.
+/// Holds the fast `fts` size walk to the answer the old enumerator gave:
+/// every file, hidden or not, and a link counted as itself, never followed.
 final class ApplicationSizeTests: XCTestCase {
     private var root: URL!
 

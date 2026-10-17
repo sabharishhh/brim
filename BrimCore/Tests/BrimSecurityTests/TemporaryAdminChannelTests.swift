@@ -6,9 +6,8 @@ import Testing
 
 struct TemporaryAdminChannelTests {
     @Test func disconnectSchedulesOneBoundedExitWithoutAsyncJobs() async throws {
-        // Quitting during synchronous recovery deletion used to wait for that
-        // deletion, potentially leaving root work alive for fifteen minutes.
-        // Exercise the shutdown hook without a root process or any mutation.
+        // Quitting must not wait on a synchronous recovery deletion. Exercises the
+        // shutdown hook without a root process or any mutation.
         let helper = Helper()
         let exits = Mutex(0)
         helper.disconnect(after: .milliseconds(10)) { exits.withLock { $0 += 1 } }

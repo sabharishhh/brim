@@ -2,9 +2,7 @@
 import Foundation
 import Testing
 
-/// Measuring every bundle was 1.08 of the Apps list's 1.15 seconds at each
-/// launch, for bundles that had not changed. An unchanged bundle is now
-/// measured once; one that changed is measured again.
+/// An unchanged bundle is measured once; one that changed is measured again.
 struct BundleSizesTests {
     private func bundle() throws -> URL {
         let app = FileManager.default.temporaryDirectory
@@ -34,8 +32,8 @@ struct BundleSizesTests {
         #expect(walks == 1)
     }
 
-    /// An updater rewrites the executable and the Info.plist, so their
-    /// folder's and the plist's times move and the size is read again.
+    /// An updater rewrites the executable and `Info.plist`, so their times move
+    /// and the size is read again.
     @Test func `a bundle whose contents changed is measured again`() throws {
         let app = try bundle()
         defer { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }

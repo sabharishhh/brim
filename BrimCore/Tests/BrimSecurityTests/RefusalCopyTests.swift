@@ -2,23 +2,10 @@ import BrimCore
 @testable import BrimService
 import XCTest
 
-/// What Brim says when a removal did not go through.
-///
-/// This has been wrong in both directions. First it was "2 targets still
-/// remain": a count, naming neither which two nor why, for a case where the
-/// answer was that both sat in a root-owned directory and no amount of
-/// retrying would have helped.
-///
-/// The fix overcorrected. Naming every item and repeating its reason
-/// produced, for fourteen broken commands in one folder, fourteen copies of
-/// the same sentence run together into a single paragraph: nine hundred
-/// characters of which eight hundred were duplicates, and the panel showing
-/// it clipped the rest mid-word behind an ellipsis with no way to scroll.
-/// One reason held for all fourteen and the shape of the text hid that
-/// completely.
+/// What Brim says when a removal did not go through: which items and why,
+/// grouped so one reason shared by many items is said once.
 final class RefusalCopyTests: XCTestCase {
-    /// CI's /usr/local/bin is writable. Copy tests supply the measured state
-    /// instead of assuming the test machine has the developer's permissions.
+    /// CI's `/usr/local/bin` is writable, so the measured state is supplied.
     private func explanation(_ paths: Set<String>) -> String {
         BrimService.whyTheseRemain(paths) { path in
             path.hasPrefix("/usr/local/bin/") ? .needsHelper : .ok
@@ -45,8 +32,7 @@ final class RefusalCopyTests: XCTestCase {
         XCTAssertTrue(text.contains("tool-1, tool-10"), "Each one is still named:\n\(text)")
     }
 
-    /// Short enough to read in the space it is shown in. The old one was
-    /// nine hundred characters for this input and was cut off.
+    /// Short enough for the panel that shows it.
     func testTheRefusalFitsInThePanelThatShowsIt() {
         let text = explanation(fourteenInOneFolder())
         XCTAssertLessThan(text.count, 400, text)
@@ -59,8 +45,7 @@ final class RefusalCopyTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("zed"), text)
     }
 
-    /// Two folders are two answers, and collapsing them would hide that one
-    /// of them is a different problem with a different remedy.
+    /// Two folders are two answers with different remedies.
     func testDifferentReasonsStayApart() {
         let text = explanation([
             "/usr/local/bin/zed",

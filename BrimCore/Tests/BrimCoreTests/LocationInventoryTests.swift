@@ -2,18 +2,11 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// Sixty-odd locations, each with a rule for how a match there is proved.
-///
-/// Brim resolved nineteen, which is fewer than Sample reaches, and
-/// the hard-coded nine in `BundleIdentifierComponentSource` were the ones
-/// that mattered for an uninstall. A path on its own is not enough
-/// though: the specification says each location needs an evidence rule,
-/// and a location Brim can only name-match is Tier C and must be
-/// labelled as one.
+/// Sixty-odd locations, each with a rule for how a match there is proved. A
+/// location Brim can only name-match is Tier C and labelled as one.
 final class LocationInventoryTests: XCTestCase {
     func testTheInventoryIsActuallyWide() {
-        // The number is not the point, the coverage is, but nineteen was
-        // measurably less than the field.
+        // Coverage, not a count, but nineteen was measurably too few.
         XCTAssertGreaterThan(
             LocationInventory.standard.locations.count, 40,
             "The inventory has shrunk below the locations Brim needs to cover"
@@ -31,8 +24,7 @@ final class LocationInventoryTests: XCTestCase {
     }
 
     func testAnIdentifierMatchIsStrongerThanANameMatch() {
-        // A bundle identifier is a reverse-DNS name nobody else uses. A
-        // human name is not: two products called "Studio" is ordinary.
+        // A bundle identifier is a name nobody else uses; a human name is not.
         let byIdentifier = LocationInventory.Location(
             domain: .userApplicationSupport, rule: .bundleIdentifier,
             describes: "x", sentence: "x"
@@ -46,9 +38,8 @@ final class LocationInventoryTests: XCTestCase {
     }
 
     func testALocationThatCanOnlyBeNameMatchedIsTierCWhateverTheRuleSays() {
-        // /usr/local/bin holds a binary with no bundle and no identifier.
-        // The only thing linking it to an application is a shared name,
-        // so the domain floors the tier no matter how the row is written.
+        // `/usr/local/bin` holds binaries with no bundle or identifier, so the
+        // domain floors the tier however the row is written.
         let optimistic = LocationInventory.Location(
             domain: .usrLocalBin, rule: .bundleIdentifier,
             describes: "x", sentence: "x"
@@ -71,8 +62,7 @@ final class LocationInventoryTests: XCTestCase {
     }
 
     func testTheLocationsThatWereInvisibleAreCovered() {
-        // Each of these is named in the strategy document as a place
-        // software hides that Brim could not see at all.
+        // Places software hides that Brim once could not see at all.
         let mustBePresent: [FileSystemRoot.Domain] = [
             .userPreferencesByHost,
             .userAudioComponents, .systemAudioComponents, .systemAudioVST3,
@@ -91,9 +81,8 @@ final class LocationInventoryTests: XCTestCase {
     }
 
     func testAnAudioPlugInIsAttributedByWhatIsInsideIt() {
-        // An Audio Unit's file name says nothing about who made it, so
-        // the only rule available reads the bundle's own Info.plist.
-        // Every path-matching scanner in the field misses these.
+        // An Audio Unit's file name says nothing, so the only rule reads the
+        // bundle's own `Info.plist`.
         let audio = LocationInventory.standard.locations.filter {
             $0.domain == .systemAudioComponents || $0.domain == .systemAudioVST3
         }
@@ -104,8 +93,8 @@ final class LocationInventoryTests: XCTestCase {
     }
 
     func testTheDarwinFoldersStayInsideAFixtureRoot() {
-        // Answering with the real machine's /var/folders while scanning a
-        // shadow tree would walk the developer's own cache.
+        // Answering with the real `/var/folders` while scanning a fixture tree
+        // would walk the developer's own cache.
         let fixture = FileSystemRoot(rootURL: URL(fileURLWithPath: "/tmp/fixture-root"))
         let cache = fixture.url(for: .darwinUserCache).path
         XCTAssertTrue(cache.hasPrefix("/tmp/fixture-root"), cache)
@@ -160,8 +149,7 @@ final class LocationInventorySourceTests: XCTestCase {
     }
 
     func testByHostPreferencesAreFound() throws {
-        // A second copy of the settings that a scan of Preferences walks
-        // straight past.
+        // A second copy of the settings that a scan of Preferences walks past.
         let file = try make(
             .userPreferencesByHost,
             "com.example.studio.00000000-0000-1000-8000-0123456789AB.plist"
@@ -173,8 +161,7 @@ final class LocationInventorySourceTests: XCTestCase {
     }
 
     func testAnAudioUnitIsFoundByWhatIsInsideIt() throws {
-        // The file name says "Reverb". Only the Info.plist says who made
-        // it, which is why every path-matching scanner misses these.
+        // The file name says "Reverb"; only the `Info.plist` says who made it.
         let unit = try make(
             .systemAudioComponents, "Reverb.component", bundleID: "com.example.studio"
         )
@@ -223,18 +210,15 @@ final class LocationInventorySourceTests: XCTestCase {
         XCTAssertFalse(found.completeness.isComplete)
         XCTAssertFalse(found.completeness.timedOut.isEmpty)
 
-        // The sentence has to carry two things, not one. Saying only that a
-        // place went unread leaves somebody holding a shortfall with nothing
-        // to do about it, so it also names what would fix it.
+        // The sentence says a place went unread and what would fix it.
         let explanation = found.completeness.explanation ?? ""
         XCTAssertTrue(explanation.contains("timed out"), explanation)
         XCTAssertTrue(explanation.lowercased().contains("again"), explanation)
     }
 
     func testTheCheapChecksStillRunWhenTimeIsShort() throws {
-        // Asking whether one path exists is a single lstat. A run already
-        // out of time still gets the certain answers, because skipping
-        // them buys nothing.
+        // Existence checks are a single `lstat` each, so a run out of time still
+        // gets the certain answers.
         let support = try make(.userApplicationSupport, "com.example.studio")
         let found = LocationInventorySource(budget: { ScanBudget(total: -1, perProbe: 0) })
             .findings(for: identity, in: root)
@@ -244,12 +228,9 @@ final class LocationInventorySourceTests: XCTestCase {
 
     // MARK: - The updater's cache
 
-    /// **`<identifier>.ShipIt`.** An application installed by any route can
-    /// switch to updating itself afterwards, and Squirrel leaves its working
-    /// folder in Caches under the identifier with a suffix. Caches had an
-    /// exact identifier rule, which walks straight past it, and three of the
-    /// six applications measured on this Mac were carrying one that their
-    /// own uninstall would not have removed.
+    /// `<identifier>.ShipIt`: an app that updates itself leaves its updater's
+    /// folder in Caches under the identifier and a suffix, which an exact rule
+    /// misses.
     func testASuffixedIdentifierFolderInCachesIsFound() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BrimPrefix-\(UUID().uuidString)")
@@ -260,8 +241,8 @@ final class LocationInventorySourceTests: XCTestCase {
 
         let shipIt = caches.appendingPathComponent("com.example.app.ShipIt")
         let exact = caches.appendingPathComponent("com.example.app")
-        // A different product whose identifier merely starts with the same
-        // letters. The prefix is the identifier and a dot for this reason.
+        // A different product whose identifier starts with the same letters; the
+        // prefix is the identifier and a dot for this reason.
         let neighbour = caches.appendingPathComponent("com.example.applet")
         for url in [shipIt, exact, neighbour] {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -282,8 +263,8 @@ final class LocationInventorySourceTests: XCTestCase {
         )
     }
 
-    /// A suffixed identifier folder in Application Support is the same shape
-    /// and the common case for anything shipping a helper or an XPC service.
+    /// The same shape in Application Support, common for anything shipping a
+    /// helper or an XPC service.
     func testASuffixedIdentifierFolderInApplicationSupportIsFound() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BrimPrefix-\(UUID().uuidString)")
@@ -304,8 +285,7 @@ final class LocationInventorySourceTests: XCTestCase {
         )
     }
 
-    /// An identifier match stays Tier B when the rule gains a prefix. The
-    /// evidence is still a reverse-DNS string nobody else uses.
+    /// An identifier match stays Tier B with a prefix rule.
     func testAPrefixedIdentifierMatchIsStillAnIdentifierMatch() {
         let prefixed = LocationInventory.standard.locations.filter {
             $0.domain == .userCaches && $0.rule == .bundleIdentifierPrefix

@@ -3,8 +3,8 @@ import Foundation
 import Testing
 
 struct PlanStoragePartitionTests {
-    /// Helper quarantine was counted as recoverable Trash space, and review
-    /// promised Put Back even though the helper exposes no restore operation.
+    /// Items set aside by administrator cleanup are not recoverable Trash space
+    /// and cannot be put back.
     @Test func helperAndDetectionBytesDoNotBecomeTrashOrImmediateSavings() {
         let steps = [
             step(.trashPath, bytes: 32, disposition: .trash),

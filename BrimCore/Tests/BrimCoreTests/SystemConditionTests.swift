@@ -1,18 +1,9 @@
 import XCTest
 @testable import BrimCore
 
-/// How the Mac is coping, from interfaces Apple publishes.
-///
-/// The constraint that shaped this: there is no public API for a CPU
-/// temperature in degrees. Every tool that prints one on Apple Silicon reads
-/// it through `IOHIDEventSystemClient` or raw SMC keys, both private and both
-/// undocumented, and Apple has never shown a temperature anywhere in macOS,
-/// Activity Monitor included.
-///
-/// `ProcessInfo.thermalState` is what Apple publishes, and it answers the
-/// question somebody actually has. Nobody needs to know a core is at 87
-/// degrees. They need to know whether the Mac is being slowed down to cool
-/// itself, which is what the state says, in Apple's own terms.
+/// How the Mac is coping, from public interfaces only. There is no public
+/// API for CPU temperature; `ProcessInfo.thermalState` says whether the Mac
+/// is slowing down to cool itself, which is the question people have.
 final class SystemConditionTests: XCTestCase {
 
     func testEveryThermalStateMapsToAppleS() {
@@ -22,9 +13,8 @@ final class SystemConditionTests: XCTestCase {
         XCTAssertEqual(SystemCondition.Thermal.of(.critical), .tooHot)
     }
 
-    /// Only the two that mean the Mac is throttling get attention. A card
-    /// that goes orange whenever a laptop is warm teaches people to ignore
-    /// it by the second day.
+    /// Only the throttling states get attention; a card that turns orange
+    /// whenever a laptop is warm gets ignored.
     func testOnlyThrottlingIsWorthDrawingAttentionTo() {
         XCTAssertFalse(SystemCondition.Thermal.normal.isNoteworthy)
         XCTAssertFalse(SystemCondition.Thermal.slightlyElevated.isNoteworthy)
@@ -42,8 +32,7 @@ final class SystemConditionTests: XCTestCase {
 
     // MARK: - The note, which is usually silence
 
-    /// A cool Mac on the adapter has nothing to report, and a card that
-    /// insists on saying so every time is one people stop reading.
+    /// A cool Mac on the adapter has nothing to report.
     func testAHealthyMacSaysNothing() {
         let condition = SystemCondition(
             thermal: .normal, power: .adapterOnly, lowPowerMode: false
@@ -89,11 +78,9 @@ final class SystemConditionTests: XCTestCase {
     // MARK: - Against the real machine
 
     func testTheRealReadUsesApplesOwnInterfaces() {
-        // No private API, no shelling out, no sudo. If this ever needs one
-        // of those it is the wrong feature.
+        // No private API, no shelling out, no sudo.
         let condition = SystemCondition.current()
         XCTAssertFalse(condition.thermal.title.isEmpty)
-        // Power is nil on a desktop, which is an answer rather than a
-        // failure, so nothing is asserted about it.
+        // Power is nil on a desktop, which is an answer, so nothing is asserted.
     }
 }

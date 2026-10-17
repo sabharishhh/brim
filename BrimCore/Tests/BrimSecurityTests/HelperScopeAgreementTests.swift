@@ -2,14 +2,10 @@ import BrimCore
 @testable import BrimPrivileged
 import XCTest
 
-/// The plan promises only what the helper will do.
-///
-/// The planner cannot import the helper's rules, so it keeps its own
-/// reading of them in `HelperScope`. Two readings of one fact is how this
-/// codebase keeps breaking, so they are held to one answer here: a folder
-/// added to the helper and not to the plan would be refused silently, and
-/// one added to the plan and not the helper would be promised and then
-/// refused after approval, which is the incident that started this.
+/// The plan promises only what the administrator process will do. The
+/// planner keeps its own reading in `HelperScope`, held here to the
+/// helper's: otherwise a path is refused silently or promised and then
+/// refused after approval.
 final class HelperScopeAgreementTests: XCTestCase {
     func testThePlanAndTheHelperNameTheSameJobFolders() {
         XCTAssertEqual(
@@ -34,9 +30,8 @@ final class HelperScopeAgreementTests: XCTestCase {
         )
     }
 
-    /// A root helper that moves bundles has to refuse by its own reading,
-    /// whatever it is asked: nothing that is not a plain name with the
-    /// place's own extension, and nothing macOS's or Brim's.
+    /// A root process that moves bundles refuses by its own reading: only a
+    /// plain name with the place's own extension, nothing macOS's or Brim's.
     func testTheHelperRefusesAnythingButAnInstalledBundle() throws {
         XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "applications", name: "../Safari.app"))
         XCTAssertThrowsError(try PrivilegedBundleRemoval.target(domain: "applications", name: "notes.txt"))
@@ -66,10 +61,8 @@ final class HelperScopeAgreementTests: XCTestCase {
                        "/Library/Caches/com.vendor.updater")
     }
 
-    /// Microsoft AutoUpdate's `com.microsoft.autoupdate2.plist` in
-    /// `/Library/Preferences` was the one thing a review could not take, so
-    /// the app stayed listed with something left. Files named like a bundle
-    /// identifier only; folders there are how this Mac is set up.
+    /// Files in `/Library/Preferences` named like a bundle identifier only;
+    /// folders there are how the Mac is set up.
     func testThePlanAndTheHelperNameTheSamePreferenceFiles() {
         XCTAssertEqual(HelperScope.preferenceFolders, [PrivilegedPreferenceRemoval.directory])
         XCTAssertEqual(try PrivilegedPreferenceRemoval.target(name: "com.microsoft.autoupdate2.plist").path,
@@ -83,10 +76,8 @@ final class HelperScopeAgreementTests: XCTestCase {
         }
     }
 
-    /// An application an installer put in Application Support is taken
-    /// only on the package's own receipt, and the plan reads the receipt
-    /// the way the helper does. Microsoft AutoUpdate, left by Teams, is
-    /// the case this exists for.
+    /// An app an installer put in Application Support is taken only on the
+    /// package's receipt, read the same way by the plan and the helper.
     func testThePlanAndTheHelperReadAPackagesInstallFolderTheSameWay() throws {
         let receipts = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("receipts-\(UUID().uuidString)")
