@@ -3,12 +3,12 @@ name: Feedback relay
 on:
   pull_request:
     paths:
-      - 'Support/FeedbackRelay/**'
+      - 'Services/FeedbackRelay/**'
       - '.github/workflows/feedback-relay.yml'
   push:
     branches: [main, ui-ux-redesign]
     paths:
-      - 'Support/FeedbackRelay/**'
+      - 'Services/FeedbackRelay/**'
       - '.github/workflows/feedback-relay.yml'
 
 permissions:
@@ -22,4 +22,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test Support/FeedbackRelay/worker.test.mjs
+      - run: node --test Services/FeedbackRelay/worker.test.mjs
