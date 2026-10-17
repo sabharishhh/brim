@@ -3,7 +3,7 @@ import Foundation
 /// What Space measured on one visit, kept so the next visit can say what
 /// changed.
 ///
-/// History is snapshots and subtraction (`CLAUDE.md`): nothing watches the
+/// History is snapshots and subtraction: nothing watches the
 /// disk between visits. Each finished visit records the figures it showed,
 /// and "Since you last looked" is the latest of these subtracted from the
 /// one before. With only one there is nothing to compare, and the card says

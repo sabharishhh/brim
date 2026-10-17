@@ -5,7 +5,7 @@ import SwiftUI
 /// seven rows, then "Show all".
 ///
 /// A styled `List` rather than a stack in a scroll view, so rows are
-/// measured once and reused (`CLAUDE.md`). No box behind a group: the
+/// measured once and reused. No box behind a group: the
 /// title and the indent already say what belongs together. Apps,
 /// Background, Developer and Updates all draw their groups with this.
 struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {

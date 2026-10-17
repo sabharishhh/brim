@@ -58,8 +58,12 @@ The project is laid out as follows:
 - `BrimCore/` is a Swift package. Detection lives in `BrimScan`, changes to
   the disk in `BrimOps`, and the rules both rely on in `BrimCore`.
 - `Helper/` is the temporary administrator process.
-- `scripts/` holds the release build and the lint check. The release
-  steps are in [RELEASING.md](RELEASING.md).
+- `scripts/` holds the release build and the lint check, with the release
+  steps in [RELEASING.md](RELEASING.md). It also has three tools for
+  development: `coverage_diff.sh` lists what a removal left on disk without
+  relying on Brim's own search, `ax_tree.swift` prints the app's
+  accessibility tree, and `stale_builds.sh` finds and removes old copies of
+  Brim that macOS could open instead of the one you built.
 
 ## Making a change
 
@@ -69,8 +73,7 @@ The project is laid out as follows:
 3. Add a test that fails without your change. If it guards against a real
    problem, describe that problem in the test's comment.
 4. Run the checks below.
-5. Open a pull request that explains the problem and how your change solves
-   it.
+5. Open a pull request as described under [Pull requests](#pull-requests).
 
 ## Checks
 
@@ -94,8 +97,29 @@ data you would mind losing.
   as empty.
 - Text that people read in the app should be short, plain and formal. Please
   do not use em dashes or en dashes.
-- Commit messages should explain the problem and the result in full
-  sentences.
+
+## Commit messages
+
+Write the subject as an instruction that completes "This commit will ...":
+`Keep a surviving copy's data when removing an app`, not `Fixed data bug` or
+`fix(uninstall): data`. Start with a capital letter, leave off the full stop,
+and keep it under 72 characters. Brim does not use type prefixes or ticket
+numbers.
+
+Leave a blank line, then explain in plain sentences, wrapped at 72
+characters, what was wrong, how you found it and what changes as a result.
+Someone reading the history a year from now should understand the commit
+without the pull request. If you could not check something, say so.
+
+Keep each commit to one change. Add a `Co-authored-by` line only for a person
+who wrote part of it.
+
+## Pull requests
+
+Give a pull request a title written like a commit subject. In the
+description, say what the problem was, what the change does, and how you
+tested it, including anything you did not test. A few short paragraphs are
+enough; there is no template to fill in.
 
 ## Conduct
 

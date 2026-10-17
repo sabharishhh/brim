@@ -470,7 +470,7 @@ private struct RemnantCard: View {
         }
     }
 
-    /// Built once, not every time a card draws (`CLAUDE.md`, on formatters).
+    /// Built once, not every time a card draws.
     private static let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
 
     private var facts: String {

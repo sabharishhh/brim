@@ -80,7 +80,7 @@ public struct InstalledApplication: Codable, Equatable, Sendable, Identifiable {
 
     /// Came across from another Mac and has not been opened here: the
     /// usage record travelled with the bundle, so it predates the bundle's
-    /// arrival (`CLAUDE.md`, on the migration signature).
+    /// arrival.
     ///
     /// The gap has to be a month. macOS rewrites the date added for every
     /// bundle in /Applications at once, a re-index or an update, and on

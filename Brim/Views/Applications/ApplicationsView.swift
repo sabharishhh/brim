@@ -30,7 +30,7 @@ struct ApplicationsView: View {
 
     var body: some View {
         // Fixed panes rather than an HSplitView, which relaid out the whole
-        // window on every scroll (`CLAUDE.md`).
+        // window on every scroll.
         AdaptivePanes(
             detailWidth: Metrics.detailWidth,
             hasDetail: review != nil || batch != nil || model.isChoosing

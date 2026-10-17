@@ -3,7 +3,7 @@ import Observation
 
 /// What the person saw last time, so this time can say what is new.
 ///
-/// Snapshots and subtraction, the same rule as history (`CLAUDE.md`):
+/// Snapshots and subtraction, the same rule as history:
 /// each collection remembers the identifiers it showed when the person
 /// last looked, and "new" is what is here now and was not then. No
 /// watcher, no daemon. A collection that has never been looked at has no
