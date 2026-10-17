@@ -45,16 +45,12 @@ enum Motion {
 }
 
 extension AnyTransition {
-    /// One view replacing another in the same place: the new one fades
-    /// in and the old one leaves at once. A crossfade drew both pages, or
-    /// the inspector and the review, on top of each other for the length
-    /// of the fade, with their text overlapping.
+    /// The new view fades in and the old one leaves at once; a crossfade drew
+    /// both on top of each other.
     static let replacement = AnyTransition.asymmetric(insertion: .opacity, removal: .identity)
 
-    /// A review taking the pane over: fades in while settling from just
-    /// under full size, which is drawn rather than laid out, so nothing is
-    /// re-measured on the way. The pane leaving goes at once, as in
-    /// `replacement`. Under Reduce Motion it only fades.
+    /// A review taking over the pane fades in while settling from just under
+    /// full size, drawn rather than laid out. Only fades under Reduce Motion.
     static func paneSwap(reduceMotion: Bool) -> AnyTransition {
         .asymmetric(
             insertion: reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985, anchor: .top)),

@@ -1,14 +1,9 @@
 import BrimUI
 import SwiftUI
 
-/// Brim's character, where the person meets it: Welcome and About.
-///
-/// It leans a little toward the pointer, at most 3 degrees and 2 points,
-/// within its own region, so it reads as a small physical object rather
-/// than a picture. Nothing else moves with it: text and buttons sit
-/// outside the transform. There is no idle motion, and under Reduce
-/// Motion, or while the window is inactive, it simply stays still. The
-/// sidebar's small icon never moves.
+/// Brim's character on Welcome and About. Leans up to 3 degrees and 2 points
+/// toward the pointer within its own region, and stays still under Reduce
+/// Motion or in an inactive window.
 struct CharacterArtwork: View {
     let size: CGFloat
 

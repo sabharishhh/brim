@@ -1,8 +1,7 @@
 import BrimUI
 import SwiftUI
 
-/// About Brim: the character, the version, and where the project lives.
-/// The standard panel showed a flat icon and nothing of what Brim does.
+/// About Brim: the character, the version and where the project lives.
 struct AboutView: View {
     static let windowID = "about"
 
@@ -30,8 +29,7 @@ struct AboutView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
-            // A capsule, like every other link in Brim. As plain text it took
-            // the system blue, the only colour in a monochrome window.
+            // A capsule like every other link; as plain text it took the system blue.
             Link("Brim on GitHub", destination: URL(string: "https://github.com/sabharishhh/brim")!)
                 .capsuleAction()
                 .padding(.top, 4)

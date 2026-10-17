@@ -3,21 +3,17 @@ import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// What the window's chrome knows: where it is, where it has been, what
-/// Quick Look is showing, and the note at the bottom.
-///
-/// One object, handed to the menu bar as a focused value. That is safe
-/// where a closure was not (`FocusedAction`): the reference never changes,
-/// so the scene never sees a new value and never rebuilds its menus for
-/// nothing. It compares by identity for exactly that reason.
+/// What the window's chrome knows: where it is and has been, what Quick Look
+/// shows, and the toast. Handed to the menu bar as a focused value; the
+/// reference never changes and compares by identity, so the scene does not
+/// rebuild its menus.
 @MainActor
 @Observable
 final class ShellState: Equatable {
     private(set) var selection: Destination = .home
     var appsLens: AppsLens = .all
-    /// The last page change came from the keyboard: arrow keys in the
-    /// sidebar, a Command-digit or Back and Forward from the menu. Those are
-    /// immediate; only a change made with the pointer fades.
+    /// The last page change came from the keyboard, so it is immediate; only a
+    /// pointer change fades.
     private(set) var navigatedByKeyboard = false
     private var back: [Destination] = []
     private var forward: [Destination] = []
@@ -34,9 +30,8 @@ final class ShellState: Equatable {
 
     /// The ⌘K panel.
     var showsCommandBar = false
-    /// An app whose removal was asked for from outside the window, by a
-    /// Shortcut or Spotlight. Apps opens its review and clears this. The
-    /// review is all it opens: approval still comes from this window.
+    /// An app whose removal was asked for by a Shortcut or Spotlight. Apps opens
+    /// its review and clears this; approval still comes from this window.
     var pendingRemoval: URL?
     /// An installer to look inside, shown as a sheet over any page.
     var installerToRead: InstallerRequest?
@@ -149,9 +144,8 @@ final class ShellState: Equatable {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
-    /// A folder opens as a Finder window of what is inside it; anything
-    /// else, an app bundle included, is revealed selected. `open` is never
-    /// used here, because on an app or a document it would launch it.
+    /// A folder opens as a Finder window; anything else, app bundles included,
+    /// is revealed selected. Never `open`, which would launch an app or document.
     func showInFinder(_ url: URL) {
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
         if values?.isDirectory == true, values?.isPackage != true {

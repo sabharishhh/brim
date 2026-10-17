@@ -2,17 +2,10 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// One figure for each kind of space software takes, on one scale.
-///
-/// Remnants and Developer had a card each, side by side, with figures
-/// that could not be compared with anything: 1.2 GB beside 27 GB, and
-/// nothing to say what either was against the disk. Here every row is
-/// a bar against the same used space, so the apps' share and a
-/// removal's leftovers read as the sizes they are. What no row covers
-/// is said as the subtraction it is, never estimated.
-///
-/// Removed items still in the Trash have their own row because Brim
-/// put them there and they free nothing until the Trash is emptied.
+/// One figure for each kind of space software takes, each a bar against the
+/// same used space, so they compare. What no row covers is said as a
+/// subtraction, never estimated. Removed items still in the Trash have their
+/// own row: they free nothing until it is emptied.
 struct SpaceSoftwareCard: View {
     @ObservedObject var storage: StorageModel
     @ObservedObject var applications: ApplicationsModel
@@ -82,9 +75,8 @@ struct SpaceSoftwareCard: View {
         storage: StorageModel, applications: ApplicationsModel, developer: DeveloperModel,
         history: RemovalHistoryModel, appData: AppDataModel
     ) -> [SoftwareRow] {
-        // Apps on another disk take nothing from this one, and an app
-        // shipped inside another is already in its host's size: Xcode's
-        // eight were counted twice.
+        // Apps on another disk take nothing from this one, and an app inside
+        // another is already in its host's size.
         let apps = applications.applications.filter {
             !$0.isSystemProtected && $0.enclosingApp == nil && !$0.url.path.hasPrefix("/Volumes/")
         }

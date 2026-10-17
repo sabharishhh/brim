@@ -87,18 +87,16 @@ struct ApplicationsView: View {
         }
     }
 
-    /// What removing an app removes. An app shipped inside another cannot
-    /// be taken out of it without breaking the host's signature, so its
-    /// removal is the host's, and the review says so by showing the host.
+    /// An app shipped inside another cannot be removed without breaking the
+    /// host's signature, so its removal is the host's.
     private func removalTarget(_ app: InstalledApplication) -> InstalledApplication {
         guard let host = app.hostURL else { return app }
         return model.applications.first { $0.url.path == host.path } ?? app
     }
 
     private func finished(_ review: AppReview) {
-        // Drop the row at once if the bundle really is gone:
-        // re-enumerating every app takes seconds, and a row that
-        // outlives "nothing left" reads as a failure.
+        // Drop the row at once if the bundle is gone; listing every app again
+        // takes seconds.
         model.forgetIfRemoved(review.app)
         AppIcon.forget(review.app.url)
         Task { await model.load(service: service) }
@@ -118,8 +116,7 @@ struct ApplicationsView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
             }
-            // Several apps in one review. Command-click did this and
-            // nobody found it.
+            // Several apps in one review.
             Button(model.isChoosing ? "Done" : "Select") {
                 model.isChoosing ? model.stopChoosing() : model.startChoosing()
             }
@@ -280,10 +277,9 @@ private struct MarkedApps: View {
     }
 }
 
-/// Groups or table, drawn by Brim. The system's segmented control fills
-/// the chosen segment with the accent, which Brim keeps grey; the chosen
-/// one is off-white with a near-black symbol, as the Apps and Updates
-/// switch is.
+/// Groups or table, drawn by Brim: the system segmented control fills the
+/// chosen segment with the accent. The chosen one is off-white with a
+/// near-black symbol, like the Apps and Updates switch.
 private struct ViewToggle: View {
     @Binding var asTable: Bool
 

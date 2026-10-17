@@ -2,19 +2,10 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// Which apps asked the Mac to stay awake over the last few days, and for
-/// how long.
-///
-/// The card used to list only what was holding the Mac awake at the moment
-/// of the reading, which is rarely when anyone looks: the battery went down
-/// overnight, and by morning the app had let go. Power management logs
-/// every request with how long it was held, so the week is there to read.
-///
-/// "Asked" is the honest verb. A request only stops the Mac sleeping while
-/// nobody is using it, so these hours are how long each app asked, not how
-/// long it kept the Mac from sleeping. Bars are the share of the days the
-/// log covers, one scale for every row. An app holding a request right now
-/// is marked Now, which is what the old card said.
+/// Which apps asked the Mac to stay awake over the days power management's
+/// log covers, and for how long. "Asked", because a request only stops
+/// sleep while nobody is using the Mac. Bars share one scale, and an app
+/// holding a request right now is marked Now.
 struct EnergyAwakeCard: View {
     let requests: [EnergyModel.AwakeRequest]
     /// Applications holding a request at the moment of the reading.
@@ -50,9 +41,8 @@ struct EnergyAwakeCard: View {
         max(3600, now.timeIntervalSince(since ?? now.addingTimeInterval(-7 * 24 * 3600)))
     }
 
-    /// The days the log covers, which is what the hours add up over and what
-    /// the bars are measured against. It was capped at seven, so a log
-    /// reaching back ten days was labelled a week.
+    /// The days the log covers, which the hours add up over and the bars are
+    /// measured against.
     private var period: String {
         let days = Int((covered / 86400).rounded(.up))
         return days <= 1 ? "Last day" : "Last \(days) days"

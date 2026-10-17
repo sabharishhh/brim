@@ -5,10 +5,8 @@ import TipKit
 
 // MARK: - The brim line
 
-/// One hairline under the toolbar that fills while Brim works. Brim's only
-/// brand motif, and its main progress indicator.
-///
-/// Idle, it is a plain hairline and nothing on it moves.
+/// The hairline under the toolbar that fills while Brim works: Brim's main
+/// progress indicator. Nothing on it moves when idle.
 struct BrimLine: View {
     enum Work: Equatable {
         case idle
@@ -111,11 +109,9 @@ struct FreshnessLabel: View {
 
 // MARK: - Empty states
 
-/// What a surface says when it has no rows, which is never just blank.
-///
-/// Three different facts, kept apart on purpose: Brim looked and found
-/// nothing, Brim has not looked, and Brim could not look. A zero that was
-/// never measured is a lie.
+/// What a surface says with no rows. Found nothing, has not looked and
+/// could not look are three different messages: a zero that was never
+/// measured is a lie.
 struct EmptyState: View {
     let symbol: String
     let title: String
@@ -238,9 +234,8 @@ struct Toast: View {
     var actionTitle: String?
     var action: (() -> Void)?
 
-    /// A done mark in the status green, a problem in the status orange,
-    /// anything else in plain ink. Every toast's symbol is Brim's own, so
-    /// the mark says which it is; the message still says it in words.
+    /// Done in status green, a problem in status orange, anything else in plain
+    /// ink. The message still says it in words.
     private var symbolStyle: Color {
         if symbol.hasPrefix("checkmark") {
             return Palette.success

@@ -3,17 +3,9 @@ import BrimPrivileged
 import BrimUI
 import SwiftUI
 
-/// Brim's few settings in one pane, and Feedback beside them.
-///
-/// General, Access and Privacy were three tabs holding one or two rows each,
-/// so most of a click was spent finding the row. As sections of one pane they
-/// read at a glance, and the window opens on whichever tab was used last.
-///
-/// The two tabs are drawn here rather than by a `TabView`. AppKit draws a
-/// settings toolbar's icons in the system accent, so with a red accent they
-/// were red, and the grey Brim sets for itself (`BrimAppMain.useOwnAccent`)
-/// made them dull beside the off-white of everything else. The selected
-/// tab is told apart by colour alone: off-white, with the other dimmer.
+/// Brim's settings in one pane, with Feedback beside them. The two tabs are
+/// drawn here rather than by a `TabView`, whose toolbar icons AppKit draws in
+/// the system accent. The selected tab is told apart by colour alone.
 struct SettingsView: View {
     @AppStorage("settings.tab") private var selection = SettingsTab.general
 
@@ -77,8 +69,8 @@ private enum SettingsTab: String, CaseIterable {
 
 /// Keys shared between Settings and the window.
 enum SettingsKey {
-    /// A count of new leftovers on the Dock icon. Off unless asked for:
-    /// a badge that is always there is a badge nobody reads.
+    /// A count of new leftovers on the Dock icon. Off unless asked for: an
+    /// always-present badge is not read.
     static let dockBadge = "dock.showsNewLeftovers"
 }
 
@@ -106,8 +98,7 @@ private struct DockSection: View {
     var body: some View {
         Section {
             Toggle("Show removed apps that left something on the Dock icon", isOn: $showsDockBadge)
-                // A Form lays the label out beside the switch, and the
-                // switch alone exposed no name.
+                // A Form lays the label out beside the switch, which alone exposed no name.
                 .accessibilityLabel("Show removed apps that left something on the Dock icon")
         } header: {
             Text("Dock")
@@ -151,8 +142,8 @@ private struct AccessSection: View {
     }
 }
 
-/// The way out, where people look for it: Brim removes itself and everything
-/// it wrote, and nothing is left on the Mac or in the Trash.
+/// Removes Brim and everything it wrote, leaving nothing on the Mac or in
+/// the Trash.
 private struct RemoveBrimSection: View {
     @StateObject private var helper = PrivilegedHelperClient()
     @State private var confirms = false

@@ -1,19 +1,9 @@
 import SwiftUI
 
-/// A collection and the pane that inspects or reviews one of its items,
-/// laid out for the width there is.
-///
-/// Wide enough for both, they sit side by side as they always have. When
-/// the window is narrower than the list's minimum plus the pane, the list
-/// takes the whole width and the pane floats over its trailing edge only
-/// while it has something to show, with a Close button and Escape. Before
-/// this the window could not be made narrower than 1100 points, because
-/// the panes simply would not fit.
-///
-/// The list is always the same view in the same place, so crossing the
-/// threshold keeps its scroll position and selection. The pane moves
-/// between the two placements and is rebuilt when it does, which only
-/// happens while the window is being resized.
+/// A collection and the pane that inspects one of its items. Side by side
+/// when there is room; otherwise the list takes the full width and the pane
+/// floats over its trailing edge while it has something to show. The list
+/// stays the same view, so it keeps its scroll position and selection.
 struct AdaptivePanes<Collection: View, Detail: View>: View {
     /// The pane's width beside the list, and its widest when floating.
     let detailWidth: CGFloat
@@ -36,12 +26,9 @@ struct AdaptivePanes<Collection: View, Detail: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            // No minimum on the list: the container has to take the width it
-            // is offered, or it would measure its own minimum and never see
-            // that the window had become too narrow. A minimum here held it
-            // at 800 points in a 900 point window, squeezing the sidebar and
-            // clipping the pane off the edge. The threshold below keeps the
-            // list at least 440 points wide whenever the pane sits beside it.
+            // No minimum on the list: the container must take the width it is offered
+            // to notice the window has become too narrow. The threshold below keeps the
+            // list at least 440 points wide beside the pane.
             HStack(spacing: 0) {
                 collection()
                     .frame(maxWidth: .infinity)

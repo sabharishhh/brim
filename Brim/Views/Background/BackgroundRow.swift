@@ -3,7 +3,7 @@ import BrimUI
 import SwiftUI
 
 extension Registration {
-    /// The kind of thing this is, for its symbol (plan §9).
+    /// The kind of thing this is, for its symbol.
     var itemKind: ItemKind {
         switch kind {
         case .backgroundItem: launchesAtLogin ? .loginItem : .backgroundItem
@@ -26,15 +26,15 @@ extension Registration {
 }
 
 extension EnvironmentValues {
-    /// Each record's file to show in Finder, by registration id. Worked out
-    /// once per scan: finding it asks the disk, and rows ask while drawing.
+    /// Each record's file to show in Finder, by registration id. Found once per
+    /// scan, because finding it reads the disk.
     @Entry var backgroundReveals: [String: URL] = [:]
 }
 
 extension BackgroundEntry {
-    /// The application's icon while it is installed, the saved one once it
-    /// is gone, otherwise a symbol for the kind of registration. Reads the
-    /// disk, so it is worked out once per scan and not while drawing.
+    /// The app's icon while installed, its saved icon once gone, otherwise a
+    /// symbol for the kind of registration. Found once per scan, not while
+    /// drawing.
     var icon: IconSource {
         let first = group.items.first
         return IconResolver.source(
@@ -54,8 +54,8 @@ extension BackgroundEntry {
 
     /// "Background job, login item", capitalised.
     var facts: String {
-        // A lone extension names itself: WhatsApp has two, and two rows of
-        // "WhatsApp, App extension" could not be told apart.
+        // A lone extension names itself, so two extensions of one app can be told
+        // apart.
         if let only = loneExtension {
             return "App extension · \(only.label)"
         }

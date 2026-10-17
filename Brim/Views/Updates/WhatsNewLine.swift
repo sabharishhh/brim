@@ -1,10 +1,10 @@
 import BrimUI
 import SwiftUI
 
-/// What an update changes: a placeholder while the on-device model reads
-/// the notes, then up to three highlights, with the Security fix tag
-/// first when there is one. Generated text carries the Apple Intelligence
-/// mark; notes short enough to show as written do not.
+/// What an update changes: a placeholder while the on-device model reads the
+/// notes, then up to three highlights, Security fix first. Generated text
+/// carries the Apple Intelligence mark; notes short enough to show as
+/// written do not.
 struct WhatsNewLine: View {
     let state: WhatsNewModel.State
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion

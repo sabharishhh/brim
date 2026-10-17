@@ -1,11 +1,9 @@
 import BrimUI
 import SwiftUI
 
-/// Apps and Updates, one capsule with the chosen half lit. The light slides
-/// across rather than jumping, and Updates carries its count once a check
-/// has one. The system's segmented control drew a grey pill on grey glass
-/// that read as two disabled buttons. VoiceOver is given that control,
-/// which says what this is better than two buttons would.
+/// Apps and Updates as one capsule with the chosen half lit; Updates shows
+/// its count once a check has one. VoiceOver is given a segmented control,
+/// which describes it better than two buttons.
 struct LensSwitch: View {
     @Binding var lens: AppsLens
     @ObservedObject var updates: UpdatesModel
@@ -66,15 +64,10 @@ struct LensSwitch: View {
     }
 }
 
-/// The toolbar's sign that a page is working, and the one refresh left.
-///
-/// Every page had a refresh here (Take a Reading, Scan Again, Check Again),
-/// and pressing it was the only way a page caught up with the Mac. Pages
-/// now follow the Mac themselves (`KeepsCurrent`), so the button has gone:
-/// while a page is checking a small spinner sits here, and otherwise
-/// nothing does. Two remain because nothing on the Mac can announce them:
-/// Updates asks the network, so it keeps Check Again, and a Developer scan
-/// can be stopped. Check Again stays in the menu and the command bar (⌘R).
+/// The toolbar's sign that a page is checking: a spinner while it works,
+/// nothing otherwise, since pages keep themselves current (`KeepsCurrent`).
+/// Updates keeps Check Again because it asks the network, and a Developer
+/// scan can be stopped. Check Again stays in the menu and command bar.
 struct CheckAgainButton: View {
     @ObservedObject var activity: ScanActivity
     let destination: Destination
@@ -98,10 +91,8 @@ struct CheckAgainButton: View {
                 }
                 .help("Stop Scanning")
             } else if isBusy {
-                // Drawn as a toolbar button, so it gets the same round glass
-                // as the others. A bare spinner got the toolbar's glass
-                // stretched to its height, a tall narrow pill. It does
-                // nothing when clicked and is read as text, not a button.
+                // A toolbar button so it gets the same round glass as the others; a bare
+                // spinner got a tall, narrow pill. Inert, and read as text.
                 Button {} label: {
                     Label {
                         Text("Checking")

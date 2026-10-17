@@ -29,9 +29,8 @@ struct FeedbackTextInput: View {
                 }
             }
             ZStack(alignment: .topLeading) {
-                // Gone once the field is in use, not only once it has text:
-                // Dictation writes provisional text the binding has not
-                // received yet, and the prompt sat over it.
+                // Hidden once the field is in use, not only once it has text: Dictation
+                // writes provisional text the binding has not received yet.
                 if text.isEmpty, !isFocused {
                     Text(prompt)
                         .foregroundStyle(Palette.inkTertiary)
@@ -62,14 +61,11 @@ struct FeedbackTextInput: View {
         }
     }
 
-    /// The same Dictation the Dictation key starts: on device, in the
-    /// person's own language, with no permission of Brim's to grant.
-    /// The field takes focus first, because Dictation types into whatever
-    /// has it.
+    /// The system's own on-device Dictation. The field takes focus first,
+    /// because Dictation types into whatever has it.
     private func dictate() {
         isFocused = true
-        // The editor becomes first responder on the next pass, and Dictation
-        // starts in whatever is first responder when it is asked, so it waits.
+        // The editor becomes first responder on the next pass, so Dictation waits.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             NSApp.sendAction(Selector(("startDictation:")), to: nil, from: nil)
         }

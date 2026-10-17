@@ -15,9 +15,8 @@ struct CommandBar: View {
     @FocusState private var isFocused: Bool
     @State private var returnFocus = ReturnFocus()
 
-    /// What had keyboard focus when the bar opened. Held weakly, and given
-    /// back on close only if it is still in the same window: after a page
-    /// change it has gone, and the new page keeps its own focus.
+    /// What had focus when the bar opened. Held weakly and given back only if
+    /// it is still in the same window.
     private final class ReturnFocus {
         weak var window: NSWindow?
         weak var responder: NSResponder?
@@ -89,8 +88,8 @@ struct CommandBar: View {
                         .padding(8)
                     }
                     .frame(maxHeight: 320)
-                    // Eight rows fit; the arrow keys reach twenty. Without
-                    // this the highlight walked off the bottom of the list.
+                    // Eight rows fit and the arrow keys reach twenty, so keep the highlight in
+                    // view.
                     .onChange(of: highlighted) { _, index in
                         guard results.indices.contains(index) else { return }
                         proxy.scrollTo(results[index].id)
@@ -160,8 +159,7 @@ struct CommandBar: View {
                 symbol: destination.icon, run: { shell.go(to: destination) }
             )
         }
-        // Updates is a lens on Apps rather than a page, and the Go menu
-        // reaches it, so the bar does too.
+        // Updates is a lens on Apps rather than a page, but the Go menu reaches it.
         if matches("Updates") {
             results.append(Result(
                 id: "page:updates", title: "Updates", kind: "Page", icon: nil, symbol: "arrow.down.circle",

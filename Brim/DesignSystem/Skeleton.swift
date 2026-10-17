@@ -102,23 +102,15 @@ struct SkeletonRows: View {
 }
 
 extension View {
-    /// Results from the last scan while a new one runs.
-    ///
-    /// The old rows are no longer the answer, so they go grey and stop
-    /// taking clicks the moment a rescan starts, quickly, so the change is
-    /// seen. When the new results arrive they come back to full colour more
-    /// slowly, which is the scan's finish made visible without a word of
-    /// text. A tick or a removal against results that are being replaced
-    /// would act on something that may no longer be true.
+    /// Results from the last scan while a new one runs: greyed and not
+    /// clickable, because acting on rows being replaced could act on something
+    /// no longer true.
     func refreshing(_ isRefreshing: Bool) -> some View {
         modifier(Refreshing(isRefreshing: isRefreshing))
     }
 
-    /// The same results, still usable while a new read runs: scrolling,
-    /// searching, selecting and inspecting stay available, lightly dimmed.
-    /// Only for a page where no action trusts the old rows. In Apps every
-    /// removal builds a fresh plan from the disk with its own approval, and
-    /// each inspection checks its answer still belongs to the selection.
+    /// Like `refreshing`, but the old rows stay usable. Only for pages where no
+    /// action trusts the old rows.
     func refreshingBrowsable(_ isRefreshing: Bool) -> some View {
         modifier(BrowsableRefresh(isRefreshing: isRefreshing))
     }

@@ -4,10 +4,9 @@ import SwiftUI
 
 // swiftformat:disable wrapMultilineStatementBraces
 
-/// One application's registrations in depth: who signed them, what state
-/// they are in, and each record with the evidence for it.
-///
-/// A `List`, so each record is measured once.
+/// One application's registrations in depth: who signed them, their state,
+/// and each record with its evidence. A `List`, so each record is measured
+/// once.
 struct BackgroundInspector: View {
     let entry: BackgroundEntry
     let icon: IconSource
@@ -193,8 +192,7 @@ private struct RecordRow: View {
             }
             if let url = reveals[registration.id] {
                 HoverActions {
-                    // The record's file for a job or an extension, its
-                    // program for the rest: "Target" was wrong for the first.
+                    // The record's file for a job or an extension, its program for the rest.
                     RowAction(symbol: "arrow.up.forward.app", help: "Show in Finder") {
                         shell.reveal([url])
                     }
@@ -215,8 +213,7 @@ private struct RecordRow: View {
         .accessibilityValue(registration.spokenLocation ?? "")
     }
 
-    /// Why Brim cannot remove this, said before it is tried. Once the
-    /// helper can reach it, it stops saying so.
+    /// Why Brim cannot remove this, said before it is tried.
     private var blocked: String? {
         if registration.isStale, let followUp = registration.loginItemsFollowUp {
             return followUp.sentence

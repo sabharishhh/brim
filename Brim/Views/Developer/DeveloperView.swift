@@ -3,14 +3,9 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// Build caches, usually the largest reclaimable thing on a developer's Mac
-/// and the least visible.
-///
-/// Grouped by what clearing each one costs rather than by size, because
-/// that is the question. Clearing Xcode's derived data costs one slow
-/// build; clearing the simulator device set loses every simulator you have
-/// set up. Brim lists only caches it has been taught about and leaves
-/// anything it does not recognise alone.
+/// Build caches, grouped by what clearing each costs rather than by size:
+/// derived data costs one slow build, the simulator device set loses every
+/// simulator. Only caches Brim knows about are listed.
 struct DeveloperView: View {
     @ObservedObject var model: DeveloperModel
     @SwiftUI.Environment(\.brimService) private var service

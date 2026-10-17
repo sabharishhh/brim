@@ -36,8 +36,8 @@ struct InstallerDetails: View {
 
     @ViewBuilder
     private var apps: some View {
-        // An app previewed on its own is the header already; only whether
-        // it replaces one here is new.
+        // An app previewed on its own is the header already; only whether it
+        // replaces an installed one is new.
         if preview.kind == .application, let app = preview.apps.first, let current = app.replacesVersion {
             Label("Replaces version \(current) on this Mac", systemImage: "arrow.triangle.2.circlepath")
                 .font(.brimFacts)
@@ -142,8 +142,7 @@ struct InstallerItemSection: View {
         }
     }
 
-    /// Sizes from a megabyte up. A launch job's few hundred bytes beside
-    /// it said nothing.
+    /// Sizes from a megabyte up.
     private func size(_ item: InstallerPreview.Item) -> String? {
         guard let bytes = item.bytes, bytes >= 1_000_000 else { return nil }
         return ByteText.short(bytes)

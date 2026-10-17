@@ -2,12 +2,8 @@ import AppKit
 import BrimUI
 import SwiftUI
 
-/// Where the window can be: two short groups, plus the Journal on its own,
-/// few enough that the sidebar is read at a glance.
-///
-/// Updates is a lens on Apps (`AppsLens`), because it is a question about
-/// applications. Energy is a place under Your Mac, because it is about
-/// what the Mac is doing now.
+/// Where the window can be: two short groups and the Journal. Updates is a
+/// lens on Apps (`AppsLens`); Energy is under Your Mac.
 enum Destination: String, Hashable, CaseIterable {
     /// The overview of this Mac, and where the window opens.
     case home = "Home"
@@ -22,11 +18,8 @@ enum Destination: String, Hashable, CaseIterable {
     static let brim: [Destination] = [.home, .apps, .leftovers]
     static let yourMac: [Destination] = [.background, .energy, .space, .developer]
 
-    /// The order the person sees, and the only order anything may use.
-    ///
-    /// The sidebar once listed these in one order and the menu numbered
-    /// them from `allCases`, which was a different one, so the shortcuts
-    /// opened the wrong rows. Both read from this.
+    /// The order the person sees, and the only order anything may use: the menu
+    /// once numbered from `allCases` and its shortcuts opened the wrong rows.
     static let displayOrder: [Destination] = brim + yourMac + [.journal]
 
     /// The number a person types with Command to get here.
@@ -55,19 +48,10 @@ enum AppsLens: String, Hashable, CaseIterable {
     case updates = "Updates"
 }
 
-/// A command a view offers to the menu bar, equal to any other with the
-/// same name.
-///
-/// A focused value that is a bare closure can never compare equal to the
-/// one before it, so SwiftUI treated every redraw as a change of focus
-/// state. The scene reads these values to build its menus, so the menus
-/// were rebuilt, the window's root was rebuilt with them, and that redraw
-/// published yet another closure. With Brim frontmost the main thread sat
-/// at 100% doing nothing else, which is what made every list in the app
-/// scroll badly: a sample of an idle window scrolled once showed the loop
-/// still running twenty seconds later, and hiding Brim dropped it to 0%.
-/// The closures captured state storage rather than values, so the one
-/// already delivered stays correct and a new one is not needed.
+/// A command a view offers to the menu bar, equal to any other with the same
+/// name. A bare closure never compares equal to the last one, so SwiftUI saw
+/// every redraw as a focus change, rebuilt the menus and the window, and
+/// kept the main thread at 100% while Brim was frontmost.
 struct FocusedAction<Input>: Equatable {
     let name: String
     let perform: (Input) -> Void
@@ -77,19 +61,14 @@ struct FocusedAction<Input>: Equatable {
     }
 }
 
-/// Lets a section offer "Remove Selected" to the Action menu.
-///
-/// Defined here rather than in the view that provides it, because the
-/// provider changes: this began in the Review queue and moved to Leftovers
-/// when that queue was removed, and the command should not break each time.
+/// Lets a section offer "Remove Selected" to the Action menu. Defined here
+/// because the section providing it may change.
 struct RemoveSelectedActionKey: FocusedValueKey {
     typealias Value = FocusedAction<Void>
 }
 
-/// The commands a page shows in its toolbar, offered to the Action menu as
-/// well. Apple's guidance is that a toolbar item must also be a menu
-/// command, because a toolbar can be hidden or customised; Update All,
-/// emptying the Trash and clearing the Journal were in the toolbar only.
+/// A page's toolbar commands, offered to the Action menu too, because a
+/// toolbar can be hidden or customised.
 struct PageActionsKey: FocusedValueKey {
     typealias Value = [FocusedAction<Void>]
 }
@@ -115,15 +94,12 @@ struct MainSidebar: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Rows are buttons, and the selection is drawn here: an off-white
-        // row with near-black text. A list selection is drawn by AppKit in
-        // the accent, which in Brim is a grey, so it could never be
-        // off-white. Buttons expose as buttons, with the selected trait, so the
-        // sidebar stays operable to VoiceOver; the arrow keys move through
-        // it as a list's would.
+        // Rows are buttons and the selection is drawn here, off-white with
+        // near-black text, which an AppKit list selection in Brim's grey accent
+        // cannot be. Buttons with the selected trait keep the sidebar usable with
+        // VoiceOver, and the arrow keys move through it like a list.
         List {
-            // Home carries Brim's own icon, so a header naming Brim above it
-            // said the same thing twice.
+            // Home carries Brim's own icon, so a header naming Brim repeated it.
             Section {
                 rows(Destination.brim)
             }
@@ -137,9 +113,8 @@ struct MainSidebar: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .background { SidebarBackdrop().ignoresSafeArea() }
-        // A sidebar draws its symbols in the system accent, and the window's
-        // own tint does not reach them: with a red accent every icon here
-        // was red. Each row now colours its own symbol.
+        // A sidebar draws its symbols in the system accent, out of the window
+        // tint's reach, so each row colours its own.
         .listItemTint(.fixed(Palette.snow))
         .focusable()
         .focusEffectDisabled()
@@ -177,14 +152,11 @@ struct MainSidebar: View {
                 HStack {
                     SidebarLabel(destination: destination, isSelected: isSelected)
                     Spacer()
-                    // A fixed slot the spinner fades into. Inserted bare, it
-                    // was laid out during the row's selection animation and
-                    // drew stretched the first time a page was opened.
+                    // A fixed slot the spinner fades into; inserted bare, it drew stretched
+                    // during the selection animation.
                     ZStack {
-                        // Not on the selected row: the toolbar shows the page
-                        // you are on working, and this spinner cannot be
-                        // made dark, so on the off-white row it all but
-                        // disappeared.
+                        // Not on the selected row: the toolbar already shows that page working,
+                        // and the spinner cannot be made dark for the off-white row.
                         if activity.busy.contains(destination), !isSelected {
                             ProgressView()
                                 .controlSize(.mini)
@@ -227,11 +199,8 @@ struct MainSidebar: View {
     }
 }
 
-/// A sidebar row's label. Each icon once bounced, then turned, swung or
-/// breathed, on every change of page, and Apple's guidance is to keep
-/// motion off things people do constantly. What is left answers a choice
-/// once: the chosen row's name grows a little, as it does in System
-/// Settings.
+/// A sidebar row's label. The chosen row's name grows a little, as in System
+/// Settings, and nothing else moves.
 private struct SidebarLabel: View {
     let destination: Destination
     let isSelected: Bool
@@ -243,13 +212,9 @@ private struct SidebarLabel: View {
         Label {
             Text(destination.rawValue)
                 .foregroundStyle(isSelected ? Palette.onSnow : Palette.ink)
-                // 5.5% larger: 13 point text reads as about 13.7. Scaled
-                // rather than set a size larger, so the row's layout does
-                // not change and the names below it do not move; the icon
-                // keeps its size. Only the size moves, over a third of a
-                // second each way: a bolder weight blended through a blur
-                // as it grew, and with the icon dimming at the same moment
-                // the row looked as though it blinked.
+                // 5.5% larger by scale, so the row's layout and the names below it do not
+                // move. Only the size animates; changing weight as well looked like a
+                // blink.
                 .scaleEffect(isSelected ? 1.055 : 1, anchor: .leading)
                 .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: isSelected)
         } icon: {
@@ -262,10 +227,8 @@ private struct SidebarLabel: View {
         }
     }
 
-    /// Apps keeps its small press, which suits a grid of squares. Every
-    /// other icon pressed, bounced or grew too and looked fussy; a dim and
-    /// return in their place read as a blink. They now stay still, and the
-    /// name's growth is the answer to a click.
+    /// Apps keeps its small press, which suits a grid of squares; the other
+    /// icons stay still.
     @ViewBuilder private var icon: some View {
         switch destination {
         case .home:
@@ -283,8 +246,8 @@ private struct SidebarLabel: View {
     }
 }
 
-/// A newer Brim is on GitHub. Brim does not replace itself, so this says
-/// so and opens the release page.
+/// A newer Brim is on GitHub. Brim does not replace itself, so this opens
+/// the release page.
 private struct NewReleaseNotice: View {
     let release: BrimReleaseCheck.Release
 
@@ -304,15 +267,10 @@ private struct NewReleaseNotice: View {
     }
 }
 
-/// The sidebar shows the desktop through it, as System Settings' does.
-///
-/// The window's own background is the opaque canvas, so the sidebar's glass
-/// had nothing behind it but more canvas and read as a flat grey panel. This
-/// is AppKit's sidebar material blended with what is behind the window,
-/// softened by a wash of the canvas so a bright wallpaper tints the sidebar
-/// rather than showing through it. It dims with the window when Brim is not
-/// frontmost, and Reduce Transparency makes it solid, as AppKit does for
-/// every material.
+/// The desktop showing through the sidebar, as in System Settings: AppKit's
+/// sidebar material behind a wash of the canvas, so a bright wallpaper tints
+/// rather than shows through. Dims when Brim is not frontmost, and Reduce
+/// Transparency makes it solid.
 private struct SidebarBackdrop: View {
     var body: some View {
         BehindWindowMaterial()

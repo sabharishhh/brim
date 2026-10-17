@@ -4,10 +4,9 @@ import BrimUI
 import SwiftUI
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// The battery at a glance: charge, whether it is charging, its health, and
-/// the last long sleep with what it cost. Past facts only, never a time
-/// left on the charge (`BatteryLifeProjectionTests`). Read without
-/// sampling, which is the Energy page's to do.
+/// The battery at a glance: charge, charging, health and the last long
+/// sleep. Past facts only, never a time left on the charge. Read without
+/// sampling, which is the Energy page's job.
 struct HomeEnergyCard: View {
     @ObservedObject var energy: EnergyModel
     let action: () -> Void

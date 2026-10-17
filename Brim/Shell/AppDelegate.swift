@@ -3,9 +3,8 @@ import BrimPrivileged
 import Observation
 import SwiftUI
 
-/// Something asked of Brim from outside its window: the Dock, a Shortcut,
-/// Spotlight. Held here until a window can answer it, because the request
-/// often arrives while Brim is still launching.
+/// A request from outside the window (the Dock, a Shortcut, Spotlight),
+/// held until a window can answer it, since it often arrives during launch.
 @MainActor
 @Observable
 final class ExternalRequests {
@@ -36,18 +35,15 @@ final class ExternalRequests {
 
 /// The Dock: its menu, and applications dropped on its icon.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Brim is dark whatever the system is set to. Set on the application
-    /// before any window exists, so every window, sheet, menu and alert,
-    /// Settings included, is drawn dark from its first frame.
+    /// Dark whatever the system is set to. Set before any window exists, so
+    /// every window, sheet, menu and alert is dark from its first frame.
     func applicationWillFinishLaunching(_: Notification) {
         NSApp.appearance = NSAppearance(named: .darkAqua)
     }
 
     /// SwiftUI refuses to quit while a sheet is open, without asking this
-    /// delegate: with an installer's preview up, Quit in the menu, the Dock
-    /// and a script all did nothing. Brim takes Quit first, asks its sheets
-    /// to close (a removal that is running keeps its sheet, and so keeps
-    /// Brim open), then quits.
+    /// delegate. Brim takes Quit first, asks its sheets to close, then quits.
+    /// A running removal keeps its sheet, and so keeps Brim open.
     func applicationDidFinishLaunching(_: Notification) {
         let quit = NSApp.mainMenu?.items.first?.submenu?.items.first {
             $0.action == #selector(NSApplication.terminate(_:))
@@ -87,10 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    /// An application or installer dropped on the Dock icon, or opened
-    /// with Brim from Finder, is handled as a drop on the window is. Brim
-    /// declares these as types it can view, ranked so it never becomes the
-    /// default for opening one.
+    /// An app or installer dropped on the Dock icon, or opened with Brim from
+    /// Finder, is handled like a drop on the window. Brim is ranked so it never
+    /// becomes the default app for these types.
     func application(_: NSApplication, open urls: [URL]) {
         let opened = urls.filter { ["app", "pkg", "mpkg", "dmg"].contains($0.pathExtension.lowercased()) }
         guard !opened.isEmpty else { return }
@@ -109,13 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Quit, asked of the sheets first. Closing a sheet from AppKit does not
-/// work: SwiftUI puts it straight back, because its own state still says
-/// it is shown. So each sheet closes itself (`closesForQuit`).
-///
-/// Every quit goes through here, Brim's own included: reopening for Full
-/// Disk Access and removing Brim called `terminate` directly, which SwiftUI
-/// ignores while a sheet is open, and setup's Reopen Brim is in a sheet.
+/// Quit, asked of the sheets first. A sheet closed from AppKit is put
+/// straight back because SwiftUI's state still shows it, so each sheet
+/// closes itself (`closesForQuit`). Every quit goes through here.
 @MainActor
 @Observable
 final class QuitRequest {

@@ -1,13 +1,9 @@
 import SwiftUI
 import TipKit
 
-/// The one thing worth learning once, shown once and never again
-/// (plan §14).
-///
-/// TipKit only retires a tip that is closed with its own button, so a tip
-/// left open came back every time the Tray appeared, launch after launch.
-/// It is now shown at most once, and doing the thing it describes retires
-/// it at once (`BrimTips.learned`).
+/// Shown at most once. TipKit retires a tip only when it is closed with its
+/// own button, so doing what it describes also retires it
+/// (`BrimTips.learned`).
 struct TrayTip: Tip {
     var options: [any TipOption] {
         [MaxDisplayCount(1)]
@@ -32,8 +28,8 @@ enum BrimTips {
         tip.invalidate(reason: .actionPerformed)
     }
 
-    /// Once per launch, before any view asks for a tip. Not under a test
-    /// run, where a tip's popover would be a window nobody closes.
+    /// Once per launch, before any view asks for a tip. Skipped under tests,
+    /// where a tip's popover would be a window nobody closes.
     static func configure() {
         guard NSClassFromString("XCTestCase") == nil else { return }
         try? Tips.configure([.displayFrequency(.immediate)])

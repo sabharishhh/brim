@@ -2,13 +2,11 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// One install script, for someone who has never read one.
-///
-/// The model's plain summary leads, then Brim's own list of what the script
-/// changes, each with its symbol. The lines themselves, with Brim's
-/// technical phrase, the model's words for each and the code, open under
-/// Show Details for whoever wants them. The model's words never replace
-/// Brim's: a script can try to steer what is said about it.
+/// One install script, for someone who has never read one. The model's
+/// summary leads, then Brim's own list of what the script changes. The lines,
+/// with Brim's phrase, the model's words and the code, are under Show
+/// Details. The model never replaces Brim's words: a script can try to steer
+/// what is said about it.
 struct ScriptCard: View {
     let script: InstallerPreview.Script
     @ObservedObject var scriptLines: ScriptLinesModel
@@ -40,8 +38,7 @@ struct ScriptCard: View {
                 .accessibilityLabel(showsDetails ? "Hide details" : "Show details")
                 if showsDetails {
                     lines
-                        // A fade: sliding from the top drew the panel over the list
-                        // above it while the card grew.
+                        // A fade; sliding from the top drew the panel over the list above.
                         .transition(.opacity)
                 }
             }

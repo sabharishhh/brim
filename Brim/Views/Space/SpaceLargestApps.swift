@@ -2,14 +2,9 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// The apps that take the most, counting what each keeps outside its
-/// bundle.
-///
-/// Ranked by bundle alone, this list hid where the space was: Claude's
-/// bundle is 0.9 GB and the data it keeps is 13 GB, WhatsApp's 0.7 GB and
-/// 4.1 GB. Each bar is two tones on one scale, the bundle in off-white and
-/// its data in grey, so a small app with a large store reads as what it
-/// is. Until the data is measured the list ranks by bundle and says so.
+/// The apps that take the most, counting what each keeps outside its bundle.
+/// Each bar shows the bundle in off-white and its data in grey on one scale.
+/// Until data is measured, the list ranks by bundle and says so.
 struct SpaceLargestApps: View {
     @ObservedObject var applications: ApplicationsModel
     @ObservedObject var appData: AppDataModel
