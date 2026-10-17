@@ -57,28 +57,28 @@ final class BackgroundItemSurfaceTests: XCTestCase {
 
          #1:
                          UUID: AAAA
-                         Name: AppCleaner
+                         Name: Sample
                          Type: app (0x2)
-                   Identifier: 2.net.freemacsoft.AppCleaner
-                          URL: /Applications/AppCleaner.app
-            Bundle Identifier: net.freemacsoft.AppCleaner
+                   Identifier: 2.com.example.Sample
+                          URL: /Applications/Sample.app
+            Bundle Identifier: com.example.Sample
 
          #2:
                          UUID: BBBB
-                         Name: AppCleaner SmartDelete
+                         Name: Sample Helper
                          Type: login item (0x4)
-                   Identifier: 4.net.freemacsoft.AppCleaner-SmartDelete
-                          URL: Contents/Library/LoginItems/AppCleaner SmartDelete.app
-            Bundle Identifier: net.freemacsoft.AppCleaner-SmartDelete
-            Parent Identifier: 2.net.freemacsoft.AppCleaner
+                   Identifier: 4.com.example.Sample-Helper
+                          URL: Contents/Library/LoginItems/Sample Helper.app
+            Bundle Identifier: com.example.Sample-Helper
+            Parent Identifier: 2.com.example.Sample
         """)
 
         let found = await surface(text).registrations(in: root)
-        let child = try XCTUnwrap(found.first { $0.label == "AppCleaner SmartDelete" })
+        let child = try XCTUnwrap(found.first { $0.label == "Sample Helper" })
 
         XCTAssertEqual(
             child.programPath,
-            "/Applications/AppCleaner.app/Contents/Library/LoginItems/AppCleaner SmartDelete.app",
+            "/Applications/Sample.app/Contents/Library/LoginItems/Sample Helper.app",
             "An embedded item must resolve against its parent bundle"
         )
     }

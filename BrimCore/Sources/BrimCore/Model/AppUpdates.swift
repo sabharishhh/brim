@@ -242,9 +242,8 @@ public enum UpdateOutcome: Codable, Equatable, Sendable {
     case failed(String)
 }
 
-/// Orders version strings the way Sparkle does, closely enough: numbers
-/// compare as numbers, a pre-release word sorts below its release, and
-/// separators are ignored.
+/// Orders version strings: numbers compare as numbers, a pre-release word
+/// sorts below its release, and separators are ignored.
 public enum VersionOrder {
     public static func compare(_ left: String, _ right: String) -> ComparisonResult {
         let leftTokens = tokens(left), rightTokens = tokens(right)

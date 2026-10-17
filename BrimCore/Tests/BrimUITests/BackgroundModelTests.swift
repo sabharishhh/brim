@@ -27,7 +27,7 @@ final class BackgroundSelectionTests: XCTestCase {
         XCTAssertTrue(BackgroundModel.isRemovable(
             job("com.google.keystone.agent", record: "/Library/LaunchAgents/x.plist")
         ))
-        XCTAssertFalse(BackgroundModel.isRemovable(backgroundItem("AppCleaner")),
+        XCTAssertFalse(BackgroundModel.isRemovable(backgroundItem("Sample")),
                        "macOS owns that database and offers no way to remove one row")
     }
 
@@ -58,7 +58,7 @@ final class BackgroundSelectionTests: XCTestCase {
 
     func testAGroupWithNothingRemovableCannotBePicked() {
         let model = BackgroundModel()
-        let group = RegistrationGroup.group([backgroundItem("AppCleaner")])[0]
+        let group = RegistrationGroup.group([backgroundItem("Sample")])[0]
         XCTAssertFalse(model.canSelect(group))
     }
 

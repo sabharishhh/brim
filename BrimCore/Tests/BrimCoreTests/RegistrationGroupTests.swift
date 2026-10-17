@@ -111,8 +111,8 @@ final class RegistrationGroupTests: XCTestCase {
         // Background items macOS drops by itself shortly after are reported as
         // clearing themselves.
         let sweeps = RegistrationGroup.group([
-            item(.backgroundItem, "AppCleaner", owner: "net.freemacsoft.AppCleaner",
-                 program: "/Applications/AppCleaner.app", exists: false)
+            item(.backgroundItem, "Sample", owner: "com.example.Sample",
+                 program: "/Applications/Sample.app", exists: false)
         ])
         XCTAssertFalse(sweeps[0].staleClearsItself)
 

@@ -9,7 +9,7 @@ final class LocationInventoryTests: XCTestCase {
         // Coverage, not a count, but nineteen was measurably too few.
         XCTAssertGreaterThan(
             LocationInventory.standard.locations.count, 40,
-            "The inventory is back to being narrower than a competitor's"
+            "The inventory has shrunk below the locations Brim needs to cover"
         )
     }
 

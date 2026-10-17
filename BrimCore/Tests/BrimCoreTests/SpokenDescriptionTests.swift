@@ -47,7 +47,7 @@ final class SpokenDescriptionTests: XCTestCase {
     }
 
     func testAListedBackgroundItemDoesNotPromiseAutomaticRemoval() {
-        let item = registration("AppCleaner", kind: .backgroundItem, exists: false)
+        let item = registration("Sample", kind: .backgroundItem, exists: false)
         XCTAssertFalse(item.spokenDescription.contains("macOS will drop this"))
         XCTAssertTrue(item.spokenDescription.contains("The target is missing"))
     }

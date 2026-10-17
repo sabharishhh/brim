@@ -69,11 +69,11 @@ final class BTMStoreTests: XCTestCase {
     func testRecordsComeBackOutOfAnArchive() throws {
         let directory = try makeStore(items: [
             FixtureItem(
-                name: "AppCleaner", developerName: "Julien Ramseier",
-                bundleIdentifier: "net.freemacsoft.AppCleaner",
-                identifier: "2.net.freemacsoft.AppCleaner",
+                name: "Sample", developerName: "Example Developer",
+                bundleIdentifier: "com.example.Sample",
+                identifier: "2.com.example.Sample",
                 container: nil,
-                url: URL(string: "file:///Applications/AppCleaner.app/"),
+                url: URL(string: "file:///Applications/Sample.app/"),
                 type: 0x2, disposition: 0x3
             )
         ])
@@ -81,11 +81,11 @@ final class BTMStoreTests: XCTestCase {
         let records = try XCTUnwrap(BTMStore(directory: directory, currentUser: { Self.thisUser }).records())
 
         XCTAssertEqual(records.count, 1)
-        XCTAssertEqual(records[0].name, "AppCleaner")
-        XCTAssertEqual(records[0].developerName, "Julien Ramseier")
-        XCTAssertEqual(records[0].bundleIdentifier, "net.freemacsoft.AppCleaner")
-        XCTAssertEqual(records[0].identifier, "2.net.freemacsoft.AppCleaner")
-        XCTAssertEqual(records[0].rawURLPath, "/Applications/AppCleaner.app")
+        XCTAssertEqual(records[0].name, "Sample")
+        XCTAssertEqual(records[0].developerName, "Example Developer")
+        XCTAssertEqual(records[0].bundleIdentifier, "com.example.Sample")
+        XCTAssertEqual(records[0].identifier, "2.com.example.Sample")
+        XCTAssertEqual(records[0].rawURLPath, "/Applications/Sample.app")
         XCTAssertEqual(records[0].type, "app")
         XCTAssertEqual(records[0].disposition, "on, allowed")
     }
@@ -95,11 +95,11 @@ final class BTMStoreTests: XCTestCase {
         // be a file at the root of the disk.
         let directory = try makeStore(items: [
             FixtureItem(
-                name: "AppCleaner SmartDelete", developerName: nil,
-                bundleIdentifier: "net.freemacsoft.AppCleaner-SmartDelete",
-                identifier: "4.net.freemacsoft.AppCleaner-SmartDelete",
-                container: "2.net.freemacsoft.AppCleaner",
-                url: URL(string: "Contents/Library/LoginItems/AppCleaner%20SmartDelete.app",
+                name: "Sample Helper", developerName: nil,
+                bundleIdentifier: "com.example.Sample-Helper",
+                identifier: "4.com.example.Sample-Helper",
+                container: "2.com.example.Sample",
+                url: URL(string: "Contents/Library/LoginItems/Sample%20Helper.app",
                          relativeTo: URL(string: "file:///")),
                 type: 0x4, disposition: 0x9
             )
@@ -107,9 +107,9 @@ final class BTMStoreTests: XCTestCase {
 
         let records = try XCTUnwrap(BTMStore(directory: directory, currentUser: { Self.thisUser }).records())
 
-        XCTAssertEqual(records[0].rawURLPath, "Contents/Library/LoginItems/AppCleaner SmartDelete.app")
+        XCTAssertEqual(records[0].rawURLPath, "Contents/Library/LoginItems/Sample Helper.app")
         XCTAssertTrue(records[0].hasRelativeURL)
-        XCTAssertEqual(records[0].parentIdentifier, "2.net.freemacsoft.AppCleaner")
+        XCTAssertEqual(records[0].parentIdentifier, "2.com.example.Sample")
     }
 
     func testAnUnreadableStoreIsNotAnEmptyOne() {

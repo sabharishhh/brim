@@ -203,7 +203,7 @@ final class LeftoverGroupingTests: XCTestCase {
     /// location".
     func testTheDarwinPerUserFoldersAreRecognisedAndNotCalledUnrecognised() {
         let cache = URL(fileURLWithPath:
-            "/private/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/C/net.freemacsoft.AppCleaner")
+            "/private/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/C/com.example.Sample")
         let temp = URL(fileURLWithPath:
             "/var/folders/s9/_zb8zd8j2yzd8kx5xfqbyyj80000gn/T/com.example.tool")
 

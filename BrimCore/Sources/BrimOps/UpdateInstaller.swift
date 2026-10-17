@@ -5,9 +5,9 @@ import Foundation
 import Security
 
 /// Puts a newer version of an app in place of the installed one. The
-/// installed copy is the trust anchor, as in Sparkle: the download must match
-/// what its source published, and the app inside must satisfy the installed
-/// app's designated requirement (identifier and developer). It must also
+/// installed copy is the trust anchor: the download must match what its
+/// source published, and the app inside must satisfy the installed app's
+/// designated requirement (identifier and developer). It must also
 /// pass Gatekeeper, be newer and run on this Mac, all settled before the
 /// installed app is asked to quit.
 public struct UpdateInstaller: Sendable {
