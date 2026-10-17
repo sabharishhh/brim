@@ -45,7 +45,7 @@ struct InstallerPreviewSheet: View {
             footer
         }
         // An explicit size, never an ideal one, so the list's measurement
-        // never feeds the window's (`CLAUDE.md`, on scrolling sheets). It
+        // never feeds the window's. It
         // follows what the sheet holds, up to the old fixed height: a disk
         // image with one app sat in 660 points with most of them empty.
         .frame(width: 620, height: min(max(contentHeight + Self.footerHeight, 300), 660))

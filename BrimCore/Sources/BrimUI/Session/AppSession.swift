@@ -42,7 +42,7 @@ public extension Freshness {
     }
 
     /// Constructed once. Building one per row per frame is what made the
-    /// history list heavy (`CLAUDE.md`).
+    /// history list heavy.
     private static let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
