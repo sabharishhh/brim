@@ -16,7 +16,7 @@ nonisolated struct InstalledAppEntity: AppEntity {
 }
 
 /// The applications in the two Applications folders. Read by path, not
-/// URL: `contentsOfDirectory(at:)` skips Safari (`CLAUDE.md`).
+/// URL: `contentsOfDirectory(at:)` skips Safari, which is a symbolic link.
 nonisolated struct InstalledAppQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [InstalledAppEntity] {
         identifiers.compactMap { path in
@@ -48,8 +48,8 @@ nonisolated struct InstalledAppQuery: EntityStringQuery {
 }
 
 /// "Remove an app with Brim". Opens that app's review in Brim's window and
-/// stops there. Approval comes from a person in the window or not at all
-/// (`CLAUDE.md`), and an intent is neither.
+/// stops there. Approval comes from a person in the window or not at all,
+/// and an intent is neither.
 struct RemoveAppIntent: AppIntent {
     static let title: LocalizedStringResource = "Remove an App"
     static let description = IntentDescription("Opens the app's review in Brim")

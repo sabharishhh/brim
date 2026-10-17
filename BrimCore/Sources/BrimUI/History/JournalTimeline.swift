@@ -20,7 +20,7 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     /// entry is made, so a row never touches the disk while it draws.
     public let isPresent: Bool
     /// When it happened, as its row says it: the time of day, written once
-    /// when the entry is made (`CLAUDE.md`, on formatters). `groups` adds
+    /// when the entry is made, not each time the row draws. `groups` adds
     /// the day where the heading does not give it.
     public internal(set) var time: String
 

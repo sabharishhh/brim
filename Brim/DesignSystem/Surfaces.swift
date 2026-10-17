@@ -115,7 +115,7 @@ struct FreshnessLabel: View {
 ///
 /// Three different facts, kept apart on purpose: Brim looked and found
 /// nothing, Brim has not looked, and Brim could not look. A zero that was
-/// never measured is a lie (`CLAUDE.md`).
+/// never measured is a lie.
 struct EmptyState: View {
     let symbol: String
     let title: String

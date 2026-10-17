@@ -22,7 +22,7 @@ import SQLite3
 /// names its pane and whether it is on, and opens that pane.
 ///
 /// Read only. The privacy database belongs to macOS; Brim never writes to
-/// it (`CLAUDE.md`: no private database edits), so each row is report-only
+/// it, so each row is report-only
 /// and names the pane in System Settings where it can be removed.
 public struct PrivacyGrantSurface: RegistrationSurface {
     public let kind: Registration.Kind = .privacyGrant
