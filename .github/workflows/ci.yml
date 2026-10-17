@@ -115,4 +115,12 @@ jobs:
       - name: Reject added lint violations
         env:
           LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
-        run: python3 scripts/lint_changes.py --base "$LINT_BASE"
+        run: |
+          base=$LINT_BASE
+          # A force-push or a new branch leaves no earlier commit to compare
+          # with, so use the parent of this one.
+          if ! git rev-parse --verify --quiet "$base^{commit}" > /dev/null; then
+            echo "Lint base $base is not in this history; comparing with HEAD^."
+            base=HEAD^
+          fi
+          python3 scripts/lint_changes.py --base "$base"
