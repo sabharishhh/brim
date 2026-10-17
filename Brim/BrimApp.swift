@@ -166,7 +166,7 @@ private let log = BrimLog.make("app")
         // (`AdaptivePanes`), and Home's cards wrap two by two.
         //
         // A hosted AppKit table once made the window ignore this and open
-        // at half the display (`CLAUDE.md`, on greedy representables).
+        // at half the display.
         .defaultSize(width: 1200, height: 800)
         .handlesExternalEvents(matching: ["*"])
         .windowResizability(.contentMinSize)

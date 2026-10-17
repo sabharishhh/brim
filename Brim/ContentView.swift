@@ -129,7 +129,7 @@ struct ContentView: View {
         // list column (440) and a review pane (440), with room to spare.
         // Every column's minimum must add up to less than this, or a column
         // asking for more than the window has grows the window and the new
-        // size is saved (`CLAUDE.md`, on minimum widths ratcheting).
+        // size is saved.
         .frame(minWidth: Metrics.windowMinWidth, minHeight: Metrics.windowMinHeight)
         .focusedSceneValue(\.shell, shell)
         .environment(shell)
@@ -364,7 +364,7 @@ private struct ActivityLine: View {
 /// Remnants acknowledges them, which clears it. It counted every path,
 /// Unknown items included, under a setting that says removed apps. Its own
 /// view, observing the model directly: read through `SectionModels` it
-/// would never hear of a change (`CLAUDE.md`, on nested observable objects).
+/// would never hear of a change: nested observable objects do not pass it up.
 private struct DockBadge: View {
     @ObservedObject var leftovers: LeftoversModel
     let isOn: Bool

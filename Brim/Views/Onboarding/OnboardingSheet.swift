@@ -47,8 +47,7 @@ struct OnboardingSheet: View {
             footer
         }
         .padding(28)
-        // Fixed, so the sheet never asks the window to re-measure it
-        // (`CLAUDE.md`, on scrolling review sheets).
+        // Fixed, so the sheet never asks the window to re-measure it.
         .frame(width: 560, height: 470)
         .onAppear { access.startObserving() }
         .onDisappear { access.stopObserving() }
