@@ -9,8 +9,7 @@ public extension Registration {
     /// `deleteLastPathComponent`. That walk stopped only at "/", and a
     /// launch job is somebody else's file: a `Program` ending in ".."
     /// grows with every step instead of reaching the root, so drawing
-    /// the Background page would never finish (`CLAUDE.md`, on parent
-    /// folder walks).
+    /// the Background page would never finish.
     var enclosingApplication: URL? {
         guard let programPath, programPath.hasPrefix("/") else { return nil }
         let components = URL(fileURLWithPath: programPath).standardizedFileURL.pathComponents

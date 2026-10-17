@@ -17,9 +17,9 @@ import Security
 /// which is the unmeasured zero this project has a `RegistrationCoverage`
 /// type to prevent.
 ///
-/// `CodeSignature` in `BrimScan` had the flags right the whole time. Same
-/// fact, two readings, two modules: the hazard `CLAUDE.md` names, and the
-/// second time this repository has been bitten by it in one task.
+/// `CodeSignature` in `BrimScan` had the flags right the whole time. When
+/// one fact is read in two modules, a test has to hold the two readings to
+/// one answer, and this was the second time that went wrong in one task.
 final class SigningInformationTests: XCTestCase {
 
     /// The flags are a constant, so the invariant can be checked by reading
