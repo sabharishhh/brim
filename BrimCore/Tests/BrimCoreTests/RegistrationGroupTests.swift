@@ -1,12 +1,9 @@
 import BrimCore
 import XCTest
 
-/// Grouping the background list by application.
-///
-/// Each case here is a row a user pointed at and said it looked like a
-/// duplicate. None of them were duplicates. They were separate records
-/// listed by mechanism instead of by owner, which is the same failure the
-/// leftovers list had.
+/// Grouping the background list by application. Each case was a row someone
+/// took for a duplicate: separate records listed by mechanism instead of
+/// by owner.
 final class RegistrationGroupTests: XCTestCase {
     private func item(
         _ kind: Registration.Kind, _ label: String,
@@ -20,13 +17,8 @@ final class RegistrationGroupTests: XCTestCase {
         )
     }
 
-    /// Every app extension on this Mac headed its own group with its own
-    /// label: "NotificationService" for Prime Video's, "OpenInIINA" for
-    /// IINA's, "Intents" and "ServiceExtension" for WhatsApp's. None of those
-    /// records points at a `.app`, because each points at the `.appex` inside
-    /// one, so the app-bundle check missed them and the shortest-label
-    /// tiebreak named the group after the plug-in. A person scanning that
-    /// list cannot tell what any of them is.
+    /// An app extension points at the `.appex` inside an app, so it is named for
+    /// that app, not its own label ("NotificationService").
     func testAnExtensionIsNamedAfterTheApplicationItLivesIn() {
         let groups = RegistrationGroup.group([
             item(.appExtension, "NotificationService", owner: "com.amazon.aiv.AIVApp.NotificationService",
@@ -38,9 +30,7 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testTheApplicationsOwnNameStillWinsOverThePath() {
-        // Where a record does point at the bundle, its label is the better
-        // name: it is what the developer called the product, not what the
-        // folder is called.
+        // Where a record points at the bundle, its label is the better name.
         let groups = RegistrationGroup.group([
             item(.backgroundItem, "Visual Studio Code", owner: "com.microsoft.VSCode",
                  program: "/Applications/Code.app"),
@@ -59,9 +49,7 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testAnAppAndItsBackgroundTasksAreOneEntry() {
-        // Visual Studio Code was listed twice, once as itself and once as
-        // "Visual Studio Code - background tasks", with nothing on screen
-        // connecting them.
+        // An app and its background tasks are one group.
         let groups = RegistrationGroup.group([
             item(.backgroundItem, "Visual Studio Code", owner: "com.microsoft.VSCode",
                  program: "/Applications/Visual Studio Code.app"),
@@ -75,8 +63,7 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testAHelperWithItsOwnIdentityStillSitsUnderItsApp() {
-        // ChatGPT's dock tile plugin has a bundle id of its own. Attributing
-        // it to itself split one application in two.
+        // A dock tile plugin with its own bundle id still belongs to its app.
         let groups = RegistrationGroup.group([
             item(.backgroundItem, "ChatGPT", owner: "com.openai.codex",
                  program: "/Applications/ChatGPT.app"),
@@ -89,9 +76,8 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testTheSameJobInTwoDomainsStaysTwoRowsUnderOneOwner() {
-        // Keystone installs each job twice, once for the account and once
-        // for the machine. They are two real files and must both be shown,
-        // but they belong to one piece of software.
+        // The same job installed for the account and the machine: two real files,
+        // one piece of software.
         let groups = RegistrationGroup.group([
             item(.launchdJob, "com.google.keystone.agent", owner: "com.google.keystone.agent",
                  record: "/Users/someone/Library/LaunchAgents/com.google.keystone.agent.plist"),
@@ -106,9 +92,7 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testTwoJobsFromOneVendorAreNotMergedOnTheirNames() {
-        // com.google.keystone.agent and com.google.keystone.xpcservice share
-        // a prefix and nothing else. Merging on that would be a guess, and
-        // the rule everywhere else in Brim is evidence over resemblance.
+        // Two jobs sharing only a prefix stay apart; merging would be a guess.
         let groups = RegistrationGroup.group([
             item(.launchdJob, "com.google.keystone.agent", owner: "com.google.keystone.agent"),
             item(.launchdJob, "com.google.keystone.xpcservice", owner: "com.google.keystone.xpcservice")
@@ -124,11 +108,11 @@ final class RegistrationGroupTests: XCTestCase {
     }
 
     func testMissingBackgroundTargetsDoNotPromiseAutomaticCollection() {
-        // The AppCleaner incident: two background items reported as left
-        // behind, which macOS dropped by itself a couple of minutes later.
+        // Background items macOS drops by itself shortly after are reported as
+        // clearing themselves.
         let sweeps = RegistrationGroup.group([
-            item(.backgroundItem, "AppCleaner", owner: "net.freemacsoft.AppCleaner",
-                 program: "/Applications/AppCleaner.app", exists: false)
+            item(.backgroundItem, "Sample", owner: "com.example.Sample",
+                 program: "/Applications/Sample.app", exists: false)
         ])
         XCTAssertFalse(sweeps[0].staleClearsItself)
 
@@ -150,12 +134,8 @@ final class RegistrationGroupTests: XCTestCase {
     }
 }
 
-/// A launchd job file named for removal has to be unloaded first.
-///
-/// The Background section names plist paths directly, with no application
-/// to discover them from. Planned as ordinary files they would be trashed
-/// while still loaded: gone from disk, still running, and nothing left to
-/// explain why.
+/// A launchd job file named for removal is unloaded first, or it is gone
+/// from disk and still running.
 final class LaunchdJobFileTests: XCTestCase {
     func testJobFilesAreRecognisedByWhereTheyLive() {
         let agents = "/Users/someone/Library/LaunchAgents/com.google.keystone.agent.plist"
@@ -165,8 +145,8 @@ final class LaunchdJobFileTests: XCTestCase {
     }
 
     func testAPlistSomewhereElseIsJustAFile() {
-        // launchd loads what is in its directories and ignores the rest,
-        // so a preferences plist is not a job however it is named.
+        // launchd loads only its own folders, so a preferences plist is not a job
+        // however it is named.
         let preference = "/Users/someone/Library/Preferences/com.google.keystone.agent.plist"
         XCTAssertFalse(LaunchdJobFile.isOne(URL(fileURLWithPath: preference)))
         XCTAssertFalse(LaunchdJobFile.isOne(URL(fileURLWithPath: "/Library/LaunchAgents/readme.txt")))

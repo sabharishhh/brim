@@ -47,10 +47,7 @@ final class SafetyEngineTests: XCTestCase {
         XCTAssertTrue(reasonSystem.contains("strictly protected"))
         XCTAssertEqual(evaluated.items[0].costOfError, .high)
         
-        // 1: Tier S is Shared, so it leaves the selection and cannot
-        // re-enter it. This used to expect `.selected`, on the reading
-        // that S meant "cryptographically guaranteed" and the veto engine
-        // would sort exclusions out afterwards. S is the veto.
+        // 1: Tier S is Shared, so it leaves the selection and cannot re-enter it.
         guard case .excluded(let reasonShared) = evaluated.items[1].selection else {
             XCTFail("Tier S must never be selected")
             return
@@ -61,9 +58,8 @@ final class SafetyEngineTests: XCTestCase {
         XCTAssertEqual(evaluated.items[2].selection, .selected)
         XCTAssertEqual(evaluated.items[2].costOfError, .medium)
         
-        // 3: A cache folder named for the application is its own. The same
-        // name outside its data folders stays a suggestion, which
-        // `NameMatchingTests` holds.
+        // 3: A cache folder named for the application is its own. The same name
+        // outside its data folders stays a suggestion (`NameMatchingTests`).
         XCTAssertEqual(evaluated.items[3].selection, .selected)
         XCTAssertEqual(evaluated.items[3].costOfError, .medium)
     }

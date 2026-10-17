@@ -2,12 +2,8 @@ import Foundation
 import BrimProtocol
 import BrimService
 
-/// The approval round trip in one call.
-///
-/// Most of these tests are about what happens after a person has said yes,
-/// not about the gate itself. Asking and granting are two steps now, on
-/// purpose, and this keeps that from being restated in forty places.
-/// `ApprovalGateTests` is where the two steps are examined separately.
+/// Request and grant in one call, for tests about what happens after a yes.
+/// `ApprovalGateTests` examines the two steps separately.
 extension BrimServiceProtocol {
     func approvedToken(planId: UUID, requester: String) async throws -> ApprovalToken {
         let receipt = try await requestApproval(planId: planId, requesterIdentity: requester)
@@ -19,8 +15,7 @@ extension BrimServiceProtocol {
 }
 
 extension ApprovalToken {
-    /// A token nobody minted. Well formed, and worth nothing: the store
-    /// has never seen this nonce, so `apply` refuses it.
+    /// A well-formed token nobody minted: `apply` refuses it.
     static func forged(
         planHash: String = "not-a-real-hash", requester: String = "attacker"
     ) -> ApprovalToken {

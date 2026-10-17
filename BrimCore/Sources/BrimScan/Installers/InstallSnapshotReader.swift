@@ -3,11 +3,9 @@ import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
 /// Lists every place software puts things, for one side of a recording.
-///
-/// Directory listings only, no sizes and no walks, so a snapshot of the
-/// whole inventory takes a fraction of a second. The locations are
-/// `LocationInventory`'s, the same table removal and Remnants use, so a
-/// recording looks where Brim would later look.
+/// Directory listings only, so it takes a fraction of a second. The
+/// locations are `LocationInventory`'s, so a recording looks where Brim
+/// later looks.
 public struct InstallSnapshotReader: Sendable {
     let root: FileSystemRoot
     let backgroundItems: @Sendable () -> [BTMRecord]?
@@ -21,8 +19,8 @@ public struct InstallSnapshotReader: Sendable {
         self.backgroundItems = backgroundItems
     }
 
-    /// What Brim itself is called, from its own bundle, so nothing here
-    /// carries a list of its identifiers (`SafetyChecker` does the same).
+    /// What Brim itself is called, from its own bundle, so nothing here lists
+    /// its identifiers.
     public static func ownNames(of bundle: URL) -> Set<String> {
         let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
         return Set([info?["CFBundleIdentifier"] as? String, info?["CFBundleName"] as? String,
@@ -78,10 +76,9 @@ public struct InstallSnapshotReader: Sendable {
                                unreadable: unreadable.sorted())
     }
 
-    /// macOS writes its own entries constantly, whatever is being
-    /// installed. A folder a system service keeps for an app
-    /// (`com.apple.WebKit.Networking+com.example.app`) is the app's, so it
-    /// stays.
+    /// macOS writes its own entries constantly. A folder a system service keeps
+    /// for an app (`com.apple.WebKit.Networking+com.example.app`) is the app's,
+    /// so it stays.
     static func isNoise(_ name: String) -> Bool {
         if name == ".DS_Store" || name == ".localized" || name == ".Trash" {
             return true
@@ -89,8 +86,8 @@ public struct InstallSnapshotReader: Sendable {
         return name.lowercased().hasPrefix("com.apple.") && !name.contains("+")
     }
 
-    /// Brim's own folders change because Brim is recording, and its root
-    /// owned one cannot even be listed.
+    /// Brim's own folders change because Brim is recording, and its root-owned
+    /// one cannot be listed.
     func isOwn(_ name: String) -> Bool {
         let lower = name.lowercased()
         return own.contains(lower) || own.contains { lower.hasPrefix($0 + ".") }

@@ -1,13 +1,10 @@
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// The places software puts things, listed at one moment.
-///
-/// Paths only: the entries of every location in `LocationInventory`, one
-/// level deeper where a developer's folder holds a product's, the home
-/// folder's dot folders, and the background items macOS has accepted.
-/// Recording an install is two of these and a subtraction. Nothing runs
-/// between them, including while Brim is closed.
+/// The places software puts things, listed at one moment: every location in
+/// `LocationInventory`, a level deeper inside developer folders, the home
+/// folder's dot folders and the background items macOS has accepted.
+/// Recording an install is two of these and a subtraction.
 public struct InstallSnapshot: Codable, Sendable, Equatable {
     /// An application found in an Applications folder.
     public struct AppMark: Codable, Sendable, Equatable {

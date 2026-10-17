@@ -2,14 +2,8 @@ import BrimOps
 @testable import BrimService
 import XCTest
 
-/// The result says what happened, from what was recorded when it happened.
-///
-/// The incident: three links in `~/.local/bin` were skipped with
-/// `needs_helper_not_set_up` written in the journal, and the result screen
-/// said "Brim could not remove them and macOS did not say why", followed
-/// by three bare names and no folder. The message was worked out again
-/// after the fact from the folder's permissions, which allowed the removal,
-/// so it had nothing to say. The journal knew exactly why.
+/// The result says what happened from what the journal recorded at the
+/// time, not from permissions worked out again afterwards.
 final class RecordedOutcomeCopyTests: XCTestCase {
     private let folder = "/Users/someone/.local/bin"
 
@@ -40,9 +34,8 @@ final class RecordedOutcomeCopyTests: XCTestCase {
         XCTAssertTrue(text.contains("It still leads to /bin/sh."), text)
     }
 
-    /// IINA's preferences were removed and written back empty by
-    /// `cfprefsd`, and the result said nothing was recorded to say why
-    /// when the journal said the removal had worked.
+    /// Preferences removed and written back empty by `cfprefsd` are said to have
+    /// been written back.
     func testSomethingWrittenBackIsSaidToHaveBeenWrittenBack() {
         let text = BrimService
             .whyTheseRemain(paths(["prefs.plist"]), recorded: ["\(folder)/prefs.plist": "ok"]) { _ in .ok }
@@ -50,8 +43,7 @@ final class RecordedOutcomeCopyTests: XCTestCase {
         XCTAssertFalse(text.contains("nothing was recorded"), text)
     }
 
-    /// The daemon's empty copy of a cleared domain holds nothing; a file
-    /// that came back with settings is not one.
+    /// Only an empty preference file counts as the daemon's stub.
     func testOnlyAnEmptyPreferenceFileCountsAsTheDaemonsStub() throws {
         let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("stub-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

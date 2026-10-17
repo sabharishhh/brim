@@ -4,12 +4,6 @@ import GRDB
 import XCTest
 
 /// History, kept by writing snapshots and subtracting them.
-///
-/// The index compiled, had a schema with an `observation` table, and was
-/// imported by nothing that mattered: `BrimService` never opened it. So
-/// there was no history, and everything resting on one, a "what changed"
-/// view and migration hygiene both, could not be built. The schema
-/// existing is not the feature.
 final class InstallHistoryTests: XCTestCase {
     private var directory: URL!
 
@@ -40,8 +34,7 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     func testTheFirstLookHasNothingToCompareAgainst() async throws {
-        // Inventing a list of "new" applications the first time somebody
-        // opens Brim would make every later list untrustworthy.
+        // The first look has nothing to compare with, so nothing is "new".
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
 
@@ -52,8 +45,8 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     func testOnlyWhatArrivedAfterTheFirstLookHasAnArrivalDate() async throws {
-        // Everything is "first seen" at the first look, so taking that as
-        // an install date would call every app on the Mac recently installed.
+        // Everything is first seen at the first look, so that is not an install
+        // date.
         let index = try makeIndex()
         let firstLook = Date(timeIntervalSince1970: 1_000_000)
         let later = firstLook.addingTimeInterval(24 * 60 * 60)
@@ -64,11 +57,9 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(appeared, ["com.b": later])
     }
 
-    /// First appearing is not arriving. When the list began including the
-    /// apps inside Xcode, they were in the next snapshot and not the one
-    /// before, and Home called them installed today. The window says when
-    /// Brim last looked before, so the service can check the bundle's own
-    /// date against it.
+    /// First appearing is not arriving: an app newly included in the list was
+    /// already on disk. The window says when Brim last looked before, so the
+    /// bundle's own date can be checked against it.
     func testAnAppearanceKnowsWhenBrimLastLookedBeforeIt() async throws {
         let index = try makeIndex()
         let first = Date(timeIntervalSince1970: 1_000_000)
@@ -117,8 +108,7 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     func testGrowthWithoutAnUpdateIsReported() async throws {
-        // The interesting one: an application that did not update and got
-        // half a gigabyte bigger anyway is a cache nobody is clearing.
+        // An app that did not update and grew anyway is a cache nobody is clearing.
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha", size: 100_000_000)])
         _ = try await index.recordInstalled([app("com.a", "Alpha", size: 600_000_000)])
@@ -141,8 +131,7 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     func testOrdinaryDriftIsNotReported() async throws {
-        // Every application's size moves a little. Reporting that would
-        // bury the one that moved a lot.
+        // Small size changes would bury the one that moved a lot.
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha", size: 100_000_000)])
         _ = try await index.recordInstalled([app("com.a", "Alpha", size: 101_000_000)])
@@ -152,9 +141,7 @@ final class InstallHistoryTests: XCTestCase {
     }
 
     func testNothingIsEverOverwritten() async throws {
-        // Append-only is not tidiness. A row that is overwritten cannot
-        // be subtracted from, which would mean watching for changes with
-        // a resident process, which is the thing nobody wants running.
+        // An overwritten row cannot be subtracted from.
         let index = try makeIndex()
         for _ in 0 ..< 5 {
             _ = try await index.recordInstalled([app("com.a", "Alpha")])
@@ -174,9 +161,8 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(changes.map(\.bundleID), ["com.c"], "Beta appeared two looks ago, not since the last one")
     }
 
-    /// Every launch takes a snapshot, so a relaunch compared two identical
-    /// ones and Home's Changes emptied each time Brim opened. The last
-    /// change stands until there is a newer one, dated when it happened.
+    /// Every launch takes a snapshot, so the last change stands until there is
+    /// a newer one.
     func testARelaunchDoesNotEmptyTheLastChange() async throws {
         let index = try makeIndex()
         _ = try await index.recordInstalled([app("com.a", "Alpha")])
@@ -189,13 +175,11 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(changes.first?.kind, .appeared)
     }
 
-    /// T-1.4's acceptance criterion, and the one nobody finds out about
-    /// until somebody's history disappears.
+    /// An existing v1 database migrates rather than being rebuilt.
     func testAV1DatabaseComesForwardRatherThanBeingRebuilt() throws {
         let url = directory.appendingPathComponent("legacy.sqlite")
 
-        // A database as v1 left it: the observation table without any of
-        // the columns a snapshot needs.
+        // A database as v1 left it, without the columns a snapshot needs.
         let pool = try DatabasePool(path: url.path)
         try pool.write { db in
             try db.execute(sql: """
@@ -244,9 +228,8 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertTrue(applied.contains("v2-install-snapshots"))
     }
 
-    /// Teams and Microsoft AutoUpdate were removed, Home said so, and what
-    /// they left was still called owner unknown. An app an earlier snapshot
-    /// saw and the latest did not is the record that it was here and went.
+    /// An app an earlier snapshot saw and the latest did not is removed as of
+    /// the last time it was seen.
     func testAnAppAnEarlierSnapshotSawIsRemovedAsOfTheLastTimeItWasSeen() async throws {
         let index = try makeIndex()
         let first = Date(timeIntervalSince1970: 1_000_000)
@@ -261,9 +244,8 @@ final class InstallHistoryTests: XCTestCase {
         XCTAssertEqual(removed["com.b"], second)
     }
 
-    /// "Replaced by" needs where a removed app was, and only the last place:
-    /// an app that moved away from a path before going was not replaced by
-    /// whatever sits there now.
+    /// Only the last place a removed app was seen: one that moved away was not
+    /// replaced by whatever sits there now.
     func testTheLastPlaceARemovedAppWasSeenIsRecorded() async throws {
         let index = try makeIndex()
         let first = Date(timeIntervalSince1970: 1_000_000)

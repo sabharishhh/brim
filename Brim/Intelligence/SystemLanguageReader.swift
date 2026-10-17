@@ -4,14 +4,11 @@ import Foundation
 import FoundationModels
 import SwiftUI
 
-/// The on-device model behind `LanguageReader`, and the only code in Brim
-/// that imports FoundationModels.
-///
-/// Each request is a fresh, small session with greedy sampling, so the
-/// same text always gives the same answer and the cache stays consistent.
-/// Inputs are fitted to the context window before they are sent, and every
-/// framework error is turned into the `ModelFailure` the engine acts on.
-/// Not on the main actor: requests run on the engine's actor.
+/// The on-device model behind `LanguageReader`, and the only code that
+/// imports FoundationModels. Each request is a fresh, small session with
+/// greedy sampling, so the same text always gives the same answer. Inputs
+/// are fitted to the context window, and framework errors become
+/// `ModelFailure`. Runs on the engine's actor, not the main actor.
 nonisolated struct SystemLanguageReader: LanguageReader {
     static let enabledKey = "intelligence.enabled"
 
@@ -161,9 +158,8 @@ nonisolated struct SystemLanguageReader: LanguageReader {
         }
     }
 
-    /// What each framework error means for the next attempt. Anything
-    /// else, such as output that could not be decoded, is a plain failure
-    /// and is asked again on the next visit.
+    /// What each framework error means for the next attempt. Anything else,
+    /// such as undecodable output, is a plain failure, retried on the next visit.
     static func failure(_ error: LanguageModelError) -> ModelFailure {
         switch error {
         case .rateLimited: .rateLimited

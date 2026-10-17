@@ -1,15 +1,11 @@
 import Foundation
 
-/// The helper's rules for an application an installer put somewhere other
-/// than an Applications folder.
-///
-/// Microsoft Teams' installer also installs Microsoft AutoUpdate, owned by
-/// root, in `/Library/Application Support/Microsoft/MAU2.0`. No folder rule
-/// could cover that place without covering everything else in Application
-/// Support, so the proof is the installer's own record instead: the helper
-/// is told a package and a name, reads the package's receipt itself, and
-/// takes only an application sitting directly in the folder that receipt
-/// says the package installed into. It is never handed a path.
+/// The rules for an app an installer put outside an Applications folder,
+/// such as Microsoft AutoUpdate in `/Library/Application Support`. No folder
+/// rule could cover that without covering everything there, so the proof
+/// is the installer's record: given a package and a name, this reads the
+/// receipt itself and takes only an app directly inside the folder the
+/// package installed into. It is never handed a path.
 public enum PrivilegedPayloadRemoval {
     public enum Refusal: Error, Equatable, Sendable {
         case notAPlainName(String)
@@ -31,9 +27,8 @@ public enum PrivilegedPayloadRemoval {
 
     public static let receipts = URL(fileURLWithPath: "/private/var/db/receipts")
 
-    /// Where an installed application may be taken from: the package's own
-    /// folder, at least three levels into `/Library`, and not a place with
-    /// a rule of its own.
+    /// Where an installed app may be taken from: the package's own folder, at
+    /// least three levels into `/Library`, and not a place with its own rule.
     public static func installFolder(prefix: String) -> String? {
         let parts = prefix.split(separator: "/").map(String.init)
         guard parts.count >= 3, parts[0] == "Library",
@@ -57,9 +52,8 @@ public enum PrivilegedPayloadRemoval {
         return URL(fileURLWithPath: folder).appendingPathComponent(name)
     }
 
-    /// The package whose receipt makes `path` something the helper will
-    /// take, if one does. The planner's question, answered from the same
-    /// records the helper reads.
+    /// The package whose receipt makes `path` something this will take, if any:
+    /// the planner's question, answered from the same records.
     public static func package(for path: String, receipts: URL = receipts) -> String? {
         let folder = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
@@ -80,10 +74,9 @@ public enum PrivilegedPayloadRemoval {
     }
 }
 
-/// The helper's rule for `/Library/Caches`, which installers and root
-/// daemons fill and only root can empty. A cache is by definition
-/// something its owner rebuilds, so the only question is whose it is, and
-/// the helper refuses anything named for Apple.
+/// The rule for `/Library/Caches`, which only root can empty. A cache is
+/// rebuilt by its owner, so the only question is whose it is; anything named
+/// for Apple is refused.
 public enum PrivilegedCacheRemoval {
     public static let directory = "/Library/Caches"
 
@@ -113,15 +106,10 @@ public enum PrivilegedCacheRemoval {
     }
 }
 
-/// A preference file a removed application's installer left in
-/// `/Library/Preferences`, which only root can move.
-///
-/// Microsoft AutoUpdate left `com.microsoft.autoupdate2.plist` there, and
-/// it was the one thing a review could not take, so the app stayed listed
-/// as removed with something left behind. Only a plain file named like a
-/// bundle identifier is taken, never a folder: `SystemConfiguration`,
-/// `Audio` and the other folders there are how this Mac is set up. Apple's
-/// own files are refused, and so is `.GlobalPreferences`.
+/// A preference file a removed app's installer left in `/Library/Preferences`,
+/// which only root can move. Only a plain file named like a bundle
+/// identifier, never a folder (those are how this Mac is set up). Apple's
+/// files and `.GlobalPreferences` are refused.
 public enum PrivilegedPreferenceRemoval {
     public static let directory = "/Library/Preferences"
 
@@ -156,9 +144,8 @@ public enum PrivilegedPreferenceRemoval {
         return URL(fileURLWithPath: directory).appendingPathComponent(name)
     }
 
-    /// The first two labels of every name macOS itself ships outside
-    /// `com.apple`, such as `org.cups`, read from this Mac's own system
-    /// folders. The printer list is `org.cups.printers.plist`.
+    /// The first two labels of every name macOS ships outside `com.apple`, such
+    /// as `org.cups`, read from this Mac's system folders.
     static func systemFamilies() -> Set<String> {
         var families = Set<String>()
         let candidates = ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents",

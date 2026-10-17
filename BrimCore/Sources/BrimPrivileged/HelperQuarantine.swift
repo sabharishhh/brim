@@ -4,13 +4,10 @@ import Foundation
 extension Helper {
     // MARK: - Doing it without being tricked
 
-    /// Moves a dead command link into the quarantine, having proved it is
-    /// dead through the directory's own descriptor.
-    ///
-    /// A rename where the volume allows one. Where it does not, the link is
-    /// written again inside the quarantine with the same destination and
-    /// then removed: a link is nothing but its destination, so that copy
-    /// is exact and it still puts back.
+    /// Moves a dead command link into the quarantine, having proved it dead
+    /// through the folder's own descriptor. A rename where the volume allows;
+    /// otherwise the link is recreated in the quarantine with the same
+    /// destination and removed, which is an exact copy.
     func setAsideDeadLink(_ target: URL) throws {
         let directory = target.deletingLastPathComponent().path
         let name = target.lastPathComponent
@@ -61,13 +58,10 @@ extension Helper {
         return holding
     }
 
-    /// Moves the job file into a root-owned quarantine, having checked
-    /// that it is what it claims to be.
-    ///
-    /// Everything happens through a file descriptor for the directory,
-    /// opened with `O_NOFOLLOW`, so a symlink swapped in between the check
-    /// and the move cannot redirect it. That gap is the classic way a root
-    /// helper is turned into a tool for deleting something else.
+    /// Moves the job file into the root-owned quarantine after checking it is
+    /// what it claims to be. Everything goes through a descriptor for the folder
+    /// opened with `O_NOFOLLOW`, so a link swapped in between the check and the
+    /// move cannot redirect a root process at something else.
     func setAside(_ target: URL, requesterUID: uid_t?) async throws {
         let directory = target.deletingLastPathComponent().path
         let name = target.lastPathComponent
@@ -80,8 +74,7 @@ extension Helper {
         guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
             throw PrivilegedJobRemoval.Refusal.notThere
         }
-        // A symlink, a directory or a device is not a job file, whatever
-        // it is called.
+        // A link, folder or device is not a job file, whatever it is called.
         guard (info.st_mode & S_IFMT) == S_IFREG else {
             throw PrivilegedJobRemoval.Refusal.notARegularFile
         }
@@ -89,13 +82,11 @@ extension Helper {
             throw PrivilegedJobRemoval.Refusal.tooBigForAJobFile(Int(info.st_size))
         }
 
-        // Read through the same descriptor, so what is judged is what is
-        // moved.
+        // Read through the same descriptor, so what is judged is what is moved.
         let contents = try PrivilegedJobRemoval.readReviewedPlist(parent: parent, name: name, reviewed: info)
 
-        // The rule that makes this safe to expose: a job that still runs
-        // something present on this Mac is not a leftover and is never
-        // removed, whoever is asking.
+        // The rule that makes this safe to expose: a job that still runs something
+        // present is never removed, whoever asks.
         guard PrivilegedJobRemoval.isDefunct(
             plist: contents,
             programExists: {
@@ -179,11 +170,9 @@ extension Helper {
         }
     }
 
-    /// Renames the file into the quarantine rather than unlinking it, so a
-    /// mistake can be undone. Both directories are on the same volume, so
-    /// this is one atomic rename and never a partial copy.
-    /// Judged and moved through one descriptor for the folder, so a link
-    /// swapped in after the check is not what moves.
+    /// Renamed into the quarantine, never unlinked, so a mistake can be undone;
+    /// same volume, so one atomic rename. Judged and moved through one folder
+    /// descriptor, so a link swapped in after the check is not what moves.
     func setAsideBundle(_ target: URL) throws {
         let directory = target.deletingLastPathComponent().path
         let name = target.lastPathComponent
@@ -207,8 +196,8 @@ extension Helper {
         }
     }
 
-    /// A folder or a file, never a link, moved through the directory's own
-    /// descriptor so nothing can be swapped in between the look and the move.
+    /// A folder or file, never a link, moved through the folder's own
+    /// descriptor.
     func setAsideCache(_ target: URL) throws {
         let directory = target.deletingLastPathComponent().path
         let name = target.lastPathComponent

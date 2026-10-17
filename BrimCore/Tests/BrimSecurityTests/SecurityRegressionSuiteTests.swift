@@ -210,12 +210,8 @@ final class SecurityRegressionSuiteTests: XCTestCase {
     }
 }
 
-/// What the Trash actually shows after Brim puts something there.
-///
-/// `trashItem` renames the target into an isolated directory before trashing
-/// it, which is what makes the operation TOCTOU-safe. Done naively that
-/// rename is what reaches the Trash, so the user opens the bin and finds a
-/// list of UUIDs. "Recoverable" then means nothing in practice.
+/// `trashItem` renames into an isolated directory first for TOCTOU safety;
+/// the item must still reach the Trash under its own name, not a UUID.
 final class TrashNamingTests: XCTestCase {
 
     func testATrashedItemKeepsItsOwnName() throws {
@@ -273,8 +269,8 @@ final class TrashNamingTests: XCTestCase {
     }
 
     func testANameThatWouldEscapeTheIsolationDirectoryIsRejected() {
-        // The rename back to the original name happens inside a directory we
-        // control, so a basename that is not a plain name must not be used.
+        // The rename back happens inside a directory Brim controls, so only a plain
+        // name is usable.
         XCTAssertFalse(SafeOps.isUsableTrashName(""))
         XCTAssertFalse(SafeOps.isUsableTrashName("."))
         XCTAssertFalse(SafeOps.isUsableTrashName(".."))

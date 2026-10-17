@@ -46,8 +46,8 @@ public struct DeveloperCacheScanner: Sendable {
         self.measure = measure
     }
 
-    /// Every path this catalogue accounts for, so Leftovers leaves them to
-    /// Developer instead of counting them a second time.
+    /// Every path this catalogue accounts for, so Remnants leaves them to
+    /// Developer rather than counting them twice.
     public static func claimedPaths(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         darwinCache: URL = FileSystemRoot().url(for: .darwinUserCache),
@@ -63,10 +63,9 @@ public struct DeveloperCacheScanner: Sendable {
         (known.inDarwinCache ? darwinCache : home).appendingPathComponent(known.relativePath)
     }
 
-    /// Re-derive the disposal rule independently of the selected UI row.
-    /// Positive cache rules require an exact root. Tool-managed and stateful
-    /// stores protect their children as well, so a direct child target cannot
-    /// bypass the store's disposal rule.
+    /// Re-derives the disposal rule independently of the selected row. Positive
+    /// cache rules need an exact root; tool-managed and stateful stores protect
+    /// their children too, so a child target cannot bypass the store's rule.
     public static func classification(
         at target: URL, home: URL, darwinCache: URL,
         environment: [String: String] = ProcessInfo.processInfo.environment

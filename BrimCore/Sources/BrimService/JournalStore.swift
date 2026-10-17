@@ -60,8 +60,8 @@ public actor JournalStore {
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
-    /// Keep startup work bounded even after years of removal history.
-    /// Older removals remain available through Journal's Check removal action.
+    /// Bounded, so startup work stays small after years of history. Older
+    /// removals can still be checked from the Journal.
     func recentEntries(limit: Int = 100) throws -> [JournalEntry] {
         try ensureDirectory()
         let urls = try fileManager.contentsOfDirectory(

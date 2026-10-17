@@ -4,9 +4,8 @@ import BrimProtocol
 import Foundation
 import Testing
 
-/// A confirmed removal looked at again later. Brim checked each removal once,
-/// so files that came back afterwards (a helper still running, a sync, a
-/// reinstall) left a removal reading as done when it had come undone.
+/// A confirmed removal looked at again later, so files that came back
+/// afterwards are seen.
 struct RemovalReturnTests {
     @Test func `files still gone stay gone`() throws {
         let folder = try Folder()
@@ -32,8 +31,8 @@ struct RemovalReturnTests {
         #expect(RemovalReturn.state(back: back, plan: plan, installed: []) == .cameBack([data]))
     }
 
-    /// `cfprefsd` writes an empty file back for a domain it was holding.
-    /// The removal's own check already allows it, and so does this one.
+    /// `cfprefsd` writes an empty file back for a domain it held; that is not a
+    /// return.
     @Test func `an empty preference file is not a return`() throws {
         let folder = try Folder()
         defer { folder.remove() }

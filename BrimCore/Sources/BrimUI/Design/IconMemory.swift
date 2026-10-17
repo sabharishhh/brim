@@ -3,14 +3,9 @@ import BrimCore
 import Foundation
 import os
 
-/// Application icons, kept after the application has gone.
-///
-/// A leftover is most recognisable by the icon of the app that left it,
-/// and by the time it is a leftover that app is no longer on the disk to
-/// ask. So each installed app's icon is saved as a 64 pixel PNG while it is
-/// still here, keyed by bundle identifier, and the leftovers list draws
-/// that instead of a monogram. Small, local, and inside Brim's own support
-/// folder, so it goes when Brim does.
+/// Application icons kept after the app has gone, since a leftover is most
+/// recognisable by its app's icon. Each installed app's icon is saved as a
+/// 64 pixel PNG, keyed by bundle identifier, in Brim's own support folder.
 public struct IconMemory: Sendable {
     public let directory: URL
 
@@ -31,10 +26,9 @@ public struct IconMemory: Sendable {
         return directory.appendingPathComponent(String(safe) + ".png")
     }
 
-    /// Whether an icon is saved for this app. Answered from memory: rows
-    /// ask while they draw, and a `fileExists` per row per frame is disk
-    /// work a scroll waits on. The folder is listed once, and saves and
-    /// clears keep the answer current.
+    /// Whether an icon is saved for this app, answered from memory: rows ask
+    /// while drawing. The folder is listed once and kept current by saves and
+    /// clears.
     public func has(_ bundleID: String) -> Bool {
         let name = url(for: bundleID).lastPathComponent
         return Self.saved.withLock { cache in
@@ -55,9 +49,9 @@ public struct IconMemory: Sendable {
         }
     }
 
-    /// Saves an installed application's icon, unless a copy at least as
-    /// new as the bundle is already here. Off the main thread: rendering a
-    /// hundred icons at launch is exactly the work a scroll must not wait on.
+    /// Saves an installed app's icon unless a copy at least as new as the
+    /// bundle is here. Off the main thread, so launch rendering never holds up
+    /// a scroll.
     public func remember(appAt appURL: URL, bundleID: String) {
         let target = url(for: bundleID)
         if let saved = Self.modified(target), let bundle = Self.modified(appURL), saved >= bundle {
@@ -111,7 +105,7 @@ public struct IconMemory: Sendable {
     }
 
     /// Draws into a bitmap of exactly the saved size, so the file holds one
-    /// representation instead of every size up to 1024.
+    /// representation.
     static func png(of icon: NSImage) -> Data? {
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,

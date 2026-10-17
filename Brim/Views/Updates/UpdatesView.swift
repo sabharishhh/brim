@@ -3,12 +3,7 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// Which applications have a newer version, and putting it in place.
-///
-/// The section used to describe how each application updates, grouped as
-/// "update themselves" and "you update yourself", and listed background
-/// updater jobs including ones for software that had gone. None of it said
-/// whether anything needed updating. It now lists updates, and nothing else.
+/// Which applications have a newer version, and installing it.
 struct UpdatesView: View {
     @ObservedObject var model: UpdatesModel
     @ObservedObject var whatsNew: WhatsNewModel
@@ -40,8 +35,8 @@ struct UpdatesView: View {
         .focusedSceneValue(\.pageActions, model.installableHere.count > 1 && !model.isInstalling && !model.isChecking
             ? [FocusedAction(name: "Update All") { _ in Task { await model.installAll(service: service) } }] : [])
         .task {
-            // The check takes seconds; the model loads meanwhile, so long
-            // release notes are read without a second wait.
+            // The model loads during the check, so release notes are read without a
+            // second wait.
             async let warm: Void = intelligence?.prewarm(for: .releaseNotes) ?? ()
             await model.load(service: service)
             await warm
@@ -50,8 +45,8 @@ struct UpdatesView: View {
 
     // MARK: - Header
 
-    /// Update All sits in the toolbar beside Check Again once there is
-    /// more than one update to install here.
+    /// Update All sits beside Check Again once there is more than one update to
+    /// install.
     @ToolbarContentBuilder
     private var updateAll: some ToolbarContent {
         if model.installableHere.count > 1 {
@@ -153,8 +148,7 @@ struct UpdatesView: View {
     private func facts(_ update: AppUpdate) -> String {
         switch model.states[update.id] {
         case let .downloading(progress):
-            // Sizes, not a percentage: a 1.3 GB download sat at one figure
-            // long enough to look stuck.
+            // Sizes, not a percentage, so a large download never looks stuck.
             guard progress.expected > 0 else { return "Downloading" }
             return "Downloading \(ByteText.short(progress.received)) of \(ByteText.short(progress.expected))"
         case .installing: return "Installing"
@@ -205,8 +199,8 @@ struct UpdatesView: View {
         case .installing:
             ProgressView().controlSize(.small).accessibilityLabel("Installing")
         case .openedInstaller:
-            // Opening Installer is the next step, never the result, so it
-            // gets no verified mark.
+            // Opening Installer is the next step, not the result, so it gets no
+            // verified mark.
             Image(systemName: "arrow.up.forward.app")
                 .foregroundStyle(Palette.inkSecondary)
                 .accessibilityLabel("Opened in Installer")
@@ -254,8 +248,8 @@ struct UpdatesView: View {
         }
     }
 
-    /// Checked again here: an update can come back from the page cache,
-    /// which is a file like any other.
+    /// Checked again here: an update can come from the page cache, which is a
+    /// file like any other.
     private func open(_ url: URL?) {
         if let url = AppUpdate.openable(url) {
             NSWorkspace.shared.open(url)
@@ -268,9 +262,8 @@ struct UpdatesView: View {
     private var footer: some View {
         if let check = model.check {
             HStack(spacing: 6) {
-                // A minute's refresh, as every "Checked" line has. Formatting
-                // the age on each redraw made a download's progress tick it
-                // second by second.
+                // Refreshed once a minute; formatting the age on every redraw ticked it each
+                // second during a download.
                 TimelineView(.everyMinute) { context in
                     Text("Checked \(check.checked) \(check.checked == 1 ? "app" : "apps") "
                         + Freshness.age(of: check.checkedAt, now: context.date))
@@ -308,8 +301,8 @@ struct UpdatesView: View {
 }
 
 /// One app in either list: icon, name, one line of facts, one control. A
-/// failure is a mark and the word, with the reason behind a Details button
-/// a keyboard can reach; it used to be hover help only.
+/// failure shows a mark and the word, with the reason behind a Details
+/// button the keyboard can reach.
 private struct UpdateRow<Action: View>: View {
     let url: URL
     let name: String
@@ -344,8 +337,8 @@ private struct UpdateRow<Action: View>: View {
             .accessibilityAddTraits(.isStaticText)
             .accessibilityLabel("\(name), \(facts)" + (failed.map { ", \($0)" } ?? "") + spokenNews)
             Spacer(minLength: 8)
-            // A fixed place for the control, so Update, its progress, the
-            // result and Retry take turns without moving anything else.
+            // A fixed place for the control, so Update, its progress, the result and
+            // Retry share it without moving anything else.
             action()
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)

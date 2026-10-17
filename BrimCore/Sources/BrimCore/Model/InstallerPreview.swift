@@ -1,13 +1,9 @@
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// What an installer would put on this Mac, read without installing it.
-///
-/// The question Brim asks after the fact, what did this leave, asked before
-/// it: a package's own file list says where every file lands, its scripts
-/// say what runs as root while it installs, and an application's bundle says
-/// what it will register once it runs. Each row says which of those it came
-/// from, because "will install" and "can register" are different promises.
+/// What an installer would put on this Mac, read without installing: the
+/// package's file list, its scripts and the app bundle. Each row says which
+/// it came from, because "will install" and "can register" differ.
 public struct InstallerPreview: Sendable, Equatable, Identifiable {
     public enum Kind: String, Sendable, Equatable {
         case package
@@ -71,8 +67,7 @@ public struct InstallerPreview: Sendable, Equatable, Identifiable {
         /// The version installed now, when this identifier is already here.
         public let replacesVersion: String?
         public let isInstalled: Bool
-        /// The app's icon as PNG, taken while a disk image was mounted,
-        /// because its bundle is gone once the image is ejected.
+        /// The app's icon as PNG, taken while a disk image was mounted.
         public let icon: Data?
 
         public var id: String {
@@ -93,8 +88,8 @@ public struct InstallerPreview: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// How a person reasons about what lands: what runs on its own first,
-    /// what plugs into macOS next, plain files last.
+    /// Ordered as a person reasons about it: what runs on its own, what plugs
+    /// into macOS, then plain files.
     public enum Group: Int, Sendable, Equatable, CaseIterable, Comparable {
         case background
         case systemExtensions
@@ -159,9 +154,9 @@ public struct InstallerPreview: Sendable, Equatable, Identifiable {
         /// Nil when it is not text.
         public let text: String?
         public let isText: Bool
-        /// Where the script points, when it is a link rather than a file. A
-        /// link is followed only when Installer runs it, and can name a file
-        /// the package itself installs, so there is nothing here to read.
+        /// Where the script points, when it is a link. Installer follows it only
+        /// when it runs, and it can name a file the package installs, so there is
+        /// nothing here to read.
         public let linkDestination: String?
 
         public var id: String {

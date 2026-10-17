@@ -10,13 +10,8 @@ final class ExecutorTests: XCTestCase {
     }
 
 
-    /// A step that needs the helper, with no helper installed, says so.
-    ///
-    /// This used to expect `refusedByOS`, from the days when a privileged
-    /// step fell through to an ordinary trash attempt and hit EPERM. It
-    /// does not fall through any more: if the planner decided root has to
-    /// do this and root is not available, the honest outcome is that Brim
-    /// never tried, and the user is told which of the two it was.
+    /// A step that needs the administrator process, with none available, says
+    /// Brim never tried rather than reporting a refusal by macOS.
     func testAPrivilegedStepWithNoHelperSaysSoRatherThanGuessing() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let journalStoreDir = tempDir.appendingPathComponent("Journals")
@@ -89,12 +84,8 @@ final class ExecutorTests: XCTestCase {
         XCTAssertNotNil(journal.freeSpaceBefore)
         XCTAssertNotNil(journal.freeSpaceAfter)
         
-        // It's tricky to assert EXACTLY 50MB on APFS due to purgeable space, snapshots, etc.
-        // But freeSpaceAfter should be strictly greater than freeSpaceBefore if a 50MB file was genuinely removed.
-        // For trashPath, it's moved to Trash, so space might NOT be freed unless Trash is emptied!
-        // Wait, SafeOps.trashPath calls NSWorkspace.shared.recycle.
-        // The space is only freed if we actually delete it or if the volume treats trash as freeable.
-        // Let's at least assert it was recorded.
+        // Trashing frees nothing until the Trash is emptied, and APFS makes exact
+        // figures unreliable, so only the recording is checked.
         let delta = (journal.freeSpaceAfter ?? 0) - (journal.freeSpaceBefore ?? 0)
         print("Free space delta after trashing 50MB: \(delta) bytes")
         
@@ -102,10 +93,7 @@ final class ExecutorTests: XCTestCase {
     }
 
     
-    /// macOS refusing an ordinary support file leaves that file and nothing
-    /// else. WhatsApp's removal kept the whole app because macOS would not
-    /// move its extension's temporary folder; the app now goes and the
-    /// file is reported as still there.
+    /// A support file macOS refuses stays and is reported; the app still goes.
     func testASupportFileMacOSRefusesDoesNotKeepTheApp() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let journalStoreDir = tempDir.appendingPathComponent("Journals")
@@ -159,8 +147,8 @@ final class ExecutorTests: XCTestCase {
         XCTAssertEqual(journal.stepOutcomes[0], "ok")
     }
 
-    /// A launch job file that cannot go still keeps the app: removing the
-    /// app would leave a job pointing at a program that is no longer there.
+    /// A launch job file that cannot go keeps the app, or the job would point at
+    /// a missing program.
     func testAFailureOutsideSupportFilesStillKeepsTheApp() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let executor = Executor(journalStore: JournalStore(directoryURL: tempDir.appendingPathComponent("J")))

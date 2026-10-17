@@ -4,8 +4,8 @@ import Foundation
 // swiftformat:disable wrapMultilineStatementBraces
 extension InstallerReader {
     /// `pkgutil --expand` writes each component's `PackageInfo`, `Bom` and
-    /// `Scripts` and leaves the payload compressed, so a package of any
-    /// size is read in about the time its file list takes to print.
+    /// `Scripts` and leaves the payload compressed, so a package of any size is
+    /// read quickly.
     func readPackage(_ url: URL) throws -> InstallerPreview {
         let workspace = try Self.workspace()
         defer { try? FileManager.default.removeItem(at: workspace) }
@@ -131,9 +131,9 @@ extension InstallerReader {
     }
 
     static func scripts(of component: PackageComponent, in folder: URL) -> [InstallerPreview.Script] {
-        // Older packages run the two standard scripts without naming them.
-        // Asked without following links: a link whose target is missing
-        // here still runs when Installer has put that target in place.
+        // Older packages run the two standard scripts without naming them. Asked
+        // without following links: a link to a target Installer puts in place still
+        // runs.
         let named = component.scripts.isEmpty
             ? ["preinstall", "postinstall"].filter { exists(folder.appendingPathComponent($0)) }
             .map { PackageComponent.Script(name: $0, file: $0) }
@@ -155,13 +155,10 @@ extension InstallerReader {
         return lstat(url.path, &info) == 0
     }
 
-    /// A script's text, read without following a link anywhere on the way.
-    ///
-    /// `pkgutil --expand` keeps a script that is a symbolic link. Followed,
-    /// one pointing at a file the package's own payload installs read as
-    /// missing, so the preview showed no script and no warning while
-    /// Installer would run it as root; one pointing at a file on this Mac
-    /// showed that file as the script. A link is reported as a link.
+    /// A script's text, read without following a link on the way. `pkgutil
+    /// --expand` keeps a script that is a link; followed, one pointing at a
+    /// payload file read as missing, and one pointing at a file on this Mac
+    /// showed that file. A link is reported as a link.
     static func readScript(_ file: URL, within folder: URL) -> (text: String?, link: String?) {
         var info = stat()
         guard lstat(file.path, &info) == 0 else { return (nil, nil) }

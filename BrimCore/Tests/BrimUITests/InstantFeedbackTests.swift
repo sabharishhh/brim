@@ -3,15 +3,8 @@ import BrimCore
 import BrimProtocol
 @testable import BrimUI
 
-/// A list catches up the moment something becomes true, not when a sheet is
-/// dismissed.
-///
-/// The incident: removing one leftover, watching the check go green, and
-/// then watching the row sit there. Pressing Done triggered a full rescan of
-/// the Mac, four hundred milliseconds, and only then did the row go. The
-/// answer had been available since verification: `verify` re-observes every
-/// path with `lstat` and knows exactly which ones survived. It computed
-/// that, reported a yes or no, and threw the detail away.
+/// A list catches up the moment something becomes true: `verify` already
+/// knows which paths survived, so the rows go without a rescan.
 @MainActor
 final class InstantFeedbackTests: XCTestCase {
 
@@ -42,9 +35,7 @@ final class InstantFeedbackTests: XCTestCase {
                        "A row that has gone cannot stay ticked")
     }
 
-    /// The other half, and the one worth protecting. Something that survived
-    /// the removal is still on the disk, so it stays on screen: a broken
-    /// command in a root-owned folder is exactly this case.
+    /// What survived the removal is still on disk, so it stays on screen.
     func testWhatSurvivedStaysOnScreen() async {
         let model = await loaded([leftover("/tmp/gone"), leftover("/tmp/stayed")])
         model.forget(paths: ["/tmp/gone"])
@@ -53,9 +44,7 @@ final class InstantFeedbackTests: XCTestCase {
 
     // MARK: - Putting it back
 
-    /// Everything here went to the Trash, and the Trash is a place people
-    /// take things out of again. A restored file is back at the path it came
-    /// from, and the row belongs back in the list.
+    /// A file restored from the Trash brings its row back.
     func testRestoringFromTheTrashBringsTheRowBack() async throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("restore-\(UUID().uuidString)")

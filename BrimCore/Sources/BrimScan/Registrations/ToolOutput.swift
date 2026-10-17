@@ -1,21 +1,13 @@
 import Foundation
 
-/// Running one of Apple's own tools and reading what it says.
-///
-/// Several registration surfaces have no API and only a command: PluginKit
-/// and the system extension list among them. The rule from the step
-/// vocabulary holds here too, even though nothing is being mutated: a
-/// fixed executable and fixed arguments, never a string somebody else
-/// composed.
-///
-/// Returns nil when the tool is missing or fails, which is how a surface
-/// tells `coverage` that it could not look. An empty string would mean
-/// "nothing registered", and those are different answers.
+/// Runs one of Apple's own tools and reads what it says, for surfaces with
+/// no API. A fixed executable and fixed arguments, never a composed string.
+/// Nil when the tool is missing or fails, so `coverage` can say Brim could
+/// not look; an empty string would mean nothing registered.
 public enum ToolOutput {
-    /// What a tool said, whatever its exit status. Some tools answer with
-    /// a status: `pkgutil --check-signature` exits 1 for an unsigned
-    /// package and `spctl` 3 for a rejected one, and both of those are
-    /// answers rather than failures to look.
+    /// What a tool said, whatever its exit status. Some tools answer with a
+    /// status: `pkgutil --check-signature` exits 1 for an unsigned package and
+    /// `spctl` 3 for a rejected one.
     public struct Outcome: Sendable, Equatable {
         public let status: Int32
         public let output: String
@@ -41,8 +33,8 @@ public enum ToolOutput {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        // A pipe filled before the process exits can stall both the tool
-        // and our reader. File handles have no bounded buffer to fill.
+        // Output goes to a file: a full pipe can stall both the tool and the
+        // reader.
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("brim-probe-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,

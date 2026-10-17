@@ -103,8 +103,8 @@ public final class FeedbackModel {
     }
 
     private func save(_ value: some Encodable, key: String) {
-        // Encoding these fixed, string-only payloads cannot fail. UserDefaults
-        // schedules persistence without doing disk I/O on each keystroke.
+        // Encoding these fixed, string-only payloads cannot fail, and UserDefaults
+        // does no disk I/O per keystroke.
         if let data = try? JSONEncoder().encode(value) {
             defaults.set(data, forKey: key)
         }

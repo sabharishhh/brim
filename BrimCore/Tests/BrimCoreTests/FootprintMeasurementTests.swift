@@ -2,17 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// What a size is, and what it is not.
-///
-/// A user compared two numbers Brim gave for one application, 459.1 MB in
-/// the list and 824.5 MB in the detail, and reasonably concluded one was
-/// wrong. Neither was: the first is the bundle and the second is everything
-/// the app has written anywhere. The arithmetic was right and the labelling
-/// was absent, which in a product whose promise is evidence is the same
-/// kind of failure.
-///
-/// These protect the arithmetic. The labelling is protected by reading the
-/// screen.
+/// What a size is, and what it is not: the bundle in the list, everything
+/// the app wrote in the detail. These protect the arithmetic.
 final class FootprintMeasurementTests: XCTestCase {
 
     private var directory: URL!
@@ -44,8 +35,7 @@ final class FootprintMeasurementTests: XCTestCase {
     }
 
     func testAHardlinkIsOneFileAndNotTwo() throws {
-        // Two names, one file. Counting each name inflated a footprint by
-        // however many links it had, and the bytes only come back once.
+        // Two names, one file: counted once, because the bytes come back once.
         let original = try write("original", bytes: 5000)
         let second = directory.appendingPathComponent("second")
         try FileManager.default.linkItem(at: original, to: second)
@@ -56,9 +46,7 @@ final class FootprintMeasurementTests: XCTestCase {
     }
 
     func testASymlinkIsTheLinkAndNotWhatItPointsAt() throws {
-        // `attributesOfItem` follows the link, so a symlink pointing at a
-        // large file added that file's whole size to a footprint, and
-        // removing the link would have freed a few bytes.
+        // A link is measured as itself; following it would add its target's size.
         let big = try write("big", bytes: 100_000)
         let link = directory.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: big)
@@ -84,9 +72,7 @@ final class FootprintMeasurementTests: XCTestCase {
     }
 
     func testAnUnreadableTotalIsReportedRatherThanLookingComplete() throws {
-        // Without Full Disk Access every container reads as empty. A total
-        // that is short by an unknown amount and does not say so is exactly
-        // the failure the product exists to avoid.
+        // Unreadable entries are counted, so a short total says it is short.
         _ = try write("readable", bytes: 100)
         let locked = directory.appendingPathComponent("locked")
         try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
@@ -115,12 +101,7 @@ final class FootprintMeasurementTests: XCTestCase {
     }
 }
 
-/// One spelling of a size, everywhere.
-///
-/// History printed its totals through `ByteCountFormatter` while the rest of
-/// the product used `ByteText`. Same output for most numbers, "Zero KB"
-/// instead of "Empty" for the rest, and two spellings of one quantity in a
-/// product whose whole argument is that its numbers can be trusted.
+/// One spelling of a size everywhere: `ByteText`, never `ByteCountFormatter`.
 final class ByteTextConsistencyTests: XCTestCase {
 
     func testNothingFormatsSizesByItself() throws {

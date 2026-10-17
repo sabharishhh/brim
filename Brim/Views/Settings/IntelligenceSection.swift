@@ -1,11 +1,8 @@
 import BrimUI
 import SwiftUI
 
-/// Whether Brim asks the on-device model, and whether it can.
-///
-/// The switch is Brim's; the state beside it is the Mac's, in words, so a
-/// person who sees no summaries knows whether to look here or in System
-/// Settings. Nothing leaves the Mac either way.
+/// Whether Brim uses the on-device model, and whether the Mac can. Nothing
+/// leaves the Mac either way.
 struct IntelligenceSection: View {
     @AppStorage(SystemLanguageReader.enabledKey) private var isEnabled = true
     @SwiftUI.Environment(\.intelligence) private var intelligence

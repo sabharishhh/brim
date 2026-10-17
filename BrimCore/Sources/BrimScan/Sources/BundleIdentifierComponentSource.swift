@@ -1,10 +1,9 @@
 import BrimCore
 import Foundation
 
-/// Resolves paths that match the exact bundle identifier, or either of the
-/// names the application answers to.
-///
-/// Names are suggestions at Tier C. Only an identifier match reaches Tier B.
+/// Paths that match the exact bundle identifier, or a name the application
+/// answers to. Names are Tier C suggestions; only an identifier match
+/// reaches Tier B.
 public struct BundleIdentifierComponentSource: EvidenceSource {
     public init() {}
 
@@ -12,10 +11,8 @@ public struct BundleIdentifierComponentSource: EvidenceSource {
         var results = [Evidence]()
         let fm = FileManager.default
 
-        // 1. Name matches, on both names the bundle answers to. Visual
-        // Studio Code is "Visual Studio Code" as a file and "Code" to
-        // itself, and it is the second one that names the folder holding
-        // its settings, history and extensions.
+        // 1. Name matches, on every name the bundle answers to: Visual Studio Code
+        // names its settings folder "Code".
         for name in identity.searchNames {
             let paths = [
                 root.url(for: .applications).appendingPathComponent("\(name)"),

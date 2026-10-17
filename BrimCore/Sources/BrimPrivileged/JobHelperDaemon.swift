@@ -4,21 +4,14 @@ import os
 import Synchronization
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// Brim's privileged daemon, and deliberately almost nothing.
-///
-/// It runs as root, so every line here is worth more scrutiny than the
-/// rest of the application put together. It links one small module, it
-/// answers two questions, and it holds no state.
-///
-/// The previous attempt at a helper ran the whole of `BrimService` as
-/// root. That is the wrong shape: a root process should be small enough to
-/// read in one sitting, because anything it can be talked into doing, it
-/// does as root.
+/// Brim's administrator process, kept as small as possible: it runs as root,
+/// so everything it can be talked into, it does as root. It links one small
+/// module and holds no state.
 private let log = Logger(subsystem: "com.sabharishhh.brim.jobhelper", category: "removal")
 
-/// Runs the daemon. Both the package executable and the copy inside the
-/// application bundle are two lines that call this, so the code that runs
-/// as root is one thing, in one place, covered by the package's tests.
+/// Runs the administrator process. The package executable and the copy in
+/// the app bundle both just call this, so the code that runs as root is one
+/// thing, covered by the package's tests.
 public enum BrimJobHelperDaemon {
     public static func run() -> Never {
         guard CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--temporary" else {
@@ -142,9 +135,9 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         asyncJobs.withLock { $0.cancelled }
     }
 
-    /// Cancellation stops owned commands first. A synchronous filesystem
-    /// operation cannot observe task cancellation, so it also needs a finite
-    /// shutdown deadline when Brim closes its connection.
+    /// Cancellation stops owned commands first. A synchronous file operation
+    /// cannot see task cancellation, so shutdown also has a deadline once Brim
+    /// closes the connection.
     func disconnect(after gracePeriod: DispatchTimeInterval = .seconds(3),
                     terminate: @escaping @Sendable () -> Void) {
         let tasks = asyncJobs.withLock { jobs -> [Task<Void, Never>]? in
@@ -156,15 +149,14 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         for task in tasks {
             task.cancel()
         }
-        // Native commands get time to terminate and reap their own children.
-        // A stalled recursive deletion cannot keep this root process alive
-        // until the general fifteen-minute session limit.
-        // Shutdown must not wait behind unrelated work on the global queue.
+        // Commands get time to end and reap their children, but a stalled deletion
+        // cannot keep this root process alive until the fifteen-minute session
+        // limit. Shutdown never waits behind other work on the global queue.
         shutdownQueue.asyncAfter(deadline: .now() + gracePeriod, execute: terminate)
     }
 
-    /// Register before a disconnect can cancel, and keep the cancellation
-    /// flag so a request already read from the socket cannot start another job.
+    /// Registered before a disconnect can cancel, and the cancellation flag is
+    /// kept so a request already read cannot start another job.
     private func runJob(
         withReply reply: @escaping @Sendable (String?) -> Void,
         operation: @escaping @Sendable () async -> Void
@@ -227,16 +219,13 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
         } catch { reply(error.localizedDescription) }
     }
 
-    /// Removes the quarantine and Brim's privacy grants, and nothing else.
-    ///
-    /// The one place this daemon deletes rather than sets aside, because
-    /// there is nowhere left to set anything aside to. The path and the
-    /// identifier are constants in this binary, never parameters, so the
-    /// interface still cannot be talked into removing something else.
+    /// Removes the quarantine and Brim's privacy grants, and nothing else: the
+    /// one place this deletes rather than sets aside. The path and identifier
+    /// are constants in this binary, never parameters.
     func uninstallSelf(withReply reply: @escaping @Sendable (String?) -> Void) {
-        // Full Disk Access lives in the system's privacy database, which only
-        // root can change, and `tccutil` finds the app through Launch
-        // Services, so this runs while the bundle is still on the disk.
+        // Full Disk Access is in the system privacy database, which only root can
+        // change, and `tccutil` finds the app through Launch Services, so this runs
+        // while the bundle is still on disk.
         Self.resetPrivacyGrants(of: BrimJobHelper.applicationIdentifier)
         let quarantine = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory)
         let parent = quarantine.deletingLastPathComponent()
@@ -244,8 +233,7 @@ final class Helper: NSObject, BrimJobHelperProtocol, Sendable {
             if FileManager.default.fileExists(atPath: quarantine.path) {
                 try FileManager.default.removeItem(at: quarantine)
             }
-            // The parent is Brim's own folder. Taken away only if Brim is
-            // the only thing that was in it.
+            // The parent is Brim's own folder, removed only if nothing else was in it.
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: parent.path),
                contents.isEmpty {
                 try? FileManager.default.removeItem(at: parent)

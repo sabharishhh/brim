@@ -4,13 +4,8 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// The review, the removal and the proof, in the page's right pane rather
-/// than a sheet over it.
-///
-/// A sheet hid the list the person had just built. Here the list stays in
-/// view beside the review, the button carries the removal's progress, and
-/// the result appears where the button was. Approval still comes from this
-/// window only, through the same model the sheet used.
+/// The review, the removal and its result in the page's right pane, beside
+/// the list the person built. Approval still comes from this window.
 struct RemovalPanel: View {
     let intent: PlanIntent
     let service: any BrimServiceProtocol
@@ -84,8 +79,8 @@ struct RemovalPanel: View {
         return steps.allSatisfy { $0.kind == .delegateToolCleanup }
     }
 
-    /// How many, then where their space goes. A tool's own cleanup names
-    /// no locations up front, and "0 items" would read as nothing to do.
+    /// How many, then where their space goes. A tool's own cleanup names no
+    /// locations up front, so "0 items" would read as nothing to do.
     private func footerLine(_ plan: Plan) -> String {
         isToolRun ? "1 command · The tool decides what goes"
             : "\(PlanSpace.count(model.removalSteps.count)) · \(PlanSpace.phrase(plan))"
@@ -122,8 +117,8 @@ struct RemovalPanel: View {
             }
             ForEach(consequences, id: \.title) { consequence in
                 Section {
-                    // The group's title as its first row, not a pinned header:
-                    // a pinned header is drawn on its own band with a rule under it.
+                    // A section's title as its first row, not a pinned header, which draws its
+                    // own band and rule.
                     Group {
                         Text(consequence.title)
                             .font(.brimGroupTitle)
@@ -179,8 +174,8 @@ struct RemovalPanel: View {
         .disabled(model.phase == .executing)
     }
 
-    /// The steps by what happens to each, which is what a person weighs:
-    /// back from the Trash, set aside by the helper, or gone for good.
+    /// The steps by what happens to each: back from the Trash, set aside by
+    /// administrator cleanup, or gone for good.
     private var consequences: [(title: String, steps: [Step])] {
         let all = model.removalSteps.filter(\.kind.targetIsPath)
         let helper = all.filter { $0.kind == .trashPathPrivileged && $0.effectiveDisposition == .trash }

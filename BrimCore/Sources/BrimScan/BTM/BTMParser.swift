@@ -46,9 +46,8 @@ public struct BTMParser: Sendable {
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.starts(with: "#") && trimmed.hasSuffix(":") && !trimmed.contains(" ") {
-                // New item block starts (e.g., "#1:")
-                // Wait, it could be "Embedded Item Identifiers:" followed by "#1:"
-                // So if we see UUID: we start a new record if we already have one.
+                // A UUID line starts a new item, including after a list of embedded item
+                // identifiers.
                 continue
             }
             
@@ -68,10 +67,8 @@ public struct BTMParser: Sendable {
                 currentIdentifier = trimmed.replacingOccurrences(of: "Identifier:", with: "").trimmingCharacters(in: .whitespaces)
             } else if trimmed.starts(with: "URL:") {
                 let path = trimmed.replacingOccurrences(of: "URL:", with: "").trimmingCharacters(in: .whitespaces)
-                // sfltool prints the literal "(null)" when an item has no
-                // URL at all, a background-tasks record, for instance.
-                // Treating that as a path invents a file that never existed
-                // and reports a healthy item as stale.
+                // `sfltool` prints "(null)" for an item with no URL, such as a
+                // background-tasks record; it is not a path.
                 if !path.isEmpty && path != "(null)" {
                     currentURLPath = path
                 }

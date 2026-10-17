@@ -3,13 +3,14 @@ import Darwin
 
 public struct SafeOps {
     
-    /// Securely removes or relocates an item by opening its parent directory and using the `*at` family of syscalls.
+    /// Moves an item by opening its parent and using the `*at` system calls, so
+    /// nothing in the path can be swapped between the check and the move.
     /// - Parameters:
-    ///   - targetPath: The absolute path to the item.
-    ///   - expectedDev: The expected device ID from the plan's fingerprint.
-    ///   - expectedIno: The expected inode from the plan's fingerprint.
-    ///   - destFd: A file descriptor to a secure temporary directory (opened with O_DIRECTORY).
-    ///   - destName: The name to give the file in the destination directory.
+    ///   - targetPath: the absolute path to the item.
+    ///   - expectedDev: the device ID from the plan's fingerprint.
+    ///   - expectedIno: the inode from the plan's fingerprint.
+    ///   - destFd: a descriptor for the destination directory (`O_DIRECTORY`).
+    ///   - destName: the item's name in the destination.
     public static func renameSecurely(
         targetPath: String,
         expectedDev: Int32,
@@ -82,20 +83,12 @@ public struct SafeOps {
         }
     }
     
-    /// Securely trashes an item.
-    ///
-    /// The item is renamed into an isolated directory on the same volume
-    /// first, so a path swapped between the fingerprint check and the move
-    /// cannot redirect this at something else. That rename uses a UUID, and
-    /// the item is then given its **original name back** before it reaches
-    /// the Trash. Otherwise the user opens the Trash and finds a pile of
-    /// opaque identifiers they cannot recognise, which makes "recoverable"
-    /// true only on paper.
-    ///
-    /// Finder's own "Put Back" still will not work: macOS records where an
-    /// item came from at the moment it is trashed, and by then it came from
-    /// the isolated directory. Restoring is Brim's job: the journal records
-    /// the trashed URL against the planned target, and `undo` uses that.
+    /// Moves an item to the Trash safely. It is first renamed into an isolated
+    /// folder on the same volume, so a path swapped after the fingerprint check
+    /// cannot redirect the move, then given its original name back so the
+    /// Trash shows something recognisable. Finder's Put Back does not work, as
+    /// macOS records the isolated folder as the origin; Brim restores from the
+    /// trashed URL its journal records.
     public static func trashItem(
         targetPath: String,
         expectedDev: Int32,
@@ -121,16 +114,14 @@ public struct SafeOps {
         // 3. Now that it is in our secure isolated temp directory, we can safely delete or trash it recursively
         let isolatedURL = volumeURL.appendingPathComponent(destName)
 
-        // 4. Give it its name back before trashing. The item is already
-        // unreachable by its original path, so nothing can be substituted
-        // here, and the Trash needs to show "Photoshop.app", not a UUID.
+        // 4. Give it its name back. It is no longer reachable by its original
+        // path, so nothing can be substituted here.
         let originalName = targetURL.lastPathComponent
         var toTrash = isolatedURL
         if Self.isUsableTrashName(originalName) {
             let namedURL = volumeURL.appendingPathComponent(originalName)
-            // The isolation directory is created fresh for this one item, so
-            // there is nothing to collide with; if the rename fails anyway,
-            // trashing under the UUID still beats not trashing at all.
+            // The isolation folder is fresh, so there is nothing to collide with;
+            // trashing under the UUID still beats not trashing.
             if (try? fm.moveItem(at: isolatedURL, to: namedURL)) != nil {
                 toTrash = namedURL
             }
@@ -139,9 +130,7 @@ public struct SafeOps {
         // Move to Trash using FileManager since the item is now in an isolated temp space.
         #if DEBUG
         if let stand = Self.standInTrash() {
-            // Its own name, in a directory of its own. The real Trash
-            // disambiguates by appending a time, and a test that checks the
-            // name survives has to see the same thing here.
+            // Its own name in a folder of its own, as the real Trash keeps it.
             let slot = stand.appendingPathComponent(UUID().uuidString)
             try fm.createDirectory(at: slot, withIntermediateDirectories: true)
             let landing = slot.appendingPathComponent(toTrash.lastPathComponent)
@@ -154,12 +143,10 @@ public struct SafeOps {
         return resultingURL as URL?
     }
 
-    /// Deletes for good something a removal put in the Trash.
-    ///
-    /// Only an item directly inside a Trash folder is accepted, so a
-    /// recorded URL that has been tampered with or moved cannot reach
-    /// anything else. A link is removed as a link; its target is never
-    /// followed. An item already gone is not an error.
+    /// Deletes for good something a removal put in the Trash. Only an item
+    /// directly inside a Trash folder is accepted, so a tampered or moved URL
+    /// reaches nothing else. A link is removed as a link. Already gone is not an
+    /// error.
     public static func deleteFromTrash(_ url: URL) throws {
         let path = url.standardizedFileURL.path
         guard isInTrash(path) else {
@@ -192,16 +179,9 @@ public struct SafeOps {
     }
 
     #if DEBUG
-    /// Where a test's trashed items land instead of the user's Trash.
-    ///
-    /// `FileManager.trashItem` always means the real Trash, so a test that
-    /// exercised the executor put its fixtures there: 58 bundles one
-    /// session, 68 another, with Launch Services records to match. The
-    /// harness is meant to leave nothing behind, and the only way to keep
-    /// that promise is for the tests not to reach the real Trash at all.
-    ///
-    /// Detected rather than configured, so no test has to remember to opt
-    /// in, and compiled out of a release build entirely.
+    /// Where a test's trashed items go instead of the real Trash, which
+    /// `FileManager.trashItem` always means. Detected rather than configured,
+    /// so no test has to opt in, and compiled out of release builds.
     nonisolated(unsafe) private static var standInTrashURL: URL?
     private static let standInTrashLock = NSLock()
 
@@ -216,9 +196,8 @@ public struct SafeOps {
     }
     #endif
 
-    /// Whether a basename can safely be used as a filename in the isolation
-    /// directory. Rejects anything that would escape it or name the directory
-    /// itself rather than an item inside it.
+    /// Whether a basename is safe as a file name in the isolation folder: it
+    /// must not escape the folder or name the folder itself.
     public static func isUsableTrashName(_ name: String) -> Bool {
         !name.isEmpty
             && name != "."
@@ -227,13 +206,10 @@ public struct SafeOps {
             && !name.utf8.contains(0)
     }
     
-    /// Securely and permanently removes an item.
-    ///
-    /// Same discipline as `trashItem`: verify the fingerprint, rename into an
-    /// isolated directory on the same volume, and only then destroy it, so a
-    /// path swapped between the check and the removal cannot redirect this at
-    /// something else. There is no Trash copy afterwards, which is exactly why
-    /// the isolation matters more here than it does for trashing.
+    /// Removes an item for good, with the same discipline as `trashItem`:
+    /// verify the fingerprint, rename into an isolated folder on the same
+    /// volume, then destroy it. There is no Trash copy afterwards, so the
+    /// isolation matters even more.
     public static func deleteItem(
         targetPath: String,
         expectedDev: Int32,
@@ -255,8 +231,8 @@ public struct SafeOps {
         let destName = UUID().uuidString
         try renameSecurely(targetPath: targetPath, expectedDev: expectedDev, expectedIno: expectedIno, destFd: destFd, destName: destName)
 
-        // Now isolated and unreachable by its original path, so removing it
-        // cannot follow a symlink planted at the target.
+        // Isolated and unreachable by its original path, so removing it cannot
+        // follow a link planted at the target.
         let isolatedURL = isolationURL.appendingPathComponent(destName)
         do {
             try fm.removeItem(at: isolatedURL)
@@ -265,9 +241,9 @@ public struct SafeOps {
         }
     }
 
-    /// Securely restores an item from the Trash to its original location.
-    /// Opens the parent directory of the destination with O_NOFOLLOW | O_DIRECTORY
-    /// and uses renameat to prevent symlink attacks.
+    /// Restores an item from the Trash to its original place, opening the
+    /// destination's parent with `O_NOFOLLOW | O_DIRECTORY` and using `renameat`
+    /// so a link cannot redirect it.
     public static func restoreItem(
         from sourcePath: String,
         to destPath: String
@@ -286,10 +262,7 @@ public struct SafeOps {
         if renameatx_np(AT_FDCWD, sourcePath, parentFd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
             let err = errno
             if err == EEXIST {
-                // Something is already at the destination. This used to
-                // print the destination and then enumerate the whole parent
-                // directory to standard out, which for a move into the Trash
-                // is a listing of the person's Trash in the system log.
+                // Something is already at the destination.
                 throw SafeOpsError.pathOccupied
             }
             if err == EXDEV {
@@ -315,9 +288,9 @@ public struct SafeOps {
         return Int64(statBuf.f_bavail) * Int64(statBuf.f_bsize)
     }
 
-    /// Verifies that an opened directory descriptor matches the expected parent path,
-    /// accounting strictly for standard macOS root symlinks (/var, /tmp, /etc -> /private/...)
-    /// and rejecting any unexpected intermediate symlink diversions.
+    /// Checks an opened directory descriptor matches the expected parent path,
+    /// allowing only macOS's standard root links (`/var`, `/tmp`, `/etc` into
+    /// `/private`) and refusing any other link on the way.
     private static func verifyParentDescriptor(_ fd: Int32, expectedPath: String) throws {
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
         guard fcntl(fd, F_GETPATH, &buffer) != -1 else {
@@ -329,8 +302,7 @@ public struct SafeOps {
             return
         }
         
-        // On macOS, /var, /tmp, and /etc are system-level symlinks to /private/var, /private/tmp, /private/etc.
-        // We only allow /private prefixing if the expected path specifically targets these known system roots.
+        // `/private` is allowed only for paths under those standard roots.
         let isSystemPrivateSymlink = expectedPath.hasPrefix("/var/") || expectedPath == "/var" ||
                                      expectedPath.hasPrefix("/tmp/") || expectedPath == "/tmp" ||
                                      expectedPath.hasPrefix("/etc/") || expectedPath == "/etc"
@@ -362,11 +334,8 @@ public struct SafeOps {
             return url
         }
 
-        /// Empties the stand-in Trash as the test process exits. It was left
-        /// behind for years of runs: 41 folders and 1 GB of copied bundles in
-        /// the temporary folder, every `Brim.app` in them registered with
-        /// Launch Services as another Brim. Records first, because deleting a
-        /// bundle does not unregister it.
+        /// Empties the stand-in Trash as the test process exits, retracting Launch
+        /// Services records first, because deleting a bundle does not unregister it.
         static func clearStandInTrash() {
             guard let url = standInTrashURL else { return }
             let fileManager = FileManager.default

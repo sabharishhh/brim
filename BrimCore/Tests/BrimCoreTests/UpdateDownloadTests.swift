@@ -2,14 +2,8 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// Updates apps downloaded to install themselves, and which of them Brim
-/// may clear.
-///
-/// On the Mac this was written on, Antigravity kept the same 181 MB update
-/// twice, as `pending/Antigravity.zip` and `update.zip`, both older than
-/// the Antigravity installed, and Notion left a download it abandoned in
-/// July. VS Code and Claude had held 2.3 GB of updates already installed.
-/// None of it appeared anywhere in Brim.
+/// Updates apps downloaded to install themselves, and which of them Brim may
+/// clear.
 final class UpdateDownloadTests: XCTestCase {
     private var home: URL!
     private var apps: URL!

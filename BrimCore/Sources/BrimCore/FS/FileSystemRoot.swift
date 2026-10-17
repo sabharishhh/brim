@@ -1,7 +1,7 @@
 import Foundation
 
-/// Represents the root of the filesystem to ensure `BrimCore` never uses hardcoded absolute paths.
-/// All domain lookups are resolved relative to this root.
+/// The root every domain is resolved against, so `BrimCore` never uses a
+/// hard-coded absolute path.
 public struct FileSystemRoot: Sendable {
     public let rootURL: URL
     public let userName: String
@@ -15,12 +15,9 @@ public struct FileSystemRoot: Sendable {
         case userLibrary
         case userPreferences
         case userApplicationSupport
-        /// The shared file list macOS keeps of the documents an application
-        /// most recently opened, one `<identifier>.sfl4` per application.
-        ///
-        /// It is a record about the application and it names the person's
-        /// own files. The record goes with the application; what it points
-        /// at is never touched. `RecordedPathTests` holds that line.
+        /// The recent-documents list macOS keeps per application,
+        /// `<identifier>.sfl4`. The record goes with the application; the files it
+        /// names are never touched (`RecordedPathTests`).
         case userRecentDocuments
         case userCaches
         case userSavedApplicationState
@@ -40,20 +37,12 @@ public struct FileSystemRoot: Sendable {
         case volumes
         case users
 
-        // Everything below was missing, and each one is a real place
-        // software hides. Nineteen locations found less than AppCleaner
-        // does; the point of a footprint is that it is the whole
-        // footprint.
-
-        /// Per-machine preferences. A second copy of an application's
-        /// settings, keyed by hardware, that a scan of `Preferences`
-        /// walks straight past.
+        /// Per-machine preferences: a second copy of an application's settings,
+        /// keyed by hardware, that a scan of `Preferences` walks past.
         case userPreferencesByHost
         case userHTTPStorages
-        /// `Caches/CloudKit/<identifier>`, the cache iCloud keeps for each
-        /// application that syncs. Inside `Caches` but one level down, so
-        /// the identifier rule for `Caches` never reached it, and the WWDC
-        /// app's was still there after its removal.
+        /// `Caches/CloudKit/<identifier>`, iCloud's cache for each application that
+        /// syncs. One level below `Caches`, so the `Caches` rule never reaches it.
         case userCloudKitCaches
         case userCookies
         case userApplicationScripts
@@ -69,9 +58,8 @@ public struct FileSystemRoot: Sendable {
         case systemCaches
         case systemContainers
 
-        // The plug-in folders. Audio plug-ins in particular are invisible
-        // to any scan keyed on a bundle identifier in a path, because the
-        // identifier is inside the bundle rather than in its name.
+        // The plug-in folders. A plug-in's identifier is inside the bundle, not in
+        // its name, so only reading the bundle attributes it.
         case userInternetPlugIns
         case systemInternetPlugIns
         case userPreferencePanes
@@ -115,54 +103,41 @@ public struct FileSystemRoot: Sendable {
         case usrLocalShare
         case usrLocalVar
 
-        /// Where `pkgutil` really keeps receipts. `/Library/Receipts` is
-        /// the old location and is empty on a modern Mac.
+        /// Where `pkgutil` keeps receipts now. `/Library/Receipts` is the old
+        /// location.
         case systemReceipts
         case sharedUser
         case sharedApplicationSupport
-        /// `confstr(_CS_DARWIN_USER_CACHE_DIR)` and its temp sibling: a
-        /// per-user, per-boot directory that nothing else enumerates.
+        /// `confstr(_CS_DARWIN_USER_CACHE_DIR)`: a per-user directory nothing else
+        /// enumerates.
         case darwinUserCache
         case darwinUserTemp
 
-        // The convention macOS never adopted and most cross-platform
-        // software follows anyway. Software written for Linux first keeps
-        // its real data here because that is where its other builds already
-        // look, and porting to `~/Library` is work nobody does. Nothing in
-        // Brim looked at `$HOME` directly, so the largest single thing any
-        // of these applications had on this Mac, 189 MB under
-        // `~/.local/share/claude`, was invisible to every evidence source.
+        // `~/.config`, where cross-platform software often keeps its real data
+        // rather than in `~/Library`.
         case userDotConfig
         case userDotCache
         case userDotLocalShare
         case userDotLocalState
         case userDotLocalBin
-        /// The home folder itself, for the dot folders software keeps
-        /// there: `~/.vscode`, `~/.antigravity-ide`. Only names beginning
-        /// with a dot are ever considered, because the rest of the home
-        /// folder is the person's own.
+        /// The home folder, for the dot folders software keeps there
+        /// (`~/.vscode`). Only names beginning with a dot are considered; the rest
+        /// is the person's own.
         case userHomeDotFolders
     }
 
-    /// Whether a domain can only be matched on a name, which makes
-    /// everything found there Tier C by construction.
-    ///
-    /// A command line tool has no bundle and no identifier. The only
-    /// thing connecting `/usr/local/bin/foo` to an application is that
-    /// somebody called them both "foo", and the specification is explicit
-    /// that such a location is Tier C and has to be labelled as one.
+    /// Whether a domain can only be matched on a name, which makes everything
+    /// found there Tier C. A command line tool has no bundle or identifier, so
+    /// only a shared name connects it to an application.
     public static func onlyNameMatchable(_ domain: Domain) -> Bool {
         switch domain {
         case .usrLocalBin, .usrLocalEtc, .usrLocalOpt,
              .usrLocalSbin, .usrLocalShare, .usrLocalVar,
-             // Not the Darwin per-user folders: what sits there is named
-             // after a bundle identifier, the same proof as `~/Library/Caches`.
-             // Counted as name-only, a folder called exactly
-             // `com.openai.codex.helper` was a guess and outlived the app.
+             // Not the Darwin per-user folders: names there are bundle identifiers, the
+             // same proof as `~/Library/Caches`.
              .sharedUser, .sharedApplicationSupport,
-             // Nothing under `$HOME` carries a bundle identifier. A folder
-             // there is linked to an application by a shared name and
-             // nothing else, which is the definition of Tier C.
+             // Nothing under `$HOME` carries a bundle identifier, so a match there is a
+             // shared name and Tier C.
              .userDotConfig, .userDotCache, .userDotLocalShare,
              .userDotLocalState, .userDotLocalBin, .userHomeDotFolders:
             true
@@ -293,13 +268,9 @@ public struct FileSystemRoot: Sendable {
         rootURL.appendingPathComponent(relative)
     }
 
-    /// The per-user, per-boot cache and temp directories.
-    ///
-    /// `/var/folders/xy/…`, which nothing enumerates and which holds a
-    /// surprising amount: WebKit stores, application caches, saved state.
-    /// There is no path to hard-code, only a `confstr` call, and under a
-    /// fixture root it must not answer with the real machine's, so a root
-    /// that is not `/` gets a stand-in inside the tree.
+    /// The per-user cache and temp directories under `/var/folders`. Found with
+    /// `confstr`; under a fixture root, a stand-in inside the tree so tests
+    /// never read the real machine's.
     static func darwinDirectory(_ name: Int32, in rootURL: URL) -> URL {
         guard rootURL.path == "/" else {
             let leaf = name == _CS_DARWIN_USER_CACHE_DIR ? "DarwinUserCache" : "DarwinUserTemp"

@@ -12,18 +12,11 @@ public enum ArtifactKind: String, Codable, Equatable, Sendable {
 public struct Identity: Codable, Equatable, Hashable, Sendable {
     public let bundleID: String?
     public private(set) var teamID: String?
-    /// The bundle's file name. `Visual Studio Code.app` gives "Visual Studio
-    /// Code", which is what a person calls it and frequently not what it
-    /// calls itself on disk.
+    /// The bundle's file name: what a person calls it, often not what it calls
+    /// itself on disk.
     public let name: String
-    /// `CFBundleName`, the name the bundle uses for itself, which is what
-    /// it names its support and cache folders after.
-    ///
-    /// Visual Studio Code's is "Code". Reading only `name` left 143 MB in
-    /// `Application Support/Code` out of its own uninstall, because the
-    /// folder is named after this and nothing on the uninstall path read
-    /// it. `LeftoversScanner` had already learned to, separately, which is
-    /// exactly how the two halves came to disagree.
+    /// `CFBundleName`, the name the bundle uses for itself and names its support
+    /// and cache folders after. Visual Studio Code's is "Code".
     public let bundleName: String?
 
     // Extended App fields
@@ -63,44 +56,31 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         self.recordedNames = recordedNames.flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// Every name this application answers to on disk, in the order a
-    /// person would expect to see them, without duplicates and without
-    /// empties.
-    ///
-    /// One place, because the uninstall path and the leftovers sweep have
-    /// to agree about this. They did not: the sweep read `CFBundleName` and
-    /// the uninstall path did not, so the sweep correctly refused to offer
-    /// up `Application Support/Code` while Visual Studio Code was installed
-    /// and the uninstall correctly failed to remove it when it was not.
+    /// Every name this application answers to on disk, in order, without
+    /// duplicates or empties. One place, so uninstall and the leftovers sweep
+    /// agree.
     public var searchNames: [String] {
         Self.distinct(ownNames + derivedNames + (identitySurface?.searchableNames ?? []))
     }
 
-    /// `<name> Helper`, which is what Chromium and Electron call the
-    /// processes they start, and what web storage is filed under when the
-    /// helper has no bundle of its own: `ChatGPTHelper.binarycookies`.
-    /// Searched for as the start of a name, never ticked.
+    /// `<name> Helper`, what Chromium and Electron call their helper processes,
+    /// and what web storage is filed under when a helper has no bundle. Searched
+    /// as the start of a name, never ticked.
     public var helperNames: [String] {
         ownNames.filter { !$0.lowercased().hasSuffix("helper") }.map { $0 + " Helper" }
     }
 
-    /// What the application itself is called: its file, its bundle and
-    /// display names and its executable, and every name Brim recorded for
-    /// it while it was installed. Not its helpers.
-    ///
-    /// Recorded names matter once the bundle is gone. History kept one
-    /// name per application, so after SystemEQ for Mac was removed the
-    /// sweep knew only that, and nothing else it had answered to.
+    /// What the application itself is called: its file, bundle and display
+    /// names, its executable, and every name Brim recorded for it while
+    /// installed, which matters once the bundle is gone. Not its helpers.
     public var ownNames: [String] {
         Self.distinct([name, bundleName].compactMap(\.self) + (identitySurface?.ownNames ?? [])
             + (recordedNames ?? []))
     }
 
-    /// Names worked out from the others rather than declared: the last label
-    /// of the identifier, and each name without a platform word at its end.
-    /// SystemEQ for Mac is `com.denzam.SystemEQ` and kept its presets in
-    /// `Application Support/SystemEQ`, which none of its declared names
-    /// spells.
+    /// Names worked out rather than declared: the identifier's last label, and
+    /// each name without a trailing platform word. SystemEQ for Mac
+    /// (`com.denzam.SystemEQ`) keeps `Application Support/SystemEQ`.
     public var derivedNames: [String] {
         var keys = Set(ownNames.map(NameKey.of))
         let stems = ownNames.compactMap(Self.withoutPlatformWord)
@@ -108,12 +88,9 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         return Self.distinct(candidates.filter { keys.insert(NameKey.of($0)).inserted })
     }
 
-    /// Whether a folder in the application's own data folders is named for
-    /// it clearly enough to remove with it by default: a name it declares,
-    /// in any case or spacing, or a derived name that is not an ordinary
-    /// word. `Caches/Codex` beside ChatGPT, whose identifier ends in
-    /// `codex`, is a word and stays a suggestion. `Application Support/
-    /// SystemEQ` is not.
+    /// Whether a folder in the app's own data folders is named for it clearly
+    /// enough to remove with it by default: a declared name in any case or
+    /// spacing, or a derived name that is not an ordinary word.
     public func isClearlyNamed(_ fileName: String) -> Bool {
         let key = NameKey.of(fileName)
         guard !key.isEmpty else { return false }
@@ -123,9 +100,8 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         return derivedNames.contains { NameKey.of($0) == key && !NameKey.isOrdinaryWord($0) }
     }
 
-    /// Words that say which platform or edition a name is for, not what it
-    /// is. Developers leave them off the folders: `SystemEQ for Mac` keeps
-    /// `SystemEQ`, `Docker Desktop` keeps `Docker`.
+    /// Words that say which platform or edition a name is for. Folders leave
+    /// them off: `SystemEQ for Mac` keeps `SystemEQ`.
     static func withoutPlatformWord(_ name: String) -> String? {
         let words = name.split(separator: " ").map(String.init)
         for suffix in Self.platformSuffixes where words.count > suffix.count {
@@ -148,9 +124,8 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
         return names.filter { IdentitySurface.isPathComponent($0) && seen.insert($0).inserted }
     }
 
-    /// The last label of the bundle identifier, which is the developer's own
-    /// name for the product. A match on it is still a name match. Labels
-    /// that name a kind of thing rather than a product are left out.
+    /// The identifier's last label, the developer's own name for the product.
+    /// Still a name match. Labels naming a kind of thing are left out.
     var productLabel: String? {
         guard let label = bundleID?.split(separator: ".").last.map(String.init),
               label.count >= 4, !Self.genericLabels.contains(label.lowercased()) else { return nil }
@@ -168,14 +143,10 @@ public struct Identity: Codable, Equatable, Hashable, Sendable {
             .filter(IdentitySurface.isPathComponent).sorted()
     }
 
-    /// Whether an identifier is this application's own: its bundle
-    /// identifier, or one inside it, the way `com.microsoft.teams2.agent`
-    /// is inside `com.microsoft.teams2`. Something named that way was named
-    /// by the developer for this application, and is not a guess.
-    ///
-    /// A component in a different namespace, such as Sparkle's downloader
-    /// or another product from the same vendor, is not: the same identifier
-    /// ships in other applications, so a match on it stays Tier C.
+    /// Whether an identifier is this application's own: its bundle identifier or
+    /// one inside it (`com.microsoft.teams2.agent` in `com.microsoft.teams2`).
+    /// A component in another namespace, such as a shared framework's, ships in
+    /// other apps, so a match on it stays Tier C.
     public func ownsIdentifier(_ identifier: String) -> Bool {
         guard let bundleID, !bundleID.isEmpty else { return false }
         let own = bundleID.lowercased()

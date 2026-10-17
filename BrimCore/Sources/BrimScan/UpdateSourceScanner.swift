@@ -88,7 +88,7 @@ public struct UpdateSourceScanner: Sendable {
     }
 
     /// A readable exact record can survive an unrelated receipt gap. Unknown
-    /// competing paths and duplicate exact records still refuse attribution.
+    /// conflicting paths and duplicate exact records still refuse attribution.
     public static func ownership(
         at application: URL, among inventory: HomebrewCaskInventory
     ) -> (installation: HomebrewInstallation?, completeness: ScanCompleteness) {
@@ -99,11 +99,11 @@ public struct UpdateSourceScanner: Sendable {
             let ambiguity = matches.count > 1 ? ScanCompleteness(unreadable: matches.map(\.receiptPath)) : .complete
             return (nil, inventory.completeness.merging(ambiguity))
         }
-        let possibleCompetitors = inventory.unresolvedRecords.filter {
+        let conflictingRecords = inventory.unresolvedRecords.filter {
             $0.receiptPath != match.receiptPath && (!$0.targetsChecked || $0.possibleTargets.contains(path))
         }
-        guard possibleCompetitors.isEmpty else {
-            return (nil, possibleCompetitors.reduce(ScanCompleteness.complete) { $0.merging($1.completeness) })
+        guard conflictingRecords.isEmpty else {
+            return (nil, conflictingRecords.reduce(ScanCompleteness.complete) { $0.merging($1.completeness) })
         }
         return (match, .complete)
     }
@@ -202,7 +202,7 @@ private enum HomebrewRecordReader {
     }
 
     /// Incomplete receipts cannot authorize a match. Their app links can
-    /// still expose a competing target or rule out a clearly unrelated record.
+    /// still expose a conflicting target or rule out a clearly unrelated record.
     private static func defensiveTargets(
         in cask: URL, budget: ScanBudget
     ) -> (targets: Set<String>, completeness: ScanCompleteness) {

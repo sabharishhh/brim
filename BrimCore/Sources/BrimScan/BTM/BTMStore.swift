@@ -2,24 +2,11 @@ import BrimCore
 import BrimScanShim
 import Foundation
 
-/// Reads Background Task Management straight out of its own database.
-///
-/// Brim used to get this from `sfltool dumpbtm`, and paid for it: macOS puts
-/// up "Allow administrator access for sfltool?" every time that runs. The
-/// whole surface was built around dodging that prompt, and the user still
-/// met it whenever they wanted to see their login items.
-///
-/// The prompt turns out to be `sfltool`'s, not the data's. The store lives in
-/// `/var/db/com.apple.backgroundtaskmanagement` as ordinary files, mode 644,
-/// and every field the dump prints is in them. Reading them needs Full Disk
-/// Access, which Brim asks for once during setup, and nothing else. No
-/// subprocess, no administrator authorisation, no prompt, ever.
-///
-/// The files are `NSKeyedArchiver` archives, so this decodes them with
-/// `NSKeyedUnarchiver` and a set of stand-in classes rather than walking the
-/// object graph by hand. Apple's decoder already knows how to follow the
-/// references and rebuild the `NSURL`s and `NSUUID`s; hand-resolving `CF$UID`
-/// markers would be a second implementation of that, and a worse one.
+/// Reads Background Task Management from its own store in
+/// `/var/db/com.apple.backgroundtaskmanagement`: ordinary mode 644 files that
+/// need Full Disk Access and nothing else. `sfltool dumpbtm` raises an
+/// administrator prompt that belongs to the tool, not the data. The files
+/// are `NSKeyedArchiver` archives, decoded with stand-in classes.
 public struct BTMStore: Sendable {
     /// Where macOS keeps it.
     public static let systemDirectory = URL(
@@ -37,11 +24,9 @@ public struct BTMStore: Sendable {
         self.currentUser = currentUser ?? { Self.directoryUUID(for: getuid()) }
     }
 
-    /// Every background item registered for this account and for the system.
-    ///
-    /// Nil means the store could not be read, which is a different answer
-    /// from an empty list and is reported as such. The usual cause is Full
-    /// Disk Access being off.
+    /// Every background item for this account and the system. Nil means the
+    /// store could not be read, usually because Full Disk Access is off, which
+    /// is different from an empty list.
     public struct Read: Sendable {
         public let records: [BTMRecord]
         public let coverage: RegistrationCoverage
@@ -107,18 +92,11 @@ public struct BTMStore: Sendable {
     // MARK: - Choosing files
 
     /// Picks the newest format version, then this account's store within it.
-    ///
-    /// Each account gets its own file, named after the directory UUID that
-    /// `mbr_uid_to_uuid` returns for its numeric id. Another person's login
-    /// items are neither Brim's business nor removable from here, so their
-    /// stores are left alone. The `FFFFEEEE-DDDD-CCCC-BBBB-AAAA…` names are
-    /// not people: macOS mints one per system pseudo-account, and the one
-    /// for uid 0 is where machine-wide daemons are recorded.
-    ///
-    /// Old versions stay on disk after an upgrade. This Mac still has a v16
-    /// file last written in September, listing software that has since been
-    /// removed, so reading anything but the highest version would report
-    /// leftovers that are nothing of the kind.
+    /// Each account's file is named for the directory UUID `mbr_uid_to_uuid`
+    /// returns; other people's stores are left alone, and the
+    /// `FFFFEEEE-DDDD-...` names are system pseudo-accounts (uid 0 holds
+    /// machine-wide daemons). Older versions stay on disk after an upgrade and
+    /// list removed software, so only the highest is read.
     static func storesToRead(in files: [URL], belongingTo user: UUID?) -> [URL] {
         let parsed = files.compactMap { url -> (version: Int, owner: String?, url: URL)? in
             guard let parts = parseName(url.lastPathComponent) else { return nil }
@@ -130,8 +108,7 @@ public struct BTMStore: Sendable {
             .filter { $0.version == newest }
             .filter { candidate in
                 guard let owner = candidate.owner else {
-                    // The file with no account in its name is an index of
-                    // which accounts have stores. It holds no items.
+                    // The file with no account in its name indexes which accounts have stores.
                     return false
                 }
                 if owner.hasPrefix(Self.pseudoAccountPrefix) {
@@ -156,9 +133,8 @@ public struct BTMStore: Sendable {
         return (version, String(body[body.index(after: separator)...]).uppercased())
     }
 
-    /// The directory UUID for a numeric user id, which is what names the
-    /// store files. `dscl` cannot answer this from a sandboxed process.
-    /// `mbr_uid_to_uuid` can, and is what macOS itself uses.
+    /// The directory UUID for a numeric user id, which names the store files.
+    /// `mbr_uid_to_uuid` is what macOS itself uses.
     static func directoryUUID(for uid: uid_t) -> UUID? {
         var bytes = [UInt8](repeating: 0, count: 16)
         guard brim_uid_to_uuid(uid, &bytes) == 0 else { return nil }
@@ -173,8 +149,8 @@ public struct BTMStore: Sendable {
     static func decode(_ file: URL) -> [BTMRecord]? {
         guard let data = try? Data(contentsOf: file) else { return nil }
         guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
-        // Unknown classes and missing keys come back as nil rather than as a
-        // raised exception, which a Swift caller cannot catch.
+        // Unknown classes and missing keys come back as nil instead of raising an
+        // exception Swift cannot catch.
         unarchiver.decodingFailurePolicy = .setErrorAndReturn
         unarchiver.requiresSecureCoding = false
         unarchiver.setClass(ArchivedUserStore.self, forClassName: "BTMUserStore")
@@ -266,12 +242,8 @@ final class ArchivedItem: NSObject, NSSecureCoding {
     func encode(with _: NSCoder) {}
 
     /// An absolute path for a top-level item, a bundle-relative one for an
-    /// embedded item, matching what `BTMRecord` has always expected.
-    ///
-    /// An embedded item is stored as a relative `NSURL` against a `file:///`
-    /// base, so asking for `path` would hand back `/Contents/Library/…` and
-    /// invent a file at the root of the disk. Every one of those would read
-    /// as a leftover.
+    /// embedded item. An embedded item is a relative `NSURL` against `file:///`,
+    /// so `path` would invent a file at the root of the disk.
     static func path(of url: URL?) -> String? {
         guard let url else { return nil }
         let path = url.baseURL == nil ? url.path : url.relativePath
@@ -281,14 +253,9 @@ final class ArchivedItem: NSObject, NSSecureCoding {
 
 // MARK: - Bit fields
 
-/// Turns the two bit fields in a record into words.
-///
-/// The names for `app`, `login item`, `extension`, `Spotlight importer`,
-/// `Dock tile plugin` and `background task` were each confirmed against
-/// records on a real Mac whose software was known. `agent` and `daemon` are
-/// the values `sfltool` prints for launchd jobs. Anything else is reported
-/// as its number rather than guessed at, because a wrong label here would
-/// be read as a fact about the user's Mac.
+/// Turns the record's two bit fields into words. Each name was confirmed
+/// against records on a real Mac; anything else is reported as its number
+/// rather than guessed.
 enum BTMDisposition {
     static func typeDescription(_ raw: Int) -> String? {
         guard raw != 0 else { return nil }

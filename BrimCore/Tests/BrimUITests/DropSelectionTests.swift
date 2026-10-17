@@ -57,8 +57,7 @@ final class DropSelectionTests: XCTestCase {
     }
 
     func testAnActiveSearchIsClearedSoTheRowIsVisible() {
-        // Selecting a row filtered out of the list looks like nothing
-        // happened.
+        // Selecting a row hidden by the filter looks like nothing happened.
         let model = model([app("Figma", "com.figma.Desktop"), app("IINA", "com.colliderli.iina")])
         model.searchText = "Figma"
 

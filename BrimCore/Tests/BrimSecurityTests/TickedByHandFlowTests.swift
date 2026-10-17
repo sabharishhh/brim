@@ -3,18 +3,10 @@
 @testable import BrimService
 import XCTest
 
-/// A row ticked by hand in the uninstall sheet, all the way through the gate.
-///
-/// `apply` does not trust the plan it is given. It builds the plan again from
-/// the stored intent and refuses unless every step and fingerprint matches,
-/// so a person's choice that lived anywhere but the intent would make every
-/// such removal fail its own check. And the approval is bound to the plan's
-/// hash, which covers the intent, so the choice is part of what was approved.
-///
-/// The identity has no bundle identifier and no bundle on disk on purpose:
-/// that keeps the privacy reset and the Launch Services retraction out of the
-/// plan, so nothing here reaches past the fixture tree into this Mac's own
-/// databases.
+/// A row ticked by hand, all the way through the gate. `apply` rebuilds the
+/// plan from the stored intent and the approval covers its hash, so the
+/// choice must live in the intent. No bundle identifier or bundle, so the
+/// plan never reaches this Mac's own databases.
 final class TickedByHandFlowTests: XCTestCase {
     private var tempDir: URL!
     private var rootURL: URL!
@@ -43,9 +35,8 @@ final class TickedByHandFlowTests: XCTestCase {
         rootURL.appendingPathComponent("Users/\(NSUserName())")
     }
 
-    /// Found only through a name that begins with the application's, so
-    /// Tier C and left unticked. A folder named exactly for it is now ticked,
-    /// so the row a person has to tick themselves is one like this.
+    /// Found only through a name that begins with the application's, so Tier C
+    /// and left unticked.
     private func makeSupportFolder() throws -> URL {
         let folder = home.appendingPathComponent("Library/Application Support/Studio-cache")
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -62,8 +53,7 @@ final class TickedByHandFlowTests: XCTestCase {
         )
     }
 
-    /// **The whole point.** Found, offered, ticked, approved, rebuilt by
-    /// `apply` from the intent, and removed.
+    /// Found, offered, ticked, approved, rebuilt by `apply` and removed.
     func testARowTickedByHandSurvivesTheGateAndIsRemoved() async throws {
         let support = try makeSupportFolder()
         let service = makeService()
@@ -95,9 +85,8 @@ final class TickedByHandFlowTests: XCTestCase {
         )
     }
 
-    /// Naming a path the evidence engine did not find does not put it in an
-    /// uninstall, however the intent arrives. Checked through the gate as
-    /// well as in the planner, because the gate is where it would matter.
+    /// A path the engine did not find never enters an uninstall, checked
+    /// through the gate as well as in the planner.
     func testAPathTheEngineDidNotFindSurvivesAnApprovedUninstall() async throws {
         let support = try makeSupportFolder()
         let documents = home.appendingPathComponent("Documents")

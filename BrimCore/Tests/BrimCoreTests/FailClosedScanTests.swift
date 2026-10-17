@@ -33,9 +33,8 @@ final class FailClosedScanTests: XCTestCase {
     }
 
     func testATimedOutSearchSelectsNothing() async {
-        // Mole degrades a timed-out scan and narrows the plan rather than
-        // removing shared leftovers. A footprint is a claim about what is
-        // on the disk, and an unfinished search cannot support it.
+        // A footprint is a claim about the disk, and an unfinished search cannot
+        // support it, so nothing is selected.
         let evaluated = await evaluate(
             completeness: ScanCompleteness(timedOut: ["/Library/Audio/Plug-Ins/Components"])
         )
@@ -54,8 +53,8 @@ final class FailClosedScanTests: XCTestCase {
     }
 
     func testTheItemsAreStillShown() async {
-        // Narrowing the selection, not the list. Everything found is
-        // still there and every row can still be ticked by hand.
+        // The selection narrows, not the list: everything found is still there and
+        // tickable by hand.
         let evaluated = await evaluate(completeness: ScanCompleteness(timedOut: ["/x"]))
         if case .excluded = evaluated.selection {
             XCTFail("An unfinished scan hid the row instead of unticking it")
@@ -72,11 +71,9 @@ final class FailClosedScanTests: XCTestCase {
         )
     }
 
-    /// Matching now looks identifiers up in a set and walks a name's own
-    /// dotted prefixes, instead of testing every identifier against every
-    /// file. Xcode has 135 identifiers and finding what it keeps took six
-    /// seconds of the thirteen its removal review spent loading. The
-    /// boundaries have to be exactly the ones the string comparison had.
+    /// Matching uses set lookups and a name's own dotted prefixes rather than
+    /// testing every identifier against every file, with exactly the same
+    /// boundaries as the string comparison had.
     func testMatchingKeepsItsBoundariesWithManyIdentifiers() {
         let identity = Identity(bundleID: "com.vendor.app", name: "App")
         func tier(_ rule: LocationInventory.Rule, _ name: String, declared: String? = nil) -> EvidenceTier? {
@@ -104,9 +101,8 @@ final class FailClosedScanTests: XCTestCase {
         LocationInventory.standard.locations.first { $0.rule == rule && $0.domain == domain }!
     }
 
-    /// Editors built from Visual Studio Code name their home folder in
-    /// `product.json`. `.vscode` shares nothing with "Visual Studio Code",
-    /// so the declaration is the only way to find it, and it is a record.
+    /// An editor's home folder declared in `product.json` (`.vscode`) is a
+    /// record and Tier B; the same folder found by name is Tier C.
     func testAHomeFolderTheBundleDeclaresIsTierBAndANameMatchIsTierC() {
         let surface = IdentitySurface(bundlePath: "/Applications/Antigravity.app", components: [
             .init(path: "/Applications/Antigravity.app", bundleIdentifier: "com.google.antigravity",

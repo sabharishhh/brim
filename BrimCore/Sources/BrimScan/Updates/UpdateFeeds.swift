@@ -61,14 +61,9 @@ public struct AppcastItem: Equatable, Sendable {
     }
 }
 
-/// Reads an appcast the way Sparkle chooses from it.
-///
-/// Brim used to take the largest `shortVersionString` it could find, which
-/// compared a marketing string with a numeric string compare and ignored
-/// everything Sparkle itself checks: the build number it actually orders
-/// by, the macOS range an item declares, Apple silicon requirements,
-/// channels a person never subscribed to, and items that offer no download
-/// at all.
+/// Chooses from an appcast by build number, within each item's macOS range
+/// and architecture requirements, ignoring channels the person never
+/// subscribed to and items with no download.
 public enum SparkleAppcast {
     public static func items(in data: Data) -> [AppcastItem] {
         let reader = Reader()
@@ -187,12 +182,10 @@ public enum SparkleAppcast {
 
 // MARK: - Electron
 
-/// electron-builder's update metadata.
-///
-/// An Electron application built with electron-builder ships
-/// `Contents/Resources/app-update.yml`, which says where its updater looks,
-/// and the place it names publishes `latest-mac.yml` with the version and
-/// a SHA-512 for each file. Both are flat enough to read by line.
+/// electron-builder's update metadata. An app built with it ships
+/// `Contents/Resources/app-update.yml` naming where its updater looks, and
+/// that place publishes `latest-mac.yml` with each file's version and
+/// SHA-512. Both are read line by line.
 public enum ElectronFeed {
     public struct File: Sendable {
         public var url: String

@@ -15,12 +15,10 @@ public struct WhatsNew: Equatable, Sendable {
     }
 }
 
-/// Reads each update's release notes once.
-///
-/// Short notes are shown as written. Longer ones are condensed by the
-/// model, from this version's section only. A CVE identifier marks a
-/// security fix without asking anything. Without the model, long notes add
-/// nothing to the row: their opening words are usually a heading.
+/// Reads each update's release notes once. Short notes are shown as
+/// written; longer ones are condensed by the model from this version's
+/// section. A CVE identifier marks a security fix without asking. Without
+/// the model, long notes add nothing to the row.
 @MainActor
 public final class WhatsNewModel: ObservableObject {
     public enum State: Equatable, Sendable {
@@ -63,8 +61,8 @@ public final class WhatsNewModel: ObservableObject {
                                           fixesSecurity: reading.fixesSecurity || cve, isGenerated: true))
         default:
             states[key] = securityOnly
-            // Asked again next time the row appears; a refusal is
-            // remembered by the engine, so that costs nothing.
+            // Asked again next time the row appears; a refusal is remembered by the
+            // engine.
             asked.remove(key)
         }
     }

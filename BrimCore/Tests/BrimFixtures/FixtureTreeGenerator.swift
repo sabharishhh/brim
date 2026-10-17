@@ -79,7 +79,7 @@ public struct FixtureTreeGenerator {
         let groupContainerURL = rootURL.appendingPathComponent("Library/Group Containers/group.\(bundleID)")
         try fm.createDirectory(at: groupContainerURL, withIntermediateDirectories: true)
         
-        // T-3.1 Additions
+        // More of the footprint an app scatters across Library.
         let httpStorage = rootURL.appendingPathComponent("Library/HTTPStorages/\(bundleID)")
         try fm.createDirectory(at: httpStorage, withIntermediateDirectories: true)
         
@@ -128,7 +128,7 @@ public struct FixtureTreeGenerator {
         try fm.createDirectory(at: prefs.deletingLastPathComponent(), withIntermediateDirectories: true)
         fm.createFile(atPath: prefs.path, contents: Data("dummy plist".utf8))
         
-        // T-3.1 Additions
+        // More of the footprint an app scatters across Library.
         let savedState = rootURL.appendingPathComponent("Library/Saved Application State/\(bundleID).savedState")
         try fm.createDirectory(at: savedState, withIntermediateDirectories: true)
         

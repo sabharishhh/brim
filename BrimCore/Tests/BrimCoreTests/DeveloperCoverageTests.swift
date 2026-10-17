@@ -3,13 +3,8 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// What Developer finds, held to what this Mac actually had.
-///
-/// The largest thing any tool had left was a Rust project's 20 GB `target`
-/// folder, and the Developer list could not see it: it only knew fixed
-/// cache paths, and a project lives wherever its owner put it. npx, uv,
-/// node-gyp and clang's caches were missing too, and turned up in
-/// Leftovers as "owner unknown" instead.
+/// What Developer finds: project build output wherever a project lives,
+/// such as a Rust `target` folder, and tool caches beyond fixed paths.
 final class DeveloperCoverageTests: XCTestCase {
     private var home: URL!
 
@@ -86,9 +81,7 @@ final class DeveloperCoverageTests: XCTestCase {
         XCTAssertTrue(claimed.contains(home.appendingPathComponent("Library/Caches/node-gyp").standardizedFileURL.path))
     }
 
-    /// Cargo hard-links its build outputs, and a 20 GB `target` read 35 GB
-    /// because every name was counted. Removing the folder frees each file
-    /// once.
+    /// Hard links are counted once: removing the folder frees each file once.
     func testAFileWithSeveralNamesIsCountedOnce() throws {
         let file = try put("Developer/loki/target/deps/lib.a")
         try Data(repeating: 7, count: 1_000_000).write(to: file)
@@ -99,16 +92,16 @@ final class DeveloperCoverageTests: XCTestCase {
         XCTAssertEqual(DeveloperCacheScanner.size(of: home.appendingPathComponent("Developer/loki/target")), once)
     }
 
-    /// `cargo cache` is an add-on almost nobody has, and `gradle --stop`
-    /// deletes nothing. Neither is offered as a cleanup any more.
+    /// Cleanups that cannot work (`cargo cache`, an add-on; `gradle --stop`,
+    /// which deletes nothing) are not offered.
     func testCleanupsThatCouldNotWorkAreGone() {
         XCTAssertNil(ToolCleanup.command(id: "cargo.cache"))
         XCTAssertNil(ToolCleanup.command(id: "gradle.cache"))
         XCTAssertNotNil(ToolCleanup.command(id: "uv.cache"))
     }
 
-    /// Opened from Finder, an app's PATH is the system folders only, and
-    /// every cleanup needing npm, pnpm, brew or uv said the tool was missing.
+    /// Opened from Finder, an app's PATH has only the system folders, so tools
+    /// installed elsewhere must still be found.
     func testCleanupsCanFindToolsInstalledOutsideTheSystemFolders() {
         let path = ToolCleanup.environment()["PATH"] ?? ""
         XCTAssertTrue(path.split(separator: ":").contains("/opt/homebrew/bin"))

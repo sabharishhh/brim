@@ -2,30 +2,15 @@ import XCTest
 import Security
 @testable import BrimCore
 
-/// Two modules ask macOS who signed a bundle, and they have to ask the same
-/// question.
-///
-/// `IdentityResolver` in `BrimCore` asked `SecCodeCopySigningInformation` for
-/// `kSecCSRequirementInformation` alone. That flag carries the entitlements,
-/// so the sandbox flag and the group container list came back correctly and
-/// the call looked like it worked. The team identifier is *signing*
-/// information and needs `kSecCSSigningInformation`, so `Identity.teamID` was
-/// nil for every application on the machine. Nothing threw. `TeamIDSource`
-/// opens by returning an empty array when there is no team, so the whole of
-/// it, and every team-prefixed Group Containers and Application Scripts rule
-/// in `LocationInventory`, read as "nothing found" rather than "never asked",
-/// which is the unmeasured zero this project has a `RegistrationCoverage`
-/// type to prevent.
-///
-/// `CodeSignature` in `BrimScan` had the flags right the whole time. When
-/// one fact is read in two modules, a test has to hold the two readings to
-/// one answer, and this was the second time that went wrong in one task.
+/// Two modules ask macOS who signed a bundle and must ask the same question.
+/// The team identifier is signing information and needs
+/// `kSecCSSigningInformation`; asking for requirement information alone left
+/// every `Identity.teamID` nil, and every team-prefixed rule read as
+/// "nothing found" rather than "never asked".
 final class SigningInformationTests: XCTestCase {
 
-    /// The flags are a constant, so the invariant can be checked by reading
-    /// the source rather than by finding a Developer ID bundle to sign
-    /// against. Every caller asks for signing information or the team
-    /// identifier it wants is not in the dictionary it gets back.
+    /// Read from the source: every caller asks for signing information, or the
+    /// team identifier is not in the dictionary it gets back.
     func testEverySigningInformationCallAsksForSigningInformation() throws {
         var callers = 0
         for file in Self.productSources() {
@@ -48,10 +33,9 @@ final class SigningInformationTests: XCTestCase {
         )
     }
 
-    /// The two readers agree, checked against whatever this machine happens
-    /// to have. Apple's own binaries carry no team identifier, so the useful
-    /// case is a third-party application; when there is none the invariant
-    /// above is still held by the source scan.
+    /// The two readers agree on whatever this machine has. Apple's binaries
+    /// carry no team identifier, so this needs a third-party application; the
+    /// source scan above still holds the invariant without one.
     func testTheTwoReadersAgreeOnTheSameBundle() async throws {
         let applications = URL(fileURLWithPath: "/Applications")
         let names = (try? FileManager.default.contentsOfDirectory(atPath: applications.path)) ?? []
@@ -76,8 +60,7 @@ final class SigningInformationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// What macOS says, read the plain way, so the test does not prove a
-    /// reading correct by using the same reading twice.
+    /// Read the plain way, so the test does not prove a reading by repeating it.
     private static func teamIdentifier(of bundle: URL) -> String? {
         var staticCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &staticCode) == errSecSuccess,
@@ -90,8 +73,8 @@ final class SigningInformationTests: XCTestCase {
         return (information as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
-    /// The flags a call site passes, which may be a literal in the call or a
-    /// constant bound on the line above it.
+    /// The flags a call site passes, as a literal or a constant bound on the
+    /// line above.
     private static func flagExpression(around line: Substring, in text: String) -> String {
         if line.contains("SecCSFlags") { return String(line) }
         // `let wanted = SecCSFlags(...)` then `…(code, wanted, &info)`.

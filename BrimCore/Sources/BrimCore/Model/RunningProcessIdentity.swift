@@ -1,32 +1,14 @@
 import Foundation
 
-/// What a running process actually is, worked out from where it lives.
-///
-/// The energy list read `contactsd`, `suggestd`, `duetexpertd`,
-/// `mediaanalysisd` and `spotlightknowledged.updater` straight off the
-/// executable path and printed them. Those are the five largest consumers on
-/// this Mac and not one of them tells a person anything. Worse, they sat in
-/// the same undifferentiated list as Claude and ChatGPT, so the list read as
-/// though a person could act on all of it, when half of it is macOS running
-/// itself and is nobody's to switch off.
-///
-/// Classification is derived from the path, which is a fact about the file
-/// rather than a guess: a bundle under `/Applications` is an application, a
-/// binary under `/System/Library` belongs to macOS, one under
-/// `/opt/homebrew` or `/usr/local` was installed by a package manager.
-/// Nothing here pattern-matches a *name*.
-///
-/// The one table is the plain-English names for Apple's own background
-/// services. There is no API that returns "contactsd syncs your contacts",
-/// and inventing a description from the binary's name would be exactly the
-/// confident nonsense this product exists to avoid. So a name is either one
-/// Apple documents and a person can verify, or it is not claimed at all: an
-/// unrecognised system daemon says it belongs to macOS, which is true and
-/// derived, and says nothing further.
+/// What a running process is, worked out from where it lives: a bundle in
+/// `/Applications` is an app, a binary in `/System/Library` is macOS, one in
+/// `/opt/homebrew` or `/usr/local` came from a package manager. Nothing is
+/// matched by name. The only table is plain names for Apple's own services;
+/// an unrecognised daemon is said to belong to macOS and nothing more.
 public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
 
-    /// What kind of thing this is, which decides how it is grouped, what
-    /// icon it gets, and whether a person can do anything about it.
+    /// What kind of thing this is, which decides its group, its icon and
+    /// whether a person can act on it.
     public enum Kind: String, Sendable, Equatable, Codable, CaseIterable {
         /// An application with a bundle, which a person launched.
         case application
@@ -40,11 +22,8 @@ public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
         /// Somewhere else on the disk. Said plainly rather than guessed at.
         case other
 
-        /// Whether the person can reasonably act on this.
-        ///
-        /// The point of the distinction: a list that mixes "quit Figma" with
-        /// "macOS is indexing Spotlight" invites somebody to try to stop the
-        /// second one.
+        /// Whether the person can reasonably act on this, so "quit Figma" and
+        /// "macOS is indexing Spotlight" are not offered alike.
         public var isActionable: Bool {
             switch self {
             case .application, .commandLineTool: return true
@@ -82,8 +61,7 @@ public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
     /// The binary that was running.
     public let executablePath: String
     public let kind: Kind
-    /// What this does, when that is something Brim can state rather than
-    /// guess. Nil is a normal answer and means the row says nothing extra.
+    /// What this does, when Brim can state it rather than guess. Nil is normal.
     public let explanation: String?
 
     public init(
@@ -111,14 +89,9 @@ public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
             let name = URL(fileURLWithPath: bundlePath)
                 .deletingPathExtension().lastPathComponent
 
-            // `/System/Applications` is where every app Apple ships now
-            // lives: Music, Safari, Mail, Notes, Photos. Treating anything
-            // under `/System/` as a service filed all of them as macOS
-            // running itself, badged them as nobody's to stop, and sorted
-            // them into the half of the panel headed "most of this finishes
-            // on its own". Music playing an album is a person's to quit.
-            //
-            // `/System/Library` and `/usr/libexec` are the services.
+            // `/System/Applications` holds the apps Apple ships (Music, Safari,
+            // Mail), which are a person's to quit. `/System/Library` and
+            // `/usr/libexec` are the services.
             let isService = bundlePath.hasPrefix("/System/Library/")
                 || bundlePath.hasPrefix("/usr/libexec/")
             let kind: Kind = isService ? .systemService : .application
@@ -128,8 +101,8 @@ public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
             )
         }
 
-        // Apple's own background services, which are the ones that dominate
-        // the list and the ones whose names mean least.
+        // Apple's own background services, which dominate the list and whose
+        // names mean least.
         if let known = appleService(named: binary) {
             return RunningProcessIdentity(
                 displayName: known.name, bundlePath: nil, executablePath: executablePath,
@@ -171,31 +144,13 @@ public struct RunningProcessIdentity: Sendable, Equatable, Hashable {
 
     private static let macOSExplanation = "Part of macOS, running on its own schedule."
 
-    /// Apple's background services, in words a person can check.
-    ///
-    /// Deliberately small and deliberately literal. Each of these is a
-    /// documented part of macOS whose job can be stated without inference,
-    /// and the list covers what actually shows up at the top of an energy
-    /// reading. A daemon that is not here is still identified as part of
-    /// macOS, which is derived from its path; it simply gets no sentence,
-    /// because Brim does not have one to give.
-    /// Never the name of an application.
-    ///
-    /// The first version of this called `contactsd` "Contacts", and the
-    /// person reading it had opened the Contacts app exactly once, to see
-    /// what a native Mac app looked like. The panel appeared to be telling
-    /// them an app they never use had cost 4.2% of a charge. It was not:
-    /// `contactsd` holds the contacts database and answers every app that
-    /// reads from it, plus iCloud sync, and runs whether or not the Contacts
-    /// app has ever been opened.
-    ///
-    /// Replacing an opaque name with a misleading one is worse than leaving
-    /// it opaque, so every name here describes the *service* and none of
-    /// them is an app's name. Where the distinction matters, the explanation
-    /// says out loud that the work is being done for something else.
+    /// Apple's background services, in words a person can check. Small and
+    /// literal on purpose: each describes the service, never an app's name,
+    /// since `contactsd` runs whether or not Contacts was ever opened. A daemon
+    /// not listed is still identified as macOS by its path.
     static func appleService(named binary: String) -> (name: String, explanation: String)? {
-        // Matched on the whole binary name, not a prefix, so a third-party
-        // binary that happens to start with the same letters is not claimed.
+        // Matched on the whole binary name, so a third-party binary with the same
+        // prefix is not claimed.
         switch binary {
         case "contactsd":
             return ("Contacts database",

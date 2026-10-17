@@ -61,9 +61,8 @@ struct StoppedDownloadTests {
     }
 }
 
-/// Claude's update downloaded 384 MB, passed every check and stopped only
-/// because Claude stayed open; Try Again downloaded all of it again. A
-/// download whose app would not quit is kept for a day and used once more.
+/// A download whose app would not quit is kept for a day and used once more
+/// rather than downloaded again.
 struct ReadyDownloadTests {
     private let url = URL(string: "https://example.com/releases/Demo-2.0.zip")!
 

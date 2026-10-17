@@ -4,22 +4,11 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// Backs the Background section: what your software runs in the background,
-/// and what macOS is still being told to run for software that has gone.
-///
-/// **Your software, not macOS's.** The section used to carry a switch that
-/// added Apple's own registrations to the list. On this Mac that is 1,398
-/// rows against 23: 905 launchd jobs, every one of them Apple's, and 484 of
-/// the 490 app extensions. None of it can be removed, none of it should be,
-/// and none of it is what somebody opens an uninstaller to look at. Turning
-/// the switch on beachballed the window, and the list it drew after that was
-/// 1,193 rows of `AccessibilitySettingsSearchExtension` and `AVConference`.
-///
-/// One load, everything in it. This used to arrive in two stages, because
-/// login items came from `sfltool` and cost an administrator prompt, so
-/// they waited behind a toggle. They are read from the Background Task
-/// Management store now, at the same price as everything else, which is
-/// nothing.
+/// Backs the Background section: what the person's software runs in the
+/// background, and what macOS still runs for software that is gone. Apple's
+/// own registrations are left out: nearly all of the list, none removable.
+/// Login items come from the Background Task Management store in the same
+/// load as everything else.
 @MainActor
 public final class BackgroundModel: ObservableObject {
     @Published public private(set) var report: RegistrationReport = .empty
@@ -34,9 +23,8 @@ public final class BackgroundModel: ObservableObject {
     /// Which loose ends are picked for removal, by registration id.
     @Published public var selection: Set<String> = []
 
-    /// Entries pointing at something that has gone and will stay gone
-    /// until somebody removes them. Apple ships jobs whose programs are
-    /// absent by design, and those are already filtered out.
+    /// Entries pointing at something gone, which stay until someone removes
+    /// them. Apple's jobs with absent programs are already filtered out.
     @Published public private(set) var stale: [RegistrationGroup] = []
 
     /// Legacy grouping input. Collection is never assumed from a missing target.
@@ -50,19 +38,14 @@ public final class BackgroundModel: ObservableObject {
     private var applications: [InstalledApplication] = []
     private var visibleReport: RegistrationReport = .empty
 
-    /// Administrator cleanup, for the jobs that live in a folder belonging
-    /// to root. Observed directly rather than through a container, because
-    /// a nested ObservableObject publishes nothing.
+    /// Administrator cleanup, for jobs in root's folders. Observed directly,
+    /// because a nested ObservableObject publishes nothing.
     public let helper = PrivilegedHelperClient()
 
     public init() {}
 
-    /// Drops the job files a removal proved gone, right now.
-    ///
-    /// Same reason as the leftovers list: `verify` re-observed every path
-    /// and said which survived, so rescanning every registration surface to
-    /// rediscover that is work the answer has already been given for. A job
-    /// that is still there stays on screen, because it is still there.
+    /// Drops the job files a removal proved gone, without rescanning every
+    /// surface. A job still there stays on screen.
     public func forget(paths: Set<String>) {
         guard !paths.isEmpty else { return }
         let surviving = report.registrations.filter {
@@ -75,15 +58,8 @@ public final class BackgroundModel: ObservableObject {
         regroup()
     }
 
-    /// The three lists, worked out once per scan and once per keystroke.
-    ///
-    /// They were computed properties, and that was the second half of the
-    /// freeze. One SwiftUI body pass reads `live` four times and `stale`
-    /// three, and each read filtered every registration and regrouped the
-    /// survivors from scratch: 12ms each, 73ms a pass, for an answer that
-    /// had not changed between the first read and the seventh. Typing in
-    /// the search field paid it again on every character. Holding the
-    /// answer is what a model is for.
+    /// The three lists, worked out once per scan and once per keystroke rather
+    /// than on every read.
     private func regroup() {
         live = RegistrationGroup.group(matching(visibleReport.live))
         let gone = RegistrationGroup.group(matching(visibleReport.stale))
@@ -100,9 +76,8 @@ public final class BackgroundModel: ObservableObject {
         selection.formIntersection(Set(visibleReport.stale.map(\.id)))
     }
 
-    /// What the list animates on. See `LeftoversModel.revision`: a
-    /// transaction opened around an async mutation does not reliably reach
-    /// SwiftUI, so the view watches a value instead.
+    /// What the list animates on: a transaction opened around an async mutation
+    /// does not reliably reach SwiftUI, so the view watches a value instead.
     @Published public private(set) var revision = 0
 
     public var gaps: [RegistrationCoverage] {
@@ -121,17 +96,9 @@ public final class BackgroundModel: ObservableObject {
         visibleReport.stale.filter { selection.contains($0.id) }
     }
 
-    /// Whether this entry is something Brim can actually take away.
-    ///
-    /// A launchd job is a file: unload it, remove the file, done. A
-    /// background item is a row in a database macOS owns, and the only
-    /// tool it offers resets every application's items at once, so there
-    /// is no per-item removal to offer. A missing target does not promise collection.
-    ///
-    /// The capability is the part that was missing. Two jobs in
-    /// `/Library/LaunchAgents` were offered, authorized and then failed,
-    /// because that directory belongs to root and nothing had asked
-    /// whether the removal could succeed before promising it.
+    /// Whether Brim can take this entry away. A launchd job is a file: unload it
+    /// and remove it, if the folder allows. A background item is a row in a
+    /// database macOS owns, with no per-item removal to offer.
     public static func isRemovable(_ registration: Registration) -> Bool {
         registration.kind == .launchdJob
             && registration.recordPath != nil
@@ -139,9 +106,8 @@ public final class BackgroundModel: ObservableObject {
             && registration.capability == .ok
     }
 
-    /// Something Brim cannot reach itself, but administrator cleanup can.
-    /// Only the two machine-wide launchd folders qualify, because those are
-    /// the only places it will touch.
+    /// Something Brim cannot reach itself but administrator cleanup can: only
+    /// the two machine-wide launchd folders.
     public static func needsTheHelper(_ registration: Registration) -> Bool {
         guard registration.kind == .launchdJob,
               !registration.isSystemOwned,
@@ -170,19 +136,16 @@ public final class BackgroundModel: ObservableObject {
         matching(visibleReport.stale).filter(Self.needsTheHelper)
     }
 
-    /// Brings the helper's state up to date where this section has work
-    /// for it, so the section can say whether it is ready. Reading the state
-    /// only checks that this copy of Brim carries its administrator tool;
-    /// it starts nothing and asks for no password. `HelperRoute` connects
-    /// the helper to the service once for the whole app.
+    /// Refreshes administrator cleanup's state where this section has work for
+    /// it. Reading the state starts nothing and asks for no password;
+    /// `HelperRoute` connects it to the service once for the app.
     private func refreshHelper() {
         guard !waitingOnHelper.isEmpty else { return }
         helper.refresh()
     }
 
-    /// Entries that are genuinely left over but that Brim cannot remove as
-    /// it is running. Surfaced rather than discovered on failure, the same
-    /// way the leftovers list handles a container it cannot reach.
+    /// Entries genuinely left over that Brim cannot remove as it is running,
+    /// shown up front rather than found on failure.
     public var blocked: [Registration] {
         matching(visibleReport.stale).filter {
             $0.kind == .launchdJob && !$0.isSystemOwned && $0.capability != .ok
@@ -215,16 +178,15 @@ public final class BackgroundModel: ObservableObject {
         !selectedItems.isEmpty
     }
 
-    /// Whether anything picked will go through the privileged daemon, so
-    /// the review can say so once rather than per row.
+    /// Whether anything picked needs administrator cleanup, so the review says
+    /// it once.
     public var selectionUsesHelper: Bool {
         selectedItems.contains(where: Self.needsTheHelper)
     }
 
     public func removalIntent(requesterIdentity: String) -> PlanIntent? {
-        // Everything picked, whoever owns the folder it sits in. The
-        // planner decides which steps need the daemon; a person ticking
-        // boxes should not have to know the difference.
+        // Everything picked, whoever owns its folder. The planner decides which
+        // steps need administrator cleanup.
         let targets = selectedItems.compactMap(\.recordPath).map { URL(fileURLWithPath: $0) }
         guard !targets.isEmpty else { return nil }
         return PlanIntent(
@@ -250,8 +212,8 @@ public final class BackgroundModel: ObservableObject {
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         self.service = service
         if report.registrations.isEmpty, !isLoading {
-            // `load` refreshes the helper itself, once it knows whether
-            // there is anything for it to do.
+            // `load` refreshes administrator cleanup's state once it knows whether
+            // there is work for it.
             await load(service: service)
         } else {
             refreshHelper()
@@ -260,11 +222,9 @@ public final class BackgroundModel: ObservableObject {
 
     private var loadTask: Task<Void, Never>?
 
-    /// The section owns its scan. Navigation can cancel a view's waiter without
-    /// discarding the result or leaving a second view waiting on an empty model.
-    /// `applications`, when given, is the list Apps already holds, so a
-    /// reload that only needs the registrations does not list every app
-    /// again, which would also add a history snapshot each time.
+    /// The section owns its scan, so navigation can cancel a waiter without
+    /// losing the result. `applications`, when given, is the list Apps already
+    /// holds, so the registrations reload without listing every app again.
     public func load(service: any BrimServiceProtocol, applications known: [InstalledApplication]? = nil) async {
         if let loadTask {
             await loadTask.value
@@ -291,8 +251,7 @@ public final class BackgroundModel: ObservableObject {
         isLoading = false
         hasLoaded = true
 
-        // After the scan, not before it: before it, `waitingOnHelper` is
-        // always empty and the question cannot be answered.
+        // After the scan: before it, `waitingOnHelper` is always empty.
         refreshHelper()
     }
 }

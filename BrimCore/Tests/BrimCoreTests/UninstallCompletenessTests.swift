@@ -3,15 +3,8 @@
 import XCTest
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// What the first real uninstall test on this Mac found missing.
-///
-/// Four applications were measured against an independent scan before
-/// anything was removed. Microsoft Teams' plan removed a sandbox container
-/// and nothing else: the application belongs to root, its audio driver and
-/// both installer receipts were never found, and its own group containers
-/// were vetoed because Visual Studio Code is also Microsoft's. ChatGPT's
-/// plan claimed 1.6 GB and would have left 2.9 GB. Every test here fails
-/// against the behaviour that produced those plans.
+/// What the first real uninstall test found missing when plans were
+/// measured against an independent scan.
 final class UninstallCompletenessTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -38,8 +31,8 @@ final class UninstallCompletenessTests: XCTestCase {
 
     // MARK: - Receipts
 
-    /// Receipts were looked for in `/Library/Receipts`, which is empty on a
-    /// modern Mac, so no application's receipt was ever found or forgotten.
+    /// Receipts live in `/var/db/receipts`; `/Library/Receipts` is empty on a
+    /// modern Mac.
     func testReceiptsAreReadWhereMacOSKeepsThem() async throws {
         try receipt("com.test.app", token: "T1", prefix: "Applications")
         let identity = Identity(bundleID: "com.test.app", name: "Test")
@@ -48,8 +41,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertEqual(found.first?.tier, .A)
     }
 
-    /// Teams' audio driver is its own package with its own identifier, and
-    /// the only thing tying it to Teams is the installer run both came from.
+    /// A driver with its own package is tied to the app only by the installer
+    /// run both came from.
     func testAPackageFromTheSameInstallerRunComesWithTheApplication() async throws {
         try receipt("com.test.app", token: "T1", prefix: "Applications")
         try receipt("com.vendor.driver", token: "T1", prefix: "Library/Audio/Plug-Ins/HAL")
@@ -71,9 +64,7 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(names.contains("com.vendor.unrelated.bom"), "a different run is a different install")
     }
 
-    /// Teams' installer also put Microsoft AutoUpdate in Application
-    /// Support. Every `.app` in a package was read as another product, so
-    /// AutoUpdate and the caches named for it stayed after Teams went.
+    /// An updater an installer put in Application Support goes with the app.
     func testAnUpdaterTheInstallerPutOutsideApplicationsComesWithTheApplication() async throws {
         try receipt("com.test.app", token: "T1", prefix: "Applications")
         try receipt("com.vendor.updater", token: "T1", prefix: "Library/Application Support/Vendor/Updater")
@@ -97,8 +88,7 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertNotEqual(byName["com.vendor.updater.helper"]?.tier, .A)
     }
 
-    /// The same updater serves the developer's other packaged applications,
-    /// so it stays while one of them is installed.
+    /// It stays while another of the developer's packaged apps is installed.
     func testAnUpdaterStaysWhileTheDevelopersOtherPackagedApplicationIsInstalled() async throws {
         try receipt("com.test.app", token: "T1", prefix: "Applications")
         try receipt("com.vendor.updater", token: "T1", prefix: "Library/Application Support/Vendor/Updater")
@@ -113,10 +103,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(found.contains { $0.url.lastPathComponent == "com.vendor.updater.bom" })
     }
 
-    /// Microsoft AutoUpdate outlived Teams, and no list in Brim showed it,
-    /// so there was nothing to remove it from. Its package is called
-    /// `com.microsoft.package.Microsoft_AutoUpdate.app`, which its identifier
-    /// would never find.
+    /// An app a package put in Library is listed with its receipt; its package
+    /// name would never be found by its identifier.
     func testAnApplicationAPackagePutInLibraryIsListedWithItsReceipt() async throws {
         try receipt("com.vendor.package.Updater.app", token: "T9", prefix: "Library/Application Support/Vendor/Updater")
         let updater = try bundle("Library/Application Support/Vendor/Updater/Vendor Updater.app", "com.vendor.updater2")
@@ -144,8 +132,7 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(identity.ownsIdentifier("com.microsoft.vcxpc"))
     }
 
-    /// The widget's and the background agent's containers were ranked as
-    /// guesses and left unticked, so they outlived every uninstall.
+    /// A component's containers keep their tier inside the app's namespace.
     func testAComponentMatchKeepsItsTierOnlyInsideTheNamespace() {
         let surface = IdentitySurface(bundlePath: "/Applications/Test.app", components: [
             component("/Applications/Test.app", "com.test.app"),
@@ -159,9 +146,7 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertEqual(caches.matchTier(name: "com.vendor.shared", identity: identity), .C)
     }
 
-    /// Sparkle's downloader has the same identifier in every application
-    /// that ships Sparkle, so its cookies were offered with IINA and again
-    /// with ChatGPT.
+    /// A library's helper has the same identifier in every app that ships it.
     func testALibrarysHelperIsNotTheApplications() {
         let framework = "/Applications/Test.app/Contents/Frameworks"
         let surface = IdentitySurface(bundlePath: "/Applications/Test.app", components: [
@@ -177,15 +162,14 @@ final class UninstallCompletenessTests: XCTestCase {
 
     // MARK: - Per-user folders
 
-    /// `C/com.openai.codex.helper` is named with an identifier, which is
-    /// proof, and was ranked as a name match because of the folder it is in.
+    /// A per-user folder named with an identifier is proof, whatever folder it
+    /// is in.
     func testPerUserFoldersAreMatchedByIdentifierNotByName() {
         XCTAssertEqual(LocationInventory.Location.tier(for: .bundleIdentifier, in: .darwinUserCache), .B)
         XCTAssertEqual(LocationInventory.Location.tier(for: .bundleIdentifier, in: .darwinUserTemp), .B)
     }
 
-    /// 682 of Chromium's `.com.openai.codex.XXXXXX` scratch folders and
-    /// Teams' `com.microsoft.teams2.installer_telemetry` matched no rule.
+    /// Scratch and telemetry folders named inside the identifier.
     func testNamesInsideTheIdentifierInPerUserFoldersAreTheApplications() {
         let rule = LocationInventory.Location.self
         XCTAssertTrue(rule.isTemporary(name: ".com.openai.codex.04BwgK", of: "com.openai.codex"))
@@ -194,8 +178,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertFalse(rule.isTemporary(name: "com.openai.codex.", of: "com.openai.codex"))
     }
 
-    /// WebKit keeps `com.apple.WebKit.GPU+<identifier>` for every
-    /// application that shows a web view, and three outlived Muse.
+    /// WebKit keeps `com.apple.WebKit.GPU+<identifier>` for every app with a web
+    /// view.
     func testAServiceFolderKeptForTheApplicationIsTheApplications() {
         let identity = Identity(bundleID: "com.meta.endo", name: "Muse")
         let rule = LocationInventory.Location(domain: .darwinUserCache, rule: .clientOfService,
@@ -208,8 +192,8 @@ final class UninstallCompletenessTests: XCTestCase {
 
     // MARK: - Provenance
 
-    /// Provenance alone would take `~/.npm` from any application that runs
-    /// shell commands, so the name has to tie the item to it as well.
+    /// Provenance alone would take `~/.npm` from any app that runs shell
+    /// commands, so the name has to tie the item to it as well.
     func testProvenanceCountsOnlyForSomethingNamedForTheApplication() {
         let identity = Identity(bundleID: "com.openai.codex", name: "ChatGPT")
         let names = ProvenanceSource.names(for: identity)
@@ -226,10 +210,8 @@ final class UninstallCompletenessTests: XCTestCase {
                        ["spotify"], "a generic last label names nothing")
     }
 
-    /// Claude Code's URL handler was made from inside Visual Studio Code and
-    /// carries its provenance, and refusing every shared value left all of
-    /// Visual Studio Code's data unowned in Leftovers. Sharing only matters
-    /// when both bundles are named for the item.
+    /// A shared provenance value still names one owner when only one bundle is
+    /// named for the item.
     func testASharedProvenanceStillNamesOneOwnerWhenOnlyOneIsNamedForTheItem() {
         let stamp = Data([1, 2, 0, 0xA3])
         let owners = ProvenanceSource.owners(of: []) + [
@@ -246,8 +228,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertNil(ProvenanceSource.owner(named: "vscode-cpptools", stamp: Data([9]), among: owners))
     }
 
-    /// A leftover of an application Brim has seen is named as Brim saw it.
-    /// Named from the identifier alone, Teams' would read "Teams2".
+    /// A leftover is named as Brim recorded its application, not from the
+    /// identifier.
     func testALeftoverIsNamedAsBrimRecordedItsApplication() {
         let names = ["com.microsoft.teams2": "Microsoft Teams", "com.microsoft": "Wrong"]
         XCTAssertEqual(LeftoversScanner.recordedName(for: "com.microsoft.teams2", in: names), "Microsoft Teams")
@@ -270,9 +252,7 @@ final class UninstallCompletenessTests: XCTestCase {
 
     // MARK: - The plan
 
-    /// Teams' background agents are inside the bundle. Judged as root's
-    /// files on their own, they were listed as staying while the bundle
-    /// around them was removed.
+    /// What is inside a removed bundle is not a second row.
     func testWhatIsInsideARemovedBundleIsNotASecondRow() {
         let identity = Identity(bundleID: "com.test.app", name: "Test")
         let bundle = rootURL.appendingPathComponent("Test.app")
@@ -283,9 +263,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertTrue(plan.steps.contains { $0.target == bundle.path && $0.kind == .trashPath })
     }
 
-    /// Removing an authorization plug-in while a rule still names it can
-    /// stop the screen accepting a password. It is shown with that reason
-    /// and never offered for ticking.
+    /// Removing an authorization plug-in a rule still names can stop the screen
+    /// accepting a password, so it stays with that reason.
     func testASignInPlugInStaysWithItsReason() {
         let identity = Identity(bundleID: "com.test.app", name: "Test")
         let plugin = URL(fileURLWithPath: "/Library/Security/SecurityAgentPlugins/Test.bundle")
@@ -296,8 +275,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertTrue(plan.steps.isEmpty)
     }
 
-    /// A receipt with an unmeasured payload must stay. Forgetting the record
-    /// cannot establish that the package's files or shared components are gone.
+    /// Forgetting a receipt with an unmeasured payload cannot show the files are
+    /// gone.
     func testAReceiptWithAnUnmeasuredPayloadIsKept() {
         let identity = Identity(bundleID: "com.test.app", name: "Test")
         let bom = URL(fileURLWithPath: "/private/var/db/receipts/com.test.app.bom")
@@ -308,8 +287,8 @@ final class UninstallCompletenessTests: XCTestCase {
         XCTAssertEqual(plan.excludedItems.first?.canBeTickedByHand, false)
     }
 
-    /// An application an installer left owned by root is the helper's to
-    /// move, where it used to be a row that said it stayed.
+    /// An app an installer left owned by root is the administrator process's to
+    /// move.
     func testTheHelperIsPromisedAnInstalledBundle() {
         XCTAssertTrue(HelperScope.covers("/Applications/Vendor App.app"))
         XCTAssertTrue(HelperScope.covers("/Library/Audio/Plug-Ins/HAL/Vendor.driver"))
@@ -356,9 +335,8 @@ final class UninstallCompletenessTests: XCTestCase {
 }
 
 extension UninstallCompletenessTests {
-    /// The framework is the library's as much as its helpers are. Removing
-    /// eqMac took `Caches/com.openai.codex/org.sparkle-project.Sparkle`,
-    /// the update cache Sparkle keeps for Codex.
+    /// A library's framework is the library's, as its helpers are: Sparkle's
+    /// cache inside another app's folder is not this app's.
     func testALibraryFrameworkIsNotTheApplications() {
         let framework = "/Applications/Test.app/Contents/Frameworks"
         let surface = IdentitySurface(bundlePath: "/Applications/Test.app", components: [

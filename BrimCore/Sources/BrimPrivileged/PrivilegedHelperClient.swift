@@ -167,9 +167,9 @@ public final class PrivilegedHelperClient: ObservableObject {
         return problem
     }
 
-    /// Clears what only root can: Brim's folder in `/Library` and its grants
-    /// in the system's privacy database. Asks for an administrator only when
-    /// one of those is there.
+    /// Clears what only root can: Brim's folder in `/Library` and its grants in
+    /// the system privacy database. Asks for an administrator only when one of
+    /// those is there.
     public func uninstall(resettingPrivacy: Bool = false) async -> String? {
         let folder = URL(fileURLWithPath: BrimJobHelper.quarantineDirectory).deletingLastPathComponent()
         if resettingPrivacy || FileManager.default.fileExists(atPath: folder.path) {

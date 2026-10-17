@@ -2,24 +2,11 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// A record that names user documents is still a record. Brim removes the
-/// record. Brim never touches what it points at.
-///
-/// `~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/<identifier>.sfl4`
-/// is keyed exactly on the bundle identifier and was invisible on all six
-/// applications measured on this Mac, so it belongs in the inventory. It is
-/// also a list of the person's own files: the last twenty documents they
-/// opened, by full path, anywhere on the disk.
-///
-/// That makes it the one location in this task where finding more and
-/// deleting more are not the same thing, and it is one careless line apart.
-/// A scanner that reads the record to "find what else belongs to this
-/// application" walks straight out of application storage and into
-/// `~/Documents`. Security-scoped bookmarks and autosave records have the
-/// same shape and the same rule.
-///
-/// These tests were written before the location was added, which is the only
-/// order in which a guard means anything.
+/// A record naming the person's documents is still only a record: Brim
+/// removes the record and never touches what it points at. The
+/// recent-documents list is keyed on the bundle identifier and lists the
+/// last documents opened anywhere on disk, so reading it to find more of the
+/// app would walk into `~/Documents`.
 final class RecordedPathTests: XCTestCase {
 
     private var rootURL: URL!
@@ -35,9 +22,8 @@ final class RecordedPathTests: XCTestCase {
         try? FileManager.default.removeItem(at: rootURL)
     }
 
-    /// A recent-documents record naming a document the person owns, shaped
-    /// the way a real one is: a property list with the path inside it, so a
-    /// naive reader would find the path without much trying.
+    /// A recent-documents record shaped like a real one, with the document's
+    /// path inside it.
     @discardableResult
     private func makeRecentDocumentsRecord(
         for bundleID: String, naming document: URL
@@ -67,8 +53,7 @@ final class RecordedPathTests: XCTestCase {
 
     // MARK: - The guard
 
-    /// **The line this must not cross.** The record goes, the document it
-    /// names does not, and nothing in between gets a vote.
+    /// The record goes; the document it names does not.
     func testTheDocumentARecordNamesIsNeverAScanTarget() async throws {
         let document = try makeDocument(named: "Thesis.md")
         try makeRecentDocumentsRecord(for: "com.example.app", naming: document)
@@ -94,10 +79,8 @@ final class RecordedPathTests: XCTestCase {
         )
     }
 
-    /// Nothing anywhere under `~/Documents` is reachable, whatever named it.
-    /// The location test in the plan is the first line of defence: Brim only
-    /// goes where the inventory names, and the inventory names application
-    /// storage.
+    /// Nothing under `~/Documents` is reachable: the inventory names only
+    /// application storage.
     func testNoLocationInTheInventoryReachesTheDocumentsFolder() {
         let documents = root.url(for: .userLibrary)
             .deletingLastPathComponent()
@@ -111,10 +94,8 @@ final class RecordedPathTests: XCTestCase {
         }
     }
 
-    /// The structural half. Reading a recorded path is not wrong in itself;
-    /// turning one into something Brim acts on is. Nothing in the shipping
-    /// sources resolves bookmark data at all, and a change that starts to
-    /// should have to come past this test and say why.
+    /// Nothing in the shipping sources resolves bookmark data. A change that
+    /// starts to has to come past this test and say why.
     func testNothingResolvesARecordedBookmarkIntoAPath() throws {
         let banned = [
             "URLByResolvingBookmarkData",
@@ -153,9 +134,7 @@ final class RecordedPathTests: XCTestCase {
 
     // MARK: - And the record itself
 
-    /// Having established what must not happen: the record is this
-    /// application's and has to be found. It is keyed exactly on the bundle
-    /// identifier, and it was missing from all six footprints measured.
+    /// The record itself is the app's and must be found.
     func testTheRecentDocumentsRecordIsFound() throws {
         let document = try makeDocument(named: "Thesis.md")
         let record = try makeRecentDocumentsRecord(for: "com.example.app", naming: document)

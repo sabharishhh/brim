@@ -24,8 +24,7 @@ private let log = BrimLog.make("app")
     )
     /// The Dock's menu, and apps dropped on its icon.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    /// What outlives a launch: kept items, what was seen, saved icons.
-    /// One for the app, so Settings and the window agree.
+    /// State that outlives a launch, shared by the window and Settings.
     @State private var session = AppSession()
     @State private var feedback = FeedbackConfiguration.makeModel()
     /// View ▸ Compact Rows, for everyone who prefers density.
@@ -37,22 +36,10 @@ private let log = BrimLog.make("app")
         BrimTips.configure()
     }
 
-    /// Brim has no accent colour, whatever the Mac's is.
-    ///
-    /// Tinting each control did not reach them all: with a red accent the
-    /// sidebar's icons and the Settings window's tabs were still red, drawn
-    /// by AppKit from the system accent that a SwiftUI tint never touches.
-    /// macOS reads the accent from the `AppleAccentColor` default, and an
-    /// app's own domain wins over the global one.
-    ///
-    /// Brim used to write Graphite (-1) there, which also turned the close,
-    /// minimise and zoom buttons grey. A value outside macOS's range is read
-    /// as Multicolor instead, and under Multicolor an app's own accent asset
-    /// is used: Brim's is the grey of `Palette.tint`, and the window buttons
-    /// keep their colours. Checked on macOS 27 against a test app: -1 drew
-    /// the close button grey, -2 drew it red and used the app's accent. The
-    /// selection highlight stays Graphite. The rest of the Mac keeps the
-    /// person's colour.
+    /// AppKit draws some controls from the system accent, out of a SwiftUI tint's
+    /// reach. An out-of-range `AppleAccentColor` in Brim's own domain reads as
+    /// Multicolor, which uses the app's grey accent asset and keeps the window
+    /// buttons coloured. Graphite (-1) turned them grey.
     private static func useOwnAccent() {
         let defaults = UserDefaults.standard
         defaults.set(-2, forKey: "AppleAccentColor")
@@ -65,11 +52,7 @@ private let log = BrimLog.make("app")
     /// What Check for Brim Updates found, while its reply is showing.
     @State private var releaseAnswer: BrimReleaseCheck.Answer?
 
-    /// What went wrong removing Brim, when something did.
-    ///
-    /// This has to reach the person rather than a log. They pressed a
-    /// button called "Uninstall Brim", and the two ways it fails are both
-    /// ones where the window staying open is the only clue they get.
+    /// Shown in the window: when removing Brim fails, it is the only clue.
     @State private var selfUninstallProblem: String?
 
     var body: some Scene {
@@ -159,14 +142,9 @@ private let log = BrimLog.make("app")
                     Text(selfUninstallProblem ?? "")
                 }
         }
-        // 900 is the floor (`Metrics.windowMinWidth`), and `.contentMinSize`
-        // stops the window being dragged below it from any edge or corner.
-        // It was 1100, the sidebar plus a list plus a review pane side by
-        // side; below that width the pane now floats over the list
-        // (`AdaptivePanes`), and Home's cards wrap two by two.
-        //
-        // A hosted AppKit table once made the window ignore this and open
-        // at half the display.
+        // `.contentMinSize` stops the window being dragged below
+        // `Metrics.windowMinWidth`. A hosted AppKit view can silently override
+        // `.defaultSize`.
         .defaultSize(width: 1200, height: 800)
         .handlesExternalEvents(matching: ["*"])
         .windowResizability(.contentMinSize)
@@ -188,9 +166,7 @@ private let log = BrimLog.make("app")
                     .keyboardShortcut("]", modifiers: .command)
                     .disabled(!(shell?.canGoForward ?? false))
                 Divider()
-                // Numbered from the order the sidebar renders, not from
-                // the enum's declaration order. Those were different once,
-                // so Command-6 opened the seventh row.
+                // Numbered in sidebar order, not the enum's declaration order.
                 ForEach(Destination.displayOrder, id: \.self) { destination in
                     Button(destination.rawValue) { shell?.go(to: destination) }
                         .keyboardShortcut(KeyEquivalent(destination.keyboardDigit ?? "0"), modifiers: .command)
@@ -279,7 +255,7 @@ private let log = BrimLog.make("app")
         }
     }
 
-    /// The root daemon, so its own cleanup can run before Brim goes.
+    /// The administrator process, so its own cleanup can run before Brim goes.
     @StateObject private var helper = PrivilegedHelperClient()
 
     private func performSelfUninstall() async {

@@ -1,10 +1,9 @@
 import Foundation
 
-/// Proof that a person agreed to one specific plan, a moment ago.
-///
-/// Bound to the plan by its hash, to the requester by name, and to a single
-/// use by its nonce. It exists only inside the service that minted it, for
-/// minutes, and no method on `BrimServiceProtocol` returns one.
+/// Proof that a person agreed to one specific plan a moment ago: bound to
+/// the plan by its hash, to the requester by name and to one use by its
+/// nonce. It exists only inside the service that minted it, for minutes, and
+/// no method on `BrimServiceProtocol` returns one.
 public struct ApprovalToken: Codable, Equatable, Sendable {
     /// Binds to exactly one plan. A plan edited after approval no longer
     /// matches, and `apply` refuses it.
@@ -30,12 +29,9 @@ public struct ApprovalToken: Codable, Equatable, Sendable {
     }
 }
 
-/// What `requestApproval` gives back: an acknowledgement, not permission.
-///
-/// The receipt says a decision is pending and describes what the decision
-/// is about. It carries no authority. Turning one into an `ApprovalToken`
-/// takes a human, in Brim's own window, through `ApprovalGranting`, which
-/// is deliberately not part of the service protocol.
+/// What `requestApproval` gives back: an acknowledgement, not permission. It
+/// carries no authority; only a person in Brim's own window, through
+/// `ApprovalGranting`, turns it into a token.
 public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
     public let requestId: UUID
     public let planId: UUID
@@ -46,8 +42,8 @@ public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
     public let expiresAt: Date
     /// What the person will be asked to agree to, in their words.
     public let summary: String
-    /// True while nobody has answered. Always true when the receipt is
-    /// handed back, because nothing is decided by asking.
+    /// True while nobody has answered, which is always the case when it is
+    /// returned.
     public let awaitingHuman: Bool
 
     public init(
@@ -65,14 +61,10 @@ public struct ApprovalRequestReceipt: Codable, Equatable, Sendable {
     }
 }
 
-/// Where a yes comes from.
-///
-/// The service will not mint a token unless something inside its own
-/// process can put the decision in front of a person. Brim's app installs
-/// one of these at launch, after it has shown the review sheet. Nothing
-/// outside Brim's process can reach the service, so from outside there is no
-/// route from a plan to a token at all: not a check something might pass,
-/// an absence of the machinery.
+/// Where a yes comes from. The service mints a token only if something in
+/// its own process can put the decision in front of a person; Brim's app
+/// installs this at launch. Nothing outside the process can reach the
+/// service, so there is no route from a plan to a token at all.
 public struct ConsentSource: Sendable {
     /// Puts the decision in front of the person and reports what they said.
     public let ask: @Sendable (ApprovalRequestReceipt) async -> Bool
@@ -82,13 +74,9 @@ public struct ConsentSource: Sendable {
     }
 }
 
-/// Proving that a person is at the machine right now.
-///
-/// Injected rather than reached for directly, because the real one puts a
-/// Touch ID dialog on screen and waits. A test that exercises the approval
-/// gate has to be able to reach the presence check without stopping the
-/// suite dead on a prompt nobody is there to answer, which is exactly what
-/// happened the first time these tests ran.
+/// Proving a person is at the Mac right now. Injected, because the real one
+/// shows a Touch ID dialog and waits, and a test of the approval gate must
+/// not stop on a prompt nobody will answer.
 public struct PresenceCheck: Sendable {
     /// Throws if the person is not there, or said no.
     public let prove: @Sendable (_ reason: String) async throws -> Void

@@ -6,8 +6,8 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     public enum Event: Equatable, Sendable {
         /// Brim removed something, which may still be put back.
         case removed(RemovalRecord)
-        /// An application was installed, proved by a snapshot. The bundle
-        /// may have gone since: a removed app keeps its installs.
+        /// An application was installed, proved by a snapshot. The bundle may have
+        /// gone since; a removed app keeps its installs.
         case installed(url: URL?)
     }
 
@@ -16,8 +16,8 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     public let date: Date
     public let name: String
     public let bundleID: String?
-    /// The bundle is still where the install found it. Read once, when the
-    /// entry is made, so a row never touches the disk while it draws.
+    /// The bundle is still where the install found it. Read once when the entry
+    /// is made, so a row never touches the disk while drawing.
     public let isPresent: Bool
     /// When it happened, as its row says it: the time of day, written once
     /// when the entry is made, not each time the row draws. `groups` adds
@@ -47,12 +47,11 @@ public struct JournalEntry: Identifiable, Equatable, Sendable {
     private static let timeStyle = Date.FormatStyle.dateTime.hour().minute()
 }
 
-/// The Journal by time (plan §8): Today, Yesterday, This week, then one
-/// group per month, newest first.
+/// The Journal by time: Today, Yesterday, This week, then one group per
+/// month, newest first.
 public enum JournalTimeline {
     /// Removals and installs together, newest first. Installs come from
-    /// the snapshots rather than the apps on the disk now, so removing an
-    /// app does not take its installs out of the Journal with it.
+    /// snapshots, so removing an app does not take its installs out.
     public static func entries(records: [RemovalRecord], installs: [InstallRecord]) -> [JournalEntry] {
         (records.map(JournalEntry.init(record:)) + installs.map(JournalEntry.init(installed:)))
             .sorted { $0.date > $1.date }
@@ -86,8 +85,8 @@ public enum JournalTimeline {
                 order.append(key)
                 titles[key] = title
             }
-            // "Today" and "Yesterday" name the day; "This week" and a month
-            // do not, and their rows said only "12:01 PM".
+            // "Today" and "Yesterday" name the day; "This week" and a month do not, so
+            // those rows add it.
             var shown = entry
             switch key {
             case "today", "yesterday": break

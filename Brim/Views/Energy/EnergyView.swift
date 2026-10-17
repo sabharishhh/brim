@@ -5,18 +5,9 @@ import BrimUI
 import SwiftUI
 
 /// What your applications are drawing, and how the Mac is coping.
-///
-/// Applications, and nothing else. An earlier version listed the services
-/// underneath them too: `powerd` appeared under "Keeping this Mac awake"
-/// holding "Prevent sleep while display is on", which is macOS working
-/// correctly and read as an internal process stopping the Mac from ever
-/// sleeping. The line is not who wrote it, it is whether there is a window
-/// to quit.
-///
-/// Live while it is on screen: the battery and temperature follow what
-/// macOS reports, and the apps are read every few seconds across the last
-/// fifteen. Nothing is read once the page has gone or while Brim cannot be
-/// seen, and nothing runs after Brim quits.
+/// Applications only: macOS services holding assertions are working
+/// correctly and read as faults. Live while on screen; nothing is read when
+/// the page is gone, while Brim cannot be seen, or after it quits.
 struct EnergyView: View {
     @ObservedObject var model: EnergyModel
     @SwiftUI.Environment(\.brimService) private var service
@@ -249,9 +240,8 @@ struct EnergyView: View {
         .frame(height: 5)
     }
 
-    /// Asks the app to quit, the way the Dock does. Never a force quit: an
-    /// app with unsaved work gets to ask about it. A fresh reading follows,
-    /// so the row goes once the app has.
+    /// Asks the app to quit, as the Dock does, never a force quit, so unsaved
+    /// work can be saved.
     private func quit(_ reading: EnergyModel.Reading) {
         guard let path = reading.bundlePath else { return }
         let target = URL(fileURLWithPath: path).standardizedFileURL
@@ -272,8 +262,7 @@ struct EnergyView: View {
         bundlePath.map { .bundle(URL(fileURLWithPath: $0)) } ?? .monogram(Monogram(name: name))
     }
 
-    /// Watts once there is a watt to show. People have a feel for watts,
-    /// and nobody has one for 1053 milliwatts.
+    /// Watts once there is a watt to show.
     private func rate(milliwatts value: Double) -> String {
         if value < 0.5 {
             return "Under 1 mW"

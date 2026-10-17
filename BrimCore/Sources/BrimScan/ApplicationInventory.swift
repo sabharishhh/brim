@@ -3,11 +3,8 @@ import CoreServices
 import Foundation
 import Security
 
-/// Lists the applications installed on a machine.
-///
-/// Resolves each bundle through `IdentityResolver`, so the identity the list
-/// shows is the same one an uninstall will plan against: the name in the UI
-/// and the subject of the plan can never drift apart.
+/// Lists installed applications. Each bundle goes through `IdentityResolver`,
+/// so the identity on screen is the one an uninstall plans against.
 public actor ApplicationInventory {
     private let root: FileSystemRoot
     private let resolver: IdentityResolver
@@ -22,8 +19,7 @@ public actor ApplicationInventory {
     }
 
     /// Domains searched, in the order results are merged. `/System/Applications`
-    /// is included because the user expects to *see* those apps, but they are
-    /// marked protected rather than presented as removable.
+    /// is listed because people expect to see those apps, but marked protected.
     private var searchDomains: [(url: URL, protected: Bool)] {
         [
             (root.url(for: .applications), false),
@@ -40,14 +36,11 @@ public actor ApplicationInventory {
 
         // A bundle reachable from two domains is one application.
         let unique = candidates().filter { seen.insert($0.url.standardizedFileURL.path).inserted }
-        // Judge protection and size by where the bundle actually is, not by
-        // where it is listed: /Applications/Safari.app is a symlink into a
-        // Cryptex, so a check on the listed path alone would offer Safari
-        // for removal and measure it as 0 bytes.
+        // Judge protection and size by where the bundle really is:
+        // `/Applications/Safari.app` is a link into a Cryptex.
         let resolved = unique.map { $0.url.resolvingSymlinksInPath() }
-        // Measured four at a time, and only where a bundle changed since it
-        // was last measured (`BundleSizes`). Only cancellation stops it, and
-        // a cancelled read has nothing to publish.
+        // Measured four at a time, and only bundles that changed since last time
+        // (`BundleSizes`). A cancelled read publishes nothing.
         let known = sizes
         guard let sizes = try? await BoundedTasks.map(resolved, limit: 4, operation: { bundle in
             known?.size(of: bundle, measure: Self.size(of:)) ?? Self.size(of: bundle)
@@ -75,8 +68,8 @@ public actor ApplicationInventory {
         }
     }
 
-    /// Category, source, developer and use, for grouping. Every value is
-    /// read from a file or Spotlight; none of it is worked out by guessing.
+    /// Category, source, developer and use, for grouping. Every value is read
+    /// from a file or Spotlight, never guessed.
     private func describe(
         _ application: inout InstalledApplication, resolved: URL, casks: HomebrewCaskInventory,
         developers: inout DeveloperNames
@@ -116,24 +109,19 @@ public actor ApplicationInventory {
         let host: String?
     }
 
-    /// Every application to describe, with whether it can be removed on its
-    /// own and the app it ships inside, if any.
-    ///
-    /// The folders are walked first, as before. Then two additions, because
-    /// the walk alone missed applications people use: an app's own
-    /// `Contents/Applications` (Icon Composer, Instruments, FileMerge and
-    /// Simulator all live inside Xcode), and whatever Spotlight has indexed
-    /// as an application anywhere under the same folders, which catches an
-    /// app more than one folder deep. Spotlight adds; it never removes, so
-    /// a Mac with indexing off still gets the full walk.
+    /// Every application to describe. The folders are walked first, then two
+    /// additions: an app's own `Contents/Applications` (Instruments lives inside
+    /// Xcode), and whatever Spotlight indexed as an application under the same
+    /// folders, which finds apps more than one folder deep. Spotlight only adds,
+    /// so a Mac with indexing off still gets the full walk.
     private func candidates() -> [Candidate] {
         var found: [Candidate] = []
         for domain in searchDomains {
             for bundle in bundles(in: domain.url) {
                 found.append(Candidate(url: bundle, protected: domain.protected, host: nil))
                 let host = Self.name(of: bundle)
-                // It stands where its host stands: removable when the host
-                // is yours, protected when the host belongs to macOS.
+                // It stands where its host stands: removable when the host is the
+                // person's, protected when the host belongs to macOS.
                 let hostProtected = domain.protected || Self.isOSOwned(bundle.resolvingSymlinksInPath())
                 found.append(contentsOf: Self.embeddedApplications(in: bundle).map {
                     Candidate(url: $0, protected: hostProtected, host: host)
@@ -157,15 +145,10 @@ public actor ApplicationInventory {
         return found
     }
 
-    /// Applications an installer package put outside the Applications
-    /// folders, straight into its own folder in `/Library`.
-    ///
-    /// Microsoft AutoUpdate arrives with Teams in
-    /// `/Library/Application Support/Microsoft/MAU2.0`. It runs, it launches
-    /// itself at login, and it outlived Teams on this Mac, yet no list in
-    /// Brim showed it, so there was nothing to remove it from. The rule is
-    /// the helper's (`HelperScope.installFolder`), so whatever is listed
-    /// here is something Brim can also take away.
+    /// Applications an installer package put straight into its own folder in
+    /// `/Library`, outside the Applications folders, such as Microsoft
+    /// AutoUpdate. The rule is administrator cleanup's (`HelperScope`), so
+    /// anything listed here can also be removed.
     private func packagedElsewhere() -> [URL] {
         InstalledBundleInventory.packageInstallFolders(in: root).flatMap { directory in
             Self.entries(of: directory).filter { ($0 as NSString).pathExtension == "app" }
@@ -173,9 +156,8 @@ public actor ApplicationInventory {
         }
     }
 
-    /// Apps an application carries for people to open, in the one place
-    /// macOS looks for them: `Contents/Applications`. Helpers buried in
-    /// `Frameworks` or `Library` are machinery, not apps anyone launches.
+    /// Apps a bundle carries for people to open, in `Contents/Applications`.
+    /// Helpers in `Frameworks` or `Library` are machinery.
     static func embeddedApplications(in bundle: URL) -> [URL] {
         let folder = bundle.appendingPathComponent("Contents/Applications")
         return entries(of: folder).filter { ($0 as NSString).pathExtension == "app" }
@@ -183,8 +165,8 @@ public actor ApplicationInventory {
     }
 
     /// Where Spotlight's answer sits. Nil for an app inside another bundle
-    /// anywhere but its `Contents/Applications`, which is a helper. The
-    /// outer optional is whether to list it at all, the inner the host.
+    /// anywhere but `Contents/Applications`, which is a helper. The outer
+    /// optional is whether to list it, the inner the host.
     static func placement(of url: URL) -> String?? {
         let components = url.deletingLastPathComponent().pathComponents
         guard let hostIndex = components.lastIndex(where: { $0.hasSuffix(".app") }) else {
@@ -230,40 +212,31 @@ public actor ApplicationInventory {
         return found
     }
 
-    /// Raw directory entries by path.
-    ///
-    /// Deliberately the string API rather than `contentsOfDirectory(at:)`:
-    /// the URL variant omits symlinks it cannot resolve, and on current macOS
-    /// `/Applications/Safari.app` is a symlink into a Cryptex. The URL API
-    /// leaves Safari out of the listing entirely, which for an uninstaller
-    /// means silently not knowing about an installed application.
+    /// Raw directory entries by path. Not `contentsOfDirectory(at:)`, which
+    /// drops links it cannot resolve, and so leaves out Safari, a link into a
+    /// Cryptex.
     private static func entries(of directory: URL) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         return names.filter { !$0.hasPrefix(".") }
     }
 
-    /// Follows symlinks on purpose: a symlinked `.app` is still an app, and a
-    /// symlinked folder such as `Utilities` still holds apps worth listing.
+    /// Follows links on purpose: a linked `.app` is still an app, and a linked
+    /// folder such as `Utilities` still holds apps.
     private static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    /// Locations macOS owns and protects, where an uninstall cannot succeed
-    /// however the bundle is reached. Checked against the resolved path, so a
-    /// symlink from a writable directory cannot disguise a system app.
+    /// Locations macOS owns and protects. Checked against the resolved path, so
+    /// a link from a writable folder cannot disguise a system app.
     private static func isOSOwned(_ resolved: URL) -> Bool {
         let protectedRoots = ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"]
         return protectedRoots.contains { resolved.path.hasPrefix($0) }
     }
 
-    /// The bundle's logical size, every file and link counted by `lstat`,
-    /// the figure Finder shows.
-    ///
-    /// A plain `fts` walk rather than `FileManager`'s enumerator, which built
-    /// a URL and read resource values for every file: the same totals, in
-    /// half the time or less. Xcode alone took 1.2 seconds that way and
-    /// 0.8 this way. Links are not followed.
+    /// The bundle's logical size, every file and link counted by `lstat`, as
+    /// Finder shows it. An `fts` walk, about twice as fast as `FileManager`'s
+    /// enumerator. Links are not followed.
     static func size(of url: URL) -> Int64 {
         var total: Int64 = 0
         url.path.withCString { path in
@@ -289,8 +262,8 @@ public actor ApplicationInventory {
     }
 }
 
-/// Organisation names by signing team, read from the certificate once per
-/// team rather than once per app: Adobe's five apps cost one read.
+/// Organisation names by signing team, read once per team rather than once
+/// per app.
 struct DeveloperNames {
     private var byTeam: [String: String] = [:]
 
@@ -299,9 +272,8 @@ struct DeveloperNames {
         if let known = byTeam[team] {
             return known
         }
-        // Not remembered when nothing is found: an App Store app is
-        // re-signed by Apple and names nobody, and another app from the
-        // same team may still say who it is.
+        // Not remembered when nothing is found: an App Store app is re-signed by
+        // Apple, and another app from the team may still say who it is.
         guard let found = Self.certificateOrganisation(of: bundle) else { return nil }
         byTeam[team] = found
         return found

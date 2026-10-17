@@ -1,17 +1,10 @@
 import Foundation
 import BrimCore
 
-/// Lines developer tools append to a shell profile.
-///
-/// `.zshrc`, `.zprofile`, `.bash_profile` and the rest. Installers add a
-/// PATH entry or an init hook and almost none of them take it out again,
-/// so a shell keeps sourcing something that no longer exists and every new
-/// terminal prints an error.
-///
-/// **Reported, never edited.** A shell profile is a file somebody wrote by
-/// hand, often over years, and silently rewriting it is not something a
-/// cleaning tool gets to do. Brim shows the line, the file and the line
-/// number, which is everything needed to act, and stops there.
+/// Lines developer tools append to a shell profile (`.zshrc`, `.zprofile`,
+/// `.bash_profile` and the rest) that point at something no longer there,
+/// so every new terminal prints an error. Reported, never edited: Brim shows
+/// the line, the file and the line number.
 public struct ShellProfileSurface: RegistrationSurface {
     public let kind: Registration.Kind = .shellProfileLine
 
@@ -24,10 +17,8 @@ public struct ShellProfileSurface: RegistrationSurface {
         ".bash_profile", ".bashrc", ".profile", ".login",
     ]
 
-    /// A line only counts when it points at something. A comment, a blank
-    /// line, or a shell function is somebody's own configuration and none
-    /// of Brim's business; a line naming a path that is gone is the thing
-    /// worth showing.
+    /// A line counts only when it points at something; comments, blank lines
+    /// and functions are the person's own configuration.
     static let interestingPrefixes = ["source ", ". ", "export PATH", "eval \"$("]
 
     private func home(in root: FileSystemRoot) -> URL {
@@ -67,9 +58,7 @@ public struct ShellProfileSurface: RegistrationSurface {
                 guard let referenced = Self.pathReferenced(in: line) else { continue }
 
                 let exists = fm.fileExists(atPath: referenced)
-                // Only the broken ones. A working line is the person's
-                // configuration doing its job, and listing it would bury
-                // the one that is wrong.
+                // Only broken lines: listing working ones would bury the wrong one.
                 guard !exists else { continue }
 
                 results.append(Registration(
@@ -95,13 +84,9 @@ public struct ShellProfileSurface: RegistrationSurface {
         return interestingPrefixes.contains { line.hasPrefix($0) }
     }
 
-    /// The filesystem path a line refers to, expanded, or nil when it
-    /// refers to nothing Brim can check.
-    ///
-    /// Deliberately narrow. A line full of shell expansion cannot be
-    /// resolved without running it, and running somebody's shell
-    /// configuration to find out what it does is precisely the thing this
-    /// surface exists to avoid.
+    /// The path a line refers to, expanded, or nil when it is nothing Brim can
+    /// check. Narrow on purpose: resolving shell expansion would mean running
+    /// the person's configuration.
     static func pathReferenced(in line: String) -> String? {
         var candidate: String?
 
@@ -129,19 +114,10 @@ public struct ShellProfileSurface: RegistrationSurface {
     }
 }
 
-/// Keychain entries, named but never touched.
-///
-/// The product brief keeps secrets out of Brim's remit, and Reset
-/// deliberately preserves licence material: an application's keychain
-/// entry is frequently the licence somebody paid for, and there is no
-/// undo for deleting it.
-///
-/// Brim cannot enumerate them either, and says so rather than reporting
-/// an empty list. `SecItemCopyMatching` returns only what the calling
-/// application itself created, so Brim asking would see Brim's own items
-/// and nothing else. Reading other applications' entries means prompting
-/// for the keychain password once per item, which is not a thing to do
-/// during a scan.
+/// Keychain entries, named but never touched: an app's entry is often a
+/// licence someone paid for. Brim cannot list them either, and says so:
+/// `SecItemCopyMatching` returns only the caller's own items, and reading
+/// other apps' entries prompts for each one.
 public struct KeychainSurface: RegistrationSurface {
     public let kind: Registration.Kind = .keychainItem
 

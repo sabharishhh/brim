@@ -25,8 +25,7 @@ final class RecoveryStatusModelTests: XCTestCase {
         XCTAssertEqual(recovery.items.count, 2)
         XCTAssertEqual(history.records.filter(\.canUndo).count, 2)
 
-        // Home kept two recoverable removals after Finder emptied the Trash
-        // because Check Again never re-read its recovery model.
+        // Recoverable removals are read again once the Trash is emptied.
         for file in files {
             try FileManager.default.removeItem(at: file)
         }

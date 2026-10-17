@@ -2,8 +2,7 @@ import BrimCore
 import Foundation
 
 /// Where recordings are kept: the first snapshot of one under way, so it
-/// survives Brim quitting while something installs, and the recordings the
-/// person kept.
+/// survives Brim quitting mid-install, and the recordings the person kept.
 public actor InstallRecordingStore {
     private let directory: URL
 
@@ -43,8 +42,8 @@ public actor InstallRecordingStore {
         Self.load(keptURL)
     }
 
-    /// Read without the actor, for the evidence source, which runs inside a
-    /// search that cannot wait on it.
+    /// Read without the actor, for the evidence source, whose search cannot wait
+    /// on it.
     public nonisolated static func load(_ url: URL) -> [InstallRecording] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONDecoder().decode([InstallRecording].self, from: data)) ?? []

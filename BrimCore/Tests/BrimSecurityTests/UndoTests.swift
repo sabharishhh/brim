@@ -64,7 +64,7 @@ final class UndoTests: XCTestCase {
         try await service.undo(planId: plan.planId)
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundleURL.path))
 
-        // Wait, history should NOT be empty after undo since ledger is immutable
+        // The ledger is append-only, so undo leaves the history in place.
         let history2 = try await service.history()
         XCTAssertEqual(history2.count, 1) // Ledger entry persists
 

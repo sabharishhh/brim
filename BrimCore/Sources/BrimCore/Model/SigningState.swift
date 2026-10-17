@@ -1,14 +1,9 @@
 import Foundation
 
 /// What the code behind a registration is signed with, and whether that
-/// still matches what macOS recorded when it accepted the item.
-///
-/// T-3.8 asks for signing state on every background item, and the reason is
-/// not tidiness. Background Task Management stores the team identifier and
-/// a signing requirement alongside each record. If the code at that path is
-/// now signed by somebody else, macOS's list and the disk disagree about
-/// who is being allowed to run at login, which is worth saying out loud and
-/// is not visible anywhere in System Settings.
+/// still matches what macOS recorded when it accepted the item. If the code
+/// is now signed by someone else, macOS's list and the disk disagree about
+/// who may run at login, which System Settings does not show.
 public enum SigningState: Equatable, Sendable, Codable {
     /// Signed, and the signature holds up.
     case valid(team: String?)
@@ -20,8 +15,7 @@ public enum SigningState: Equatable, Sendable, Codable {
     /// Not examined, and why. A path Brim cannot reach is not a verdict.
     case notChecked(String)
 
-    /// One line for a person, saying the consequence rather than the
-    /// category.
+    /// One line for a person, saying the consequence rather than the category.
     public var sentence: String {
         switch self {
         case .valid(let team):
@@ -40,12 +34,8 @@ public enum SigningState: Equatable, Sendable, Codable {
         }
     }
 
-    /// Two or three words for a table cell, where the sentence will not fit.
-    ///
-    /// A column that falls back to a dash when there is no team name says
-    /// the same nothing for code that is unsigned, code whose signature is
-    /// broken, and code Brim was not able to examine. Those are three
-    /// different answers and the column has room to tell them apart.
+    /// Two or three words for a table cell. Unsigned, broken and not examined
+    /// are three different answers, never one dash.
     public var shortDescription: String {
         switch self {
         case .valid(let team): return team ?? "Signed"

@@ -1,13 +1,10 @@
 import CoreServices
 import Foundation
 
-/// macOS saying something changed in a set of folders.
-///
-/// File system events cost nothing while nothing changes, and the kernel
-/// coalesces them: with a two second latency a 400 MB copy into
-/// Applications arrives as one event, not thousands. A stream lasts as long
-/// as the task reading it, so it runs while Brim's window does and stops
-/// with it; nothing watches once Brim has quit.
+/// macOS saying something changed in a set of folders. File system events
+/// cost nothing while nothing changes, and with a two second latency a large
+/// copy arrives as one event. A stream lasts as long as the task reading
+/// it, so nothing watches once Brim has quit.
 public enum FolderWatch {
     public static func changes(in folders: [URL], latency: TimeInterval = 2) -> AsyncStream<Void> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -59,15 +56,10 @@ public enum FolderWatch {
     }
 }
 
-/// What the Applications folders hold, cheaply enough to ask after every
-/// event: each bundle's path, folder identity and Info.plist time, one
-/// folder down so Utilities is included. 0.3 ms on this Mac against a
-/// second or more to list the apps properly.
-///
-/// Opening an app makes macOS note it on the bundle, which is an event in
-/// the folder that changes nothing anyone would call an install. Listing
-/// again only when this answer changes keeps that from re-listing the apps,
-/// and from adding a history snapshot, every time an app is opened.
+/// What the Applications folders hold, cheap enough to ask after every
+/// event: each bundle's path, folder identity and `Info.plist` time. Opening
+/// an app is an event in the folder too, so the apps are listed again only
+/// when this answer changes, not each time an app opens.
 public enum ApplicationFolders {
     public static var standard: [URL] {
         [

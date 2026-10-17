@@ -1,10 +1,8 @@
 @testable import BrimOps
 import Testing
 
-/// The package check looked for "Developer ID Installer:" and "(TEAM)"
-/// anywhere in `pkgutil --check-signature`, whose output begins with the
-/// file name the download server chose. Only the leaf of the certificate
-/// chain names the signer now.
+/// Only the leaf of the certificate chain names a package's signer; the
+/// output begins with a file name the download server chose.
 struct PackageSignerTests {
     private func output(file: String, leaf: String) -> String {
         """

@@ -4,10 +4,9 @@ import Darwin
 import Foundation
 import XCTest
 
-/// `Microsoft` in Application Support was only looked at whole: the one
-/// Microsoft app installed, Visual Studio Code, has a name that does not
-/// begin with the developer's, so the sweep never opened the folder, and
-/// Teams' data inside it was never offered.
+/// A developer's folder (`Microsoft` in Application Support) is opened and
+/// judged by its contents, even when the installed app's name does not
+/// begin with the developer's.
 final class DeveloperFolderTests: XCTestCase {
     func testADevelopersFolderIsOpenedWhenItsAppsNamesDoNotBeginWithIt() async throws {
         let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

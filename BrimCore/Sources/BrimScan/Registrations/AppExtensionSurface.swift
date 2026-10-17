@@ -1,17 +1,10 @@
 import BrimCore
 import Foundation
 
-/// App extensions, as PluginKit knows them.
-///
-/// Finder Sync, Share, Widgets, Quick Look previews, Spotlight importers,
-/// Action extensions, notification services. They live inside the owning
-/// bundle, so deleting the application takes the files, but PluginKit's
-/// own registration can outlive them: the extension keeps appearing in
-/// System Settings, in a Share sheet, or in the Finder's toolbar with
-/// nothing behind it.
-///
-/// `pluginkit -m -v` prints one line per extension. There is no API for
-/// this, so the tool's output is the only way in.
+/// App extensions as PluginKit knows them. They live inside the owning
+/// bundle, but PluginKit's registration can outlive the app and keep
+/// appearing in System Settings or a Share sheet. `pluginkit -m -v` is the
+/// only way in; there is no API.
 public struct AppExtensionSurface: RegistrationSurface {
     public let kind: Registration.Kind = .appExtension
 
@@ -62,9 +55,8 @@ public struct AppExtensionSurface: RegistrationSurface {
 
             let presence = PathObservation.observe(entry.path, followingLinks: true)
             let exists = presence.isPresent
-            // Apple's own extensions live under /System and are managed by
-            // macOS. Several are conditionally installed, so an absent one
-            // is not a leftover and cannot be removed.
+            // Apple's own extensions are managed by macOS, and several are installed
+            // conditionally, so an absent one is not a leftover.
             let isApple = entry.identifier.hasPrefix("com.apple.")
                 || entry.path.hasPrefix("/System/")
 
@@ -94,9 +86,7 @@ public struct AppExtensionSurface: RegistrationSurface {
         let identifier: String
         let version: String?
         let path: String
-        /// PluginKit marks an enabled extension with `+` in the first
-        /// column. Recorded because switching one back on afterwards is
-        /// the person's decision, not Brim's.
+        /// `+` in the first column marks an enabled extension.
         let isEnabled: Bool
 
         var displayName: String {
@@ -106,13 +96,10 @@ public struct AppExtensionSurface: RegistrationSurface {
         }
     }
 
-    /// One line of `pluginkit -m -v`.
-    ///
-    /// Five columns of flags, then tab-separated identifier with version
-    /// in brackets, UUID, date and path. The last line is a count, and a
-    /// path can contain spaces and non-ASCII, so the path is everything
-    /// after the third tab rather than the last whitespace-separated
-    /// field.
+    /// One line of `pluginkit -m -v`: five flag columns, then tab-separated
+    /// identifier with version in brackets, UUID, date and path. Paths can hold
+    /// spaces and non-ASCII, so the path is everything after the third tab. The
+    /// last line is a count.
     static func parse(_ line: String) -> Entry? {
         guard !line.isEmpty else { return nil }
         // " (490 plug-ins)" closes the listing.
@@ -153,12 +140,8 @@ public struct AppExtensionSurface: RegistrationSurface {
         )
     }
 
-    /// Where the trailing `(version)` starts.
-    ///
-    /// Matched by balancing from the end rather than by the last opening
-    /// bracket, because pluginkit prints a missing version as `((null))`
-    /// and the naive search split `com.apple.fskit.msdos((null))` into
-    /// the identifier `com.apple.fskit.msdos(` and the version `null)`.
+    /// Where the trailing `(version)` starts, balanced from the end, because a
+    /// missing version prints as `((null))`.
     static func openingParenthesis(closing text: String) -> String.Index? {
         var depth = 0
         var index = text.endIndex

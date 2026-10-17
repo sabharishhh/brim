@@ -2,28 +2,11 @@ import BrimCore
 import Foundation
 import SQLite3
 
-/// Privacy permissions macOS still holds for programs that are gone.
-///
-/// Found on this Mac on 6 October: Full Disk Access listed
-/// `com.microsoft.autoupdate.helper`, whose file in
-/// `/Library/PrivilegedHelperTools` had been removed with Microsoft
-/// AutoUpdate. Settings showed it with a blank icon and Show in Finder did
-/// nothing, and nothing in Brim mentioned it. A permission granted to a
-/// program path outlives the program: the privacy database keeps the row
-/// until someone removes it.
-///
-/// Only those are reported: a permission, on or switched off, for a path
-/// that is no longer on the disk. System Settings lists them in the pane
-/// for their service, and its minus button removes them: on 7 October the
-/// Microsoft helper's switched-off Full Disk Access entry was removed that
-/// way. Brim had told the person only to look in Privacy & Security, which
-/// has a dozen panes, and was then wrongly changed to hide switched-off
-/// entries on the belief that Settings did not show them. Each row now
-/// names its pane and whether it is on, and opens that pane.
-///
-/// Read only. The privacy database belongs to macOS; Brim never writes to
-/// it, so each row is report-only
-/// and names the pane in System Settings where it can be removed.
+/// Privacy permissions macOS still holds for programs that are gone. A
+/// permission granted to a program path outlives the program until someone
+/// removes it in System Settings, in the pane for its service. Each row
+/// names that pane and whether the permission is on. Read only: the privacy
+/// database belongs to macOS, so every row is report-only.
 public struct PrivacyGrantSurface: RegistrationSurface {
     public let kind: Registration.Kind = .privacyGrant
 

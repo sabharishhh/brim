@@ -1,20 +1,12 @@
 import XCTest
 @testable import BrimCore
 
-/// Nothing in Brim promises how long the battery will last.
-///
-/// Kept when the energy ledger went: a projection depends on what the
-/// machine does next, which nobody knows, and a figure in minutes reads as
-/// a promise. The first time it is wrong, every other number in the product
-/// is suspect too.
+/// Nothing in Brim promises how long the battery will last: a projection
+/// depends on what the Mac does next, and a figure in minutes reads as a
+/// promise.
 final class BatteryLifeProjectionTests: XCTestCase {
 
-    /// No string in the product projects future battery life in time
-    /// units.
-    ///
-    /// A projection depends on what the machine does next, which nobody
-    /// knows. A figure in minutes reads as a promise, and the first time
-    /// it is wrong every other number in the product is suspect too.
+    /// No string in the product projects future battery life in time units.
     func testNothingPromisesHowLongTheBatteryWillLast() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()

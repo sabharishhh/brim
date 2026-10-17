@@ -3,11 +3,9 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// Backs the Updates section: which applications have a newer version, and
-/// putting it in place.
-///
-/// The Updates section and Check Again request a fresh network check. Home
-/// reuses a result for up to six hours. Nothing runs in the background.
+/// Backs Updates: which applications have a newer version, and installing
+/// it. Opening Updates or Check Again checks the network; Home reuses a
+/// result up to six hours old. Nothing runs in the background.
 @MainActor
 public final class UpdatesModel: ObservableObject {
     /// Where one update has got to.
@@ -69,9 +67,8 @@ public final class UpdatesModel: ObservableObject {
     /// itself, was updated some other way, or was removed.
     @Published private var settledOnDisk: Set<String> = []
 
-    /// Called when the app list changes. An app that updated itself left
-    /// its row offering an update that was already installed until the next
-    /// network check, hours later.
+    /// Called when the app list changes, so an app that updated itself stops
+    /// offering the update at once.
     public func reconcile(with applications: [InstalledApplication]) {
         let byPath = Dictionary(applications.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
         let settled = (check?.updates ?? []).filter { update in
@@ -169,9 +166,8 @@ public final class UpdatesModel: ObservableObject {
         }
     }
 
-    /// Stops an update while it is downloading. Once it is installing it
-    /// runs to the end: stopping halfway through replacing an app is how an
-    /// app ends up half replaced.
+    /// Stops an update while it downloads. Once installing, it runs to the end:
+    /// stopping halfway is how an app ends up half replaced.
     public func cancelDownload(of update: AppUpdate) {
         guard case .downloading = states[update.id] else { return }
         running[update.id]?.cancel()

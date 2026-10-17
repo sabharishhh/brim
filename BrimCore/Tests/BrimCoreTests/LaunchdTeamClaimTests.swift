@@ -3,16 +3,8 @@ import BrimCore
 import XCTest
 
 /// A launchd job whose label starts with a team identifier belongs to the
-/// developer, not necessarily to the application being removed.
-///
-/// `LaunchdSource` claimed any such job at Tier A, the strongest there is, so
-/// it was selected by default and the plan would unload it and remove its
-/// property list. Like `TeamIDSource` it had never run, because
-/// `Identity.teamID` was nil everywhere until `IdentityResolver` asked macOS
-/// for the right class of signing information. The same fix that made the
-/// team identifier resolve made this reachable, and a suite that registers
-/// one `TEAMID.helper` for several applications would have had it unloaded
-/// by the removal of any one of them.
+/// developer, not necessarily to the app being removed, so it is never
+/// ticked: a helper shared by a suite would be unloaded with any one app.
 final class LaunchdTeamClaimTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -49,9 +41,7 @@ final class LaunchdTeamClaimTests: XCTestCase {
         try await LaunchdSource().evidence(for: editor, in: root)
     }
 
-    /// **The line.** A job matched on the team identifier alone is never
-    /// selected, because nothing about it says which of the developer's
-    /// applications it serves.
+    /// A job matched on the team alone is never selected.
     func testAJobMatchedOnTheTeamAloneIsNeverTickedForRemoval() async throws {
         try makeJob(label: "\(team).com.example.sharedhelper")
 
@@ -66,9 +56,7 @@ final class LaunchdTeamClaimTests: XCTestCase {
         )
     }
 
-    /// A job the application's own identifier names is still the
-    /// application's, at full strength. The fix must not cost recall on the
-    /// ordinary case.
+    /// A job named for the app's own identifier is still direct.
     func testAJobNamedAfterTheApplicationIsStillDirect() async throws {
         try makeJob(label: "com.example.editor.helper")
 
@@ -76,8 +64,8 @@ final class LaunchdTeamClaimTests: XCTestCase {
         XCTAssertEqual(found.first?.tier, .A)
     }
 
-    /// A team-prefixed job whose program lives inside this application's
-    /// bundle is proven by the program, not by the label, and stays direct.
+    /// A team-prefixed job running from inside the bundle is proven by its
+    /// program and stays direct.
     func testATeamPrefixedJobRunningFromInsideTheBundleIsStillDirect() async throws {
         let bundle = root.url(for: .applications).appendingPathComponent("Editor.app")
         try fm.createDirectory(at: bundle.appendingPathComponent("Contents"),

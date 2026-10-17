@@ -1,19 +1,10 @@
 import Foundation
 
-/// Clearing an application's privacy grants (accessibility, screen
-/// recording, full disk access and the rest).
-///
-/// Brim has no supported API for enumerating another application's grants.
-/// Private TCC databases are not a stable enumeration contract. A reset
-/// receipt records the action, not independently verified absence.
-///
-/// **Order matters more than anywhere else in an uninstall.** `tccutil`
-/// resolves the bundle identifier through Launch Services, so once the
-/// application bundle is gone the reset fails with
-/// `kLSApplicationNotFoundErr` and the grants are stranded for good. That is
-/// precisely how a machine ends up listing accessibility permissions for
-/// software that was removed months ago. The reset must happen while the
-/// bundle is still on disk.
+/// Clearing an application's privacy grants. There is no supported way to
+/// list another app's grants, so a reset records the action, not verified
+/// absence. It must run while the bundle is still on disk: `tccutil`
+/// resolves the identifier through Launch Services, and afterwards the
+/// grants are stranded.
 public enum PrivacyGrants {
     public enum ResetError: Error, LocalizedError, Equatable {
         /// Launch Services could not resolve the bundle, almost always

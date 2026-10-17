@@ -2,14 +2,8 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// Reading Background Task Management without asking anybody for anything.
-///
-/// The prompt this replaces was the longest running annoyance in the app:
-/// "Allow administrator access for sfltool?", once when the section loaded
-/// and again on every rescan. The store behind that tool is a set of
-/// ordinary files, so these tests are about reading them correctly rather
-/// than about avoiding the prompt, which is avoided by not running the
-/// tool at all.
+/// Reading Background Task Management straight from its store, with no
+/// prompt and no tool.
 final class BTMStoreTests: XCTestCase {
     private static let thisUser = UUID(uuidString: "C995F5A3-ED44-45EF-B512-E97AEBAFDE8A")!
     private var thisUser: UUID {
@@ -19,10 +13,8 @@ final class BTMStoreTests: XCTestCase {
     // MARK: - Which files to read
 
     func testOnlyTheNewestVersionIsRead() {
-        // A v16 file from a previous macOS is still on this Mac, last
-        // written in September, and it lists software that has been removed
-        // since. Reading it alongside v18 would report every one of those
-        // as a leftover.
+        // An older format version stays on disk after an upgrade and lists removed
+        // software; reading it would report false leftovers.
         let files = [
             "BackgroundItems-v16.btm",
             "BackgroundItems-v18.btm",
@@ -49,8 +41,8 @@ final class BTMStoreTests: XCTestCase {
     }
 
     func testSystemAccountsAreRead() {
-        // FFFFEEEE-DDDD-CCCC-BBBB-AAAA… is not a person. macOS mints one per
-        // pseudo-account, and the one for uid 0 holds machine-wide daemons.
+        // `FFFFEEEE-DDDD-CCCC-BBBB-AAAA...` names are system pseudo-accounts, not
+        // people; uid 0's holds machine-wide daemons.
         let files = [
             "BackgroundItems-v18-FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000.btm",
             "BackgroundItems-v18-C995F5A3-ED44-45EF-B512-E97AEBAFDE8A.btm"
@@ -77,11 +69,11 @@ final class BTMStoreTests: XCTestCase {
     func testRecordsComeBackOutOfAnArchive() throws {
         let directory = try makeStore(items: [
             FixtureItem(
-                name: "AppCleaner", developerName: "Julien Ramseier",
-                bundleIdentifier: "net.freemacsoft.AppCleaner",
-                identifier: "2.net.freemacsoft.AppCleaner",
+                name: "Sample", developerName: "Example Developer",
+                bundleIdentifier: "com.example.Sample",
+                identifier: "2.com.example.Sample",
                 container: nil,
-                url: URL(string: "file:///Applications/AppCleaner.app/"),
+                url: URL(string: "file:///Applications/Sample.app/"),
                 type: 0x2, disposition: 0x3
             )
         ])
@@ -89,27 +81,25 @@ final class BTMStoreTests: XCTestCase {
         let records = try XCTUnwrap(BTMStore(directory: directory, currentUser: { Self.thisUser }).records())
 
         XCTAssertEqual(records.count, 1)
-        XCTAssertEqual(records[0].name, "AppCleaner")
-        XCTAssertEqual(records[0].developerName, "Julien Ramseier")
-        XCTAssertEqual(records[0].bundleIdentifier, "net.freemacsoft.AppCleaner")
-        XCTAssertEqual(records[0].identifier, "2.net.freemacsoft.AppCleaner")
-        XCTAssertEqual(records[0].rawURLPath, "/Applications/AppCleaner.app")
+        XCTAssertEqual(records[0].name, "Sample")
+        XCTAssertEqual(records[0].developerName, "Example Developer")
+        XCTAssertEqual(records[0].bundleIdentifier, "com.example.Sample")
+        XCTAssertEqual(records[0].identifier, "2.com.example.Sample")
+        XCTAssertEqual(records[0].rawURLPath, "/Applications/Sample.app")
         XCTAssertEqual(records[0].type, "app")
         XCTAssertEqual(records[0].disposition, "on, allowed")
     }
 
     func testAnEmbeddedItemKeepsItsPathRelative() throws {
-        // The archive holds an embedded helper as a relative URL against a
-        // `file:///` base. Asking that for `path` hands back
-        // `/Contents/Library/…`, a file at the root of the disk that has
-        // never existed, and the helper reads as a leftover.
+        // An embedded helper is a relative URL against `file:///`; its `path` would
+        // be a file at the root of the disk.
         let directory = try makeStore(items: [
             FixtureItem(
-                name: "AppCleaner SmartDelete", developerName: nil,
-                bundleIdentifier: "net.freemacsoft.AppCleaner-SmartDelete",
-                identifier: "4.net.freemacsoft.AppCleaner-SmartDelete",
-                container: "2.net.freemacsoft.AppCleaner",
-                url: URL(string: "Contents/Library/LoginItems/AppCleaner%20SmartDelete.app",
+                name: "Sample Helper", developerName: nil,
+                bundleIdentifier: "com.example.Sample-Helper",
+                identifier: "4.com.example.Sample-Helper",
+                container: "2.com.example.Sample",
+                url: URL(string: "Contents/Library/LoginItems/Sample%20Helper.app",
                          relativeTo: URL(string: "file:///")),
                 type: 0x4, disposition: 0x9
             )
@@ -117,22 +107,21 @@ final class BTMStoreTests: XCTestCase {
 
         let records = try XCTUnwrap(BTMStore(directory: directory, currentUser: { Self.thisUser }).records())
 
-        XCTAssertEqual(records[0].rawURLPath, "Contents/Library/LoginItems/AppCleaner SmartDelete.app")
+        XCTAssertEqual(records[0].rawURLPath, "Contents/Library/LoginItems/Sample Helper.app")
         XCTAssertTrue(records[0].hasRelativeURL)
-        XCTAssertEqual(records[0].parentIdentifier, "2.net.freemacsoft.AppCleaner")
+        XCTAssertEqual(records[0].parentIdentifier, "2.com.example.Sample")
     }
 
     func testAnUnreadableStoreIsNotAnEmptyOne() {
-        // "Did not look" and "nothing found" are different claims, and only
-        // the first one is true when Full Disk Access is off.
+        // Without Full Disk Access, the answer is "did not look", not "nothing
+        // found".
         let nowhere = URL(fileURLWithPath: "/var/db/there-is-no-such-directory")
         XCTAssertNil(BTMStore(directory: nowhere, currentUser: { Self.thisUser }).records())
     }
 
     func testThisAccountHasADirectoryUUID() {
-        // The store files are named after it, so without this nothing is
-        // read at all. It is also the one part that cannot be faked in a
-        // fixture, since it comes from the directory service.
+        // The store files are named for this UUID, which comes from the directory
+        // service and cannot be faked in a fixture.
         XCTAssertNotNil(BTMStore.directoryUUID(for: getuid()))
     }
 
@@ -193,8 +182,8 @@ final class BTMStoreTests: XCTestCase {
     }
 }
 
-/// Writes the same archive macOS writes, so the reader is tested against the
-/// shape it will meet rather than against itself.
+/// Writes the archive shape macOS writes, so the reader is tested against
+/// what it will meet.
 @objc(BrimFixtureStore)
 private final class FixtureStore: NSObject, NSCoding {
     let items: [FixtureItem]

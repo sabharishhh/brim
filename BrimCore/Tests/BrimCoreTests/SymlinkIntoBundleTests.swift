@@ -2,14 +2,9 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// A command on the path that is really a link into an application bundle.
-///
-/// The leftovers sweep already reads links the other way: a link whose target
-/// has gone is dangling, and a dangling link is residue. Run forwards, the
-/// same fact answers something the uninstall path could not. Visual Studio
-/// Code installs `/usr/local/bin/code` pointing into its own bundle, and
-/// removing the application without the link leaves a `code` command that
-/// reports "no such file or directory". Docker does the same with `kubectl`.
+/// A command on the path that is a link into an application bundle, such as
+/// `/usr/local/bin/code`. Removing the app without it leaves a command that
+/// reports "no such file or directory".
 final class SymlinkIntoBundleTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -25,8 +20,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         try? fm.removeItem(at: rootURL)
     }
 
-    /// The Applications folder inside the person's home, where a per-user
-    /// install puts its bundle.
+    /// Where a per-user install puts its bundle.
     private var userApplications: URL {
         root.url(for: .userLibrary).deletingLastPathComponent().appendingPathComponent("Applications")
     }
@@ -65,8 +59,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         try await SymlinkIntoBundleSource().evidence(for: identity, in: root)
     }
 
-    /// **`/usr/local/bin/code`.** The link is the application's and goes with
-    /// it.
+    /// The link is the application's and goes with it.
     func testALinkIntoTheBundleIsFound() async throws {
         let bundle = try makeBundle(named: "Visual Studio Code")
         let link = try makeLink(
@@ -79,10 +72,8 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertEqual(found.first?.url.path, link.path)
     }
 
-    /// Following a link is proof, not inference, so it is not floored to
-    /// Tier C the way everything else in `/usr/local/bin` is. The flooring
-    /// exists because a bare binary is tied to an application by nothing but
-    /// a shared name; a link names the bundle outright.
+    /// A link names the bundle outright, so it is not floored to Tier C the way
+    /// a bare binary sharing a name is.
     func testFollowingALinkIsStrongerThanSharingAName() async throws {
         let bundle = try makeBundle(named: "Visual Studio Code")
         try makeLink(
@@ -110,10 +101,8 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertTrue(found.isEmpty, "Docker's link was claimed for Visual Studio Code.")
     }
 
-    /// A plain binary sitting in the same directory is not a link and is not
-    /// claimed. `resolvingSymlinksInPath` on a file returns the file, so
-    /// reading the target the lazy way would treat every binary there as a
-    /// link to itself.
+    /// `resolvingSymlinksInPath` on a file returns the file, so a lazy reading
+    /// would treat every binary as a link to itself.
     func testAPlainBinaryIsNotMistakenForALink() async throws {
         try makeBundle(named: "Visual Studio Code")
         let directory = root.url(for: .usrLocalBin)
@@ -136,8 +125,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertEqual(found.first?.url.path, link.path, "A relative link was not followed.")
     }
 
-    /// A link pointing outside every bundle is nothing to do with this
-    /// application, however it is named.
+    /// A link pointing outside every bundle is not this application's.
     func testALinkPointingSomewhereElseEntirelyIsIgnored() async throws {
         try makeBundle(named: "Visual Studio Code")
         let elsewhere = rootURL.appendingPathComponent("opt/tool")
@@ -151,8 +139,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertTrue(found.isEmpty)
     }
 
-    /// The link is evidence. What it points at is inside the bundle and
-    /// leaves with the bundle, so it is never listed twice.
+    /// What the link points at leaves with the bundle, so it is not listed twice.
     func testWhatTheLinkPointsAtIsNotListedSeparately() async throws {
         let bundle = try makeBundle(named: "Visual Studio Code")
         let target = bundle.appendingPathComponent("Contents/Resources/app/bin/tool")
@@ -165,8 +152,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         )
     }
 
-    /// An application with no bundle on disk has nothing for a link to point
-    /// into, and the source stops before listing anything.
+    /// An application with no bundle on disk has nothing to link into.
     func testAnApplicationThatIsNotInstalledClaimsNoLinks() async throws {
         try makeLink(named: "code", to: "/Applications/Visual Studio Code.app/Contents/tool")
         let found = try await evidence()
@@ -175,13 +161,9 @@ final class SymlinkIntoBundleTests: XCTestCase {
 
     // MARK: - Where the bundle lives
 
-    /// **`Code.app` is not Visual Studio Code.** The bundle lives under its
-    /// file name. `CFBundleName` is what an application calls itself and
-    /// names its support folders after; it says nothing about where the
-    /// bundle sits. This source used to look for the bundle under both
-    /// names, so with an unrelated application called `Code.app` installed,
-    /// every command linked into that application was claimed for Visual
-    /// Studio Code at Tier B and would have been trashed with it.
+    /// The bundle is looked for under its file name. `CFBundleName` names
+    /// support folders, not where the bundle sits, so an unrelated `Code.app`
+    /// must not lend its links to Visual Studio Code.
     func testALinkIntoAnotherApplicationNamedLikeTheBundleNameIsLeftAlone() async throws {
         try makeBundle(named: "Visual Studio Code")
         let other = try makeBundle(named: "Code")
@@ -198,9 +180,7 @@ final class SymlinkIntoBundleTests: XCTestCase {
         )
     }
 
-    /// A per-user install keeps its bundle in the Applications folder inside
-    /// the home folder, and a link into it is just as much the application's.
-    /// The fix narrows which name is looked for, not which folders.
+    /// A link into a per-user install is just as much the application's.
     func testALinkIntoAPerUserInstallIsFound() async throws {
         let bundle = try makeBundle(named: "Visual Studio Code", inUserApplications: true)
         let link = try makeLink(
@@ -212,11 +192,8 @@ final class SymlinkIntoBundleTests: XCTestCase {
         XCTAssertEqual(found.map(\.url.path), [link.path])
     }
 
-    /// The candidate locations are the file name in both Applications
-    /// folders and nothing else, which is also what `AppBundleSource` claims
-    /// as the application bundle itself at Tier A. The two have to agree:
-    /// a link is proven by pointing into the bundle Brim already calls this
-    /// application, so they cannot be allowed to mean different bundles.
+    /// The same candidates `AppBundleSource` claims at Tier A, so a link and the
+    /// bundle mean the same application.
     func testTheBundleIsLookedForUnderItsFileNameInBothApplicationsFolders() async throws {
         let locations = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
             .map(\.standardizedFileURL.path)

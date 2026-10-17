@@ -3,32 +3,21 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// Backs the Energy section.
-///
-/// Two samples taken a moment apart, and the difference between them is
-/// what gets shown. A single reading tells you what a process has used
-/// since it launched, which makes anything running since login look
-/// enormous and anything started a minute ago look idle. The delta says
-/// what is costing you something now, which is the only question worth
-/// asking.
-///
-/// It reports applications and nothing else. A list that also named the
-/// services underneath them offered four suspects for one event, three of
-/// which nobody can act on, and put `powerd` under "keeping this Mac awake"
-/// for doing its job correctly.
+/// Backs the Energy section. Two samples a moment apart, and the difference
+/// shown: a single reading is what a process used since launch, which makes
+/// long-running ones look enormous. Applications only: listing the services
+/// beneath them offers suspects nobody can act on.
 @MainActor
 public final class EnergyModel: ObservableObject {
     @Published public private(set) var readings: [Reading] = []
     @Published public private(set) var isSampling = false
     @Published public private(set) var coverageGaps = 0
     @Published public private(set) var window: TimeInterval = 0
-    /// What is holding sleep off. The one thing in this panel that neither
-    /// System Settings nor Activity Monitor says plainly.
+    /// What is holding sleep off.
     @Published public private(set) var assertions: PowerAssertions = .notRead
 
-    /// How long to leave between the two samples. Long enough for a busy
-    /// process to separate itself from an idle one, short enough that
-    /// nobody minds waiting.
+    /// The time between samples: long enough to separate busy from idle, short
+    /// enough that nobody minds waiting.
     private let gap: Duration
     /// How often a live reading samples again.
     private let tick: Duration
@@ -44,46 +33,24 @@ public final class EnergyModel: ObservableObject {
 
     // MARK: - What the panel is made of
 
-    /// Applications, and nothing else.
-    ///
-    /// The panel used to carry a second list of macOS services beside this
-    /// one. It was accurate and it was a mistake. `powerd` appeared under
-    /// "Keeping this Mac awake" holding an assertion named "Prevent sleep
-    /// while display is on", which is macOS working correctly: the display
-    /// is on because somebody is using the Mac, and it goes when they stop.
-    /// Read by someone who does not already know that, it says an internal
-    /// process is stopping their Mac from ever sleeping, which is alarming
-    /// and false.
-    ///
-    /// The same is true of the whole services list. `coreaudiod` is busy
-    /// because Music is playing; `WindowServer` is busy because there are
-    /// pixels. Naming them beside the app that caused them offers a person
-    /// four suspects for one event, three of which they cannot act on and
-    /// none of which they can tell apart.
-    ///
-    /// An application Apple ships is still an application: Music, Safari and
-    /// Mail are things a person opened and can close. The line is not who
-    /// wrote it, it is whether there is a window to quit.
+    /// Applications, and nothing else. Services such as `powerd` or `coreaudiod`
+    /// are busy because of an app, and listing them beside it offers suspects
+    /// nobody can act on. An app Apple ships is still an app: the line is
+    /// whether there is a window to quit.
     public var applications: [Reading] {
         readings.filter { $0.identity.kind.isActionable && $0.bundlePath != Self.ownBundle }
     }
 
-    /// Brim itself, which is busy precisely because it is taking the
-    /// reading. Listed, it was often the only app, "waking up often", at
-    /// the top of a list meant to show what else is costing power.
+    /// Brim itself, busy because it is taking the reading.
     private static let ownBundle = Bundle.main.bundleURL.standardizedFileURL.path
 
     public func milliwatts(of readings: [Reading]) -> Double {
         readings.reduce(0) { $0 + $1.milliwatts(over: window) }
     }
 
-    /// One application's part of what every listed application drew, for
-    /// the bar beside it.
-    ///
-    /// It used to be measured against the busiest, so the first row was
-    /// always a full bar: on a Mac at rest, an app drawing a third of a
-    /// watt filled its row as though it were the problem. Against the total,
-    /// the bars add up to the whole and a quiet Mac looks quiet.
+    /// One app's part of what every listed app drew, for the bar beside it.
+    /// Against the total rather than the busiest, so the bars add up to the
+    /// whole and a quiet Mac looks quiet.
     public func share(of reading: Reading) -> Double {
         share(of: reading.nanojoules)
     }
@@ -132,17 +99,15 @@ public final class EnergyModel: ObservableObject {
         }
     }
 
-    /// Sleep, charge and stay-awake requests from power management's own
-    /// log. Read when the page asks for a reading, beside it rather than
-    /// before it, because reading the log takes a few seconds.
+    /// Sleep, charge and stay-awake requests from power management's log, read
+    /// beside a reading rather than before it, because it takes a few seconds.
     @Published public private(set) var history: PowerHistory?
     @Published public private(set) var awakeRequests: [AwakeRequest] = []
     @Published public private(set) var isReadingHistory = false
     private var historyTask: Task<Void, Never>?
     private var historyReadAt: Date?
 
-    /// The log takes seconds to read and changes slowly, so it is read at
-    /// most once an hour.
+    /// Read at most once an hour: slow to read, slow to change.
     private func readHistory() {
         guard historyTask == nil,
               historyReadAt.map({ Date().timeIntervalSince($0) > 3600 }) ?? true else { return }
@@ -165,38 +130,18 @@ public final class EnergyModel: ObservableObject {
     @Published public private(set) var condition: SystemCondition =
         .init(thermal: .normal, power: nil, lowPowerMode: false)
 
-    /// Only what an application is holding. macOS holds its own whenever the
-    /// screen is on or audio is routed, and those follow from whatever asked
-    /// for them rather than causing anything.
+    /// Only what an application holds. macOS's own assertions follow from
+    /// those.
     public var appsKeepingMacAwake: [PowerAssertions.Held] {
         assertions.held.filter(\.isYours)
     }
 
     // MARK: - Why there is no running total
 
-    // There was a "Since <date>" card here and it has gone, because it was
-    // measuring something other than what it said.
-    //
-    // A running total would credit a process's entire counter the
-    // first time it sees that process: "First time this process has been
-    // seen. Its counter is what it has spent since it started, all of which
-    // is energy this application used." For a daemon running since boot that
-    // is days of energy, filed under a heading that named the moment Brim
-    // first looked. `contactsd` read 2428 mWh on this Mac against a label
-    // saying "Since Sep 21, 2026 at 8:23 PM".
-    //
-    // The honest version would need Brim to have been watching the whole
-    // time, and Brim does not watch. It has no agent, no timer and no
-    // background job, on purpose: a utility that exists to find software
-    // running when nobody asked it to cannot leave something running when
-    // nobody asked it to. Readings are taken while the Energy page is on
-    // screen, and each describes the last few seconds it covers.
-
     // MARK: - Sampling
 
-    /// The battery, the temperature and Low Power Mode, kept current for
-    /// as long as the calling task runs: read once, then again each time
-    /// macOS says one changed. Home and Energy both follow it while shown.
+    /// The battery, temperature and Low Power Mode, kept current while the
+    /// calling task runs: read once, then again whenever macOS reports a change.
     public func followCondition() async {
         readHistory()
         await readCondition()
@@ -211,21 +156,15 @@ public final class EnergyModel: ObservableObject {
         hasReadBattery = true
     }
 
-    /// How far back a live reading looks. Long enough that a row does not
-    /// jump with every tick, short enough to follow what someone just did.
+    /// How far back a live reading looks: long enough that rows do not jump,
+    /// short enough to follow what someone just did.
     static let span: TimeInterval = 15
 
-    /// Which apps are drawing power, kept current while the Energy page is
-    /// on screen and Brim can be seen.
-    ///
-    /// The first figure arrives after two seconds, as a single reading
-    /// always did. After that a sample is taken every three seconds (nine in
-    /// Low Power Mode), each costing under a millisecond, and every app's
-    /// draw is measured across the last fifteen of them, so the list moves
-    /// with the Mac without jittering. Nothing is sampled while the window
-    /// cannot be seen or once the page has gone, and a window that was
-    /// hidden for a while starts again from a fresh baseline rather than
-    /// averaging across the time nobody was looking.
+    /// Which apps are drawing power, while the Energy page is on screen and
+    /// Brim can be seen. The first figure arrives after two seconds; then a
+    /// sample every three seconds (nine in Low Power Mode), each under a
+    /// millisecond, measured across the last fifteen. Nothing is sampled while
+    /// hidden, and a window that was hidden starts from a fresh baseline.
     public func follow(
         service: any BrimServiceProtocol, visible: @escaping @MainActor () -> Bool = { AppVisibility.isVisible }
     ) async {
@@ -281,9 +220,8 @@ public final class EnergyModel: ObservableObject {
         await readCondition()
 
         readings = Self.group(second.samples.compactMap { now -> Measured? in
-            // A process that appeared between samples has no baseline, so
-            // its total would be mistaken for its rate. Left out rather
-            // than guessed at.
+            // A process that appeared between samples has no baseline, so its total
+            // would read as a rate. Left out.
             guard let then = before[now.pid] else { return nil }
 
             let cpu = now.userTime &+ now.systemTime &- (then.userTime &+ then.systemTime)
@@ -292,9 +230,7 @@ public final class EnergyModel: ObservableObject {
                 &- (then.diskReadBytes &+ then.diskWriteBytes)
             let nanojoules = now.energyNanojoules >= then.energyNanojoules
                 ? now.energyNanojoules - then.energyNanojoules : 0
-            // Below a hundredth of a milliwatt-hour across the window is
-            // measurement noise. Seventy-seven rows all reading 0.02 mWh
-            // is a list nobody can act on.
+            // Below a hundredth of a milliwatt-hour across the window is noise.
             guard nanojoules >= 36_000_000 else { return nil }
 
             return Measured(
@@ -319,13 +255,9 @@ public final class EnergyModel: ObservableObject {
         let nanojoules: UInt64
     }
 
-    /// Adds up the processes belonging to one application.
-    ///
-    /// Keyed on the bundle when there is one, and the executable otherwise,
-    /// so a daemon running several copies of itself also collapses to a
-    /// single line. `EnergySampler` already walks out to the outermost
-    /// bundle, so a renderer nested three frameworks deep inside ChatGPT
-    /// arrives here pointing at `/Applications/ChatGPT.app`.
+    /// Adds up the processes of one application, keyed on the bundle (or the
+    /// executable), so several copies of a daemon also make one line.
+    /// `EnergySampler` already walks out to the outermost bundle.
     static func group(_ measured: [Measured]) -> [Reading] {
         var order: [String] = []
         var buckets: [String: [Measured]] = [:]

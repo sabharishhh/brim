@@ -4,11 +4,8 @@ import IOKit.ps
 import XCTest
 
 /// The battery card says what System Settings says, and nothing ahead.
-///
-/// The values are this MacBook Air's on 6 October: 80% on a 35 W adapter,
-/// holding its charge, the Mac drawing 17.1 W, health Good, 100% capacity
-/// and 55 cycles. The registry's raw capacities give 98.5%, which is why
-/// the capacity is read from the profiler rather than worked out.
+/// Values from a real MacBook Air; the registry's raw capacities give 98.5%
+/// where Settings says 100%, which is why capacity comes from the profiler.
 final class BatteryReportTests: XCTestCase {
     private let source: [String: Any] = [
         kIOPSCurrentCapacityKey: 80, kIOPSMaxCapacityKey: 100,

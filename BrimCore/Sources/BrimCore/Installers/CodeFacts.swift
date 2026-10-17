@@ -2,12 +2,9 @@ import Foundation
 import Security
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// Who signed a bundle and what it is entitled to, for a preview.
-///
-/// Read without validating the whole bundle: a preview reports what the
-/// signature claims and leaves the verdict to Gatekeeper, which is asked
-/// separately. A signature that cannot be read at all is reported as
-/// unsigned rather than guessed at.
+/// Who signed a bundle and what it is entitled to, for a preview. Read
+/// without validating the bundle; the verdict is Gatekeeper's, asked
+/// separately. An unreadable signature is reported as unsigned.
 public struct CodeFacts: Sendable, Equatable {
     /// The leaf certificate's name: "Developer ID Application: Example Ltd (ABCDE12345)".
     public let signer: String?

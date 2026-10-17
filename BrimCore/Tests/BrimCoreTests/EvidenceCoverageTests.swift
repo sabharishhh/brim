@@ -22,8 +22,7 @@ final class EvidenceCoverageTests: XCTestCase {
         try Data("fixture".utf8).write(to: url)
     }
 
-    /// TeamIDSource used to turn every directory read failure into a clean,
-    /// empty result. A file where a directory should be fails on any host.
+    /// A failed folder listing must be a gap, not a clean empty result.
     func testFailedGroupListingSurvivesAnEmptyResult() async throws {
         let directory = root.url(for: .userLibrary).appendingPathComponent("Group Containers")
         try writeFile(directory)
@@ -73,8 +72,8 @@ final class EvidenceCoverageTests: XCTestCase {
         XCTAssertTrue(found.completeness.unreadable.contains(directory.path))
     }
 
-    /// This source is deliberately not LocationInventorySource. The former
-    /// concrete-type check silently discarded every other source's gaps.
+    /// Deliberately not `LocationInventorySource`: every source's gaps must
+    /// reach the result, not only one type's.
     private struct PartialSource: EvidenceSource {
         let items: [Evidence]
         let completeness: ScanCompleteness

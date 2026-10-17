@@ -2,15 +2,10 @@ import BrimCore
 import Foundation
 
 /// Build output inside a project: `target` beside `Cargo.toml`, `.build`
-/// beside `Package.swift`, `node_modules` beside `package.json`.
-///
-/// The largest thing any tool left on the Mac this was written on was a
-/// Rust project's `target` folder, 20 GB, and no list of tool caches can
-/// find it, because it lives wherever the project does. A folder counts
-/// only when the file that makes it rebuildable sits beside it, so a
-/// folder that merely happens to be called `build` is never offered. When
-/// each project was last built is shown, and nothing is ticked for you:
-/// clearing a project you are working on costs you a full build.
+/// beside `Package.swift`, `node_modules` beside `package.json`. A folder
+/// counts only when the file that makes it rebuildable sits beside it.
+/// Nothing is ticked for you: clearing a project you are working on costs a
+/// full build.
 public struct ProjectBuildScanner: Sendable {
     struct Kind: Sendable {
         let markers: [String]
@@ -328,8 +323,8 @@ extension ProjectBuildScanner {
         return false
     }
 
-    /// String parents reach the filesystem root monotonically. Foundation
-    /// file URL parents can alternate between root and empty path forms.
+    /// String parents reach the root monotonically; Foundation file URL parents
+    /// can alternate between root and empty path forms.
     private static func parentPath(of path: String) -> String? {
         guard path != "/", path.hasPrefix("/") else { return nil }
         let parent = (path as NSString).deletingLastPathComponent

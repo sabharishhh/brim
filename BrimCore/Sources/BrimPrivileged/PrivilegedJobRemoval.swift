@@ -1,30 +1,18 @@
 import Foundation
 
-/// The rules a root daemon applies before it removes anything.
-///
-/// A daemon running as root that takes a path and deletes it is a local
-/// privilege escalation waiting to be found. Every rule here exists so that
-/// a caller who gets past the code signing check still cannot do damage
-/// with what the interface offers.
-///
-/// Three ideas, in order of how much they are worth:
-///
-/// 1. **The interface cannot express an arbitrary path.** A caller names a
-///    domain from a fixed list and a single file name. The daemon builds
-///    the path. There is no way to say `../..`, no way to pass an absolute
-///    path, and nothing to traverse.
-/// 2. **The daemon refuses to remove a job that works.** It removes a job
-///    file only when launchd could not usefully run it: an empty plist, or
-///    one whose program is not on the disk. So even a caller who got past
-///    everything else cannot switch off a working system service.
-/// 3. **Nothing of Apple's, ever.** Refused by name, by the daemon, rather
-///    than trusting the caller to have filtered them out.
+/// The rules applied before anything is removed as root. A root process that
+/// takes a path and deletes it is a privilege escalation waiting to be
+/// found, so even a caller past the signature check can do no damage:
+/// 1. The interface cannot express an arbitrary path: a domain from a fixed
+///    list and one file name, and the path is built here.
+/// 2. A job that works is never removed: only an empty plist, or one whose
+///    program is not on disk.
+/// 3. Nothing of Apple's, ever, refused here by name.
 public enum PrivilegedJobRemoval {
-    /// The only places this daemon will touch. `/Library/LaunchAgents` and
-    /// `/Library/LaunchDaemons` are where a third party installs a job for
-    /// the whole machine, and they belong to root, which is the entire
-    /// reason a daemon is involved. A job in someone's own Library needs
-    /// no privileges and must never come through here.
+    /// The only places this touches: `/Library/LaunchAgents` and
+    /// `/Library/LaunchDaemons`, where a third party installs machine-wide jobs,
+    /// which belong to root. A job in someone's own Library needs no privileges
+    /// and never comes here.
     public enum Domain: String, Sendable, CaseIterable {
         case localAgents
         case localDaemons
@@ -76,11 +64,9 @@ public enum PrivilegedJobRemoval {
         }
     }
 
-    /// Turns a domain and a name into a path, or refuses.
-    ///
-    /// A single path component only. Anything with a separator, anything
-    /// relative, anything hidden, anything that is not a plist, and
-    /// anything of Apple's is refused before the filesystem is touched.
+    /// Turns a domain and a name into a path, or refuses: one path component,
+    /// nothing relative, hidden, not a plist, or Apple's, all refused before the
+    /// file system is touched.
     public static func target(domain: String, name: String) throws -> URL {
         guard let domain = Domain(rawValue: domain) else {
             throw Refusal.unknownDomain(domain)
@@ -98,39 +84,34 @@ public enum PrivilegedJobRemoval {
         guard !name.contains("/"), !name.contains("\0") else { return false }
         guard name != ".", name != ".." else { return false }
         guard !name.hasPrefix(".") else { return false }
-        // A name that changes when it is put through path normalisation is
-        // trying to be something other than a name.
+        // A name that changes under path normalisation is trying to be something
+        // other than a name.
         return (name as NSString).lastPathComponent == name
     }
 
-    /// Whether launchd could usefully run this job, judged from the plist
-    /// itself and from whether the program it names is on the disk.
-    ///
-    /// This is the check that makes the daemon safe to expose at all. A
-    /// job that still works is never removed, whoever asks.
+    /// Whether launchd could usefully run this job, judged from the plist and
+    /// whether its program is on disk. A job that still works is never removed,
+    /// whoever asks.
     public static func isDefunct(plist data: Data, programExists: (String) -> Bool) -> Bool {
         guard let parsed = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
               let job = parsed as? [String: Any]
         else {
-            // Unparseable is not a licence to delete. launchd would ignore
-            // it, but so should this.
+            // Unparseable is not a licence to delete.
             return false
         }
 
         guard let program = reviewedProgram(in: job) else { return false }
         switch program {
         case .absent:
-            // No program at all. Google's uninstaller leaves four of these
-            // behind, 181 bytes of empty dictionary, and launchd has
-            // nothing to run from any of them.
+            // No program at all: launchd has nothing to run.
             return true
         case let .path(path):
             return !programExists(path)
         }
     }
 
-    /// A declaration replaced with a missing program cannot authorize
-    /// stopping the working program launchd loaded from its earlier contents.
+    /// A declaration replaced with a missing program cannot authorise stopping
+    /// the working program launchd loaded from its earlier contents.
     static func loadedJobMatchesReviewedDefinition(
         _ output: String, reviewedPath: String, reviewedPlist: Data
     ) -> Bool {
@@ -154,8 +135,8 @@ public enum PrivilegedJobRemoval {
     }
 
     private static func reviewedProgram(in job: [String: Any]) -> ReviewedProgram? {
-        // App-relative or searched executables cannot be treated as absent
-        // by a root process probing its own working directory.
+        // App-relative or searched executables cannot be judged absent by a root
+        // process probing its own working directory.
         guard job["BundleProgram"] == nil else { return nil }
         if let arguments = job["ProgramArguments"], !(arguments is [String]) {
             return nil
@@ -174,8 +155,8 @@ public enum PrivilegedJobRemoval {
         return .path(program)
     }
 
-    /// Bind the parsed contents to the entry that was reviewed, and cap
-    /// reading even if another process replaces or grows the job file.
+    /// Binds the parsed contents to the reviewed entry, and caps the read even
+    /// if another process replaces or grows the file.
     static func readReviewedPlist(parent: Int32, name: String, reviewed: stat) throws -> Data {
         let file = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard file >= 0 else { throw Refusal.unreadable }

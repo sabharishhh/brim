@@ -2,13 +2,10 @@ import BrimCore
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// What a kept recording says an application created, as evidence.
-///
-/// A recording is a record: the person watched these appear while the app
-/// was installed and set up, and kept them. That is Tier B, the same as a
-/// name the developer chose, and every safeguard after this still applies:
-/// the Tier S veto, the claimant list, the safety checker, developer
-/// artefact classes and the running-app refusal.
+/// What a kept recording says an application created, as evidence. The
+/// person watched these appear and kept them, so they are Tier B, and every
+/// later safeguard still applies: the Tier S veto, the claimant list, the
+/// safety checker, developer artefact classes and the running-app refusal.
 public struct InstallRecordingSource: EvidenceSource {
     let recordings: @Sendable () -> [InstallRecording]
 
@@ -43,11 +40,10 @@ public struct InstallRecordingSource: EvidenceSource {
         return found
     }
 
-    /// Remnants of apps a recording names that are no longer installed,
-    /// for whatever the sweep did not already list. An item linked only by
-    /// timing, which the person kept, is held to the sweep's rule for
-    /// things nothing names: written this week, it belongs to something
-    /// alive. One named for the app is the app's whenever it was written.
+    /// Remnants of apps a recording names that are no longer installed, for what
+    /// the sweep did not already list. An item linked only by timing is held to
+    /// the sweep's rule for unnamed things: written this week, it is something
+    /// alive's. One named for the app is the app's whenever it was written.
     public static func remnants(
         _ recordings: [InstallRecording], installed: Set<String>, listed: Set<String>,
         now: Date = Date(), inUseWithin: TimeInterval? = 7 * 24 * 60 * 60

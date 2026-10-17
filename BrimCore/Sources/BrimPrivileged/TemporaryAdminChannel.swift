@@ -257,11 +257,10 @@ public enum TemporaryAdminChannel {
 }
 
 extension TemporaryAdminChannel {
-    // A released helper takes requests only from a Brim no other program
-    // can steer. A development build carries `get-task-allow` and no
-    // hardened runtime, so any program the person runs could attach to it
-    // and send requests root would carry out. A development helper still
-    // accepts development builds, or nothing could be tested.
+    // A released helper accepts only a Brim no other program can steer: a
+    // development build carries `get-task-allow` and no hardened runtime, so
+    // anything could attach to it and send requests root would carry out. A
+    // development helper still accepts development builds, so it can be tested.
     #if DEBUG
         static let refusesInjectableClients = false
     #else

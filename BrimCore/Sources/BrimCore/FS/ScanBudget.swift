@@ -1,24 +1,14 @@
 import Foundation
 
-/// How long a scan is allowed to take, and what to say when it runs out.
-///
-/// Brim had bounded concurrency and no deadline discipline, which is a
-/// different thing: concurrency stops the machine being overwhelmed, a
-/// deadline stops one unreadable path holding up the whole run. A network
-/// volume that has gone away, a directory behind a stalled file provider,
-/// a FUSE mount whose daemon died: any of these can make a single
-/// `contentsOfDirectory` take a minute, and there are sixty-odd locations
-/// to visit.
-///
-/// The important part is not that it stops. It is what it says afterwards.
-/// A scan that gave up halfway and reports a tidy list is worse than one
-/// that took longer, because the list looks complete.
+/// How long a scan may take, and what to say when it runs out. A stalled
+/// network volume or file provider can make one directory take a minute;
+/// the deadline stops it holding up the run, and the run then says it is
+/// incomplete rather than looking complete.
 public struct ScanBudget: Sendable {
     /// When the whole run must be finished.
     public let deadline: Date
-    /// The most any single probe may take. Derived from what is left, so
-    /// a run already near its limit does not spend all of it in one
-    /// directory.
+    /// The most any single probe may take, derived from what is left so one
+    /// directory cannot spend the whole run.
     public let perProbe: TimeInterval
 
     public init(
@@ -46,18 +36,9 @@ public struct ScanBudget: Sendable {
     }
 }
 
-/// Whether a scan saw everything it set out to.
-///
-/// Mole degrades a timed-out ownership scan to `SCAN_PARTIAL` and narrows
-/// the plan rather than deleting shared leftovers, and Brim's own
-/// invariant says degrade, never fail. This is the concrete form: an
-/// unfinished search is carried forward as a fact, and the safety engine
-/// takes every affected item out of the default selection.
-///
-/// The rule is not "be careful when the scan was slow". It is that a
-/// footprint is a claim about what is there, and an incomplete search
-/// cannot support the claim, so nothing found in an unfinished pass may
-/// be removed without somebody looking at it.
+/// Whether a scan saw everything it set out to. A footprint is a claim about
+/// what is on the disk, and an unfinished search cannot support it, so the
+/// safety engine takes every affected item out of the default selection.
 public struct ScanCompleteness: Sendable, Equatable, Codable {
     /// Locations that were not read, by path.
     public let unreadable: [String]

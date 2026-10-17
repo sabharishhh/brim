@@ -1,12 +1,9 @@
 import Foundation
 
-/// The applications in the usual folders, by the names a log can give them.
-///
-/// The power log names a process by its executable and a request made on an
-/// application's behalf by its identifier. Neither is what a person calls
-/// the app, so each is looked up against the bundles themselves. A name two
-/// applications share is dropped rather than guessed between, and a process
-/// no application answers to is macOS's own and is not listed.
+/// The applications in the usual folders, by the names a log gives them: an
+/// executable or an identifier, looked up against the bundles. A name two
+/// apps share is dropped rather than guessed, and a process no app answers
+/// to is macOS's own and not listed.
 public struct ApplicationNames: Sendable {
     public struct App: Sendable, Equatable {
         public let name: String

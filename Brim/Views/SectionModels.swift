@@ -2,18 +2,10 @@ import BrimUI
 import Combine
 import SwiftUI
 
-/// The models behind each section, owned by the window rather than by the
-/// views that display them.
-///
-/// A `NavigationSplitView` tears down the detail view when the selection
-/// changes, taking every `@StateObject` inside it with it. That made leaving
-/// a section and coming back cost a full rescan: Remnants walks the whole
-/// Library and the Apps list sizes every installed bundle. Switching panels
-/// was measured in seconds, and any selection the person had made was
-/// silently discarded.
-///
-/// Holding them here makes a section change what the user expects it to be:
-/// a change of view, not a reload of the machine.
+/// The models behind each section, owned by the window rather than the
+/// views. A `NavigationSplitView` tears down the detail view on every
+/// selection change, which made coming back to a section a full rescan and
+/// discarded the person's selection.
 @MainActor
 final class SectionModels: ObservableObject {
     /// Apps, Remnants and Developer open on what the last launch found,
@@ -34,8 +26,7 @@ final class SectionModels: ObservableObject {
     /// An install being recorded, from Home, the menu bar or a preview.
     let recording = InstallRecordingModel()
 
-    /// Shared, because the Trash is one thing. Two watchers on two views
-    /// would poll twice and disagree while doing it.
+    /// Shared, because the Trash is one thing and two watchers would disagree.
     let recovery = RecoveryStatusModel()
     let fullDiskAccess = FullDiskAccessModel()
 
@@ -47,13 +38,9 @@ final class SectionModels: ObservableObject {
     }
 }
 
-/// Which places are still scanning, gathered in one object.
-///
-/// A person who leaves Home before the scans finish should not have to
-/// guess from an empty page whether Brim is still looking. The sidebar
-/// shows a small spinner beside each place still working, and the brim
-/// line under the toolbar runs while anything is. Nested models do not
-/// publish through their container, so their flags are merged here.
+/// Which places are still scanning, for the sidebar's spinners and the line
+/// under the toolbar. Nested models do not publish through their container,
+/// so their flags are merged here.
 @MainActor
 final class ScanActivity: ObservableObject {
     @Published private(set) var busy: Set<Destination> = []
@@ -92,8 +79,7 @@ final class ScanActivity: ObservableObject {
             if journal {
                 busy.insert(.journal)
             }
-            // Home is made of the others, so it is working while any of
-            // the places it summarises are.
+            // Home summarises the others, so it is working while any of them is.
             if !busy.isDisjoint(with: [.leftovers, .apps, .background, .space, .developer]) {
                 busy.insert(.home)
             }

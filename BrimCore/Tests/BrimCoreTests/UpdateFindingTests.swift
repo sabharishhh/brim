@@ -2,12 +2,8 @@
 @testable import BrimScan
 import XCTest
 
-/// Finding updates, held to what the first real check on this Mac showed.
-///
-/// The old checker compared Sparkle's marketing strings with a numeric
-/// string compare and knew nothing else, so it could offer a version this
-/// Mac cannot run or a beta nobody subscribed to. And every Electron
-/// application that sets its feed in code went unchecked.
+/// Finding updates: never a version this Mac cannot run or a beta nobody
+/// subscribed to, and Electron apps that set their feed in code are checked.
 final class UpdateFindingTests: XCTestCase {
     private var folder: URL!
 
@@ -60,9 +56,8 @@ final class UpdateFindingTests: XCTestCase {
     </channel></rss>
     """
 
-    /// The newest item is for a macOS that does not exist yet, the next is
-    /// a beta: the one to offer is 2.1, with its full download rather than
-    /// the delta inside it.
+    /// The newest item needs a later macOS and the next is a beta, so 2.1 is
+    /// offered, with its full download rather than the delta.
     func testTheAppcastItemIsTheNewestThisMacCanInstall() {
         let best = SparkleAppcast.best(in: SparkleAppcast.items(in: Data(appcast.utf8)), for: sequoia)
         XCTAssertEqual(best?.displayVersion, "2.1")
@@ -131,9 +126,8 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertNil(HomebrewCatalog.match(fileName: "WhatsApp.app", bundleID: "com.unknown", in: [store, other]))
     }
 
-    /// WhatsApp here came from the App Store, and the catalogue's newer
-    /// build is the direct download: the receipt decides the source. Figma
-    /// was ahead of the catalogue, which is not an update.
+    /// The receipt decides the source, and a catalogue behind the installed
+    /// version is not an update.
     func testTheReceiptDecidesTheSourceAndACatalogueBehindIsNotAnUpdate() async throws {
         let store = try app("WhatsApp", "net.whatsapp.WhatsApp", "26.37.76", receipt: true)
         let figma = try app("Figma", "com.figma.Desktop", "126.9.10")
@@ -171,11 +165,8 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertTrue(check.unchecked.isEmpty)
     }
 
-    /// Prime Video's App Store listing is shared with iPhone and iPad, and
-    /// its version, 10.150.2, was the iPhone's. The Mac build was 10.148 and
-    /// the App Store offered nothing, while Brim offered an update. The Mac
-    /// page decides for a shared listing, and one that cannot be read is
-    /// not checked rather than guessed.
+    /// A listing shared with iPhone and iPad reports the iPhone version, so the
+    /// Mac page decides, and one that cannot be read is not checked.
     func testASharedStoreListingIsCheckedAgainstTheMacPage() async throws {
         let video = try app("Prime Video", "com.amazon.aiv.AIVApp", "10.148", receipt: true)
         let blocker = try app(
@@ -248,9 +239,7 @@ final class UpdateFindingTests: XCTestCase {
         return await finder.check([signed])
     }
 
-    /// Sparkle refuses an update to an app that ships its public key when
-    /// the feed leaves the signature out. Brim fell back to no check at all,
-    /// which is what a feed in the wrong hands would do.
+    /// An app that ships its public key is never offered an unsigned update.
     func testAFeedThatDropsTheSignatureAnAppExpectsOffersNothing() async throws {
         let unsigned = try await sparkleCheck(signature: nil)
         XCTAssertTrue(unsigned.updates.isEmpty)
@@ -259,8 +248,8 @@ final class UpdateFindingTests: XCTestCase {
         XCTAssertEqual(signed.updates.first?.download?.integrity, expected)
     }
 
-    /// A feed's `<link>` became the Website button's address unchecked, so
-    /// a feed could open a file or another app's URL scheme.
+    /// Only a web page from a feed is opened, never a file or another app's URL
+    /// scheme.
     func testOnlyAWebPageFromAFeedIsEverOpened() async throws {
         for link in ["file:///System/Applications/Calculator.app", "vscode://vscode.git/clone?url=x", "http://x.com"] {
             let check = try await sparkleCheck(signature: "c2ln", link: link)

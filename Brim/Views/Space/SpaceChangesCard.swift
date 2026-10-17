@@ -2,13 +2,9 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// What grew or shrank since the last visit, by subtraction.
-///
-/// Both figures were measured: this visit's, and the one recorded at the
-/// end of the visit before. Nothing in between was watched, so the card
-/// says what is different, never when or why. Free space leads, because it
-/// is the number people come to Space about; then the rows and apps that
-/// moved by 100 MB or more, largest first.
+/// What grew or shrank since the last visit, by subtraction of two measured
+/// snapshots. Nothing was watched in between, so it says what is different,
+/// never when or why. Free space leads, then changes of 100 MB or more.
 struct SpaceChangesCard: View {
     let previous: SpaceSnapshot?
     let current: SpaceSnapshot

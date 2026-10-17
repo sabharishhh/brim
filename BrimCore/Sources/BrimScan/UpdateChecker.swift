@@ -24,9 +24,8 @@ public struct UpdateChecker: Sendable {
         return nil
     }
 
-    /// Upgrades one cask Homebrew installed. The name is checked for
-    /// shape first: it comes from Homebrew's own listing, but it reaches a
-    /// subprocess.
+    /// Upgrades one cask Homebrew installed. The name comes from Homebrew's own
+    /// listing but reaches a subprocess, so its shape is checked first.
     public func upgradeCask(_ name: String) async -> String? {
         guard Self.isPlausibleCaskName(name) else {
             return "\"\(name)\" is not a cask name."
@@ -34,10 +33,8 @@ public struct UpdateChecker: Sendable {
         guard let brew = resolvedBrew else {
             return "Homebrew is not installed."
         }
-        // Homebrew updates itself first and can print long lists of new
-        // formulae. Its output went to a pipe nobody read, so past what a
-        // pipe holds brew waited on Brim and Brim waited on brew, for ever.
-        // The runner drains both streams and stops it at a deadline.
+        // Homebrew may print a lot while updating itself; the runner drains both
+        // streams and stops it at a deadline, so a full pipe cannot hang the update.
         let environment = ProcessInfo.processInfo.environment.filter { key, value in
             !key.isEmpty && !key.contains("=") && !(key + value).contains("\0")
         }

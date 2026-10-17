@@ -2,9 +2,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// The window's installer sheet, a look inside an installer, and what the
-/// recording around an install has to say. Also picks up a recording left
-/// open when Brim last quit.
+/// The installer sheet, and what the recording around an install has to
+/// say. Also picks up a recording left open when Brim last quit.
 struct InstallerSheets: ViewModifier {
     @ObservedObject var model: InstallRecordingModel
     @Bindable var shell: ShellState
@@ -30,8 +29,8 @@ struct InstallerSheets: ViewModifier {
                 Text(model.problem ?? "")
             }
             .task { await model.load(service: service) }
-            // Compositor was missing from Apps after Brim installed it: the
-            // list had been read before it existed, and nothing read it again.
+            // An app installed through Brim may not be in the list read before it
+            // existed, so read it again.
             .onChange(of: shell.installs) { Task { await applications.load(service: service) } }
             // A package's app arrives through Installer, not Brim; Apps
             // reads the list again once the recording around it is kept.
@@ -40,8 +39,7 @@ struct InstallerSheets: ViewModifier {
                 shell.noteInstall()
                 model.keptQuietly = nil
             }
-            // An install that put nothing down, said once rather than kept
-            // in a property nobody showed.
+            // An install that put nothing down, said once.
             .onChange(of: model.notice) { _, notice in
                 guard let notice else { return }
                 shell.show(ToastMessage(symbol: "info.circle", text: notice))

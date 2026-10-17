@@ -1,33 +1,14 @@
 import BrimCore
 import Foundation
 
-/// Group containers sitting under this application's team identifier.
-///
-/// **A team identifier names a vendor, not an application**, and this source
-/// used to forget that. It rated every `TEAMID.*` folder Tier B, which means
-/// ticked for removal by default, on the strength of a string that Microsoft
-/// puts on Word, Teams, OneDrive and Visual Studio Code alike.
-///
-/// It went unnoticed because it never ran. `IdentityResolver` asked macOS for
-/// the wrong class of signing information, so `Identity.teamID` was nil for
-/// every application on the machine and this source returned an empty array
-/// every time. Fixing that one flag turned a dormant over-claim into a live
-/// one: on the Mac this was measured on, uninstalling Visual Studio Code
-/// offered up `UBF8T346G9.com.microsoft.teams` and
-/// `UBF8T346G9.com.microsoft.oneauth`, pre-selected, with Microsoft Teams
-/// installed. That is somebody else's data and the shared sign-in state for
-/// every Microsoft application on the Mac.
-///
-/// So the evidence says what it actually is.
-///
-/// - A group an application **declares** in its entitlements is proof, and
-///   `GroupContainerSource` reports those at Tier A. This source never does.
-/// - A folder matched on the team identifier alone, while another
-///   application from the same vendor is installed, is **Tier S**: something
-///   else on this Mac claims it, so it leaves the selection and cannot
-///   re-enter it.
-/// - Anything else matched on the team identifier alone is **Tier C**. It is
-///   shown, it can be ticked by hand, and Brim will not tick it for anybody.
+/// Group containers under this application's team identifier. A team names
+/// a vendor, not an application, so:
+/// - a group the app declares in its entitlements is proof, reported by
+///   `GroupContainerSource` at Tier A, never here;
+/// - a folder matched on the team alone while another app from the vendor is
+///   installed is Tier S;
+/// - anything else matched on the team alone is Tier C: shown, tickable by
+///   hand, never ticked by Brim.
 public struct TeamIDSource: EvidenceSource {
     public init() {}
 
@@ -61,9 +42,8 @@ public struct TeamIDSource: EvidenceSource {
             return EvidenceFindings(evidence: [], completeness: completeness)
         }
 
-        // Only now is it worth asking who else is on this Mac, because the
-        // answer costs a directory walk and most applications match nothing
-        // here at all.
+        // Only now is it worth asking who else is on this Mac, because that costs a
+        // walk and most apps match nothing here.
         let siblingScan = await Self.otherApplicationFindings(sharing: teamID, besides: identity, in: root)
         let siblings = siblingScan.identities
         completeness = completeness.merging(siblingScan.completeness)
@@ -76,11 +56,8 @@ public struct TeamIDSource: EvidenceSource {
 
     private static func evidence(for url: URL, identity: Identity, siblings: [Identity]) -> Evidence? {
         let name = url.lastPathComponent
-        // Another application declaring the group is a claim; one merely
-        // signed by the same vendor is not. Falling back to any sibling
-        // vetoed every group Teams declares because Visual Studio Code,
-        // which declares none, is also Microsoft's, and 22 MB of Teams'
-        // own data outlived its uninstall.
+        // Another app declaring the group is a claim; one merely signed by the same
+        // vendor is not.
         if let claimant = siblings.first(where: { $0.groupContainers.contains(name) }) {
             return Evidence(
                 url: url,
@@ -90,8 +67,8 @@ public struct TeamIDSource: EvidenceSource {
                     + "declares this group."
             )
         }
-        // Declared by this application and nobody else: that is
-        // `GroupContainerSource`'s proof, and an S here would outweigh it.
+        // Declared by this application alone: `GroupContainerSource`'s proof, which
+        // an S here would outweigh.
         if identity.searchGroupContainers.contains(name) {
             return nil
         }

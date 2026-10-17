@@ -3,12 +3,9 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// The deep uninstall, reviewed and proven in the Apps page's right pane.
-///
-/// Nothing here names a path. The plan is built from the application's
-/// identity alone, so what the person sees is what the evidence engine
-/// found, and after applying, the panel shows the re-check in place of the
-/// button. It used to be a sheet, which hid the page it was about.
+/// The app removal, reviewed and verified in the Apps page's right pane. The
+/// plan is built from the app's identity alone, so the person sees what the
+/// evidence engine found. After applying, the re-check replaces the button.
 struct UninstallPanel: View {
     let application: InstalledApplication
     let service: any BrimServiceProtocol
@@ -19,8 +16,8 @@ struct UninstallPanel: View {
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var showingSearchDetails = false
-    /// Something was removed in this panel, possibly before a Review Again
-    /// that the person then closed without removing anything more.
+    /// Something was removed here, possibly before a Review Again the person
+    /// closed without removing more.
     @State private var removedSomething = false
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -45,10 +42,8 @@ struct UninstallPanel: View {
         }
     }
 
-    /// A fresh plan from what is on the disk now. Identity only, no
-    /// specific targets: the difference between uninstalling an application
-    /// and tidying a folder. Review Again comes here too, so a retry is a
-    /// new plan with its own approval, never the old consent reused.
+    /// A fresh plan from the disk as it is now, from identity only. Review
+    /// Again comes here too, so a retry needs its own approval.
     private func startReview() async {
         await model.prepare(
             intent: PlanIntent(
@@ -74,11 +69,8 @@ struct UninstallPanel: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             BrimIcon(source: .bundle(application.url), size: 36)
-            // The application is the subject. "Review" above its name read
-            // as the name of something, and that this is a review is what
-            // the panel itself shows.
-            // The name alone on its line. What the panel is doing is on its
-            // button, and how much goes is beside it.
+            // The app's name alone on its line. The button says what the panel is
+            // doing, and how much goes is beside it.
             Text(application.name)
                 .font(.brimPageTitle)
                 .foregroundStyle(Palette.ink)
@@ -100,9 +92,8 @@ struct UninstallPanel: View {
         }
     }
 
-    /// The page reads the Mac again whenever anything was removed here,
-    /// including when the last thing on screen is a Review Again that the
-    /// person closed. Checking only the current phase left the list stale.
+    /// The page reads the Mac again whenever anything was removed here, even if
+    /// the last thing on screen is a closed Review Again.
     private func close() {
         if removedSomething {
             onFinished()
@@ -134,10 +125,8 @@ struct UninstallPanel: View {
         case let .verified(result):
             verification(result)
 
-        // One branch for waiting and running, so it is one list that
-        // becomes disabled. As two branches they were two lists, and the
-        // change of phase cross-faded them: for a moment both were drawn,
-        // row over row.
+        // One branch for waiting and running, so it is one list that becomes
+        // disabled; two branches cross-faded two lists over each other.
         case .ready, .executing:
             if model.phase == .ready, showingSearchDetails, let report = model.plan?.capabilityReport {
                 SearchDetailsView(report: report) { showingSearchDetails = false }
@@ -278,9 +267,8 @@ private extension UninstallPanel {
         .padding(20)
     }
 
-    /// Says what the button is waiting for. WhatsApp's review took forty
-    /// seconds, and a Remove button that could not be pressed yet looked
-    /// like one that would not work.
+    /// Says what the button is waiting for, since a review can take a while and
+    /// a disabled Remove looks broken.
     var buttonTitle: String {
         switch model.phase {
         case .preparing: "Checking"
@@ -300,9 +288,8 @@ private extension UninstallPanel {
         )
     }
 
-    /// A state that did not end in a verified result: what happened, in
-    /// words, and what the person can do next. Left aligned and scrolling,
-    /// like the result, so a long refusal is never cut off.
+    /// A state that did not end in a verified result: what happened and what to
+    /// do next. Scrolls, so a long refusal is never cut off.
     func message(title: String, detail: String, next: String, isError: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {

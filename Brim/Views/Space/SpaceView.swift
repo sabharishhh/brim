@@ -3,14 +3,10 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// Where the space went, told as separate numbers.
-///
-/// Finder shows one figure for free space and it already includes room
-/// macOS is only holding on to, which is why deleting something large can
-/// leave it unchanged. That single number is how cleaning utilities end up
-/// claiming gigabytes nobody ever sees. Here the parts stay apart and each
-/// one says what it is (plan §8: volumes, then the three numbers, then the
-/// largest apps).
+/// Where the space went, as separate numbers. Finder's free space already
+/// includes room macOS is only holding, which is why deleting something
+/// large can leave it unchanged. Here each part stays apart and says what it
+/// is.
 struct SpaceView: View {
     @ObservedObject var model: StorageModel
     @ObservedObject var applications: ApplicationsModel
@@ -190,9 +186,8 @@ struct SpaceView: View {
         .accessibilityValue(ByteText.short(bytes))
     }
 
-    /// By count and whether macOS will discard them, never by size: there
-    /// is no supported way to ask what a snapshot holds, and a figure
-    /// invented here would be the dishonesty this page exists to avoid.
+    /// By count and whether macOS will discard them, never by size: there is no
+    /// supported way to ask what a snapshot holds.
     private func snapshots(_ volume: VolumeAccount) -> some View {
         let count = volume.snapshots.count
         let pinning = volume.pinningSnapshots.count

@@ -6,8 +6,8 @@ import Foundation
 
 public extension BrimService {
     func previewInstaller(at url: URL) async throws -> InstallerPreview {
-        // Nothing but a local file is read. `hdiutil` would also take a web
-        // address, and a preview must never reach for one.
+        // Only a local file. `hdiutil` would also take a web address, and a preview
+        // must never reach for one.
         guard url.isFileURL, url.path.hasPrefix("/") else { throw InstallerReadError.notAnInstaller }
         var installed: [String: InstallerReader.Installed] = [:]
         for app in await applicationInventoryRead().value {
@@ -15,8 +15,8 @@ public extension BrimService {
             installed[identifier] = .init(version: app.version, path: app.url.path)
         }
         let reader = InstallerReader(installed: installed, root: root, icon: Self.iconPNG)
-        // Off the service's actor: mounting an image or listing a large
-        // package takes seconds, and every other request would wait.
+        // Off the service's actor: mounting an image or listing a large package
+        // takes seconds, and every other request would wait.
         return try await Task.detached(priority: .userInitiated) { try reader.read(url) }.value
     }
 
@@ -30,12 +30,10 @@ public extension BrimService {
         }.value
     }
 
-    /// The icon at the size the preview draws it, twice over for Retina.
-    /// Drawn into a bitmap of that size: an icon's TIFF carries every size
-    /// up to 1024 pixels, and its first is not the one wanted. The context
-    /// is made before the bitmap is given a point size, so it works in
-    /// pixels and the icon fills all of them; drawing into 64 points there
-    /// filled the bottom left quarter, and the preview showed a speck.
+    /// The icon at twice the size the preview draws it, drawn into a bitmap of
+    /// that size, since an icon's TIFF carries every size and its first is not
+    /// the one wanted. The context is made before the bitmap gets a point size,
+    /// so it works in pixels.
     private static let iconPNG: @Sendable (URL) -> Data? = { url in
         let image = NSWorkspace.shared.icon(forFile: url.path)
         let pixels = 128

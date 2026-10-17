@@ -1,17 +1,8 @@
 import XCTest
 @testable import BrimCore
 
-/// Tier S is a veto, and only a veto.
-///
-/// The letters disagreed with the specification in the dangerous
-/// direction. `EvidenceTier.S` meant "cryptographically guaranteed" in the
-/// code and mapped to selected, while T-1.9 and T-3.4 define S as Shared:
-/// the one-way control that may take an item out of a selection and never
-/// put one in. Anybody following the specification and writing `tier: .S`
-/// to protect a shared component would have marked it for removal.
-///
-/// It never fired only because no source emitted `.S`. That is not a
-/// safety property, it is an accident of coverage, so these hold it.
+/// Tier S is a veto and only a veto: it may take an item out of a selection
+/// and never put one in.
 final class TierSVetoTests: XCTestCase {
 
     private func evaluate(tier: EvidenceTier, path: String = "/tmp/brim-tier-test/thing") async -> EvaluatedItem {
@@ -57,11 +48,8 @@ final class TierSVetoTests: XCTestCase {
         }
     }
 
-    /// T-3.4's acceptance criterion: no code path lets Tier S select.
-    ///
-    /// Read from the source rather than exercised, because the failure
-    /// this guards against is a future branch that nobody thought to write
-    /// a case for.
+    /// No code path lets Tier S select. Read from the source, because the
+    /// failure is a future branch nobody wrote a case for.
     func testNoCodePathMapsSharedToSelected() throws {
         let engine = Self.repositoryRoot()
             .appendingPathComponent("BrimCore/Sources/BrimCore/Safety/SafetyEngine.swift")
@@ -81,8 +69,7 @@ final class TierSVetoTests: XCTestCase {
     }
 
     func testSharedIsNotOnTheConfidenceScale() {
-        // Anything that ranks or compares how sure Brim is has to leave S
-        // out. It is a claim about another application, not about this one.
+        // S is a claim about another application, not a confidence level.
         XCTAssertFalse(EvidenceTier.S.isConfidence)
         for tier in EvidenceTier.allCases where tier != .S {
             XCTAssertTrue(tier.isConfidence, "\(tier) is a confidence level")

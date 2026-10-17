@@ -65,8 +65,8 @@ final class OldVersionsTests: XCTestCase {
         XCTAssertEqual(scan().map(\.url.lastPathComponent), ["1.0"])
     }
 
-    /// nvm and mise choose a version from a shell hook or a project file,
-    /// which leaves no link. Nothing there is offered.
+    /// A version chosen by a shell hook or project file leaves no link, so
+    /// nothing is offered.
     func testNoLinkMeansNothingIsOffered() throws {
         try version(".nvm/versions/node/v20.1.0/bin/node")
         try version(".nvm/versions/node/v18.0.0/bin/node")

@@ -3,16 +3,8 @@ import BrimCore
 import XCTest
 
 /// Turning Background Task Management records into registrations, against
-/// fixtures taken verbatim from a real machine.
-///
-/// Every case here was a false "stale" reading before it was fixed. A sweep
-/// that invents leftovers is worse than one that finds none, because the
-/// action it offers is removing a registration from a working app.
-///
-/// The fixtures are `sfltool` text run through `BTMParser`, which is where
-/// they were captured. The surface reads the store directly now, and
-/// `BTMStoreTests` covers that; what these protect is the mapping from a
-/// record to a row, which is the same either way.
+/// fixtures from a real Mac. Each case here was once a false "stale"
+/// reading, which would offer to remove a working app's registration.
 final class BackgroundItemSurfaceTests: XCTestCase {
     private let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
@@ -39,8 +31,7 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     func testAnItemWithNoURLIsNotReportedStale() async {
-        // "(null)" is what sfltool prints for a background-tasks record.
-        // Treated as a path it becomes a file that never existed.
+        // "(null)" is what is recorded for a background-tasks record, not a path.
         let text = dump("""
 
          #1:
@@ -61,42 +52,39 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     func testAnEmbeddedItemResolvesAgainstItsParentNotTheWorkingDirectory() async throws {
-        // sfltool prints an embedded item's path relative to the app that
-        // ships it. Resolved as absolute it lands under the CWD and vanishes.
+        // An embedded item's path is relative to the app that ships it.
         let text = dump("""
 
          #1:
                          UUID: AAAA
-                         Name: AppCleaner
+                         Name: Sample
                          Type: app (0x2)
-                   Identifier: 2.net.freemacsoft.AppCleaner
-                          URL: /Applications/AppCleaner.app
-            Bundle Identifier: net.freemacsoft.AppCleaner
+                   Identifier: 2.com.example.Sample
+                          URL: /Applications/Sample.app
+            Bundle Identifier: com.example.Sample
 
          #2:
                          UUID: BBBB
-                         Name: AppCleaner SmartDelete
+                         Name: Sample Helper
                          Type: login item (0x4)
-                   Identifier: 4.net.freemacsoft.AppCleaner-SmartDelete
-                          URL: Contents/Library/LoginItems/AppCleaner SmartDelete.app
-            Bundle Identifier: net.freemacsoft.AppCleaner-SmartDelete
-            Parent Identifier: 2.net.freemacsoft.AppCleaner
+                   Identifier: 4.com.example.Sample-Helper
+                          URL: Contents/Library/LoginItems/Sample Helper.app
+            Bundle Identifier: com.example.Sample-Helper
+            Parent Identifier: 2.com.example.Sample
         """)
 
         let found = await surface(text).registrations(in: root)
-        let child = try XCTUnwrap(found.first { $0.label == "AppCleaner SmartDelete" })
+        let child = try XCTUnwrap(found.first { $0.label == "Sample Helper" })
 
         XCTAssertEqual(
             child.programPath,
-            "/Applications/AppCleaner.app/Contents/Library/LoginItems/AppCleaner SmartDelete.app",
+            "/Applications/Sample.app/Contents/Library/LoginItems/Sample Helper.app",
             "An embedded item must resolve against its parent bundle"
         )
     }
 
     func testAHomeDirectoryPrintedAsAUIDIsResolvedToTheRealHome() async throws {
-        // Observed with Figma: sfltool renders the home directory as
-        // /Users/<uid>, a path that does not exist, so a healthy login item
-        // reads as a leftover.
+        // The home folder is recorded as `/Users/<uid>`, which does not exist.
         let text = dump("""
 
          #1:
@@ -129,8 +117,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
             Bundle Identifier: com.other.agent
         """)
 
-        // No home for uid 999: leave the path as printed rather than
-        // inventing one for the wrong account.
+        // No home for uid 999: the path is left as recorded rather than guessed for
+        // the wrong account.
         let found = await surface(text, homes: [:]).registrations(in: root)
         let item = try XCTUnwrap(found.first { $0.label == "OtherUserAgent" })
         XCTAssertNil(item.programPath)
@@ -140,8 +128,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 
     func testAHelperIsAttributedToTheAppThatShipsIt() async throws {
-        // Uninstalling the parent app must clear its login item, so the
-        // child has to carry the parent's bundle identifier.
+        // Uninstalling the parent app must clear its login item, so the child
+        // carries the parent's bundle identifier.
         let text = dump("""
 
          #1:
@@ -206,14 +194,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
         XCTAssertFalse(apple.isActionableStale)
     }
 
-    /// Apple's Stocks, in a list whose whole subject is the user's software.
-    ///
-    /// The record carries no bundle identifier and no URL at all. Its own
-    /// identifier is `4096.com.apple.stocks` and its parent's is
-    /// `2.com.apple.stocks`, and `isSystemOwned` read neither, so a
-    /// background app refresh item belonging to an app Apple ships came
-    /// through as something the person had installed. It sat in the
-    /// Background list beside Claude and Figma.
+    /// An Apple item with no bundle identifier or URL, only
+    /// `4096.com.apple.stocks`, is still Apple's.
     func testAnAppleItemWithNothingButItsIdentifierIsStillApples() async {
         let text = dump("""
 
@@ -231,8 +213,7 @@ final class BackgroundItemSurfaceTests: XCTestCase {
                        "Only the identifiers name the owner, and both of them say Apple")
     }
 
-    /// The other half, because a filter that catches everything is not a
-    /// filter. The same shape from Microsoft has to stay in the list.
+    /// The other half: the same shape from another developer stays in the list.
     func testTheSameShapeFromSomebodyElseStaysInTheList() async {
         let text = dump("""
 
@@ -287,14 +268,8 @@ final class BackgroundItemSurfaceTests: XCTestCase {
     }
 }
 
-/// Nothing on the scan path may ask the user for anything.
-///
-/// This surface used to run `sfltool dumpbtm`, which makes macOS put up
-/// "Allow administrator access for sfltool?" every time. It cost a prompt
-/// when the Background section loaded, another on every rescan, and once,
-/// through a wiring mistake, two prompts seconds after the app opened for
-/// a scan nobody had asked for. Reading the store directly costs nothing,
-/// and this is the test that keeps it that way.
+/// Nothing on the scan path may ask for anything. Running `sfltool dumpbtm`
+/// raised an administrator prompt; the store is read directly instead.
 final class BackgroundItemPromptTests: XCTestCase {
     func testTheScanPathDoesNotRunSFLTool() throws {
         let scan = URL(fileURLWithPath: #filePath)
@@ -308,8 +283,8 @@ final class BackgroundItemPromptTests: XCTestCase {
             .filter { $0.pathExtension == "swift" } ?? []
         XCTAssertFalse(files.isEmpty, "Could not find the scan sources at \(scan.path)")
 
-        // The executable path, not the word: these files explain at length
-        // why the tool is not used, and saying so is not running it.
+        // The executable path, not the word: these files mention the tool to
+        // explain why it is not used.
         for file in files {
             let text = try String(contentsOf: file, encoding: .utf8)
             for invocation in ["/usr/bin/sfltool", "\"sfltool"] {
@@ -323,10 +298,8 @@ final class BackgroundItemPromptTests: XCTestCase {
     }
 
     func testReadingHappensOncePerReport() async {
-        // `RegistrationInventory` asks every surface twice, once for its
-        // registrations and once for its coverage. That doubling is what
-        // turned one prompt into two, back when reading cost a prompt. It
-        // is free now, and still no reason to do the work twice.
+        // Each surface is read once, though both registrations and coverage are
+        // asked for.
         let runs = RunCounter()
         let surface = BackgroundItemSurface(read: { runs.record(); return [] })
         let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
@@ -350,12 +323,8 @@ final class BackgroundItemPromptTests: XCTestCase {
     }
 }
 
-/// An empty launchd job file is a leftover, not a healthy registration.
-///
-/// Google Keystone's uninstaller empties its four plists rather than
-/// deleting them: 181 bytes of nothing, in both LaunchAgents directories,
-/// for both of its jobs. Brim listed all four under "Still in use" because
-/// a job with no program was treated as a job whose program was fine.
+/// An emptied launchd job file, as some uninstallers leave, is a leftover,
+/// not a healthy registration.
 final class EmptyLaunchdJobTests: XCTestCase {
     func testAJobWithNothingToRunIsNotRunning() {
         let job = LaunchdRegistrationSurface.parse(dictionary: [:], fallbackLabel: "com.google.keystone.agent")

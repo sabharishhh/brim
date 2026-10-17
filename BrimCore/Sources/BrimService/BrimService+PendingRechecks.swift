@@ -19,8 +19,8 @@ public extension BrimService {
                   PendingRemovalRecheck.isRemoval(plan),
                   let current = try? await journalStore.load(planId: candidate.planId),
                   PendingRemovalRecheck.needsCheck(current) else { continue }
-            // verify owns the existing operation lease, so an active removal
-            // or restoration cannot overlap this readback.
+            // `verify` holds the operation lease, so a removal or restoration cannot
+            // overlap this read.
             checked += 1
             _ = try? await verify(planId: candidate.planId)
         }
@@ -34,8 +34,8 @@ public extension BrimService {
         var results: [RemovalRecheck] = []
         for entry in entries where RemovalReturn.isSettled(entry) {
             guard observed < RemovalReturn.pathLimit, clock.now < deadline, !Task.isCancelled else { break }
-            // A removal or Put Back in progress is mid-change; its paths say
-            // nothing yet.
+            // A removal or Put Back in progress is mid-change; its paths say nothing
+            // yet.
             guard !isOperating(on: entry.planId),
                   let plan = try? await planStore.load(planId: entry.planId),
                   plan.intent.type == .uninstall else { continue }
@@ -65,8 +65,8 @@ enum PendingRemovalRecheck {
         guard entry.restoredAt == nil, entry.restoreOutcomes?.isEmpty != false,
               !entry.stepOutcomes.isEmpty else { return false }
         guard let latest = entry.verifications?.last else { return true }
-        // Preserved shared items and recovery copies alone do not queue
-        // perpetual checks. They remain visible in the saved result.
+        // Kept shared items and recovery copies alone do not queue endless checks;
+        // they stay visible in the saved result.
         return !latest.success || !latest.remainingPaths.isEmpty
     }
 
@@ -78,29 +78,24 @@ enum PendingRemovalRecheck {
     }
 }
 
-/// Whether what a confirmed removal took has come back.
-///
-/// Only the steps that take something away are asked about. A vendor
-/// uninstaller Brim revealed is meant to stay, and an unregistered or
-/// unlocked path is the same path a later step moves to the Trash.
+/// Whether what a confirmed removal took has come back. Only steps that
+/// take something away are asked about: a revealed vendor uninstaller stays
+/// on purpose, and an unlocked or unregistered path is moved by a later step.
 enum RemovalReturn {
     /// Enough for a hundred ordinary removals; a few thousand `lstat`
     /// calls take milliseconds.
     static let pathLimit = 5000
 
-    /// Finished, checked at least once, and not put back. A removal never
-    /// checked is the pending recheck's to look at, and one put back has
-    /// its files back on purpose.
+    /// Finished, checked at least once, and not put back. One never checked is
+    /// the pending recheck's; one put back has its files back on purpose.
     static func isSettled(_ entry: JournalEntry) -> Bool {
         entry.restoredAt == nil && entry.restoreOutcomes?.isEmpty != false
             && !entry.stepOutcomes.isEmpty && entry.verifications?.isEmpty == false
     }
 
-    /// What the removal took: steps that succeeded, less anything its
-    /// first check found still there. The first check, not the latest:
-    /// once the person reviews a removal that came back, the latest check
-    /// lists those paths as remaining, and reading that as "never went"
-    /// would turn them back into "still gone".
+    /// What the removal took: steps that succeeded, less anything its first
+    /// check found still there. The first check, not the latest: once a returned
+    /// removal is reviewed, the latest check lists those paths as remaining.
     static func paths(plan: Plan, entry: JournalEntry) -> [String] {
         let neverWent = entry.verifications?.first?.remainingPaths ?? []
         return plan.steps.compactMap { step in
@@ -111,8 +106,8 @@ enum RemovalReturn {
         }
     }
 
-    /// On the disk again. A preference file `cfprefsd` wrote back empty
-    /// holds no settings, which the removal's own check already allows.
+    /// On the disk again. A preferences file `cfprefsd` wrote back empty holds
+    /// no settings, which the removal's own check already allows.
     static func isBack(_ path: String) -> Bool {
         guard PathObservation.observe(path).isPresent else { return false }
         return !(PreferenceDomains.domain(forPlistAt: path) != nil && PreferenceDomains.isEmptyStub(atPath: path))
@@ -130,8 +125,8 @@ enum RemovalReturn {
 
     static func state(back: [String], plan: Plan, installed: Set<String>) -> RemovalRecheck.State {
         let subject = plan.intent.subjectIdentity
-        // A copy that stayed when this one was removed was already
-        // installed, so the identifier being installed says nothing new.
+        // A copy that stayed when this one was removed was already installed, so
+        // its identifier being installed says nothing new.
         let stayed = Set((plan.survivingCopies ?? []).compactMap(\.bundleID))
         if let identifier = subject.bundleID, !identifier.isEmpty, !stayed.contains(identifier),
            installed.contains(identifier) {

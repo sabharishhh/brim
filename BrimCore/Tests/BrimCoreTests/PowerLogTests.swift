@@ -2,8 +2,8 @@
 import Foundation
 import XCTest
 
-/// Reading power management's own log, with lines shaped as this Mac wrote
-/// them on 5 and 6 October.
+/// Reading power management's log, with lines shaped as a real Mac wrote
+/// them.
 final class PowerLogTests: XCTestCase {
     private let now = date("2026-10-06 09:30:00")
 
@@ -64,8 +64,8 @@ final class PowerLogTests: XCTestCase {
         XCTAssertEqual(requests[2].seconds, 10 * 60, "Still held, so counted up to now")
     }
 
-    /// A request still open when the Mac shut down ended then, not at the
-    /// next start and never now: the hours switched off were not asked for.
+    /// A request still open at shutdown ended then: hours switched off were not
+    /// asked for.
     func testARestartEndsWhatWasStillHeld() {
         let log = [
             request("01:00:00", "57895(Claude) Created NoIdleSleepAssertion \"Electron\" 00:00:00", id: 9),

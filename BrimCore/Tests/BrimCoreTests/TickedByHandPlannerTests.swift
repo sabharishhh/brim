@@ -2,22 +2,10 @@
 import XCTest
 
 /// A row Brim found but did not tick, ticked by the person in the uninstall
-/// sheet.
-///
-/// "An unfinished search selects nothing. Everything found is still shown and
-/// every row can still be ticked by hand." The second half of that was not
-/// true of the uninstall sheet: it listed what the plan would remove and
-/// nothing else, so a row Brim left unticked could not be ticked at all.
-/// Visual Studio Code's 131.5 MB `Application Support/Code` was found, named,
-/// and impossible to remove, and rating a name match Tier C everywhere, as
-/// the inventory's rule says, would have done the same to Claude's 11 GB.
-///
-/// The person's choice travels on the intent, so it is part of what they
-/// approve and part of what `apply` rebuilds when it checks the plan again.
-/// Three things keep it from being a way round the evidence engine, and each
-/// has a test here: it can only promote a row the engine found and left
-/// unticked; it cannot bring back a row that was vetoed, which is how Tier S
-/// stays one way; and it cannot add a path the engine did not find at all.
+/// sheet. The choice travels on the intent, so it is approved and rebuilt
+/// with the plan. It can only promote a row the engine found and left
+/// unticked, cannot bring back a vetoed row, and cannot add a path the
+/// engine did not find.
 final class TickedByHandPlannerTests: XCTestCase {
     private var directory: URL!
     private let fileManager = FileManager.default
@@ -66,8 +54,7 @@ final class TickedByHandPlannerTests: XCTestCase {
 
     // MARK: - What a tick does
 
-    /// **Application Support/Code.** Found, left unticked because it is
-    /// matched on a name, and the person wants it gone.
+    /// Found, left unticked as a name match, and the person wants it gone.
     func testARowTheEngineFoundButDidNotTickIsRemovedWhenThePersonTicksIt() throws {
         let support = try file("Studio", bytes: 4096)
 
@@ -87,10 +74,7 @@ final class TickedByHandPlannerTests: XCTestCase {
 
     // MARK: - What a tick cannot do
 
-    /// **Tier S is one way.** A row something else on this Mac claims was
-    /// taken out of the selection and cannot re-enter it, however it is
-    /// asked for. Microsoft Teams' group container does not come back into
-    /// Visual Studio Code's uninstall because a list names it.
+    /// Tier S is one way: a vetoed row cannot be ticked back in.
     func testAVetoedRowCannotBeTickedBackIn() throws {
         let shared = try file("UBF8T346G9.com.microsoft.teams")
         let refused = try file("protected-by-safety")
@@ -114,11 +98,8 @@ final class TickedByHandPlannerTests: XCTestCase {
         }
     }
 
-    /// **The uninstall stays identity-driven.** A tick can only promote a row
-    /// the evidence engine found for this application. A path it did not
-    /// find, however it arrives, is not a way to have an uninstall remove
-    /// something else: that is what explicit targets are for, and they go
-    /// through their own sheet and their own review.
+    /// A tick only promotes a row the engine found for this application. Other
+    /// paths go through explicit targets and their own review.
     func testTickingByHandCannotAddAPathTheEngineDidNotFind() throws {
         let support = try file("Studio")
         let thesis = try file("Thesis.md")
@@ -135,9 +116,8 @@ final class TickedByHandPlannerTests: XCTestCase {
 
     // MARK: - What the sheet needs to offer it
 
-    /// The sheet can only offer a row it can describe, so an unticked row
-    /// carries what a step carries: what Brim knows about it, and how much it
-    /// holds. A vetoed row is described too, and says it cannot be ticked.
+    /// An unticked row carries what a step carries: its evidence and its size.
+    /// A vetoed row says it cannot be ticked.
     func testAnUntickedRowSaysItCanBeTickedAndWhatItHolds() throws {
         let support = try file("Studio", bytes: 4096)
         let shared = try file("shared")
@@ -162,9 +142,8 @@ final class TickedByHandPlannerTests: XCTestCase {
 
     // MARK: - Approval
 
-    /// The choice is part of the intent, and the intent is part of the plan's
-    /// hash, which is what an approval token is bound to. Ticking a row after
-    /// approval changes the plan the token was minted for.
+    /// The intent is part of the plan's hash, which the approval token is bound
+    /// to, so ticking after approval changes the plan.
     func testThePersonsChoiceIsPartOfWhatIsApproved() throws {
         let support = try file("Studio")
         let planned = plan([row(support, .unselected)], ticked: [support.path])
@@ -184,9 +163,8 @@ final class TickedByHandPlannerTests: XCTestCase {
         XCTAssertNotEqual(without, with)
     }
 
-    /// Plans are stored, and a plan written before this existed has neither
-    /// the intent's field nor the excluded row's. Both still decode, and an
-    /// old excluded row is simply not offered.
+    /// A stored plan from before this field still decodes, and an old excluded
+    /// row is not offered.
     func testAPlanWrittenBeforeThisStillDecodes() throws {
         let oldIntent = """
         {"type":"uninstall","subjectIdentity":{"name":"Editor","isSandboxed":false,"groupContainers":[]},\
@@ -201,8 +179,7 @@ final class TickedByHandPlannerTests: XCTestCase {
         XCTAssertNil(excluded.sizeBytes)
     }
 
-    /// An intent that ticks nothing encodes exactly as it did before, so
-    /// every plan made without the sheet's help hashes as it always has.
+    /// An intent that ticks nothing encodes and hashes as before.
     func testAnIntentThatTicksNothingEncodesAsItAlwaysDid() throws {
         let data = try JSONEncoder().encode(PlanIntent(type: .uninstall, subjectIdentity: identity))
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))

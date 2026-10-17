@@ -2,14 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// Where cross-platform software actually keeps its data.
-///
-/// Software written for Linux first looks in `~/.config`, `~/.cache` and
-/// `~/.local/share`, because that is where its other builds already look and
-/// rewriting it for macOS is work almost nobody does. Nothing in Brim read
-/// `$HOME` directly, so the single largest thing any measured application had
-/// on this Mac, 189 MB under `~/.local/share/claude`, was invisible to every
-/// evidence source at once.
+/// Where cross-platform software keeps its data: `~/.config`, `~/.cache`
+/// and `~/.local/share`.
 final class OutsideTheLibraryTests: XCTestCase {
 
     private var rootURL: URL!
@@ -48,10 +42,7 @@ final class OutsideTheLibraryTests: XCTestCase {
         )
     }
 
-    /// The rule says lowercased, so it has to actually lowercase rather than
-    /// lean on a case-insensitive volume. Most Macs have one and would hide
-    /// this; the developers most likely to have a case-sensitive volume are
-    /// exactly the people whose `~/.cache` is measured in gigabytes.
+    /// The rule lowercases rather than relying on a case-insensitive volume.
     func testTheRuleLowercasesRatherThanTrustingTheVolume() {
         let identity = Identity(bundleID: "com.microsoft.VSCode", name: "Visual Studio Code")
         let location = LocationInventory.Location(
@@ -85,9 +76,8 @@ final class OutsideTheLibraryTests: XCTestCase {
         )
     }
 
-    /// Nothing here carries a bundle identifier, so nothing here is ever
-    /// more than a name match, and the domain floors the tier whatever a row
-    /// might claim.
+    /// Nothing here carries a bundle identifier, so it is never more than a
+    /// name match.
     func testEverythingOutsideTheLibraryIsTierC() {
         let outside: [FileSystemRoot.Domain] = [
             .userDotConfig, .userDotCache, .userDotLocalShare,

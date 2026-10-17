@@ -2,17 +2,9 @@ import BrimCore
 import BrimProtocol
 import Foundation
 
-/// What a removal comes to, put the way a person reads it: what went, and,
-/// quietly, anything that is still on this Mac.
-///
-/// The result used to list every kind of registration Brim had read,
-/// every kind the app does not declare, and every kind macOS will not let
-/// anyone list for another app, under a caution mark. eqMac's removal took
-/// the app, its audio driver, its settings and its caches, and the sound
-/// device left the menu at once, but the screen read as a partial removal
-/// because configuration profiles cannot be fully read on this Mac. What
-/// Brim never had reason to look for is not news about this app, so it is
-/// not shown. What did not go still is, plainly and without alarm.
+/// What a removal comes to, as a person reads it: what went, and quietly,
+/// anything still on this Mac. What Brim never had reason to look for is not
+/// news about this app, so it is not shown.
 public struct RemovalSummary: Sendable {
     /// One footprint group's share of what went.
     public struct Went: Identifiable, Sendable, Equatable {
@@ -38,8 +30,8 @@ public struct RemovalSummary: Sendable {
 
     public let headline: String
     public let subline: String
-    /// The thing asked for went. A removal that leaves something the person
-    /// chose to keep, or something macOS keeps, is still a removal.
+    /// The thing asked for went. A removal that leaves something kept on purpose
+    /// is still a removal.
     public let isDone: Bool
     public let went: [Went]
     /// Launch Services, privacy and background records Brim retracted.

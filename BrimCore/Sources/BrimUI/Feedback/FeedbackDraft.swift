@@ -15,10 +15,8 @@ public struct FeedbackDraft: Codable, Equatable, Sendable {
         [title, details, reproduction, expected].allSatisfy(\.trimmed.isEmpty)
     }
 
-    /// How long each field may be. GitHub accepts 256 characters in a
-    /// title, but its lists cut a title off well before that, so a report is
-    /// read by a title that fits one line. The body has room for far more
-    /// than these; they keep a report something a person will read.
+    /// How long each field may be. GitHub accepts a 256 character title but
+    /// cuts it short in lists, so a title fits one line.
     public enum Limit {
         public static let title = 100
         public static let details = 5000

@@ -1,23 +1,16 @@
 import Foundation
 
-/// Release notes as a developer publishes them, made ready to read.
-///
-/// Feeds often repeat every earlier version under the newest one: one
-/// app's notes for 2.7.2 were three lines about 2.7.2 and forty about 2.7.1
-/// and 2.7, and a summary of the whole text described 2.7. So the notes are
-/// cut at the first heading for an older version before anything reads
-/// them.
+/// Release notes made ready to read. Feeds often repeat every earlier
+/// version under the newest, so the notes are cut at the first heading for
+/// an older version.
 public enum ReleaseNotesText {
     /// Notes this short are shown as written; nothing is gained by
     /// condensing them.
     public static let shortWordLimit = 12
 
-    /// The part of `notes` about `version`: from that version's heading,
-    /// if the notes open with one, to the heading of an earlier version.
-    ///
-    /// Versions are compared whole, pre-release included: a later mention
-    /// of `v2.8-rc.0` is not 2.8-rc.1's heading, and keeping only what
-    /// followed it kept 540 characters of 8,743, all of them a changelog.
+    /// The part of `notes` about `version`: from its heading, if the notes open
+    /// with one, to an earlier version's heading. Versions are compared whole,
+    /// pre-release included, so `v2.8-rc.0` is not 2.8-rc.1's heading.
     public static func section(of notes: String, version: String) -> String {
         let target = normalised(version)
         let headings = versionHeadings(in: notes)
@@ -52,10 +45,9 @@ public enum ReleaseNotesText {
         let range: Range<String.Index>
     }
 
-    /// Versions written the way a heading writes them: `v2.7.1`, or after
-    /// the word version or release, or first on a line. A version anywhere
-    /// else ("Requires macOS 14.0") is not a heading, and neither is a
-    /// changelog link ("Compare v2.7 → v2.7.1").
+    /// Versions written as a heading writes them: `v2.7.1`, after the word
+    /// version or release, or first on a line. Not "Requires macOS 14.0", and
+    /// not a changelog link ("Compare v2.7 → v2.7.1").
     static func versionHeadings(in notes: String) -> [Heading] {
         let number = #"(\d+(?:\.\d+){1,3}(?:[-.]?(?:rc|beta|alpha|b|a)[.-]?\d*)?)"#
         let pattern = "(?i)(?:^|\\n)[^\\S\\n]*[#*\\-•\\p{So}\\s]*v?" + number

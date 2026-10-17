@@ -8,9 +8,7 @@ struct FeedbackSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.pagePadding) {
-                // A heading like the General tab's sections, standing alone:
-                // the large title with a sentence under it was the one place
-                // in Settings that looked like a page of its own.
+                // A heading like the General tab's sections, standing alone.
                 Text("Send Feedback")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)

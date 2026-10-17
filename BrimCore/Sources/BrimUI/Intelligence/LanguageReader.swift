@@ -1,11 +1,9 @@
 import Foundation
 
-/// The on-device model, as Brim uses it: two narrow questions, each
-/// answered from text a person could read themselves.
-///
-/// The app supplies the real one, the only code that imports
-/// FoundationModels. Tests supply a stand-in, so the queue, the cache and
-/// every failure path are exercised without a model.
+/// The on-device model as Brim uses it: two narrow questions, each answered
+/// from text a person could read themselves. The app supplies the real one;
+/// tests supply a stand-in, so the queue, cache and failure paths run
+/// without a model.
 public protocol LanguageReader: Sendable {
     func availability() async -> ModelAvailability
     /// Loads the model, with the instructions for `question`, ahead of a

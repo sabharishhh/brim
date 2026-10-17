@@ -3,11 +3,10 @@ import Foundation
 public actor PlanStore {
     private let directoryURL: URL
     private let fm = FileManager.default
-    /// What this process wrote for each plan. The folder belongs to the
-    /// person, so any program they run can rewrite a plan while it is on
-    /// screen; approval was then given for the file, not for what was
-    /// reviewed. A plan that no longer matches what was written here, or
-    /// that this process never wrote, is refused.
+    /// What this process wrote for each plan. The folder belongs to the person,
+    /// so any program they run could rewrite a plan on screen. A plan that no
+    /// longer matches what was written here, or was never written here, is
+    /// refused.
     private var written: [UUID: Data] = [:]
 
     public init(directoryURL: URL) {
@@ -58,9 +57,9 @@ public actor PlanStore {
         return (try? Data(contentsOf: fileURL)) == ours
     }
 
-    /// Read from the disk every time, never remembered: approval checks
-    /// that the plan still says what it said when the person was asked, and
-    /// a copy held in memory would never see it change.
+    /// Read from the disk every time: approval checks the plan still says what
+    /// it said when the person was asked, and a copy in memory would never see
+    /// it change.
     public func load(planId: UUID) throws -> Plan {
         let fileURL = directoryURL.appendingPathComponent("\(planId.uuidString).json")
         let data = try Data(contentsOf: fileURL)
@@ -70,9 +69,7 @@ public actor PlanStore {
         return try Self.decoder.decode(Plan.self, from: data)
     }
 
-    /// One formatter for every date, the one plans are written with. It
-    /// was built inside the decoding closure, so a new ISO 8601 formatter
-    /// for each date of each plan read.
+    /// One decoder, using the date format plans are written with.
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -88,11 +85,9 @@ public actor PlanStore {
 }
 
 extension Plan {
-    /// The one date format plans are written and read in. It was a new
-    /// formatter for every date, and every step's fingerprint carries one,
-    /// so hashing a plan of a few thousand steps, which a removal does
-    /// several times, built a few thousand formatters. The formatter is
-    /// documented as safe to share between threads; Swift cannot see that.
+    /// The one date format plans are written and read in, shared because every
+    /// step's fingerprint carries a date. The formatter is documented as safe to
+    /// share between threads; Swift cannot see that.
     nonisolated(unsafe) static let dates: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

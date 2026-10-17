@@ -1,18 +1,13 @@
 import XCTest
 @testable import BrimCore
 
-/// The four step kinds that were declared and never did anything.
-///
-/// `forgetReceipt`, `clearImmutableFlag`, `revealVendorUninstaller` and
-/// `btmReset` were in the frozen vocabulary in §3.1, in the `StepKind`
-/// enum, and in the disposition tables. No planner emitted them and no
-/// executor branch handled them, so a plan containing one fell through to
-/// `unsupported_kind`. Four of eleven kinds were decoration.
+/// A step kind that nothing emits or nothing handles falls through to
+/// `unsupported_kind` at run time.
 final class StepVocabularyTests: XCTestCase {
 
-    /// Every kind either has a producer or is deliberately unreachable.
-    /// Read from the source, because the failure being guarded against is
-    /// the next kind added to the enum and nowhere else.
+    /// Every kind has a producer or is deliberately unreachable. Read from the
+    /// source, because the failure is the next kind added to the enum and
+    /// nowhere else.
     func testEveryStepKindIsHandledByTheExecutor() throws {
         let executor = Self.repositoryRoot()
             .appendingPathComponent("BrimCore/Sources/BrimService/Executor.swift")
@@ -32,18 +27,8 @@ final class StepVocabularyTests: XCTestCase {
             .appendingPathComponent("BrimCore/Sources/BrimCore/Model/Plan/Planner.swift")
         let text = try String(contentsOf: planner, encoding: .utf8)
 
-        // `delegateToolCleanup` is produced by `BrimService.planToolCleanup`,
-        // so it has a producer and reaches the executor in the shipping app.
-        // `archivePath` was exempted the same way until archive and reset
-        // were removed with nothing in the app offering either.
-        //
-        // `btmReset` used to be exempted here, with a note saying the
-        // exemption would come out when something finally produced one. It
-        // came out the other way: the step, `BTMRestoreCapture`,
-        // `RestoreListStore` and the executor branch are all gone. It ran
-        // `sfltool resetbtm`, which deregisters every login item on the Mac
-        // at once, to fix a problem the product already reports as
-        // self-clearing, and nothing could produce it.
+        // `delegateToolCleanup` is produced by `BrimService.planToolCleanup`, not
+        // the planners.
         let notThePlanners: Set<StepKind> = [.delegateToolCleanup]
 
         for kind in StepKind.allCases where !notThePlanners.contains(kind) {
@@ -55,16 +40,14 @@ final class StepVocabularyTests: XCTestCase {
     }
 
     func testTheIrreversibleKindsAreMarkedIrreversible() {
-        // forgetReceipt destroys a record that cannot be rebuilt, which is
-        // exactly why it is safe to do and must be asked about.
+        // A receipt record cannot be rebuilt, so forgetting it must be asked about.
         XCTAssertTrue(StepKind.forgetReceipt.destroysWithoutRecovery)
         XCTAssertFalse(StepKind.clearImmutableFlag.destroysWithoutRecovery)
         XCTAssertFalse(StepKind.revealVendorUninstaller.destroysWithoutRecovery)
     }
 
     func testAnIdentifierIsNotAPath() {
-        // The "already gone" check reads targets as paths. A package
-        // identifier is not a file, and skipping the step because no file
+        // A package identifier is not a file, and skipping the step because no file
         // exists at "com.example.pkg" would drop it silently.
         XCTAssertFalse(StepKind.forgetReceipt.targetIsPath)
         XCTAssertTrue(StepKind.clearImmutableFlag.targetIsPath)
@@ -118,8 +101,8 @@ final class VendorUninstallerDetectionTests: XCTestCase {
     }
 
     func testSomethingThatMerelyContainsTheWordDoesNot() throws {
-        // The failure this prevents is telling somebody to run a stranger's
-        // executable because a loctable had the word in its name.
+        // A loctable with "uninstall" in its name must not be offered as the
+        // vendor's uninstaller.
         let app = try bundle(
             containing: ["UninstallHelperStrings.loctable", "Uninstallation.rtf"],
             in: "Contents/Resources"
@@ -180,9 +163,7 @@ final class ArtifactLockTests: XCTestCase {
     }
 
     func testALinkIsJudgedOnItsOwnFlags() throws {
-        // attributesOfItem follows the link and would report the target's
-        // flags, which is the same trap that made a symlink count as its
-        // target's size.
+        // `attributesOfItem` follows the link and would report the target's flags.
         let target = directory.appendingPathComponent("target")
         try Data("x".utf8).write(to: target)
         XCTAssertEqual(lchflags(target.path, UInt32(UF_IMMUTABLE)), 0)

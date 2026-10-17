@@ -1,17 +1,10 @@
 import AppKit
 import Foundation
 
-/// Whether the thing being removed is running right now.
-///
-/// Removing a running application does not stop it. The process keeps its
-/// file descriptors, keeps its state in memory, and writes it back out
-/// when it quits, so the preferences and caches Brim just removed reappear
-/// minutes later and the removal looks like it silently failed. Worse,
-/// the application is usually still in the Dock and still launchable from
-/// a Trash it has been moved into.
-///
-/// So this is a refusal, not a warning to click past. The person quits the
-/// app and asks again, which takes five seconds and works.
+/// Whether the thing being removed is running. A running app keeps its
+/// state in memory and writes it back when it quits, so removed files
+/// reappear. A refusal, not a warning: the person quits the app and asks
+/// again.
 public enum RunningApplications {
     public struct Running: Equatable, Sendable {
         public let bundleIdentifier: String?
@@ -28,8 +21,8 @@ public enum RunningApplications {
         }
     }
 
-    /// Everything running right now, as values, so the rest of the code
-    /// can be tested without a window server.
+    /// Everything running, as values, so the rest can be tested without a
+    /// window server.
     public static func current() -> [Running] {
         NSWorkspace.shared.runningApplications.map {
             Running(
@@ -41,21 +34,14 @@ public enum RunningApplications {
         }
     }
 
-    /// Quits the app's own background parts, when nothing with a window is
-    /// open, and says whether they all went.
-    ///
-    /// WhatsApp's notification extension was still running an hour after
-    /// the app had quit, launched by macOS rather than by anybody, and the
-    /// removal told the person to quit it. There is nothing to quit it
-    /// from: it has no window and no Dock icon. It lives inside the bundle
-    /// being removed and holds no work of the person's, so quitting it is
-    /// part of the removal they asked for. It is asked first and forced
-    /// only if it will not go. Anything with a window stays the person's to
-    /// quit, because it may hold something unsaved.
+    /// Quits the app's own background parts when nothing with a window is open,
+    /// and says whether they all went. A background part has no window to quit
+    /// it from and holds no unsaved work, so quitting it is part of the
+    /// removal: asked first, forced only if it will not go. Anything with a
+    /// window stays the person's to quit.
     public static func quitBackgroundParts(bundleID: String?, bundlePath: String?) async -> Bool {
         guard partsBrimMayQuit(bundleID: bundleID, bundlePath: bundlePath) != nil else { return false }
-        // The running applications themselves, matched the same way, so the
-        // one asked to quit is the one that was found.
+        // Matched the same way, so the one asked to quit is the one found.
         let parts = await MainActor.run {
             NSWorkspace.shared.runningApplications.filter { app in
                 app.bundleIdentifier != Bundle.main.bundleIdentifier
@@ -79,9 +65,8 @@ public enum RunningApplications {
         return await !stillUp(parts)
     }
 
-    /// What Brim may quit for a removal: every running part of the app, if
-    /// none of them has a window. Nil when one does, because then the
-    /// person quits the app.
+    /// What Brim may quit for a removal: every running part of the app if none
+    /// has a window; nil when one does.
     public static func partsBrimMayQuit(
         bundleID: String?, bundlePath: String?, among running: [Running] = current(),
         selfBundleID: String? = Bundle.main.bundleIdentifier
@@ -95,12 +80,9 @@ public enum RunningApplications {
         await MainActor.run { parts.contains { !$0.isTerminated } }
     }
 
-    /// Whether this identity, or anything living inside its bundle, is up.
-    ///
-    /// Matched two ways on purpose. The bundle identifier catches the
-    /// application itself. The path catches its helpers: a login item at
-    /// `App.app/Contents/Library/LoginItems/Helper.app` has its own
-    /// identifier and is just as capable of rewriting what Brim removes.
+    /// Whether this identity, or anything inside its bundle, is running: the
+    /// identifier catches the app, the path catches helpers with their own
+    /// identifiers.
     public static func whatIsRunning(
         bundleID: String?,
         bundlePath: String?,
@@ -124,11 +106,8 @@ public enum RunningApplications {
         }
     }
 
-    /// What to tell the person, or nil when nothing is in the way.
-    ///
-    /// Brim's own process is left out. Uninstalling Brim from inside Brim
-    /// is a supported thing to do, and the app quits itself once the plan
-    /// has run.
+    /// What to tell the person, or nil when nothing is in the way. Brim's own
+    /// process is left out: removing Brim from Brim is supported.
     public static func refusal(
         bundleID: String?,
         bundlePath: String?,
