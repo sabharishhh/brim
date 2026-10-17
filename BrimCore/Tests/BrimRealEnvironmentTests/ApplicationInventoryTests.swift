@@ -2,9 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// The Applications list is the entry point to the deep uninstall, so the
-/// identity it shows must be the identity a plan will be built from. These
-/// run against the real machine's installed apps.
+/// The identity the Applications list shows must be the one a plan is built
+/// from. Runs against the real machine's installed apps.
 final class ApplicationInventoryTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -33,8 +32,7 @@ final class ApplicationInventoryTests: XCTestCase {
     func testEveryListedApplicationCarriesSomethingToPlanAgainst() async throws {
         let apps = await inventory().installedApplications()
 
-        // A row with no bundle identifier and no name cannot be uninstalled,
-        // so it must never reach the list.
+        // A row with no bundle identifier and no name cannot be uninstalled.
         let unplannable = apps.filter { $0.identity.bundleID == nil && $0.identity.name.isEmpty }
         XCTAssertTrue(unplannable.isEmpty, "\(unplannable.count) apps have nothing to plan against")
     }
@@ -55,12 +53,8 @@ final class ApplicationInventoryTests: XCTestCase {
     }
 }
 
-/// Apps shipped inside another app are listed, and stand where their host
-/// stands: removable when it is, by removing it.
-///
-/// Icon Composer, Instruments and FileMerge live in Xcode's
-/// `Contents/Applications`. The inventory listed top-level bundles only, so
-/// none of them appeared in Apps and searching for them found nothing.
+/// Apps shipped inside another app, such as Instruments in Xcode's
+/// `Contents/Applications`, are listed and removable when their host is.
 final class EmbeddedApplicationTests: XCTestCase {
     func testAnAppInContentsApplicationsBelongsToItsHost() {
         let url = URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Applications/Icon Composer.app")

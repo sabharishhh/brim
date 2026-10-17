@@ -5,8 +5,7 @@ import Foundation
 import Testing
 
 @MainActor struct StorageLoadStateTests {
-    /// The volume request finished, but the tuple await kept Home's free-space
-    /// card waiting for the entire leftovers scan.
+    /// Volumes publish without waiting for the leftovers scan.
     @Test func volumesPublishWhileTheFirstEstimateIsStillPending() async {
         let service = StorageReads()
         let model = StorageModel()
@@ -62,8 +61,7 @@ import Testing
         #expect(!model.isLoading)
     }
 
-    /// A scan can return a removed app's location without being able to size it.
-    /// Space must carry that limitation instead of turning its zero into Empty.
+    /// A location that could not be sized is not reported as Empty.
     @Test(arguments: [Int64(0), Int64(100)])
     func incompleteMeasurementsKeepTheEstimatePartial(bytes: Int64) async {
         let service = StorageReads()

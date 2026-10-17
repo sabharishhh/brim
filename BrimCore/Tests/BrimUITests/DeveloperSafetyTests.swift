@@ -3,14 +3,9 @@ import BrimCore
 import BrimProtocol
 @testable import BrimUI
 
-/// T-5.7's acceptance criterion: no code path deletes a container runtime
-/// disk image or an Xcode archive.
-///
-/// These are the two that would hurt most. An archive holds the only
-/// symbols that can read a crash report from something already shipped, and
-/// a container disk image holds every image, container and volume Docker
-/// has. Both sit in directories that look exactly like caches, which is why
-/// the rule is written down rather than left to judgement.
+/// No code path deletes a container runtime disk image or an Xcode archive.
+/// An archive holds the only symbols for a shipped crash, and a disk image
+/// holds every container and volume. Both look like caches.
 @MainActor
 final class DeveloperSafetyTests: XCTestCase {
 
@@ -65,8 +60,7 @@ final class DeveloperSafetyTests: XCTestCase {
     }
 
     func testAToolManagedStoreIsDelegatedRatherThanDeleted() async {
-        // Removing a module cache by hand leaves the tool confused, so Brim
-        // runs the tool's own command instead of touching the directory.
+        // A module cache is cleared by the tool's own command, not by hand.
         let modcache = cache("Module cache", "Go", "/Users/x/go/pkg/mod",
                              .refetched, cleanup: "go.modcache")
         let model = await loaded([modcache])
@@ -77,8 +71,7 @@ final class DeveloperSafetyTests: XCTestCase {
     }
 
     func testRegenerableCachesAreRemovable() async {
-        // The rule has to let the useful case through, or it is just a
-        // read only list.
+        // The useful case still gets through.
         let derived = cache("Derived data", "Xcode",
                             "/Users/x/Library/Developer/Xcode/DerivedData", .rebuilt)
         let model = await loaded([derived])

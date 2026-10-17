@@ -2,10 +2,8 @@
 import Foundation
 import Testing
 
-/// An app's `product.json` named `.ssh` as its data folder, a declaration
-/// is Tier B and Tier B is ticked, and nothing protected the person's keys,
-/// their Documents or their home folder itself. These hold both halves: the
-/// declaration is not believed, and the paths are never removable anyway.
+/// A declared data folder of `.ssh` is not believed, and the person's keys,
+/// Documents and home folder are never removable anyway.
 struct PersonalFolderTests {
     private let root = URL(fileURLWithPath: "/private/tmp/brim-personal-fixture")
 

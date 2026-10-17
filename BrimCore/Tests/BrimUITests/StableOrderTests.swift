@@ -11,8 +11,7 @@ final class StableOrderTests: XCTestCase {
         ItemGroup(id: "g", title: "G", items: ids.map(Row.init))
     }
 
-    /// A rescan that re-sorts by size moved the row under the pointer, and
-    /// the next click ticked its neighbour.
+    /// A rescan that re-sorts moves the row under the pointer.
     func testARescanDoesNotReorderWhatIsShowing() {
         let before = StableOrder.positions([group(["a", "b", "c"])])
         let rescanned = [group(["c", "a", "b"])]

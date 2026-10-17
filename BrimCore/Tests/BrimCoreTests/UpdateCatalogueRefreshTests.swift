@@ -2,8 +2,8 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// ChatGPT offered a release while Check Again compared yesterday's catalogue
-/// with the installed version. A requested check must ask the publisher again.
+/// A requested check asks the publisher again rather than reusing
+/// yesterday's catalogue.
 final class UpdateCatalogueRefreshTests: XCTestCase {
     private let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("catalogue-refresh-\(UUID().uuidString)")

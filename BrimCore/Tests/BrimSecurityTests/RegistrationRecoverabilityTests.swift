@@ -14,8 +14,8 @@ struct RegistrationRecoverabilityTests {
             let plan = fixture.plan(target: target, registration: kind)
             try await fixture.record(plan, outcomes: [0: "already_gone", 1: "ok"])
         }
-        // Home reported two removals and Empty in the Trash from successful
-        // registration receipts, although neither had a file to put back.
+        // Registration receipts have no file to put back, so they are not
+        // recoverable items.
         #expect(try await fixture.service.recoverableItems().isEmpty)
     }
 
@@ -46,8 +46,7 @@ struct RegistrationRecoverabilityTests {
             try await fixture.record(plan, outcomes: [0: "not_removed", 1: "stopped_unverified: Fixture gap."])
             #expect(try await fixture.service.recoverableItems().map(\.planId) == [plan.planId])
 
-            // A successful stop retained the plist, and a later installer
-            // reused that path. Path existence alone offered to start its job.
+            // A path a later installer reused is not the stopped job's to start again.
             if replaced {
                 try FileManager.default.moveItem(at: declaration,
                                                  to: fixture.folder.appendingPathComponent("Retired.plist"))

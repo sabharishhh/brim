@@ -130,15 +130,10 @@ private actor TickingStub: BrimServiceProtocol, ApprovalGranting {
 
 private struct NotHere: Error {}
 
-/// The uninstall sheet's half of ticking a row by hand.
-///
-/// Every change of mind builds a fresh plan, because an approval is bound to
-/// one plan and `apply` rebuilds exactly that plan from its intent. Two
-/// things follow, and both are tested here rather than trusted: the plan on
-/// screen while the next one is being built is out of date and must not be
-/// approvable, and a reply that arrives late must not replace the plan for a
-/// newer choice. Either mistake means approving something other than what the
-/// person is looking at.
+/// The sheet's half of ticking a row by hand. Each change builds a fresh
+/// plan, so the plan on screen while the next is built must not be
+/// approvable, and a late reply must not replace the plan for a newer
+/// choice.
 @MainActor
 final class UninstallTickByHandTests: XCTestCase {
     private let code = "/Users/me/Library/Application Support/Code"
@@ -187,8 +182,8 @@ final class UninstallTickByHandTests: XCTestCase {
         XCTAssertTrue(model.isTickedByHand(code))
     }
 
-    /// Changing your mind puts it back, and the intent returns to ticking
-    /// nothing, so the plan hashes exactly as one made without the sheet.
+    /// Unticking puts the row back and the intent hashes as one made without
+    /// the sheet.
     func testUntickingPutsTheRowBackOnOffer() async {
         let stub = TickingStub(offered: [code])
         let model = await prepared(stub)
@@ -202,8 +197,8 @@ final class UninstallTickByHandTests: XCTestCase {
         XCTAssertFalse(model.removalSteps.contains { $0.target == code })
     }
 
-    /// Two rows ticked are both carried, in a stable order so the same choice
-    /// always makes the same intent.
+    /// Several ticks travel in a stable order, so the same choice makes the same
+    /// intent.
     func testSeveralTicksTravelTogetherInAStableOrder() async {
         let stub = TickingStub(offered: [logs, code])
         let model = await prepared(stub)
@@ -224,9 +219,8 @@ final class UninstallTickByHandTests: XCTestCase {
 
     // MARK: - Approving what is on screen
 
-    /// **The plan on screen is out of date while the next one is built.**
-    /// Approving it then would approve a plan without the row the person just
-    /// ticked, or with the one they just unticked.
+    /// Approving the plan on screen while the next is built would approve the
+    /// wrong selection.
     func testAPlanStillBeingRebuiltCannotBeApproved() async {
         let stub = TickingStub(offered: [code])
         let model = await prepared(stub)

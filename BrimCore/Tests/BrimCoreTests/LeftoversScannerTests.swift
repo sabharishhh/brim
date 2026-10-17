@@ -58,10 +58,8 @@ final class LeftoversScannerTests: XCTestCase {
         let orphanedURL = root.url(for: .userApplicationSupport).appendingPathComponent("com.old.orphaned")
         try fm.createDirectory(at: orphanedURL, withIntermediateDirectories: true)
 
-        // Truly unclaimed directory. With something in it: an empty
-        // folder nobody can name gives back nothing and is left out, so a
-        // fixture that tests attribution has to hold some bytes or it is
-        // testing the noise filter instead.
+        // An unclaimed folder with something in it: an empty unnamed folder is left
+        // out, and this tests attribution, not that filter.
         let unclaimedURL = root.url(for: .userApplicationSupport).appendingPathComponent("MysteryTool")
         try fm.createDirectory(at: unclaimedURL, withIntermediateDirectories: true)
         try "mystery".write(
@@ -91,11 +89,8 @@ final class LeftoversScannerTests: XCTestCase {
     }
 }
 
-/// Apple's own data is never the user's to clean up, and the group-container
-/// spelling is the case that slipped through: a container named
-/// `group.com.apple.SHTTS` does not begin with `com.apple.`, so it was being
-/// offered as a leftover. One had been written to under a minute before the
-/// scan that found it.
+/// Apple's own data is never offered, including group containers named
+/// `group.com.apple.*`.
 final class AppleOwnedFilterTests: XCTestCase {
     func testSystemNamesComeFromFixtureSystemLibrary() throws {
         let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -119,8 +114,7 @@ final class AppleOwnedFilterTests: XCTestCase {
     }
 
     func testSeparatelyShippedAppleSoftwareStaysRemovable() {
-        // Logic and Final Cut are bought and uninstalled like anything else,
-        // and their support folders are the largest leftovers on many Macs.
+        // Logic and Final Cut are bought and removed like anything else.
         XCTAssertFalse(LeftoversScanner.isAppleOwned("com.apple.logic10"))
         XCTAssertFalse(LeftoversScanner.isAppleOwned("com.apple.FinalCut"))
     }
@@ -134,13 +128,8 @@ final class AppleOwnedFilterTests: XCTestCase {
     }
 }
 
-/// The sweep only ever looked at the eight domains it was written against
-/// and only ever at their top level, which is a second, quieter version
-/// of the same bug the inventory fix addressed: a place nothing looked.
-/// Real Warp remains had been sitting in Group Containers the whole time,
-/// named `2BBY89MBSN.dev.warp`, one anonymous row among a hundred and
-/// sixty-nine "Unclaimed", found, and buried, which is not found. These
-/// hold the three classes that turned up auditing what else was missing.
+/// Places the sweep missed: deeper levels and other domains. These hold the
+/// three classes found when auditing what else was not looked at.
 final class LeftoversScannerGapAuditTests: XCTestCase {
     private func makeRoot() throws -> (FileSystemRoot, URL) {
         let raw = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -285,12 +274,8 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         try data.write(to: appURL.appendingPathComponent("Contents/Info.plist"))
     }
 
-    /// A directory enumerator over a plain file yields nothing, so every
-    /// size came back zero, and the filter dropped every zero-byte row
-    /// whatever it actually was. Four hundred and eighty-four preference
-    /// files on the machine this was found on were invisible for it:
-    /// the single most ordinary kind of leftover there is, gone from a
-    /// sweep meant to find exactly that.
+    /// A plain file's size is measured, not read as an empty directory; zero
+    /// bytes dropped every preferences file from the sweep.
     func testPlainFileSizeIsMeasuredNotJustDirectorySize() async throws {
         let (root, _) = try makeRoot()
         let fm = FileManager.default
@@ -306,13 +291,8 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         XCTAssertEqual(match?.size, 512, "The file's own size, not zero from walking it as a directory")
     }
 
-    /// `/usr/local/bin` is almost entirely links into application bundles.
-    /// A name match there answers nothing, `kubectl` says nothing about
-    /// Docker, but a link measures zero bytes, and the zero-byte filter
-    /// was silently discarding every one of them, live or dead alike.
-    /// What the target says decides it: a link into something still
-    /// installed is not a leftover, a link into something gone is one of
-    /// the cleanest leftovers there is, a command still on the PATH that
+    /// A link in `/usr/local/bin` is judged by its target: one into something
+    /// installed is not a leftover, one into something gone is a command that
     /// cannot run.
     func testDanglingSymlinkIsReportedByItsTargetNotItsName() async throws {
         let (root, tempDir) = try makeRoot()
@@ -325,8 +305,8 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
             .appendingPathComponent("Applications/Ghost.app/Contents/MacOS/ghost")
         try fm.createSymbolicLink(at: binDir.appendingPathComponent("ghost"), withDestinationURL: ghostTarget)
 
-        // Points at a file that is still there, so it is not a leftover
-        // at all whatever its own name happens to be.
+        // Points at a file that is still there, so it is not a leftover whatever it
+        // is called.
         let realFile = tempDir.appendingPathComponent("real-tool")
         try "#!/bin/sh".write(to: realFile, atomically: true, encoding: .utf8)
         try fm.createSymbolicLink(at: binDir.appendingPathComponent("live"), withDestinationURL: realFile)
@@ -343,11 +323,8 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
                        "Named by what it pointed at, not by its own link name")
     }
 
-    /// One folder can hold several products, and only the top level was
-    /// ever examined: `~/Library/Application Support/Vendor/DeadProduct`
-    /// was invisible whenever `Vendor` matched something installed,
-    /// because the match on `Vendor` itself stopped the search from ever
-    /// going a level deeper.
+    /// A vendor folder holding a live product and a dead one is opened, so the
+    /// dead one is seen.
     func testVendorFolderIsExpandedSoADeadProductBesideALiveOneIsSeen() async throws {
         let (root, _) = try makeRoot()
         let fm = FileManager.default
@@ -373,13 +350,8 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
                        "Named with the vendor, or it reads next to nothing to a person")
     }
 
-    /// A bundle's file name and what it calls itself internally are not
-    /// always the same word. Visual Studio Code's application is
-    /// `Visual Studio Code.app`, and its own `Info.plist` calls it
-    /// `Code`, which is the name its Application Support folder is
-    /// written under. Matching only the file name reported a hundred
-    /// and thirty megabytes of an installed, running application as
-    /// unclaimed.
+    /// A support folder named for the bundle's `CFBundleName` (Visual Studio
+    /// Code's "Code") belongs to the installed app.
     func testApplicationSupportNamedAfterTheBundlesInternalNameIsRecognisedAsActive() async throws {
         let (root, _) = try makeRoot()
         let fm = FileManager.default

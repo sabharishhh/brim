@@ -4,16 +4,11 @@ import BrimIndex
 @testable import BrimService
 import XCTest
 
-/// Every installed application's removal, checked against a search that does
-/// not use Brim's own rules.
-///
-/// SystemEQ for Mac's removal left `Application Support/SystemEQ`, and the
-/// check afterwards said little was left, because the check asked the same
-/// question with the same names as the removal. This search is looser on
-/// purpose: any folder at the top of the places applications keep data whose
-/// name contains a distinctive part of an application's names or identifier,
-/// in any case. Whatever it finds that the removal does not hold, and that
-/// no other installed application also answers to, is a miss.
+/// Every installed application's removal, checked against a looser search
+/// that does not use Brim's rules: any top-level data folder whose name
+/// contains a distinctive part of the app's names or identifier. Anything
+/// it finds that the removal does not hold, and no other installed app
+/// answers to, is a miss.
 final class FootprintAuditTests: XCTestCase {
     private let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
@@ -56,12 +51,9 @@ final class FootprintAuditTests: XCTestCase {
             + misses.joined(separator: "\n"))
     }
 
-    /// Distinctive parts of what an application is called: its names, the
-    /// names without platform words, and the labels of its identifier after
-    /// the developer's, as keys of five or more characters that are not
-    /// words. The developer's label is left out because it names every
-    /// product they make: `com.openai.chat` is the old ChatGPT's, and
-    /// `Application Support/OpenAI` holds more than one app's folder.
+    /// Distinctive parts of an app's names and identifier labels, as keys of
+    /// five or more characters that are not words. The developer's label is
+    /// left out because it names every product they make.
     static func tokens(of identity: Identity) -> Set<String> {
         let all = (identity.bundleID ?? "").split(separator: ".").map(String.init)
         let labels = Array(all.dropFirst(all.count > 2 ? 2 : 1))
@@ -95,8 +87,8 @@ final class FootprintAuditTests: XCTestCase {
     }
 }
 
-/// What removed applications left, checked the same way against the sweep.
-/// Reads a copy of Brim's history so the real one is never migrated.
+/// What removed applications left, checked the same way against the sweep,
+/// using a copy of Brim's history so the real one is never migrated.
 final class LeftoversAuditTests: XCTestCase {
     private let root = FileSystemRoot(rootURL: URL(fileURLWithPath: "/"))
 
@@ -117,8 +109,7 @@ final class LeftoversAuditTests: XCTestCase {
         let removed = try await index.removedApplications()
         let names = try await index.recordedNames()
         let aliases = try await index.recordedAliases()
-        // Whether it is found at all. The sweep holds back for a week what
-        // nothing names and something wrote to, which is a separate rule.
+        // Whether it is found at all; the recent-writing hold is a separate rule.
         let leftovers = try await LeftoversScanner(root: root, removedApplications: removed)
             .scanLeftovers(knownPastBundleIDs: Set(removed.keys), knownNames: names, knownAliases: aliases)
         let offered = leftovers.map { $0.url.standardizedFileURL.path.lowercased() }
@@ -147,14 +138,10 @@ final class LeftoversAuditTests: XCTestCase {
     }
 }
 
-/// Nothing Remnants offers belongs to an application that is installed.
-///
-/// Remnants listed four of ChatGPT's files as removed apps while ChatGPT ran:
-/// its folder was opened as a developer's, and Chromium's lock links inside
-/// were read as broken commands. Nothing here knows about ChatGPT. Remnants is
-/// built as the app builds it, from a copy of Brim's own history, and each
-/// installed application's removal is built as its review would be; a row
-/// inside one of those, or holding one, contradicts it.
+/// Nothing Remnants offers belongs to an installed application. Remnants is
+/// built as the app builds it, and each installed app's removal as its
+/// review would be; a row inside one of those, or holding one, contradicts
+/// it.
 final class InstalledOwnershipAuditTests: XCTestCase {
     func testNoRemnantBelongsToAnInstalledApplication() async throws {
         try RealEnvironmentFixture.requireEnabled(self)

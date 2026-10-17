@@ -47,9 +47,8 @@ final class AppGroupingTests: XCTestCase {
         XCTAssertEqual(names, ["Today", "Old", "Unindexed"])
     }
 
-    /// macOS moved every app's date added to 11:04 one morning, and VS Code,
-    /// opened at 4 a.m., read "Not opened on this Mac". A migrated app's use
-    /// is weeks older than its arrival; IINA's was 38 days.
+    /// macOS rewrites every bundle's date added at once, so only a use a month
+    /// older than arrival reads as migrated.
     func testOnlyAMonthOldUseBeforeArrivalReadsAsMigrated() {
         let arrived = Date(timeIntervalSince1970: 1_790_000_000)
         let day: TimeInterval = 24 * 60 * 60
@@ -68,8 +67,8 @@ final class ApplicationFactsTests: XCTestCase {
         )
         XCTAssertNil(ApplicationFacts.organisation(fromCertificateSummary: "Apple Mac OS Application Signing"))
         XCTAssertNil(ApplicationFacts.organisation(fromCertificateSummary: "Apple Development: me@example.dev (X1)"))
-        // WhatsApp from the App Store has no developer in its certificate,
-        // and its developer read "Whatsapp" under its own name.
+        // An App Store app's certificate has no developer, so the vendor comes from
+        // the identifier, spelled as the app spells itself.
         XCTAssertEqual(ApplicationFacts.vendor(fromBundleID: "net.whatsapp.WhatsApp"), "WhatsApp")
         XCTAssertEqual(ApplicationFacts.vendor(fromBundleID: "com.microsoft.Word"), "Microsoft")
         XCTAssertEqual(ApplicationFacts.categoryTitle("public.app-category.graphics-design"), "Graphics & Design")

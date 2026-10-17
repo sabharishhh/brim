@@ -1,8 +1,7 @@
 import Foundation
 import BrimProtocol
 
-/// Stand-ins for the approval round trip, so a test double does not have to
-/// restate the whole shape of a receipt every time it is asked for one.
+/// Stand-ins for the approval round trip.
 extension ApprovalRequestReceipt {
     static func stub(
         planId: UUID = UUID(), requester: String = "test-user", planHash: String = "hash"

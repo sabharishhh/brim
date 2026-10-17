@@ -21,10 +21,8 @@ final class BackgroundGroupingTests: XCTestCase {
         XCTAssertEqual(BackgroundScope.registrations([exact, resemblance], applications: [application]), [exact])
     }
 
-    /// The Background page found a job's app by deleting path components
-    /// until it reached "/". A launch job's `Program` is whatever its
-    /// author wrote, and one ending in ".." never reaches "/": each step
-    /// added another "..", so the page never finished drawing.
+    /// A job's `Program` is whatever its author wrote, and one ending in ".."
+    /// never reaches "/", so the lookup must stop on a strictly shorter path.
     func testAProgramPathThatClimbsCannotHangTheLookup() {
         func job(_ program: String) -> Registration {
             Registration(kind: .launchdJob, identifier: "com.example.job", label: "Job",
@@ -72,8 +70,7 @@ final class BackgroundGroupingTests: XCTestCase {
 
     @MainActor
     func testSharedBackgroundStoreIsNeverAFinderTarget() {
-        // Teams and ChatGPT both revealed the same BTM archive beside their
-        // individual paths, making a shared database look app-owned.
+        // The shared BTM archive is not revealed as any one app's.
         let store = "/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v18-account.btm"
         let target = "/Applications/ChatGPT.app"
         let app = Registration(kind: .backgroundItem, identifier: "app", label: "App", programPath: target,
@@ -102,9 +99,8 @@ final class BackgroundGroupingTests: XCTestCase {
         XCTAssertEqual(groups.last?.startsCollapsed, true)
     }
 
-    /// Background Task Management keeps a record pointing at the bundle of
-    /// every application with helpers. On this Mac that put Brim, ChatGPT
-    /// and seven more under "Opens at login" when none of them did.
+    /// BTM keeps a record pointing at every app with helpers; that is not
+    /// opening at login.
     func testPointingAtAnAppIsNotOpeningAtLogin() {
         let parent = RegistrationGroup(
             id: "p", displayName: "P", items: [registration(.backgroundItem, "p", program: "/Applications/P.app")]
@@ -113,10 +109,8 @@ final class BackgroundGroupingTests: XCTestCase {
         XCTAssertEqual(groups.map(\.id), ["background"])
     }
 
-    /// The model groups stale and live registrations separately, so one
-    /// application can arrive in both. Keyed on the group alone, SwiftUI saw
-    /// one identity in two places and the inspector could not tell which
-    /// row was selected.
+    /// One application can be in both the stale and live lists, so each entry
+    /// needs its own identity for selection to work.
     func testTheSameApplicationInTwoListsIsTwoEntries() {
         let stale = RegistrationGroup(
             id: "x", displayName: "X", items: [registration(.launchdJob, "x1", exists: false)]

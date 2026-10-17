@@ -1,18 +1,9 @@
 import BrimCore
 import XCTest
 
-/// What a screen reader is handed for a row.
-///
-/// Both lists build a row out of half a dozen separate pieces of text, and
-/// left alone the accessibility tree passes all of them on as unrelated
-/// fragments: a name, then a category, then a warning, then a sentence,
-/// then a path, with nothing saying they describe one thing. Worse, a
-/// selectable path arrived twice, because `textSelection` adds a child of
-/// its own. These compose the row into one sentence instead.
-///
-/// The rule the tests hold: the label says what the thing is, the value
-/// carries the measurement or the location. A path read aloud in the
-/// middle of every entry buries the part that matters.
+/// What a screen reader is handed for a row: one sentence instead of
+/// unrelated fragments, with a selectable path read once. The label says what
+/// the thing is; the value carries the measurement or the location.
 final class SpokenDescriptionTests: XCTestCase {
     private func registration(
         _ label: String, kind: Registration.Kind = .launchdJob,
@@ -45,8 +36,8 @@ final class SpokenDescriptionTests: XCTestCase {
     }
 
     func testTwoCopiesOfOneJobAreToldApartByTheirValue() {
-        // Keystone installs the same job in both domains. The labels are
-        // identical by nature, so the location has to carry the difference.
+        // The same job in both domains has identical labels, so the location
+        // carries the difference.
         let user = registration("com.google.keystone.agent", exists: false,
                                 record: "/Users/me/Library/LaunchAgents/x.plist")
         let local = registration("com.google.keystone.agent", exists: false,
@@ -83,8 +74,7 @@ final class SpokenDescriptionTests: XCTestCase {
     }
 
     func testNothingSpokenIsEmptyOrTrailsOff() {
-        // An empty label leaves a reader on an element that says nothing,
-        // which is how the selection checkboxes read before they were named.
+        // An empty label leaves a reader on an element that says nothing.
         for entry in [
             registration("a"),
             registration("b", kind: .backgroundItem, exists: false),

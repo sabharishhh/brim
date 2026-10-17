@@ -3,9 +3,9 @@ import BrimCore
 import Foundation
 import Testing
 
-/// Looking inside an installer before running it. Nothing here installs:
-/// a package is expanded into a temporary folder with its payload still
-/// compressed, and its file list read with `lsbom`.
+/// Looking inside an installer before running it. Nothing installs: a
+/// package is expanded with its payload compressed and its file list read
+/// with `lsbom`.
 struct InstallerPreviewTests {
     // MARK: - Package metadata
 

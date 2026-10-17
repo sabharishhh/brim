@@ -4,8 +4,8 @@ import BrimUI
 import Foundation
 import Testing
 
-/// Pages follow the Mac while Brim is open, through macOS's own events and
-/// cheap checks, rather than waiting for Check Again.
+/// Pages follow the Mac while Brim is open, through macOS's events and cheap
+/// checks.
 @MainActor struct LivePagesTests {
     private func folder() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("brim-live-\(UUID().uuidString)")
@@ -40,9 +40,8 @@ import Testing
         timeout.cancel()
     }
 
-    /// Opening an app makes macOS note it on the bundle, which is an event
-    /// in the Applications folder. Listing again for it would add a history
-    /// snapshot every time an app was opened.
+    /// Opening an app is an event in the Applications folder; listing again for
+    /// it would add a snapshot every time.
     @Test func `opening an app is not a change, an install or an update is`() throws {
         let folder = try folder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -59,8 +58,7 @@ import Testing
         #expect(ApplicationFolders.signature(of: [folder]).count == 2)
     }
 
-    /// A scan again must not undo what the person chose: an orphan they
-    /// unticked stays unticked, and only something new is ticked for them.
+    /// A rescan keeps the person's choices; only something new is ticked.
     @Test func `scanning again keeps the person's choices`() async {
         let service = Shelf(leftovers: [orphan("Kept"), orphan("Other")])
         let model = LeftoversModel()
@@ -77,8 +75,7 @@ import Testing
         #expect(ticked == ["Other", "New"])
     }
 
-    /// An app that updated itself kept offering the update it had just
-    /// installed until the next network check, hours later.
+    /// An app that updated itself leaves Updates at once.
     @Test func `an app that updated itself leaves Updates at once`() async {
         let url = URL(fileURLWithPath: "/Applications/Demo.app")
         let update = AppUpdate(bundleID: "com.example.demo", name: "Demo", appURL: url, installedVersion: "1.0",

@@ -228,9 +228,7 @@ final class ApplicationsModelTests: XCTestCase {
         XCTAssertNil(model.uninstallBlockedReason)
     }
 
-    /// A footprint that could not be read was never shown: the failure
-    /// went into the list's error, which the inspector does not read, and
-    /// the pane showed the app with nothing under it.
+    /// A footprint that could not be read is the inspector's to report.
     func testAFailedInspectionIsTheInspectorsToSay() async throws {
         let model = ApplicationsModel()
         await model.load(service: AppsStub(apps: [app("Unreadable"), app("Figma")]))

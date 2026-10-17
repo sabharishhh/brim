@@ -2,13 +2,9 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// Signing state on a background item, which T-3.8 asks for and which the
-/// store had been carrying unread all along.
-///
-/// The finding worth having is not "this is signed". It is that macOS
-/// recorded one team when it agreed to run the item and the code sitting
-/// there now is signed by another, which System Settings does not show
-/// anywhere.
+/// Signing state on a background item. The useful finding is that macOS
+/// recorded one team when it agreed to run the item and the code there now
+/// is signed by another, which System Settings does not show.
 final class SigningStateTests: XCTestCase {
 
     func testATeamThatChangedUnderMacOSIsTheFinding() {
@@ -19,8 +15,7 @@ final class SigningStateTests: XCTestCase {
     }
 
     func testAnUnexaminedItemIsNotAVerdict() {
-        // "Did not look" is not "found something wrong", the same rule
-        // coverage exists for.
+        // "Did not look" is not "found something wrong".
         XCTAssertFalse(SigningState.notChecked("No code here.").isTrouble)
         XCTAssertFalse(SigningState.valid(team: "X85ZX835W9").isTrouble)
     }
@@ -34,8 +29,7 @@ final class SigningStateTests: XCTestCase {
     }
 
     func testARealApplicationChecksOut() throws {
-        // Finder is always there and always signed by Apple. If this fails
-        // the checker is wrong, not the Mac.
+        // Finder is always there and signed by Apple.
         let finder = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: finder.path))
 
@@ -51,8 +45,8 @@ final class SigningStateTests: XCTestCase {
                          evidence: "because", signing: signing)
         }
 
-        // A pathless background-tasks record sits beside its application
-        // and must not suppress the team.
+        // A pathless background-tasks record sits beside its application and must
+        // not suppress the team.
         let agreed = RegistrationGroup.group([
             item("App", .valid(team: "TEAM1")), item("App - background tasks", nil)
         ])

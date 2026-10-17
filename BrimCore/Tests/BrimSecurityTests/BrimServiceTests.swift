@@ -7,8 +7,8 @@ import XCTest
 
 final class BrimServiceTests: XCTestCase {
     func testRemainingLoginRecordsOfferRemovalWithoutTreatingBackgroundSwitchesAsErasure() {
-        // A removed helper remained in both Settings lists after Trash was
-        // emptied. Its BTM type did not mark it as a legacy login item.
+        // A helper's BTM type must mark it as a legacy login item, or it stays
+        // listed after the Trash is emptied.
         let record = Registration(kind: .backgroundItem, identifier: "org.example.agent", label: "Agent",
                                   targetExists: false, evidence: "Target missing", atLogin: false)
         let plan = Plan(planId: UUID(), createdAt: Date(), engineVersion: "fixture", osVersion: "fixture",
@@ -184,9 +184,7 @@ final class BrimServiceTests: XCTestCase {
         let resolver = IdentityResolver(root: root)
         let identity = await resolver.resolve(bundleURL: bundleURL)
 
-        // Ensure AppBundleSource is injected for the test since we have the URL
-        // Wait, BrimService doesn't have a way to inject sources.
-        // Actually, BundleIdentifierComponentSource will find SandboxedApp.app if its name matches.
+        // `BundleIdentifierComponentSource` finds SandboxedApp.app by name.
 
         let intent = PlanIntent(type: .uninstall, subjectIdentity: identity)
         let plan = try await service.plan(intent: intent)
@@ -211,10 +209,8 @@ final class BrimServiceTests: XCTestCase {
         XCTAssertFalse(verifyAfter.success, "The fixture's unregistered bundle cannot pass tccutil")
         XCTAssertEqual(verifyAfter.followUpActions, [.restoreAppForPrivacyReset])
 
-        // Let's assert the recovered bytes matches the expected bytes
-        // Since we are moving to Trash, the free space might not change immediately on APFS due to snapshotting or just
-        // being moved to another directory on the same volume!
-        // To be safe against APFS nuances, we can just assert that verifyAfter has expectedBytes populated.
+        // Free space may not change when moving to the Trash on APFS, so only the
+        // expected bytes are checked.
         XCTAssertEqual(verifyAfter.expectedBytes, plan.expectedTotalBytes)
         // Recovered bytes may be 0 if the volume didn't actually reclaim space yet, but we at least recorded it.
         XCTAssertGreaterThanOrEqual(verifyAfter.recoveredBytes, 0)

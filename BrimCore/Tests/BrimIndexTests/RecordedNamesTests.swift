@@ -3,10 +3,8 @@ import BrimCore
 import Foundation
 import Testing
 
-/// History kept one name per application, so once SystemEQ for Mac was gone
-/// the sweep knew it only as that and could not tell `Application
-/// Support/SystemEQ` was its. Every name is kept, and a later snapshot
-/// that learned none does not erase them.
+/// Every name an app answered to is kept, and a later snapshot that learned
+/// none does not erase them.
 struct RecordedNamesTests {
     @Test func everyNameOutlivesTheApplication() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -4,21 +4,8 @@ import BrimProtocol
 @testable import BrimScan
 @testable import BrimService
 
-/// What the uninstall path finds for applications that are really installed,
-/// measured rather than assumed.
-///
-/// The leftovers sweep was audited and fixed; the uninstall path never was.
-/// When it finally was, six installed applications produced plans that looked
-/// complete and were not: Visual Studio Code's uninstall left 143 MB of its
-/// own `Application Support` behind, because `Identity.name` is the bundle's
-/// file name, "Visual Studio Code", and the folder is named after its
-/// `CFBundleName`, which is "Code". `LeftoversScanner` had already learned to
-/// read `CFBundleName`; `LocationInventorySource` had not, and nothing held
-/// the two modules to one answer.
-///
-/// These are assertions about a real disk, so each one skips rather than
-/// fails when the application it names is not installed. A machine without
-/// Visual Studio Code is not a regression.
+/// What the uninstall path finds for applications that are really
+/// installed. Each test skips when the application it names is absent.
 final class FootprintCoverageTests: XCTestCase {
 
     private var supportDirectory: URL!
@@ -69,11 +56,8 @@ final class FootprintCoverageTests: XCTestCase {
 
     // MARK: - The measured misses
 
-    /// **The 143 MB.** Visual Studio Code is the one application of the six
-    /// whose file name and `CFBundleName` differ, which is exactly why it was
-    /// the one that leaked. `BundleIdentifierComponentSource` already matches
-    /// `Application Support/<file name>`, so every application whose two names
-    /// agree was found by accident rather than by rule.
+    /// Visual Studio Code's support folder is named for its `CFBundleName`,
+    /// "Code", not its file name.
     func testVisualStudioCodesSupportFolderIsInItsFootprint() async throws {
         let name = "Visual Studio Code"
         let paths = try skipUnlessInstalled(name, try await footprintPaths(ofAppNamed: name))
@@ -88,10 +72,7 @@ final class FootprintCoverageTests: XCTestCase {
         )
     }
 
-    /// A cache or log folder named after the application rather than after its
-    /// identifier is invisible: the inventory gives `Caches` and `Logs` an
-    /// identifier rule and no name rule at all, so no amount of reading
-    /// `CFBundleName` finds them until the rule exists.
+    /// Cache and log folders named for the application, not its identifier.
     func testNameMatchedCachesAndLogsAreInTheFootprint() async throws {
         let home = NSHomeDirectory()
         let cases: [(app: String, path: String)] = [
@@ -116,10 +97,7 @@ final class FootprintCoverageTests: XCTestCase {
         try XCTSkipIf(checked == 0, "None of the measured cache or log folders are on this Mac.")
     }
 
-    /// **Sparkle's helper.** An application installed by any route can switch
-    /// to updating itself, and Squirrel leaves `<identifier>.ShipIt` in
-    /// `Caches`. The inventory gives `Caches` an exact identifier rule, so the
-    /// suffixed name never matches, and three of the six carry one.
+    /// An updater's `<identifier>.ShipIt` folder in Caches.
     func testShipItCachesAreInTheFootprint() async throws {
         let home = NSHomeDirectory()
         let cases: [(app: String, id: String)] = [
@@ -141,14 +119,7 @@ final class FootprintCoverageTests: XCTestCase {
         try XCTSkipIf(checked == 0, "No ShipIt caches on this Mac.")
     }
 
-    /// **Team identifiers.** Every team-prefixed rule in the inventory, and
-    /// the whole of `TeamIDSource`, is dead code while `Identity.teamID` is
-    /// nil. It was nil for every application on this Mac because
-    /// `IdentityResolver` asked `SecCodeCopySigningInformation` for
-    /// requirement information only, and the team identifier is signing
-    /// information. `CodeSignature` in `BrimScan` asked correctly, so the same
-    /// fact had two readings in two modules, which is the defect this
-    /// repository has now hit twice.
+    /// Team identifiers resolve, or every team-prefixed rule is dead.
     func testTeamIdentifiersResolveForInstalledApplications() async throws {
         let names = ["Visual Studio Code", "Claude", "Antigravity", "Figma", "Obsidian", "Recordly"]
         var checked = 0
@@ -163,11 +134,8 @@ final class FootprintCoverageTests: XCTestCase {
         try XCTSkipIf(checked == 0, "None of the measured applications are installed.")
     }
 
-    /// **Six of six.** The recent-documents record is keyed exactly on the
-    /// bundle identifier and no location named the directory it lives in, so
-    /// every application measured was leaving one behind. The record goes;
-    /// the documents it names are the person's and are never touched, which
-    /// `RecordedPathTests` holds separately.
+    /// The recent-documents record is the app's; the documents it names are
+    /// not (`RecordedPathTests`).
     func testRecentDocumentRecordsAreInTheFootprint() async throws {
         let directory = NSHomeDirectory()
             + "/Library/Application Support/com.apple.sharedfilelist"
@@ -182,9 +150,7 @@ final class FootprintCoverageTests: XCTestCase {
             guard FileManager.default.fileExists(atPath: record) else { continue }
             guard let paths = try await footprintPaths(ofAppNamed: name) else { continue }
             checked += 1
-            // Compared without case: macOS writes Visual Studio Code's as
-            // `com.microsoft.vscode.sfl4`, and the footprint names files as
-            // they are spelled on disk.
+            // Compared without case: macOS writes `com.microsoft.vscode.sfl4`.
             XCTAssertTrue(
                 paths.contains { $0.lowercased() == record.lowercased() },
                 "\(bundleID).sfl4 is \(name)'s own record and is not in its footprint."
@@ -193,10 +159,7 @@ final class FootprintCoverageTests: XCTestCase {
         try XCTSkipIf(checked == 0, "No recent-document records for the measured applications.")
     }
 
-    /// **The 189 MB.** Claude keeps its real dataset under
-    /// `~/.local/share/claude`, the way software written for Linux first
-    /// does, and nothing in Brim read `$HOME` directly, so it was invisible
-    /// to every evidence source at once.
+    /// Data kept under `~/.local/share`, outside Library.
     func testDataKeptOutsideTheLibraryFolderIsInTheFootprint() async throws {
         let home = NSHomeDirectory()
         let cases: [(app: String, path: String)] = [
@@ -221,9 +184,7 @@ final class FootprintCoverageTests: XCTestCase {
         try XCTSkipIf(checked == 0, "No XDG-style directories for the measured applications.")
     }
 
-    /// **`/usr/local/bin/code`.** A command that is a link into the bundle
-    /// goes with the bundle, or the Mac keeps a `code` that reports "no such
-    /// file or directory" for as long as anybody leaves it there.
+    /// A command linked into the bundle goes with the bundle.
     func testACommandLinkedIntoTheBundleIsInTheFootprint() async throws {
         let link = "/usr/local/bin/code"
         guard (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) != nil else {
@@ -239,16 +200,8 @@ final class FootprintCoverageTests: XCTestCase {
         )
     }
 
-    /// **The one that nearly shipped.** Visual Studio Code declares no
-    /// application groups at all, so every `UBF8T346G9.*` folder in its
-    /// footprint was matched on Microsoft's team identifier alone. Rated
-    /// Tier B, as it was, uninstalling the editor offered to delete
-    /// Microsoft Teams' data and the sign-in state shared by every Microsoft
-    /// application on the Mac, with all of it ticked.
-    ///
-    /// It was invisible until the team identifier started resolving, because
-    /// the source that claims these had been returning an empty array for
-    /// every application since it was written.
+    /// An app that declares no groups gets no other vendor app's containers
+    /// selected on the team identifier alone.
     func testAnotherVendorApplicationsContainersAreVetoedNotSelected() async throws {
         let name = "Visual Studio Code"
         guard let identity = try await identity(ofAppNamed: name),
@@ -281,9 +234,7 @@ final class FootprintCoverageTests: XCTestCase {
 
     // MARK: - The measurement itself
 
-    /// Not an assertion, a record. Prints what the engine finds for each of
-    /// the six so a before and an after can be compared by reading them
-    /// rather than by remembering them.
+    /// Not an assertion: prints what the engine finds so runs can be compared.
     func testPrintTheMeasurement() async throws {
         let names = ["Visual Studio Code", "Claude", "Antigravity", "Figma", "Obsidian", "Recordly"]
         var report = "\n=== Footprint coverage ===\n"

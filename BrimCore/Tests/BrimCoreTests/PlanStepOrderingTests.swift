@@ -1,11 +1,9 @@
 import XCTest
 @testable import BrimCore
 
-/// The order steps run in, and the order they are undone in, is the rule that
-/// keeps an interrupted or reversed uninstall from corrupting a footprint:
-/// privacy grants are cleared while the bundle still exists, a launchd job must
-/// be unloaded before its plist is removed, and the app bundle must be trashed
-/// last (and restored first, since auxiliary files can live beneath it).
+/// The order steps run and are undone in: privacy grants while the bundle
+/// exists, a launchd job unloaded before its plist goes, and the app bundle
+/// removed last and restored first.
 final class PlanStepOrderingTests: XCTestCase {
 
     private func step(_ index: Int, _ phase: ExecutionPhase, target: String = "/tmp/x", kind: StepKind = .trashPath) -> Step {
@@ -78,8 +76,7 @@ final class PlanStepOrderingTests: XCTestCase {
     }
 
     func testUndoRestoresTheAppBundleBeforeFilesBeneathIt() {
-        // An auxiliary file inside the bundle cannot be put back until the
-        // bundle directory itself is back.
+        // A file inside the bundle cannot be put back until the bundle is back.
         let subject = plan([
             step(0, .appBundle, target: "/Applications/TestApp.app"),
             step(1, .auxiliary, target: "/Applications/TestApp.app/Contents/Helper")
@@ -92,8 +89,8 @@ final class PlanStepOrderingTests: XCTestCase {
     }
 
     func testUnloadPrecedesPlistRemovalOnApplyAndReversesOnUndo() {
-        // Both are .launchd, so the planner's index ordering is what keeps the
-        // unload ahead of the removal, and the restore ahead of the reload.
+        // Both are launchd steps, so the planner's index keeps the unload ahead of
+        // the removal and the restore ahead of the reload.
         let unload = step(0, .launchd, target: "/Users/x/Library/LaunchAgents/com.test.plist", kind: .unloadLaunchdJob)
         let remove = step(1, .launchd, target: "/Users/x/Library/LaunchAgents/com.test.plist", kind: .removeLaunchdPlist)
         let subject = plan([remove, unload])
@@ -112,9 +109,7 @@ final class PlanStepOrderingTests: XCTestCase {
     }
 
     func testRegistrationIsRetractedAfterTheBundleIsRemoved() {
-        // The mirror image of the privacy reset. tccutil needs the bundle
-        // present; lsregister needs it gone, because Launch Services
-        // re-registers a bundle it can still see.
+        // `tccutil` needs the bundle present; `lsregister` needs it gone.
         let p = plan([
             step(0, .registration, target: "/Applications/App.app", kind: .unregisterLaunchServices),
             step(1, .appBundle, target: "/Applications/App.app"),
@@ -130,8 +125,7 @@ final class PlanStepOrderingTests: XCTestCase {
     }
 
     func testABundleIdentifierIsNotTreatedAsAPath() {
-        // Anything that lstats or stats a target has to ask first: a bundle
-        // id resolved as a relative path silently points at the working
+        // A bundle id read as a relative path would point at the working
         // directory.
         XCTAssertFalse(StepKind.resetPrivacyGrants.targetIsPath)
         XCTAssertTrue(StepKind.trashPath.targetIsPath)

@@ -2,10 +2,8 @@
 import Foundation
 import XCTest
 
-/// Removing Brim moved its files to the Trash, where they stayed, and wrote
-/// a journal for the removal into the folder being removed. Brim now deletes
-/// what it wrote after it quits. These hold what counts as Brim's, and that
-/// the script deletes exactly that and itself.
+/// What counts as Brim's own files, and that the self-removal script
+/// deletes exactly those and itself.
 final class BrimTracesTests: XCTestCase {
     private var rootURL: URL!
 

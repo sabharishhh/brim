@@ -1,9 +1,8 @@
 import XCTest
 @testable import BrimService
 
-/// The rail that keeps a destructive harness from touching anything real.
-/// Deliberately not gated behind BRIM_REAL_ENV: it touches no disk, and it is
-/// the check that must never silently stop running.
+/// The rail that keeps the harness from touching anything real. Not gated
+/// behind BRIM_REAL_ENV: it touches no disk and must always run.
 final class RealEnvironmentFixtureSafetyTests: XCTestCase {
 
     func testTheFixtureRefusesToRemoveAnythingItDidNotCreate() {
@@ -28,9 +27,8 @@ final class RealEnvironmentFixtureSafetyTests: XCTestCase {
         let legitimate = home.appendingPathComponent("Library/Caches/BrimHarness-abc123-cache")
         XCTAssertTrue(RealEnvironmentFixture.isSafeToRemove(legitimate))
 
-        // ~/Applications is allowed, because a Launch Services registration
-        // can only be proven against a bundle installed where apps go. The
-        // marker rule still applies, and /Applications still does not.
+        // `~/Applications` is allowed so a registration can be proven; the marker
+        // rule still applies, and `/Applications` is not.
         XCTAssertTrue(RealEnvironmentFixture.isSafeToRemove(
             home.appendingPathComponent("Applications/BrimHarness-abc123.app")
         ))

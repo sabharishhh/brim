@@ -2,15 +2,9 @@
 @testable import BrimScan
 import XCTest
 
-/// Things that need an administrator are mostly not leftovers.
-///
-/// Measured on a real Mac: of twenty rows the sweep listed in root-owned
-/// folders, three belonged to software that was still there. macOS's own
-/// printer list, `/Library/Preferences/org.cups.printers.plist`, was
-/// offered as unclaimed. So was `ParrotAudioPlugin.driver`, whose own
-/// `Info.plist` says `com.apple.audio.ParrotAudioPlugin`, and
-/// `MSTeamsAudioDevice.driver` with Microsoft Teams installed. Offering any
-/// of them is how a leftover list stops being believed.
+/// Most things that need an administrator are not leftovers: macOS's own
+/// printer list, a driver whose `Info.plist` names Apple, and an installed
+/// app's driver were all once offered.
 final class NotALeftoverTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -47,17 +41,14 @@ final class NotALeftoverTests: XCTestCase {
         return Set(found.map(\.url.lastPathComponent))
     }
 
-    /// Teams and Microsoft AutoUpdate were both removed, and
-    /// `/Library/Logs/Microsoft` still held their logs while
-    /// `Application Support/Microsoft/Office365` stayed as well. Neither
-    /// folder name has dots in it, so the sweep read both as macOS's and never
-    /// looked inside. The person found them in Finder.
+    /// A developer's plainly named folder in `/Library` is looked inside, not
+    /// read as macOS's because it has no dots.
     func testADevelopersPlainFolderInLibraryIsLookedInside() async throws {
         _ = try put("Library/Logs/Microsoft/MSTeams/teams.log", contents: Data([1]))
         _ = try put("Library/Logs/Microsoft/autoupdate.log", contents: Data([1]))
         _ = try put("Library/Application Support/Microsoft/Office365/licence.dat", contents: Data([1]))
-        // macOS's own plain folders stay out, including one an Apple
-        // application's name begins with.
+        // macOS's own plain folders stay out, including one an Apple app's name
+        // begins with.
         _ = try put("Library/Application Support/Apple/ParentalControls/data", contents: Data([1]))
         _ = try put("Library/Caches/ColorSync/Profiles/data", contents: Data([1]))
         _ = try bundle("System/Applications/Utilities/ColorSync Utility.app",
@@ -75,8 +66,8 @@ final class NotALeftoverTests: XCTestCase {
                        "In Microsoft's folder. Nothing from Microsoft is installed.")
     }
 
-    /// While AutoUpdate is installed it is an application, not a leftover,
-    /// and what Microsoft keeps beside it may be what it uses.
+    /// While the developer's software is installed, what it keeps beside it may
+    /// be in use.
     func testADevelopersFolderStaysWhileItsSoftwareIsInstalled() async throws {
         let receipt = try PropertyListSerialization.data(fromPropertyList: [
             "InstallPrefixPath": "Library/Application Support/Microsoft/MAU2.0"
@@ -94,10 +85,8 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertFalse(names.contains("autoupdate.log"))
     }
 
-    /// A plug-in bundle's file name is two words at most, `Flash
-    /// Player.prefPane`, so the rule that keeps macOS's plainly named
-    /// folders out of the sweep kept every third-party plug-in in `/Library`
-    /// out as well. A bundle says whose it is in its `Info.plist`.
+    /// A plug-in bundle in `/Library` is judged by the identifier its
+    /// `Info.plist` declares, not its plain file name.
     func testAPlugInBundleInLibraryIsJudgedByItsIdentifier() async throws {
         _ = try bundle("Library/PreferencePanes/Flash Player.prefPane",
                        identifier: "com.adobe.flashplayer.installmanager")
@@ -111,12 +100,8 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertFalse(names.contains("Network Link.prefPane"))
     }
 
-    /// Leftovers listed 97 folders as "owner unknown" on a real Mac, and
-    /// most of the size was one of three things that are not leftovers.
-    /// Homebrew's and SwiftPM's caches, which Developer already counts and
-    /// Space added twice. A command-line tool's own folder, `SwiftLint` for
-    /// `swiftlint`. And macOS's own data, `CallHistoryDB`, which it had
-    /// written to that morning.
+    /// Not leftovers: caches Developer already counts, a command line tool's
+    /// own folder (`SwiftLint` for `swiftlint`), and macOS's own data.
     func testCachesAccountedForElsewhereAndMacOSsOwnDataAreNotLeftovers() async throws {
         let homebrew = try put("Users/tester/Library/Caches/Homebrew/downloads/bottle", contents: Data([1]))
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -136,9 +121,7 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertTrue(names.contains("GoneTool"), "still finds a real one")
     }
 
-    /// `Knowledge`, `Animoji` and `SiriEntityCache` are macOS's, and each
-    /// had been written that day or the day before when it was offered as
-    /// somebody's leftover. Something writing to a folder is alive.
+    /// An unnamed folder written this week belongs to something alive.
     func testAnUnnamedFolderWrittenThisWeekIsInUse() async throws {
         let old = Date(timeIntervalSinceNow: -60 * 24 * 60 * 60)
         let live = try put("Users/tester/Library/Application Support/Knowledge/knowledgeC.db", contents: Data([1]))
@@ -155,9 +138,8 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertTrue(names.contains("CEF"), "untouched for two months, still listed")
     }
 
-    /// Notion kept its updater in `Application Support/Caches`, and the row
-    /// was called "Caches". A folder with a container's name is looked
-    /// inside, and what is in it is named.
+    /// A folder with a container's name (`Caches` in Application Support) is
+    /// looked inside, and what is in it is named.
     func testAFolderNamedLikeAContainerIsLookedInside() async throws {
         _ = try put("Users/tester/Library/Application Support/Caches/notion-updater/pending/x.zip", contents: Data([1]))
         let found = try await LeftoversScanner(root: root, hasFullDiskAccess: true).scanLeftovers()
@@ -167,8 +149,8 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertEqual(found.first { $0.url.lastPathComponent == "notion-updater" }?.potentialOwner?.name, "Notion")
     }
 
-    /// What a removed app left carries when Brim last saw the app, so the
-    /// list can say "Removed 28 Sep" and count it as the app's.
+    /// What a removed app left carries when Brim last saw the app, so it is
+    /// counted as that app's.
     func testTracesOfAnAppHistorySawGoAreItsWithTheDate() async throws {
         _ = try put("Users/tester/Library/Preferences/com.microsoft.autoupdate2.plist", contents: Data([1]))
         let seen = Date(timeIntervalSince1970: 1_790_000_000)
@@ -211,10 +193,8 @@ final class NotALeftoverTests: XCTestCase {
         XCTAssertTrue(names.contains("GoneVendor.driver"))
     }
 
-    /// Signing can only be decided on a real signature, so the rule is
-    /// held on its own: a bundle signed by a team that also signed an
-    /// installed application is that vendor's, and a present vendor may
-    /// still be using it.
+    /// A bundle signed by a team that also signed an installed app is that
+    /// vendor's, which may still use it.
     func testABundleSignedByAnInstalledVendorIsTheirs() {
         XCTAssertTrue(LeftoversScanner.belongsToInstalledSoftware(
             identifier: "com.microsoft.MSTeamsAudioDevice", team: "UBF8T346G9",
@@ -231,11 +211,8 @@ final class NotALeftoverTests: XCTestCase {
         ))
     }
 
-    /// Antigravity kept `~/.antigravity-ide`, and Purge two crash reports in
-    /// `/Library/Logs/DiagnosticReports`, and the Removed page named neither.
-    /// A name is all these places offer, so only a record of an app that has
-    /// gone names an owner there: `.ssh` and a stranger's crash report stay
-    /// off the list.
+    /// Home dot folders and crash reports are named only for a recorded removed
+    /// app; `.ssh` and a stranger's crash report stay off the list.
     func testHomeDotFoldersAndCrashReportsAreNamedOnlyForARecordedApp() async throws {
         _ = try put("Users/tester/.antigravity-ide/argv.json", contents: Data([1]))
         _ = try put("Users/tester/.ssh/config", contents: Data([1]))

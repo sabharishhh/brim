@@ -67,8 +67,8 @@ final class FootprintSectionTests: XCTestCase {
         XCTAssertEqual(sections(items).first?.locations.map(\.id), ["/tmp/c", "/tmp/a", "/tmp/b"])
     }
 
-    /// WhatsApp's Application Scripts folders were grouped as Other, and a
-    /// folder named for an identifier ending in ".app" was grouped as the app.
+    /// Application Scripts are data, and a folder named for an identifier
+    /// ending in ".app" is not the app.
     func testScriptsAndAutosavesAreDataAndDotConfigIsSettings() {
         let result = sections([
             item("/Users/me/Library/Application Scripts/net.whatsapp.WhatsApp"),

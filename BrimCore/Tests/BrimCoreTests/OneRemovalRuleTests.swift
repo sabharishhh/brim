@@ -3,20 +3,10 @@
 import XCTest
 
 /// The list and the plan give one answer to "can Brim remove this".
-///
-/// The incident: three broken links in `~/.local/bin`, the person's own
-/// folder, were listed as removable, ticked, approved and then skipped with
-/// `needs_helper_not_set_up`, twice in one day. The sweep asked the folder,
-/// which is the right question. The plan asked the item with
-/// `access(path, W_OK)`, which follows a link, found nothing at the far end
-/// and fell through to "needs an administrator". The review then described
-/// the person's home folder as a system folder, and the result said macOS
-/// had not said why.
-///
-/// Moving something out of a folder needs write access to that folder.
-/// A folder being moved also needs write access to itself, because its
-/// `..` entry is rewritten. Checked on a real Mac: a read-only file and a
-/// broken link move, a read-only folder does not.
+/// Moving something out of a folder needs write access to the folder; a
+/// folder being moved also needs it on itself, because its `..` is
+/// rewritten. A read-only file and a broken link move, a read-only folder
+/// does not.
 final class OneRemovalRuleTests: XCTestCase {
     private func scratch() throws -> URL {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())

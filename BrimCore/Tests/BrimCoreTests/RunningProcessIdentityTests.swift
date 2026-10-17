@@ -1,22 +1,10 @@
 import XCTest
 @testable import BrimCore
 
-/// Naming a background service, and the trap of naming it too well.
-///
-/// The energy panel used to print executable names: `contactsd`, `suggestd`,
-/// `duetexpertd`, `mediaanalysisd`, `spotlightknowledged.updater`. Those were
-/// the five largest consumers on a real Mac and not one of them told anybody
-/// anything.
-///
-/// The first fix made it worse. `contactsd` became "Contacts", and the person
-/// reading it had opened the Contacts app once, ever, to see what a native Mac
-/// app looked like. The panel appeared to say that an app they never use had
-/// cost 4.2% of a charge. It had not: `contactsd` holds the contacts database
-/// and answers every app that reads from it, plus iCloud sync, and runs
-/// whether or not the Contacts app has ever been opened.
-///
-/// Replacing an opaque name with a misleading one is worse than leaving it
-/// opaque, because the second one gets acted on.
+/// Naming a background service without naming it too well. `contactsd` is
+/// not the Contacts app: it serves every app that reads contacts and runs
+/// whether or not Contacts was ever opened. A misleading name is worse than
+/// an opaque one, because it gets acted on.
 final class RunningProcessIdentityTests: XCTestCase {
 
     private func identity(_ path: String, bundle: String? = nil) -> RunningProcessIdentity {
@@ -25,12 +13,10 @@ final class RunningProcessIdentityTests: XCTestCase {
 
     // MARK: - The naming trap
 
-    /// Every name Brim gives an Apple daemon must be a description of the
-    /// service, never the name of an application somebody could go and look
-    /// for in their Applications folder.
+    /// A daemon's name describes the service, never an application someone could
+    /// look for.
     func testNoSystemServiceIsNamedAfterAnApplication() {
-        // Apps that ship with macOS and whose names a person would recognise
-        // as something they can open, quit, or blame.
+        // Apps that ship with macOS and that a person would recognise.
         let applicationNames = [
             "Contacts", "Photos", "Mail", "Messages", "Calendar", "Notes",
             "Safari", "Music", "Reminders", "Maps", "News", "Finder",
@@ -74,8 +60,8 @@ final class RunningProcessIdentityTests: XCTestCase {
         }
     }
 
-    /// Whole-word matching, so a third-party binary that merely starts the
-    /// same way is not claimed as Apple's.
+    /// Whole-word matching, so a third-party binary that starts the same way is
+    /// not claimed as Apple's.
     func testANameThatMerelyStartsTheSameIsNotClaimed() {
         XCTAssertNil(RunningProcessIdentity.appleService(named: "contactsdaemon"))
         XCTAssertNil(RunningProcessIdentity.appleService(named: "mdsomething"))
@@ -94,11 +80,8 @@ final class RunningProcessIdentityTests: XCTestCase {
         XCTAssertTrue(claude.kind.isActionable, "Quitting it is a thing a person can do")
     }
 
-    /// Every app Apple ships now lives under `/System/Applications`: Music,
-    /// Safari, Mail, Notes, Photos. Filing anything under `/System/` as a
-    /// service put all of them in the half of the panel headed "most of this
-    /// finishes on its own" and badged them as nobody's to stop. Music
-    /// playing an album is a person's to quit.
+    /// Apple's apps live under `/System/Applications`. Music playing an album is
+    /// the person's to quit, not a service that finishes on its own.
     func testAnAppleApplicationIsAnApplicationAndNotAService() {
         for app in ["Music", "Safari", "Mail", "Notes", "Photos"] {
             let identity = RunningProcessIdentity.of(
@@ -120,9 +103,8 @@ final class RunningProcessIdentityTests: XCTestCase {
     }
 
     func testSomethingUnderSystemBelongsToMacOSEvenWhenUnrecognised() {
-        // The point of deriving from the path: a daemon nobody has written a
-        // sentence for is still known to be macOS's, which is the fact that
-        // decides which half of the panel it goes in.
+        // A daemon with no written description is still known to be macOS's from
+        // its path.
         let unknown = identity("/System/Library/PrivateFrameworks/Whatever.framework/somethingd")
         XCTAssertEqual(unknown.kind, .systemService)
         XCTAssertFalse(unknown.kind.isActionable)
@@ -134,8 +116,7 @@ final class RunningProcessIdentityTests: XCTestCase {
             "/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper"
         )
         XCTAssertEqual(helper.kind, .helper)
-        // The outermost bundle, not the nested one: a person knows Claude,
-        // and "Part of Claude Helper" would just be the row's own name back.
+        // The outermost bundle, not the nested one.
         XCTAssertEqual(helper.explanation, "Part of Claude.")
     }
 
@@ -144,8 +125,7 @@ final class RunningProcessIdentityTests: XCTestCase {
         XCTAssertEqual(identity("/usr/local/bin/docker").kind, .commandLineTool)
     }
 
-    /// A row Brim cannot place says so by saying nothing, rather than being
-    /// filed under a guess.
+    /// A row Brim cannot place says nothing rather than guessing.
     func testSomethingElsewhereIsNotGuessedAt() {
         let other = identity("/Users/someone/scratch/a.out")
         XCTAssertEqual(other.kind, .other)
@@ -160,8 +140,8 @@ final class RunningProcessIdentityTests: XCTestCase {
         XCTAssertEqual(app.groupKey, renderer.groupKey)
     }
 
-    /// Every daemon the table is meant to cover, so the rules above are
-    /// checked against all of them rather than against a sample.
+    /// Every daemon the table covers, so the rules are checked against all of
+    /// them.
     private static let knownDaemons = [
         "contactsd", "suggestd", "duetexpertd", "mediaanalysisd", "photoanalysisd",
         "spotlightknowledged", "spotlightknowledged.updater", "mds", "mds_stores",

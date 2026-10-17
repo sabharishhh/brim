@@ -1,19 +1,10 @@
 import XCTest
 @testable import BrimCore
 
-/// Which application Brim thinks it is.
-///
-/// Self-removal is the one case where Brim's own files may be touched, so
-/// `isSelfRemoval` decides whether "Uninstall Brim" can do anything at
-/// all. It compared the identity being removed against two hardcoded
-/// strings, `devplaceholder.PJ52YXEB.brim` and `com.google.Brim`. The
-/// application ships as `com.sabharishhh.brim`, so on a real machine
-/// neither matched, every one of Brim's own files was protected, and
-/// uninstalling Brim would have produced a plan that excluded everything.
-///
-/// It went unnoticed because the integration test built a fixture using
-/// one of the placeholder identifiers, so the test agreed with the code
-/// and both were wrong.
+/// Which application Brim thinks it is. `isSelfRemoval` decides whether
+/// "Uninstall Brim" can do anything at all. It once compared against two
+/// hardcoded identifiers that matched neither the shipping app nor anything
+/// else, so every one of Brim's files was protected and the plan was empty.
 final class SelfRemovalIdentityTests: XCTestCase {
 
     private var directory: URL!
@@ -57,9 +48,7 @@ final class SelfRemovalIdentityTests: XCTestCase {
     }
 
     func testTheIdentityComesFromTheBundleRatherThanAList() throws {
-        // Rename the product tomorrow and this keeps working, which is the
-        // whole point: a hardcoded list goes stale silently and the only
-        // symptom is a feature that quietly does nothing.
+        // A renamed product keeps working: the identifier comes from the bundle.
         let bundle = try makeBundle(named: "Brim.app", bundleID: "com.example.renamed")
         XCTAssertTrue(checker(brimAppURL: bundle).isBrimItself("com.example.renamed"))
     }
@@ -74,8 +63,7 @@ final class SelfRemovalIdentityTests: XCTestCase {
     }
 
     func testAnUpgradeCanStillRemoveWhatAnOlderBrimLeft() throws {
-        // Those two identifiers really did ship, so a build that finds
-        // their leftovers has to be allowed to clear them.
+        // Those two identifiers really shipped, so their leftovers may be cleared.
         let bundle = try makeBundle(named: "Brim.app", bundleID: "com.sabharishhh.brim")
         let checker = checker(brimAppURL: bundle)
 
@@ -84,9 +72,8 @@ final class SelfRemovalIdentityTests: XCTestCase {
     }
 
     func testAnUnreadableBundleDoesNotMakeEverythingBrim() throws {
-        // The bundle is missing, so there is no identifier to compare
-        // against. Failing open here would let anything claim to be Brim
-        // and reach Brim's own files.
+        // With no bundle there is no identifier to compare. Failing open would let
+        // anything claim to be Brim.
         let checker = checker(brimAppURL: directory.appendingPathComponent("Absent.app"))
 
         XCTAssertNil(checker.brimBundleID)

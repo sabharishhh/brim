@@ -3,17 +3,9 @@ import XCTest
 @testable import BrimProtocol
 @testable import BrimService
 
-/// Removing several chosen things at once, from planning to undo.
-///
-/// The shape that matters here is a selection of named targets with no
-/// owning application: one plan against `specificTargets`, built from an
-/// identity that often has no bundle id at all, approved once and applied as
-/// a unit. That is what the Leftovers sheet sends, and it is a different
-/// shape from the integration tests, which plan from a resolved application.
-///
-/// Written against the Review queue, which has since been replaced by the
-/// Leftovers section. The name changed with it; nothing else needed to,
-/// because none of this ever touched the view.
+/// Removing several chosen things at once, from planning to undo: one plan
+/// against `specificTargets`, often with no bundle id, approved once and
+/// applied as a unit, as the Leftovers sheet sends it.
 final class BatchRemovalFlowTests: XCTestCase {
 
     private func makeService(root rootURL: URL, support: URL) -> BrimService {
@@ -36,11 +28,9 @@ final class BatchRemovalFlowTests: XCTestCase {
         )
     }
 
-    /// requestApproval skips the LAContext prompt only when it can tell it is
-    /// running under a test harness. If this detection breaks, the whole suite
-    /// starts demanding a fingerprint per plan on any Mac with working Touch
-    /// ID, which is what happened while it keyed off
-    /// XCTestConfigurationFilePath, a variable SwiftPM's runner never sets.
+    /// The presence prompt is skipped only under a test harness. If detection
+    /// breaks, every plan in the suite asks for a fingerprint. SwiftPM's runner
+    /// does not set `XCTestConfigurationFilePath`.
     func testSuiteIsRecognisableAsAnAutomatedRun() {
         XCTAssertTrue(
             BrimService.isAutomatedRun,
@@ -60,9 +50,8 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testApplyDoesNotPersistItsRevalidationPlan() async throws {
-        // apply() re-plans to check the footprint has not mutated. That
-        // throwaway plan used to go through the saving path, leaving a second
-        // record with identical steps and no ledger entry.
+        // `apply` re-plans to check the footprint; that throwaway plan must not be
+        // saved as a second record.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -110,8 +99,7 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testRecoverableItemsTracksTheTrashRatherThanTheJournal() async throws {
-        // What the UI shows must follow the Trash as it is now, so emptying it
-        // in Finder changes the answer without the app restarting.
+        // Recoverable items follow the Trash as it is now.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -132,8 +120,7 @@ final class BatchRemovalFlowTests: XCTestCase {
             try await service.apply(planId: plan.planId, token: token)
         }
 
-        // The permanently deleted cache is never recoverable; the trashed
-        // settings data is.
+        // The deleted cache is never recoverable; the trashed settings are.
         let afterApply = try await service.recoverableItems()
         XCTAssertEqual(afterApply.map(\.name), ["recoverable-settings"])
         XCTAssertGreaterThan(afterApply.first?.bytes ?? 0, 0)
@@ -188,8 +175,8 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testBatchTokenIsBoundToTheWholeSelection() async throws {
-        // The single token covers every step, so its plan hash changes if the
-        // selection does: approving two items cannot authorize a third.
+        // The plan hash changes with the selection: approving two items cannot
+        // authorize a third.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -259,8 +246,7 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testSettingsDataIsTrashedAndRecoverable() async throws {
-        // Application Support is medium cost: it holds settings and profile
-        // data, which is the case where undo actually matters.
+        // Application Support holds settings, where undo matters.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -290,8 +276,7 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testCacheIsDeletedOutrightAndReportsFreedSpace() async throws {
-        // Nobody restores a rebuilt cache, and trashing it would mean the
-        // space the sheet promised never actually comes back.
+        // A trashed cache would never give its space back.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -371,8 +356,7 @@ final class BatchRemovalFlowTests: XCTestCase {
     }
 
     func testOnePlanFailingDoesNotStopTheOthersFromBeingRemoved() async throws {
-        // The sheet keeps whatever already succeeded when a later plan fails,
-        // so a plan whose target vanished must not strand the rest.
+        // A plan whose target vanished must not strand the rest.
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let rootURL = tempDir.appendingPathComponent("Root")
         defer { try? FileManager.default.removeItem(at: tempDir) }

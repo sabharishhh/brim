@@ -2,26 +2,10 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// A launchd label that merely starts with an application's identifier is
-/// not that application's job. The identifier has to end where a dot begins.
-///
-/// `LaunchdSource` proved a job belonged to an application when its label
-/// started with the bundle identifier, with nothing required after it. Tier A
-/// is ticked by default, and a ticked launchd job is unloaded and its property
-/// list removed, so `com.example.app` could take `com.example.applet`'s
-/// background job with it.
-///
-/// It was not hypothetical. On the Mac this was found on, the News
-/// application claimed `com.apple.newsyslog`, the system's log rotation
-/// daemon, and Clock claimed `com.apple.clocksyncd`, the daemon that keeps
-/// the time right. Both are Apple's, protected, and out of Brim's reach, so
-/// nothing was unloaded; the footprint view simply presented the system log
-/// rotator as the News application's background service. The same rule ran
-/// unguarded for every third-party application.
-///
-/// The rest of the codebase already draws the line at the dot:
-/// `LocationInventorySource` matches `name.hasPrefix(bundleID + ".")`, and
-/// `LocationInventorySourceTests` holds `com.example.applet` out of reach.
+/// A launchd label that merely starts with an app's identifier is not that
+/// app's job; the identifier must end where a dot begins. A bare prefix
+/// made `com.apple.news` claim `com.apple.newsyslog`, and a ticked job is
+/// unloaded.
 final class LaunchdLabelBoundaryTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -63,8 +47,7 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
 
     // MARK: - The boundary
 
-    /// **`com.example.applet` is another product.** Sharing the first letters
-    /// of an identifier is not sharing an identifier.
+    /// `com.example.applet` is another product.
     func testAnotherProductsJobThatSharesTheIdentifierAsAPrefixIsNotClaimed() async throws {
         try makeJob(label: "com.example.applet.helper")
 
@@ -76,9 +59,7 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         )
     }
 
-    /// **The incident on the Mac this was found on.** The News application's
-    /// identifier is `com.apple.news`, and the system's log rotation daemon is
-    /// `com.apple.newsyslog`.
+    /// `com.apple.news` does not claim `com.apple.newsyslog`.
     func testTheNewsApplicationDoesNotClaimTheSystemLogRotator() async throws {
         let systemDaemons = rootURL.appendingPathComponent("System/Library/LaunchDaemons")
         try makeJob(label: "com.apple.newsyslog", program: "/usr/sbin/newsyslog", in: systemDaemons)
@@ -91,9 +72,8 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         )
     }
 
-    /// A dash or no separator at all is still a different label. Kept strict
-    /// on purpose; the program-path test below is what proves a helper whose
-    /// developer did not use a dot.
+    /// A dash or no separator is a different label. A helper without a dot is
+    /// proven by its program path instead.
     func testNoSeparatorAndADashAreNotABoundary() async throws {
         try makeJob(label: "com.example.appHelper")
         try makeJob(label: "com.example.app-helper")
@@ -117,9 +97,8 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         XCTAssertEqual(found.first?.tier, .A)
     }
 
-    /// The identifier followed by a dot is the ordinary way a helper is named,
-    /// and a privileged helper blessed by `SMJobBless` has to be named that way
-    /// because its label is its own bundle identifier.
+    /// The identifier and a dot is how helpers are named, and how `SMJobBless`
+    /// requires a privileged helper's label to be.
     func testTheIdentifierFollowedByADotIsStillDirect() async throws {
         try makeJob(label: "com.example.app.helper")
 
@@ -127,9 +106,8 @@ final class LaunchdLabelBoundaryTests: XCTestCase {
         XCTAssertEqual(found.first?.tier, .A)
     }
 
-    /// **Recall is not lost for a developer who skipped the dot.** A helper
-    /// whose program lives inside the application's bundle is proven by where
-    /// it runs from, whatever its label says.
+    /// A helper whose program runs from inside the bundle is proven by where it
+    /// runs, whatever its label.
     func testAHelperWithoutADotIsStillProvenByWhereItRunsFrom() async throws {
         let bundle = root.url(for: .applications).appendingPathComponent("App.app")
         try fm.createDirectory(at: bundle.appendingPathComponent("Contents"),

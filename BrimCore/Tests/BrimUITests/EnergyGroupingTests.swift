@@ -2,13 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimUI
 
-/// One row per application, not per process.
-///
-/// The Energy list showed ChatGPT seven times and Claude three times,
-/// because each is a crowd of processes: a renderer, a GPU helper, a crash
-/// reporter, a network service, each with its own pid. The sampler was
-/// right, it already resolves every helper back to the outermost bundle.
-/// The list was simply showing what it was given.
+/// One row per application, not per process: helpers resolve to the
+/// outermost bundle.
 @MainActor
 final class EnergyGroupingTests: XCTestCase {
 
@@ -49,9 +44,8 @@ final class EnergyGroupingTests: XCTestCase {
     }
 
     func testACommandLineToolIsNotFoldedIntoTheAppOfTheSameName() {
-        // `claude` the terminal tool and Claude.app are different programs
-        // that happen to share a name. Grouping on the bundle keeps them
-        // apart, and the tool has no bundle at all.
+        // A terminal tool and an app that share a name stay apart; the tool has no
+        // bundle.
         let rows = EnergyModel.group([
             measured(bundle: "/Applications/Claude.app", executable: "/Applications/Claude.app/Contents/MacOS/Claude"),
             measured(bundle: nil, executable: "/usr/local/bin/claude")
@@ -79,19 +73,9 @@ final class EnergyGroupingTests: XCTestCase {
     }
 }
 
-/// What the panel is allowed to show.
-///
-/// The defect that prompted this: `powerd` appeared under "Keeping this Mac
-/// awake" holding an assertion named "Prevent sleep while display is on".
-/// That is macOS working correctly. The display is on because somebody is
-/// using the Mac, and the assertion goes when they stop. Read by anybody who
-/// did not already know that, it said an internal process was stopping their
-/// Mac from ever sleeping, which is alarming and false.
-///
-/// The same argument removes the rest of the services. `coreaudiod` is busy
-/// because Music is playing; `WindowServer` is busy because there are pixels.
-/// Naming them beside the app that caused them offers four suspects for one
-/// event, three of which nobody can act on.
+/// What the panel may show. macOS services busy on behalf of an app, such as
+/// `powerd` holding sleep off while the display is on, are not listed beside
+/// it: that is macOS working, and nobody can act on it.
 @MainActor
 final class EnergyScopeTests: XCTestCase {
 
@@ -120,8 +104,8 @@ final class EnergyScopeTests: XCTestCase {
         }
     }
 
-    /// An application Apple ships is still an application. The line is not
-    /// who wrote it, it is whether there is a window to quit.
+    /// An app Apple ships is still an app; the line is whether there is a window
+    /// to quit.
     func testApplicationsAreShownWhoeverWroteThem() {
         let shown = [
             reading("/System/Applications/Music.app/Contents/MacOS/Music",
@@ -135,9 +119,8 @@ final class EnergyScopeTests: XCTestCase {
         }
     }
 
-    /// Wakeups still decide what a row *says*, they are just never printed
-    /// as a number. 1331 wakeups in two seconds is ordinary for an Electron
-    /// app and alarming to read, and nobody can act on the figure.
+    /// Wakeups decide the wording but are never printed: the figure alarms and
+    /// nobody can act on it.
     func testWakeupsDecideTheWordingWithoutBeingShown() {
         let busy = EnergyModel.Reading(
             identity: RunningProcessIdentity.of(bundlePath: nil, executablePath: "/opt/homebrew/bin/x"),
@@ -146,8 +129,7 @@ final class EnergyScopeTests: XCTestCase {
         )
         XCTAssertEqual(busy.dominantCost(over: 2).sentence, "Waking up often")
 
-        // Five wakeups in two seconds is not "often", and every row saying
-        // the same thing is the same as no row saying anything.
+        // A few wakeups is not "often", or every row says the same thing.
         let quiet = EnergyModel.Reading(
             identity: RunningProcessIdentity.of(bundlePath: nil, executablePath: "/opt/homebrew/bin/y"),
             processCount: 1, cpuNanoseconds: 20_000_000, wakeups: 5, bytesMoved: 0,

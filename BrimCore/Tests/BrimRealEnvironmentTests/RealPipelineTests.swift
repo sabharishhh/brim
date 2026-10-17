@@ -3,11 +3,8 @@ import BrimCore
 import BrimProtocol
 @testable import BrimService
 
-/// Drives the real pipeline against the real machine: real domains, the real
-/// scanner, the real Trash.
-///
-/// Opt-in via `BRIM_REAL_ENV=1`. Everything it creates is namespaced and
-/// removed in teardown, and it never plans against a target it did not make.
+/// The real pipeline against the real machine: real domains, scanner and
+/// Trash. Everything it creates is namespaced and removed in teardown.
 final class RealPipelineTests: XCTestCase {
 
     private var fixture = RealEnvironmentFixture()
@@ -28,8 +25,8 @@ final class RealPipelineTests: XCTestCase {
         super.tearDown()
     }
 
-    /// The real service: root `/`, real scanning, stores kept in a temp
-    /// directory so a harness run never touches the user's own ledger.
+    /// Root `/` and real scanning, with stores in a temporary directory so the
+    /// user's own ledger is never touched.
     private func makeService() -> BrimService {
         BrimService(
             root: FileSystemRoot(rootURL: URL(fileURLWithPath: "/")),

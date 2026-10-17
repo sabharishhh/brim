@@ -1,9 +1,9 @@
 import XCTest
 @testable import BrimCore
 
-/// The search that decides whether something is a leftover at all, and which
-/// kind. Its ordering is the safety property: the cost of calling a live
-/// app's data "orphaned" is a user deleting something they still need.
+/// The search that decides whether something is a leftover, and which kind.
+/// Its ordering is the safety property: calling a live app's data orphaned
+/// gets it deleted.
 final class OwnershipSearchTests: XCTestCase {
 
     private func search(
@@ -38,9 +38,7 @@ final class OwnershipSearchTests: XCTestCase {
         XCTAssertNil(s.ownership(of: "Acme").category)
     }
 
-    /// T-5.1 acceptance: the fixture's second-volume app is not reported as
-    /// orphaned. An app on an external volume is installed software, and the
-    /// walk that finds it covers every mounted volume.
+    /// An app on another volume is installed software, not orphaned.
     func testAnApplicationOnAnotherVolumeIsNotOrphaned() {
         let s = search(installedBundleIDs: ["com.acme.app"])
         XCTAssertNotEqual(s.ownership(of: "com.acme.app").category, .orphaned)
@@ -61,8 +59,7 @@ final class OwnershipSearchTests: XCTestCase {
     // MARK: - Orphaned
 
     func testARegistrationPointingAtNothingIsTheOrphanEvidence() {
-        // macOS recorded the app as installed and it has gone: exactly the
-        // spec's definition of orphaned.
+        // macOS recorded the app as installed and it has gone: orphaned.
         let s = search(launchServices: ["com.acme.app": [URL(fileURLWithPath: "/Applications/Acme.app")]])
         let verdict = s.ownership(of: "com.acme.app")
         XCTAssertEqual(verdict.category, .orphaned)
@@ -86,8 +83,8 @@ final class OwnershipSearchTests: XCTestCase {
     // MARK: - Unclaimed
 
     func testSomethingNobodyClaimsIsUnclaimedNotOrphaned() {
-        // The two are never merged: unclaimed means the search came back
-        // empty, which is not the same as knowing the owner has gone.
+        // Unclaimed means the search came back empty, not that the owner is known
+        // to be gone.
         let s = search()
         XCTAssertEqual(s.ownership(of: "com.mystery.thing").category, .unclaimed)
     }
@@ -95,9 +92,8 @@ final class OwnershipSearchTests: XCTestCase {
     // MARK: - Ordering
 
     func testPresenceBeatsEveryRecordThatSaysOtherwise() {
-        // A receipt, a Brim removal and a stale registration all say the
-        // owner is gone. The app is on disk. Presence wins, because the cost
-        // of getting this backwards is deleting live data.
+        // Every record says the owner is gone, but the app is on disk. Presence
+        // wins.
         let path = "/Volumes/External/Acme.app"
         let s = search(
             installedBundleIDs: ["com.acme.app"],
@@ -110,8 +106,7 @@ final class OwnershipSearchTests: XCTestCase {
     }
 
     func testALiveRegistrationBeatsAStaleOne() {
-        // Two copies recorded, one still present: that is an owner, not an
-        // orphan.
+        // Two copies recorded, one still present: an owner, not an orphan.
         let live = "/Applications/Acme.app"
         let s = search(
             launchServices: ["com.acme.app": [

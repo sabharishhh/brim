@@ -2,9 +2,8 @@
 import Foundation
 import Testing
 
-/// `brew upgrade` wrote to a pipe nobody read. Homebrew updates itself
-/// first and can print long lists of new formulae, and past what a pipe
-/// holds brew waited on Brim while Brim waited on brew.
+/// `brew upgrade` can print more than a pipe holds, so its output must be
+/// drained or it waits on Brim forever.
 struct HomebrewOutputTests {
     @Test func `a brew that says a great deal still finishes`() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("brew-\(UUID().uuidString)")

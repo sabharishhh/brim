@@ -86,17 +86,9 @@ final class EvidenceSourceTests: XCTestCase {
             evidence.append(contentsOf: try await source.evidence(for: identity, in: root))
         }
         
-        // Load expected manifest.
-        //
-        // `Group Containers/TEAMID1234.com.brim.classic` moved from Tier B
-        // to Tier C here, and that was the point rather than a casualty. It
-        // is matched on the team identifier, which belongs to the developer
-        // rather than to one of their applications: Microsoft puts one
-        // string on Word, Teams, OneDrive and Visual Studio Code alike. A
-        // golden file is only as good as the behaviour it was copied from.
-        //
-        // The file-name match is now Tier C too. The uninstall sheet offers
-        // unselected rows, so it remains available through explicit selection.
+        // The expected manifest. A group container matched on the team identifier
+        // is Tier C, since the team names a developer, not one of their apps; the
+        // file name match is Tier C too and still offered unticked.
         let manifestURL = Bundle.module.url(forResource: "classic", withExtension: "json", subdirectory: "Manifests")!
         let manifest = try JSONDecoder().decode(ExpectedEvidenceManifest.self, from: Data(contentsOf: manifestURL))
         

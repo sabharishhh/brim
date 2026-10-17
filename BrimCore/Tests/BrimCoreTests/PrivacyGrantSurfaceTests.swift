@@ -4,11 +4,8 @@ import Foundation
 import SQLite3
 import XCTest
 
-/// A privacy permission outlives the program it was given to.
-///
-/// On 6 October Full Disk Access still listed
-/// `/Library/PrivilegedHelperTools/com.microsoft.autoupdate.helper` long
-/// after Microsoft AutoUpdate was removed, and nothing in Brim said so.
+/// A privacy permission outlives the program it was given to, and is
+/// reported.
 final class PrivacyGrantSurfaceTests: XCTestCase {
     private var folder: URL!
     private var root: FileSystemRoot!
@@ -28,8 +25,8 @@ final class PrivacyGrantSurfaceTests: XCTestCase {
             .init(service: "kTCCServiceAccessibility", client: helper, isPath: true),
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/usr/local/bin/tool", isPath: true),
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "com.binance.BinanceDesktop", isPath: false),
-            // Switched off, for a helper that is gone: Settings still lists
-            // it, and its minus button removes it.
+            // Switched off, for a helper that is gone: Settings still lists it, and its
+            // minus button removes it.
             .init(service: "kTCCServiceSystemPolicyAllFiles", client: "/Library/PrivilegedHelperTools/gone.off",
                   isPath: true, isAllowed: false)
         ])

@@ -1,9 +1,7 @@
 import XCTest
 @testable import BrimService
 
-/// Presence has to survive a relaunch, or the first destructive action of
-/// every session costs a fingerprint, which during a build-and-test loop is
-/// most of them, and is what made this tiring enough to complain about.
+/// Presence within one launch, and the grace window's limits.
 final class PresenceStoreTests: XCTestCase {
 
     private var directory: URL!
@@ -29,17 +27,14 @@ final class PresenceStoreTests: XCTestCase {
     func testEnrolmentSurvivesARelaunch() async {
         await PresenceStore(directoryURL: directory).recordEnrolment()
 
-        // A second store over the same directory is what the next launch
-        // sees.
+        // A second store over the same directory is what the next launch sees.
         let next = PresenceStore(directoryURL: directory)
         let enrolled = await next.isEnrolled
         XCTAssertTrue(enrolled, "Setup must happen once, not once per launch")
     }
 
-    /// The grace window used to carry over a relaunch, read from a file in
-    /// the person's own folder. Any program they run can write that file, so
-    /// a time written there before Brim opened skipped the fingerprint for a
-    /// permanent deletion. A relaunch now costs one prompt.
+    /// The grace window is never read back from disk: any program the person
+    /// runs could write a time there and skip the fingerprint.
     func testPresenceDoesNotSurviveARelaunch() async throws {
         await PresenceStore(directoryURL: directory).recordEnrolment()
         let forged = #"{"enrolledAt":800000000,"lastPresence":\#(Date().timeIntervalSinceReferenceDate)}"#
@@ -53,8 +48,7 @@ final class PresenceStoreTests: XCTestCase {
     }
 
     func testEnrolmentCountsAsPresence() async {
-        // Someone who has just confirmed at the welcome screen has plainly
-        // proved they are here; asking again a second later would be absurd.
+        // Confirming at the welcome screen counts as presence.
         let store = PresenceStore(directoryURL: directory)
         await store.recordEnrolment()
         let presence = await store.lastPresence
@@ -62,8 +56,7 @@ final class PresenceStoreTests: XCTestCase {
     }
 
     func testATimestampInTheFutureIsIgnored() async {
-        // A clock moved backwards would otherwise leave a record that
-        // satisfies the grace window indefinitely.
+        // A clock moved backwards must not satisfy the window indefinitely.
         let store = PresenceStore(directoryURL: directory)
         await store.recordPresence(at: Date().addingTimeInterval(3600))
         let presence = await store.lastPresence
