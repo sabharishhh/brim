@@ -53,7 +53,7 @@ final class PlannerTests: XCTestCase {
     func testANameOnlyMatchStillSaysSoOnEveryRow() {
         // The one tier worth repeating: a C row rests on a shared name.
         let rendered = ExplanationRenderer().render(
-            tier: .C, capability: .ok, mechanism: "HeuristicSource",
+            tier: .C, capability: .ok, mechanism: "BundleIdentifierComponentSource",
             found: "Shares a name with the application"
         )
         XCTAssertTrue(rendered.contains("name alone"), rendered)
