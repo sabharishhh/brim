@@ -1,8 +1,8 @@
 # Security policy
 
 Brim removes files and can run a process with administrator rights for a
-removal you approve, so security problems matter more here than in most
-apps.
+removal you approve, so a security problem in Brim can cost someone their
+files.
 
 ## Supported versions
 
