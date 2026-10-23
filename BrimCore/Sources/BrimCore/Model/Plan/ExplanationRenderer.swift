@@ -62,7 +62,6 @@ public struct ExplanationRenderer: Sendable {
         case "InstallerPayloadSource": "Installed by the same installer as the application."
         case "TeamIDSource": "Signed by the same developer as the application."
         case "BundleIdentifierComponentSource": "Named after the application's bundle identifier."
-        case "HeuristicSource": "Named after the application or its vendor."
         case "DirectTarget": "You picked this one."
         default: "Found while tracing this application."
         }
