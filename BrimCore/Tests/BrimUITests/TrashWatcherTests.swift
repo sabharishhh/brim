@@ -1,9 +1,7 @@
 import XCTest
 @testable import BrimUI
 
-/// The watcher is what makes the app notice the user emptying the Trash in
-/// Finder. If it silently stops firing, the UI goes stale and nothing else
-/// catches it, so the contract is pinned here against a real directory.
+/// The watcher is how the app notices the Trash being emptied in Finder.
 final class TrashWatcherTests: XCTestCase {
 
     private func makeTempDir() throws -> URL {
@@ -54,8 +52,8 @@ final class TrashWatcherTests: XCTestCase {
     }
 
     func testABurstOfChangesCoalescesIntoOneNotification() async throws {
-        // Emptying the Trash removes many items at once. The UI wants the
-        // settled state, not one refresh per file.
+        // Many items go at once; the UI wants the settled state, not one refresh
+        // per file.
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -124,10 +122,8 @@ final class TrashWatcherTests: XCTestCase {
     }
 
     // MARK: - Fallback when event monitoring is refused
-    //
-    // Opening ~/.Trash for events needs Full Disk Access and fails with EPERM
-    // without it. That is the real configuration on an ordinary machine, so
-    // the polling path matters more than the event path.
+    // Opening `~/.Trash` for events needs Full Disk Access, so polling is the
+    // common path.
 
     func testFallsBackToPollingWhenTheDirectoryCannotBeOpened() async throws {
         let unopenable = URL(fileURLWithPath: "/dev/null/definitely-not-a-directory")
@@ -159,8 +155,7 @@ final class TrashWatcherTests: XCTestCase {
     }
 
     func testPollingStopsWhileInactiveAndResumesOnActivation() async throws {
-        // A backgrounded Brim should not be waking up to check a directory
-        // nobody is looking at.
+        // A backgrounded Brim does not poll.
         let unopenable = URL(fileURLWithPath: "/dev/null/nope")
         let counter = Counter()
         let watcher = TrashWatcher(url: unopenable, coalescingWindow: .milliseconds(50), pollInterval: .milliseconds(120))

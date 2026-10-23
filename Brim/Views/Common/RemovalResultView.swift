@@ -5,14 +5,9 @@ import BrimUI
 import SwiftUI
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// What a removal did: what went, and quietly, anything still on this Mac.
-///
-/// It used to set out every count the check produced: places checked,
-/// kinds of registration read, kinds the app does not declare, and kinds
-/// macOS will not list for another app, each under its own heading. A
-/// clean removal read as a partial one. Now the outcome leads, the groups
-/// that went follow in the review's order, and only what actually stayed
-/// is mentioned, in secondary text rather than a warning.
+/// What a removal did: what went leads, the groups that went follow in the
+/// review's order, and anything that stayed is mentioned quietly rather
+/// than as a warning.
 struct RemovalResultView: View {
     let result: VerificationResult
     var plan: Plan?

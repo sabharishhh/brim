@@ -1,14 +1,9 @@
 import Foundation
 
-/// What Brim's helper will take, asked before a plan promises it.
-///
-/// The helper runs as root and applies its own rules in `BrimPrivileged`.
-/// `BrimCore` depends on nothing, so the planner cannot ask those rules
-/// directly, and a plan used to hand the helper anything that needed an
-/// administrator. The helper then refused, or was never connected, and the
-/// person learned after approving that nothing had happened. This is the
-/// planner's reading of the same rules; `HelperScopeAgreementTests` holds
-/// the two to one answer.
+/// What administrator cleanup will take, asked before a plan promises it.
+/// The administrator process applies its own rules in `BrimPrivileged`,
+/// which `BrimCore` cannot import, so this is the planner's reading of the
+/// same rules. `HelperScopeAgreementTests` holds the two to one answer.
 public enum HelperScope {
     /// Where the helper sets aside a launchd job that no longer runs.
     public static let jobFolders: Set<String> = ["/Library/LaunchAgents", "/Library/LaunchDaemons"]
@@ -16,8 +11,8 @@ public enum HelperScope {
     /// Where the helper sets aside a command link that points at nothing.
     public static let commandFolders: Set<String> = ["/usr/local/bin", "/usr/local/sbin"]
 
-    /// Where the helper sets aside a bundle an installer left owned by
-    /// root, and what a bundle there is called.
+    /// Where a bundle an installer left owned by root is set aside, and what a
+    /// bundle there is called.
     public static let bundleFolders: [String: Set<String>] = [
         "/Applications": ["app"],
         "/Library/Audio/Plug-Ins/HAL": ["driver", "plugin"],
@@ -26,11 +21,10 @@ public enum HelperScope {
         "/Library/Audio/Plug-Ins/VST3": ["vst3"]
     ]
 
-    /// Whether the helper would take this path, judged as it will judge it.
-    ///
-    /// A job file's contents are the helper's to check; a plan can only
-    /// promise that the name is one it would consider. A command link can
-    /// be judged completely here, because dead is a fact about the disk.
+    /// Whether administrator cleanup would take this path. A job file's contents
+    /// are checked there; a plan can only promise the name is one it would
+    /// consider. A command link can be judged fully here, since dead is a fact
+    /// about the disk.
     public static func covers(_ path: String) -> Bool {
         let folder = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
@@ -59,8 +53,8 @@ public enum HelperScope {
         return payloadPackage(for: path) != nil && !isApples(bundleAt: path)
     }
 
-    /// Caches only root can empty. A cache is rebuilt by its owner, so the
-    /// helper asks only whose it is.
+    /// Caches only root can empty. A cache is rebuilt by its owner, so only
+    /// whose it is matters.
     public static let cacheFolders: Set<String> = ["/Library/Caches"]
 
     /// Preference files an app's installer left for every account. Files
@@ -73,9 +67,8 @@ public enum HelperScope {
         return labels.count >= 3 && labels.allSatisfy { !$0.isEmpty }
     }
 
-    /// The first two labels of every name macOS itself ships outside
-    /// `com.apple`, such as `org.cups`, read from this Mac's own system
-    /// folders. The printer list is `org.cups.printers.plist`.
+    /// The first two labels of every name macOS ships outside `com.apple`, such
+    /// as `org.cups`, read from this Mac's system folders.
     static func systemFamilies() -> Set<String> {
         var families = Set<String>()
         let candidates = ["/System/Library/LaunchDaemons", "/System/Library/LaunchAgents",
@@ -104,10 +97,9 @@ public enum HelperScope {
 
     public static let receipts = URL(fileURLWithPath: "/private/var/db/receipts")
 
-    /// The package whose receipt puts this application where the helper
-    /// will take it from: directly inside the folder the package installed
-    /// into, at least three levels into `/Library`. Microsoft AutoUpdate,
-    /// installed by Teams' installer into Application Support, is the case.
+    /// The package whose receipt puts this application where administrator
+    /// cleanup takes it from: directly inside the folder the package installed
+    /// into, at least three levels into `/Library`.
     public static func payloadPackage(for path: String, receipts: URL = receipts) -> String? {
         let folder = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
@@ -140,35 +132,30 @@ public enum HelperScope {
         return lstat(path, &info) != 0 || (info.st_mode & S_IFMT) == S_IFLNK
     }
 
-    /// The helper also checks the signature, which a plan cannot do
-    /// cheaply for every row; the identifier catches macOS's own.
+    /// The administrator process also checks the signature, which a plan cannot
+    /// do cheaply for every row; the identifier catches macOS's own.
     static func isApples(bundleAt path: String) -> Bool {
         let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")
         let identifier = (info?["CFBundleIdentifier"] as? String)?.lowercased() ?? ""
         return identifier.hasPrefix("com.apple.")
     }
 
-    /// Folders whose contents decide how this Mac signs in or unlocks.
-    /// Nothing there is removed by Brim, whoever's it is.
+    /// Folders that decide how this Mac signs in or unlocks. Brim removes
+    /// nothing there, whoever's it is.
     static let signInFolders: Set<String> = [
         "/Library/Security/SecurityAgentPlugins"
     ]
 
-    /// Why a plan keeps something out, or nil when the helper will take it.
-    ///
-    /// Anything in a root-owned folder used to become a step for the
-    /// helper, which either was not connected or refused, and the person
-    /// found out after approving. Kept out of the plan instead, with the
-    /// reason, so the review never promises what cannot happen.
+    /// Why a plan keeps something out, or nil when administrator cleanup will
+    /// take it. Kept out with the reason, so the review never promises what
+    /// cannot happen.
     public static func keptOut(_ path: String, bytes: Int64) -> ExcludedItem? {
         guard !covers(path) else { return nil }
         let folder = (path as NSString).deletingLastPathComponent
-        // The folder allows changes, so the item itself refuses: a folder
-        // that is read-only cannot be moved even out of your own Library.
-        // How the Mac unlocks is not Brim's to change. An authorization
-        // plug-in removed while a rule still names it is how a screen stops
-        // accepting its password, so the application's own setting has to
-        // turn it off.
+        // The folder allows changes, so the item itself refuses: a read-only folder
+        // cannot be moved even inside your own Library. How the Mac unlocks is not
+        // Brim's to change: removing an authorization plug-in a rule still names
+        // can stop a screen accepting its password.
         if signInFolders.contains(folder) {
             return ExcludedItem(
                 target: path,
@@ -190,8 +177,9 @@ public enum HelperScope {
         )
     }
 
-    /// A symbolic link whose destination is missing. Anything this process
-    /// cannot see the far end of counts as alive, as it does in the helper.
+    /// A symbolic link whose destination is missing. A link whose far end this
+    /// process cannot see counts as alive, as it does in the administrator
+    /// process.
     public static func isDeadLink(_ path: String) -> Bool {
         var own = stat()
         guard lstat(path, &own) == 0, (own.st_mode & S_IFMT) == S_IFLNK else { return false }

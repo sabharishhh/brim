@@ -4,18 +4,10 @@ import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
 
-/// A download with progress, into a folder Brim owns.
-///
-/// A connection that drops is picked up where it stopped: the partial
-/// download's resume data is kept per address, used on the next attempt,
-/// and two attempts are made on their own before the update is reported as
-/// failed. A server that will not resume starts again from nothing.
-///
-/// Cancelling the task that asked keeps what has arrived the same way, so
-/// pressing Update again carries on from there. What is kept for resuming
-/// is deleted once it is a day old (`resumeLifetime`), with the partial file
-/// URLSession holds for it, so a cancelled download does not sit in the
-/// temporary folder forever.
+/// A download with progress, into a folder Brim owns. A dropped connection
+/// resumes from saved resume data, with two automatic attempts before
+/// failing. Cancelling keeps what arrived for the next attempt. Resume data
+/// and the partial file are deleted once a day old (`resumeLifetime`).
 final class UpdateDownloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     /// How long a stopped download is kept for resuming.
     static let resumeLifetime: TimeInterval = 24 * 60 * 60
@@ -119,8 +111,8 @@ final class UpdateDownloader: NSObject, URLSessionDownloadDelegate, @unchecked S
         }
     }
 
-    /// Deletes resume data and the partial download URLSession kept for it
-    /// in the temporary folder, which deleting the resume data alone leaves.
+    /// Deletes resume data and the partial file URLSession kept for it, which
+    /// deleting the resume data alone leaves.
     static func discard(_ resumeFile: URL) {
         if let data = try? Data(contentsOf: resumeFile),
            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {

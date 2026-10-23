@@ -1,27 +1,14 @@
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// The rules the daemon applies before forgetting an installer receipt.
-///
-/// Forgetting a receipt deletes no files. It removes the installer's
-/// record from `/var/db/receipts`, which is why the product keeps showing
-/// in `pkgutil --pkgs` long after it is gone and why an installer can
-/// offer to "repair" something the person thought they had removed. The
-/// folder belongs to root, so this is the daemon's job.
-///
-/// The same three ideas as `PrivilegedJobRemoval`, and they matter as much
-/// here even though nothing is deleted:
-///
-/// 1. **The interface cannot express a path.** A caller names a package
-///    identifier. The daemon builds everything else, and refuses anything
-///    with a separator or a dot-dot in it, so there is nothing to traverse
-///    and nothing to hand a shell.
-/// 2. **The receipt has to already exist.** A caller cannot use this to
-///    probe the filesystem or to make `pkgutil` do something else.
-/// 3. **Nothing of Apple's, ever.** Forgetting a system receipt can leave
-///    a later macOS update unable to reason about what is installed, and
-///    the record cannot be rebuilt. Refused by the daemon by name, rather
-///    than trusting the caller to have filtered them out.
+/// The rules applied before forgetting an installer receipt in
+/// `/var/db/receipts`. Nothing is deleted but the record, which cannot be
+/// rebuilt:
+/// 1. The interface cannot express a path: only a package identifier, with
+///    no separators or dot-dot, never handed to a shell.
+/// 2. The receipt must already exist, so this cannot probe the disk.
+/// 3. Nothing of Apple's, ever: a missing system receipt can confuse a later
+///    macOS update.
 public enum PrivilegedReceiptRemoval {
     /// Where macOS keeps them, and the only folder this looks in.
     public static let receiptDirectory = "/var/db/receipts"
@@ -51,8 +38,8 @@ public enum PrivilegedReceiptRemoval {
         }
     }
 
-    /// The helper independently qualifies the complete file listing, rather
-    /// than trusting the app's earlier read or accepting an arbitrary path.
+    /// The complete file listing is qualified here independently, rather than
+    /// trusting the app's earlier read or accepting a path.
     static func checkPayload(listing: String, prefix: String,
                              exists: (String) throws -> Bool) throws {
         let files = listing.split(separator: "\n").map(String.init)
@@ -68,11 +55,9 @@ public enum PrivilegedReceiptRemoval {
         }
     }
 
-    /// Whether a string is a package identifier and nothing else.
-    ///
-    /// It reaches `pkgutil` as an argument and never touches a shell, but
-    /// a separator or a leading dash would still let it mean something
-    /// other than a package. Checked rather than trusted.
+    /// Whether a string is a package identifier and nothing else. Passed to
+    /// `pkgutil` as an argument, never a shell, but a separator or leading dash
+    /// could still change its meaning.
     public static func isWellFormed(_ packageID: String) -> Bool {
         guard !packageID.isEmpty, packageID.count <= 256 else { return false }
         guard !packageID.hasPrefix("-"), !packageID.hasPrefix(".") else { return false }

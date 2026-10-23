@@ -57,10 +57,8 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
         Self.unique(searchableComponents.flatMap { [$0.bundleIdentifier, $0.signingIdentifier].compactMap(\.self) })
     }
 
-    /// The names of the application's own parts. A library's helpers are
-    /// left out for the same reason their identifiers are: Sparkle's
-    /// `Updater` ships in half the applications on a Mac, and a folder
-    /// called that is nobody's in particular.
+    /// The names of the application's own parts. A library's helpers are left
+    /// out: a helper called `Updater` ships in many apps.
     public var searchableNames: [String] {
         Self.unique(searchableComponents.flatMap(Self.names(of:)))
     }
@@ -86,14 +84,9 @@ public struct IdentitySurface: Codable, Equatable, Hashable, Sendable {
         [component.name, component.bundleName, component.displayName, component.executableName].compactMap(\.self)
     }
 
-    /// A framework, or a helper inside one, named in somebody else's
-    /// namespace belongs to the library, not the application.
-    /// Sparkle's downloader is `org.sparkle-project.DownloaderService` in
-    /// every application that ships Sparkle, re-signed by each, so its
-    /// cookies were offered up with IINA and again with ChatGPT. The
-    /// framework itself is `org.sparkle-project.Sparkle` everywhere too,
-    /// and eqMac's removal took the Sparkle cache Codex keeps inside its
-    /// own cache folder.
+    /// A framework, or a helper inside one, named in someone else's namespace
+    /// belongs to the library, not the app: `org.sparkle-project.*` ships in
+    /// every app that uses Sparkle.
     static func isLibraryHelper(_ component: Component, ownerVendor: String?) -> Bool {
         let inLibrary = component.path.contains(".framework/")
             || (component.path as NSString).pathExtension.lowercased() == "framework"

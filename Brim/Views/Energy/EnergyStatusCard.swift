@@ -2,15 +2,10 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// The battery, the whole Mac's draw and the temperature, in one card.
-///
-/// Two large cards used to say "Temperature: Normal, No slowdown" and
-/// "Power: Plugged in" and nothing else, which is a lot of window for
-/// two facts. The battery's own condition, capacity and cycles sat in
-/// System Settings and System Information, and the whole Mac's draw was
-/// nowhere at all. Temperature is still Apple's thermal state, not
-/// degrees: there is no public interface for a temperature, and the
-/// question a person has is whether the Mac is slowing down.
+/// The battery, the whole Mac's draw and the temperature in one card.
+/// Temperature is Apple's thermal state, not degrees: there is no public
+/// interface for a temperature, and the question is whether the Mac is
+/// slowing down.
 struct EnergyStatusCard: View {
     let battery: BatteryReport?
     let condition: SystemCondition

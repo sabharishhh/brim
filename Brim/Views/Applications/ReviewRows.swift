@@ -10,10 +10,8 @@ struct ReviewRun: Identifiable {
         steps[0].index
     }
 
-    /// One pass. It asked every run so far whether its folder was already
-    /// gathered, once per step, inside the review list's body, so a plan of
-    /// a few thousand cache files did millions of string comparisons on
-    /// every redraw.
+    /// One pass over the steps; checking every run per step did millions of
+    /// string comparisons on every redraw for large plans.
     static func runs(of steps: [Step]) -> [ReviewRun] {
         let byFolder = Dictionary(grouping: steps) { ($0.target as NSString).deletingLastPathComponent }
         var gathered: Set<String> = []
@@ -33,9 +31,8 @@ struct ReviewRun: Identifiable {
     }
 }
 
-/// A section's title as its first row. A pinned header draws its own band
-/// and rule over the rows beneath it, and regions here are told apart by
-/// space and type, never by lines.
+/// A section's title as its first row, not a pinned header, which draws its
+/// own band and rule.
 struct ReviewHeading: View {
     let title: String
     var count: Int?

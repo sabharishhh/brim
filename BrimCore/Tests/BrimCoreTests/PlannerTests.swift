@@ -20,17 +20,8 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(plan.steps.isEmpty)
     }
 
-    /// The Applications pane and the uninstall sheet describe the same row,
-    /// and they used to describe it differently. The pane showed the sentence
-    /// the evidence source wrote when it made the match, "A cache folder
-    /// keyed to the bundle identifier". The sheet threw that away and rebuilt
-    /// prose from the source's class name, giving "The file path exactly
-    /// matches the application's unique identifier. It is highly probable
-    /// this belongs to the application based on developer naming
-    /// conventions." on four rows of one plan, word for word.
-    ///
-    /// The source's sentence is the better one because it knows which rule
-    /// fired rather than only which type ran, so the plan carries it forward.
+    /// A plan step says what the evidence source said when it matched, which
+    /// knows which rule fired, rather than prose rebuilt from its class name.
     func testAPlanStepSaysWhatTheEvidenceSourceSaid() throws {
         let url = URL(fileURLWithPath: "/tmp/planner_test/Library/Caches/com.test.app")
         let evidence = Evidence(
@@ -60,8 +51,7 @@ final class PlannerTests: XCTestCase {
     }
 
     func testANameOnlyMatchStillSaysSoOnEveryRow() {
-        // The one tier worth repeating. A C row rests on a shared name and
-        // nothing else, which changes what somebody should do about it.
+        // The one tier worth repeating: a C row rests on a shared name.
         let rendered = ExplanationRenderer().render(
             tier: .C, capability: .ok, mechanism: "HeuristicSource",
             found: "Shares a name with the application"
@@ -94,9 +84,8 @@ final class PlannerTests: XCTestCase {
         
         let plan = planner.createPlan(from: evaluatedFootprint, intent: intent, engineVersion: "1.0")
         
-        // A whole-app uninstall brackets the removal: grants cleared first
-        // while the bundle exists, its registration retracted after it does
-        // not. So there are two more steps than there are files.
+        // A whole-app uninstall brackets the removal: grants cleared first, the
+        // registration retracted after, so two more steps than files.
         XCTAssertEqual(plan.steps.count, 3)
 
         let privacy = try XCTUnwrap(plan.steps.first { $0.kind == .resetPrivacyGrants })
@@ -108,8 +97,7 @@ final class PlannerTests: XCTestCase {
         XCTAssertEqual(removal.target, rootURL.appendingPathComponent("Test.app").path)
         XCTAssertEqual(removal.expectedBytes, 1024)
 
-        // The ordering that matters: tccutil cannot resolve a bundle that has
-        // already been deleted, so the reset must come first.
+        // `tccutil` cannot resolve a deleted bundle, so the reset comes first.
         let order = plan.executionOrderedSteps.map(\.kind)
         XCTAssertEqual(order.firstIndex(of: .resetPrivacyGrants), 0,
                        "Privacy grants must be cleared before anything is removed")
@@ -122,9 +110,8 @@ final class PlannerTests: XCTestCase {
     }
 
     func testAWholeAppUninstallRetractsTheLaunchServicesRegistration() throws {
-        // Deleting a bundle leaves its Launch Services record behind: the app
-        // keeps appearing in "Open With" and keeps claiming its document
-        // types. Removing the files is not the whole uninstall.
+        // Deleting a bundle leaves its Launch Services record, so removing the
+        // files is not the whole uninstall.
         let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
         let identity = Identity(bundleID: "com.test.app", name: "TestApp")
         let appURL = rootURL.appendingPathComponent("Test.app")
@@ -156,8 +143,8 @@ final class PlannerTests: XCTestCase {
     }
 
     func testTidyingSpecificItemsDoesNotTouchTheRegistration() throws {
-        // Picking one leftover out of the queue is not an uninstall. It must
-        // not unregister the application that still exists.
+        // Removing one leftover is not an uninstall and must not unregister an app
+        // that still exists.
         let rootURL = URL(fileURLWithPath: "/tmp/planner_test")
         let identity = Identity(bundleID: "com.test.app", name: "TestApp")
         let cacheURL = rootURL.appendingPathComponent("Caches/com.test.app")
@@ -201,8 +188,8 @@ final class PlannerTests: XCTestCase {
 
 struct PlannerRevalidationTests {
     @Test func embeddedApplicationRegistrationsStayTheSameWhenReplanningSavedIntent() {
-        // Figma's review had 17 steps, but apply rebuilt 21 after its saved
-        // intent gained the embedded app identities discovered during scanning.
+        // Revalidation must rebuild the same plan the review showed, including
+        // embedded app identities found during scanning.
         let appPath = "/tmp/planner-revalidation/Example.app"
         let rawIdentity = Identity(bundleID: "org.example.app", name: "Example", bundlePath: appPath)
         let helperPaths = [appPath + "/Contents/Frameworks/Example Helper.app",
@@ -235,10 +222,8 @@ struct PlannerRevalidationTests {
     }
 }
 
-/// Recordly's identifier is `dev.recordly.app`, so the folders named for it
-/// end in ".app". They were planned as applications, one Launch Services
-/// step failed on removal, and re-registering one made a Put Back that had
-/// restored every file report that it could not put back.
+/// A folder named for `dev.recordly.app` ends in ".app" but is not a bundle,
+/// so it gets no Launch Services step.
 final class ApplicationBundleTests: XCTestCase {
     func testAFolderNamedLikeAnIdentifierIsNotAnApplication() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

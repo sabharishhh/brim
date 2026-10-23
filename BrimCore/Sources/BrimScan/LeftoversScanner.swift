@@ -7,9 +7,8 @@ import Foundation
 public actor LeftoversScanner {
     public let root: FileSystemRoot
     private let resolver: IdentityResolver
-    /// Launch Services' answer for a bundle identifier. Injected so the
-    /// ownership rules can be tested without depending on what happens to be
-    /// installed on the machine running the suite.
+    /// Launch Services' answer for a bundle identifier, injected so the rules
+    /// can be tested without depending on what is installed.
     private let launchServicesLookup: @Sendable (String) throws -> [URL]
     /// Whether this process can reach protected locations, which decides
     /// whether a container leftover is removable or only visible.
@@ -26,17 +25,12 @@ public actor LeftoversScanner {
     private let protectedAppURL: URL?
 
     /// Registrations whose program has gone, keyed by the bundle they name.
-    /// Supplied by the caller because enumerating them is the registration
-    /// sweep's job, not this scanner's.
+    /// Supplied by the caller; finding them is the registration sweep's job.
     private let staleRegistrationOwners: [String: String]
-    /// Homebrew casks whose application is gone. A package manager's own
-    /// record is exactly the kind of evidence that turns an unattributed
-    /// folder into a named orphan, and nothing was reading it.
+    /// Homebrew casks whose application is gone: a package manager's record
+    /// names the owner of an otherwise unattributed folder.
     private let homebrewOrphans: Set<String>
-    /// Paths another part of Brim already accounts for: the Developer
-    /// catalogue's caches. Homebrew's downloads and SwiftPM's cache were
-    /// listed here as "owner unknown" and on Developer as build caches, and
-    /// Space added them twice.
+    /// Paths Developer already accounts for, so they are not counted twice.
     private let claimedPaths: Set<String>
     /// Applications Brim's snapshots saw installed that have since gone,
     /// by bundle identifier, with when each was last seen.
@@ -85,8 +79,8 @@ public actor LeftoversScanner {
         if let protectedAppURL, FileManager.default.fileExists(atPath: protectedAppURL.path) {
             let own = await resolver.resolve(bundleURL: protectedAppURL)
             gatheredIdentities.append(own)
-            // Both identifiers shipped in older builds. Their preference
-            // and cache records still belong to this running application.
+            // Identifiers older builds shipped under; their preferences and caches
+            // still belong to this running application.
             for oldID in SafetyChecker.identifiersOlderBuildsUsed {
                 gatheredIdentities.append(Identity(bundleID: oldID, name: own.name))
             }
@@ -95,17 +89,9 @@ public actor LeftoversScanner {
         let receiptBundleIDs = await gatherInstallerReceipts()
 
         let activeBundleIDs = Set(activeIdentities.flatMap(\.searchBundleIdentifiers))
-        // The bundle's own `CFBundleName` as well as what the icon says,
-        // because an application's support folder is named after the
-        // former. Visual Studio Code calls itself Code in its
-        // `Info.plist` and writes a hundred and thirty megabytes to
-        // `Application Support/Code`, and the sweep was offering all of
-        // it up while the application was installed and running.
-        //
-        // Read off `Identity` rather than gathered again here. This scanner
-        // learned about `CFBundleName` first and kept the knowledge to
-        // itself, so the uninstall path went on not knowing and failed to
-        // remove the same folder this one correctly refused to offer.
+        // Every name an installed app answers to, `CFBundleName` included, from
+        // `Identity`, so the sweep and the uninstall agree. Visual Studio Code
+        // writes to `Application Support/Code`.
         let activeNames = Set(activeIdentities.flatMap { $0.searchNames.map { $0.lowercased() } })
         let activeGroupContainers = Set(activeIdentities.flatMap(\.searchGroupContainers))
         let activeTeamIDs = Set(activeIdentities.compactMap(\.teamID))
@@ -122,29 +108,14 @@ public actor LeftoversScanner {
             launchServicesLookup: launchServicesLookup
         )
 
-        // Driven by the same inventory the uninstall path uses, rather
-        // than a second list kept by hand. The two had drifted: removing
-        // an application looked in sixty places and sweeping for what
-        // software left behind looked in eight, so /Library, every
-        // installer receipt and every command line tool were invisible.
+        // The same inventory the uninstall uses, so the two look in the same places.
         let domainsToScan = LocationInventory.sweepDomains
 
-        // One task per domain. Each walk reads a different directory tree
-        // and writes nothing the others can see: the ownership search, the
-        // active-application sets and the Homebrew list are all values,
-        // fixed before the walk starts, and the scanner's own stored
-        // properties are all `let`. So the domains are independent by
-        // construction rather than by inspection, which is the only reason
-        // this is safe to run in parallel.
-        //
-        // Sequentially this was the slowest thing in the app: 654ms of
-        // directory enumeration and size accounting, with `Application
-        // Support` and the caches dominating while the small domains
-        // waited their turn. Sorted afterwards, so the answer does not
-        // depend on which domain finished first.
-        // What installed applications wrote, by macOS's own record. ChatGPT's
-        // 1.6 GB `~/.cache/codex-runtimes` was offered as a leftover with no
-        // owner while ChatGPT was installed and using it.
+        // What installed applications wrote, by macOS's own record, so their data
+        // is never offered while they run. The domains are walked in parallel
+        // below: each reads its own tree and shares only values fixed before the
+        // walk, which is what makes that safe. Results are sorted, so the answer
+        // never depends on which domain finished first.
         let writers = ProvenanceSource.owners(of: activeIdentities)
         let vendors = SystemVendors(
             installed: activeIdentities, recorded: knownNames, past: pastIdentities,
@@ -162,10 +133,8 @@ public actor LeftoversScanner {
             Self.protectUncertainOwnership(found, complete: gathered.complete), installed: activeBundleIDs
         )
 
-        // Sorted by size descending. Access time is carried on each item and
-        // may be used to order them, but never to argue that something is
-        // disposable: nothing having read a file lately says nothing about
-        // whether its owner is gone.
+        // Sorted by size. Access time may order items but never argues something is
+        // disposable.
         return leftovers.sorted { $0.size > $1.size }
     }
 
@@ -223,9 +192,8 @@ public actor LeftoversScanner {
         let inventoryRoots = prepared.inventoryRoots
         do {
             let dir = root.url(for: domain)
-            // A vendor folder puts its children on the queue in place of
-            // itself, so the walk is one level deep and only where there
-            // is a reason to go deeper.
+            // A vendor folder queues its children in its place, so the walk goes one
+            // level deeper only where there is a reason.
             var queue: [(url: URL, vendor: String?)] =
                 scanDirectoryLevel1(dir, hidden: domain == .userHomeDotFolders).map { ($0, nil) }
             var cursor = 0
@@ -255,39 +223,25 @@ public actor LeftoversScanner {
                 if domain == .userHomeDotFolders, !name.hasPrefix(".") {
                     continue
                 }
-                // The name to reason about: `Chrome` inside `Google` is
-                // `Google Chrome`, which is what the application is
-                // actually called and the only spelling that matches it.
+                // The name to reason about: `Chrome` inside `Google` is `Google Chrome`,
+                // what the app is called.
                 let qualified = vendor.map { "\($0) \(name)" } ?? name
 
-                // Apple's own data is never the user's to clean up, and the
-                // prefix check has to survive the group-container spelling:
-                // a group container is named `group.com.apple.SHTTS`, which
-                // does not start with `com.apple.` and so was being listed
-                // as a leftover: one of them had been written to under a
-                // minute before the scan.
-                //
-                // Logic and Final Cut are the deliberate exceptions: Apple
-                // ships them separately, they can genuinely be uninstalled,
-                // and their support folders are the largest leftovers on
-                // many machines.
+                // Apple's own data is never the person's to clean up, including group
+                // containers named `group.com.apple.*`. Logic and Final Cut are the
+                // exceptions: Apple ships them separately and they can be uninstalled.
                 if Self.isAppleOwned(name) || Self.isInstalledSystemComponent(name, names: systemLibraryNames) {
                     continue
                 }
 
-                // A name in a family macOS itself ships. CUPS is part of
-                // macOS and names its files `org.cups.*`, so the printer list
-                // in /Library/Preferences was offered as an unclaimed
-                // leftover while every printer on the Mac depended on it.
+                // A name in a family macOS ships, such as CUPS's `org.cups.*`, on which the
+                // printer list depends.
                 if Self.isInSystemFamily(name, families: systemFamilies) {
                     continue
                 }
 
-                // A bundle says whose it is, in its own Info.plist and in its
-                // signature, and that outranks anything its file name
-                // suggests. `ParrotAudioPlugin.driver` is Apple's by its
-                // identifier, and `MSTeamsAudioDevice.driver` is signed by the
-                // team that signed Microsoft Teams, which is installed.
+                // A bundle says whose it is in its `Info.plist` and signature, which
+                // outranks its file name.
                 let signed = Self.bundleSignature(of: item)
                 if let signed, Self.belongsToInstalledSoftware(
                     identifier: signed.identifier, team: signed.team, activeTeams: activeTeamIDs
@@ -295,22 +249,11 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                // Folders in the system domain that macOS itself put
-                // there. They are not named after a bundle, so the
-                // reverse-DNS test above never sees them, and offering to
-                // remove /Library/Application Support/Apple would be a
-                // serious thing to get wrong.
-                //
-                // Unless a third party is known by that name. `Microsoft` in
-                // `/Library/Logs` held Teams' logs and AutoUpdate's after both
-                // had gone, and `Office365` sat in `Application Support/Microsoft`,
-                // and the sweep never looked inside either because neither
-                // name has dots in it. A developer's folder is judged by what
-                // it holds; the folder itself is never offered.
-                //
-                // A bundle is judged by the identifier it declares, never by
-                // its file name. `Flash Player.prefPane` has one dot, so
-                // every third-party plug-in in `/Library` was read as macOS's.
+                // Folders in the system domain that macOS put there, which are not named
+                // for a bundle, so the reverse-DNS test above cannot see them. Unless a
+                // third party is known by that name (`Microsoft` in `/Library/Logs`): a
+                // developer's folder is judged by what it holds and is never offered
+                // itself. A bundle is judged by the identifier it declares, not its name.
                 if vendor == nil, signed?.identifier == nil, containerOwnership?.identifier == nil,
                    Self.isSystemOwnedByName(name, in: domain) {
                     switch vendors.claim(name) {
@@ -326,20 +269,15 @@ public actor LeftoversScanner {
                     }
                 }
 
-                // macOS places files it could not migrate during an update
-                // in these marked folders under /Users/Shared. They are the
-                // person's relocated files, not application residue.
+                // macOS moves files it could not migrate during an update into marked
+                // folders under `/Users/Shared`. They are the person's, not residue.
                 if domain == .sharedUser, Self.isMacOSRelocationFolder(item) {
                     continue
                 }
 
-                // A link is judged by what it points at, never by its
-                // name, and that answer arrives before any of the rest.
-                //
-                // Only a command is a pointer whose missing target means
-                // anything. Chromium keeps its locks as links to tokens like
-                // `sabharishhh.local-8658`, and a running ChatGPT's four
-                // were listed as four removed apps.
+                // A link is judged by what it points at, before anything else. Only a
+                // command's missing target means anything; Chromium keeps locks as links
+                // to tokens that never exist as files.
                 switch Self.symlink(item) {
                 case .some(.resolved):
                     continue
@@ -352,10 +290,8 @@ public actor LeftoversScanner {
 
                 let containerOwner = containerOwnership?.identifier
 
-                // An installed app's claim comes first. Asked after the
-                // developer test below, `Application Support/Codex` was
-                // opened as a developer's folder because "Codex Computer Use"
-                // begins with it, while ChatGPT was installed and using it.
+                // An installed app's claim comes first, before the developer-folder test,
+                // or a folder an installed app uses could be opened as a developer's.
                 let belongsToInstalledApp = isItemActive(
                     item: item, in: domain, vendor: vendor,
                     containerOwner: containerOwner,
@@ -369,21 +305,16 @@ public actor LeftoversScanner {
                     continue
                 }
 
-                // A developer's folder in the person's Library is judged by
-                // what it holds, as it is in /Library. `Microsoft` in
-                // Application Support was only ever looked at whole, because
-                // the one Microsoft app installed, Visual Studio Code, has a
-                // name that does not begin with the developer's.
+                // A developer's folder in the person's Library is judged by what it holds,
+                // as in /Library.
                 if vendor == nil, signed?.identifier == nil, Self.nestable.contains(domain),
                    !Self.systemDomains.contains(domain), vendors.claim(name) == .developer, Self.isDirectory(item) {
                     queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, name) })
                     continue
                 }
 
-                // A folder called `Caches` or `Logs` inside a place apps
-                // keep things is somebody's container, not somebody. Notion
-                // keeps its updater in `Application Support/Caches`, and
-                // the row read "Caches".
+                // A folder called `Caches` or `Logs` inside a place apps keep things is
+                // someone's container, not an owner's name.
                 if vendor == nil, Self.nestable.contains(domain),
                    Self.containerNames.contains(name.lowercased()), Self.isDirectory(item) {
                     queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, nil) })
@@ -408,37 +339,29 @@ public actor LeftoversScanner {
                     owner = resolved
                 }
 
-                // Inside a developer's folder in a system location, anything no
-                // gone product is named in may be shared, an updater or a
-                // licence, and stays while any of that developer's software is
-                // installed. Google's updater serves Chrome from there.
-                // A folder holding a file macOS names for itself is macOS's,
-                // whatever the folder is called: `CallHistoryDB` holds
-                // `com.apple.callhistory.databaseInfo.plist`, and was offered
-                // while macOS wrote to it the same morning.
+                // Inside a developer's folder in a system location, anything no gone
+                // product is named in may be shared (an updater, a licence) and stays while
+                // any of that developer's software is installed. A folder holding a file
+                // macOS names for itself is macOS's, whatever the folder is called.
                 if owner.category == .unclaimed, Self.holdsApplesOwnFile(item) {
                     continue
                 }
-                // Where a name is all there is to go on, only a record of an
-                // app that was here and has gone names an owner. A dot folder
-                // nobody claims is a tool's settings as often as not, and a
-                // crash report nobody claims says nothing about whose it is.
+                // Where a name is all there is, only a record of an app that has gone names
+                // an owner. An unclaimed dot folder or crash report says nothing about
+                // whose it is.
                 if Self.recordOnlyDomains.contains(domain), owner.category != .orphaned {
                     continue
                 }
-                // Nothing names it, and something wrote to it this week.
-                // Whatever that is, it is alive, so this is not what a
-                // removed app left. `Knowledge`, `Animoji` and
-                // `SiriEntityCache` are macOS's and were written the day
-                // they were offered here. Recent writing only ever keeps
-                // a folder out; it never argues that one is a leftover.
+                // Nothing names it and something wrote to it this week, so it belongs to
+                // something alive, not a removed app. Recent writing only ever keeps a
+                // folder out; it never argues one is a leftover.
                 if owner.category == .unclaimed, let window = inUseWithin,
                    Self.newestWrite(in: item).map({ Date().timeIntervalSince($0) < window }) == true {
                     continue
                 }
 
-                // macOS protects it for itself, so it is nobody's leftover
-                // and nobody can remove it.
+                // Protected by macOS for itself: nobody's leftover, and nobody can remove
+                // it.
                 if RemovalCapability.isProtectedBySystem(item.path) {
                     continue
                 }
@@ -455,19 +378,10 @@ public actor LeftoversScanner {
                     evidence += " " + limitation
                 }
 
-                // An empty folder nobody can name gives back nothing and
-                // says nothing. Two hundred and forty-one of them turn a
-                // list somebody has to read into one they scroll past,
-                // which is how a real finding gets missed. An empty
-                // folder that *is* named stays, because then it is
-                // evidence of something.
-                //
-                // Only folders. This used to drop anything measuring
-                // zero, and a file's size was being measured with a
-                // directory enumerator, which answers zero for every
-                // file there is. Preference plists went straight through
-                // it, which is to say the most ordinary leftover on a
-                // Mac was the one thing the sweep could not report.
+                // An empty folder nobody can name frees nothing and says nothing, and
+                // hundreds of them bury real findings. A named empty folder stays, as
+                // evidence. Folders only: files are measured by `lstat`, and a preferences
+                // file is the most ordinary leftover there is.
                 if measured.isEmpty, owner.category != .orphaned, Self.isDirectory(item) {
                     continue
                 }
@@ -497,17 +411,10 @@ public actor LeftoversScanner {
 
     // swiftlint:enable cyclomatic_complexity function_body_length
 
-    /// What every domain's walk matches against, worked out once per scan.
-    ///
-    /// Each walk built these for itself: a subject per installed and per
-    /// removed app, the container claimants and the installed lookup, about
-    /// 19 ms a time across sixty domains, so a domain with nothing in it
-    /// still cost as much as one with something to find. Matching reads
-    /// each identity's identifiers once per file, so they are worked out
-    /// once rather than once per question, and every identifier lowercased
-    /// and every bundle path standardised again for each of thousands of
-    /// folders was most of what asking whether an item belongs to an
-    /// installed app cost.
+    /// What every domain's walk matches against, worked out once per scan
+    /// rather than once per domain: a subject for each installed and removed
+    /// app, the container claimants and the installed lookup, with identifiers
+    /// lowercased and bundle paths standardised once.
     private struct Prepared: Sendable {
         let activeSubjects: [LocationInventory.Subject]
         let pastSubjects: [LocationInventory.Subject]
@@ -647,20 +554,11 @@ public actor LeftoversScanner {
         .systemApplicationScripts, .systemDictionaries
     ]
 
-    /// Whether a plainly-named entry in a system folder belongs to macOS.
-    ///
-    /// `/Library` holds Apple's own work under ordinary names: `Apple`,
-    /// `BTServer`, `iLifeMediaBrowser`, `DiagnosticReports`. Nothing
-    /// about those names says Apple, so the reverse-DNS test misses them
-    /// entirely, and a sweep that offered them as leftovers would be
-    /// offering to break the system.
-    ///
-    /// The rule is narrow on purpose: in a system folder, an entry is a
-    /// candidate only when it is named like a bundle identifier, which is
-    /// how third-party installers name what they leave there. Apple's
-    /// plainly-named folders and anything else unrecognisable stay out.
-    /// `jp.co.nikon.UninstallCenter.Receipts` is a leftover;
-    /// `iLifeMediaBrowser` is macOS.
+    /// Whether a plainly named entry in a system folder belongs to macOS.
+    /// `/Library` holds Apple's work under ordinary names (`Apple`, `BTServer`),
+    /// which the reverse-DNS test cannot see. So in a system folder only an
+    /// entry named like a bundle identifier is a candidate, which is how
+    /// third-party installers name what they leave.
     static func isSystemOwnedByName(_ name: String, in domain: FileSystemRoot.Domain) -> Bool {
         guard systemDomains.contains(domain) else { return false }
 
@@ -688,9 +586,8 @@ public actor LeftoversScanner {
         return families.contains(parts.prefix(2).joined(separator: "."))
     }
 
-    /// Apple's by identifier, or signed by a team that also signed an
-    /// installed application. A vendor that is still here may still use it,
-    /// and "might be in use" is not a leftover.
+    /// Apple's by identifier, or signed by a team that also signed an installed
+    /// application: a vendor still here may still use it.
     static func belongsToInstalledSoftware(
         identifier: String?, team: String?, activeTeams: Set<String>
     ) -> Bool {
@@ -703,14 +600,12 @@ public actor LeftoversScanner {
         return false
     }
 
-    /// The identifier and signing team a bundle declares, or nil when this
-    /// is not a bundle. Read only for bundles, so a folder of caches costs
-    /// one failed file lookup.
+    /// The identifier and signing team a bundle declares, or nil when this is
+    /// not a bundle.
     static func bundleSignature(of url: URL) -> (identifier: String?, team: String?)? {
         guard let plist = LocationInventorySource.bundleInfo(at: url).values else { return nil }
-        // The team only from a signature that holds up, read the one way
-        // this module reads signatures. A broken signature proves nothing
-        // about who made the bundle.
+        // The team only from a signature that holds up; a broken signature proves
+        // nothing about who made the bundle.
         var team: String?
         if case let .valid(signedBy) = CodeSignature.state(of: url, recordedTeam: nil) {
             team = signedBy
@@ -718,9 +613,9 @@ public actor LeftoversScanner {
         return (plist["CFBundleIdentifier"] as? String, team)
     }
 
-    /// A name is protected only when a corresponding component exists under
-    /// this machine's /System/Library. A generic vendor or framework list
-    /// would age as macOS changes and could hide third-party residue.
+    /// Protected only when a matching component exists in this Mac's
+    /// `/System/Library`. A fixed list would age as macOS changes and could hide
+    /// third-party residue.
     static func isInstalledSystemComponent(_ name: String, names: Set<String>) -> Bool {
         let stem = systemComponentStem(name)
         return names.contains(stem)
@@ -799,20 +694,10 @@ public actor LeftoversScanner {
         case dangling(target: URL)
     }
 
-    /// What a symbolic link is, decided by its target rather than its name.
-    ///
-    /// `/usr/local/bin` is almost entirely links into application
-    /// bundles, and a name match there answers nothing: `code` is Visual
-    /// Studio Code's, `python3` is the framework's, `kubectl` is
-    /// Docker's. Where the link points answers it exactly.
-    ///
-    /// A link whose target is still there is that target's business and
-    /// not a leftover. A link whose target has gone is among the
-    /// cleanest leftovers there is: a command still on the PATH that
-    /// cannot run. Several of them on the machine this was written on,
-    /// left by an uninstalled Docker and Zed, and Brim reported none of
-    /// them, because a link measures zero bytes and the sweep was
-    /// throwing away everything that measured zero.
+    /// What a symbolic link is, decided by its target, not its name:
+    /// `/usr/local/bin` is mostly links into app bundles. A link whose target
+    /// exists is that target's business; one whose target is gone is a command
+    /// on the PATH that cannot run, one of the cleanest leftovers there is.
     static func symlink(_ url: URL) -> LinkVerdict? {
         let manager = FileManager.default
         guard let destination = try? manager.destinationOfSymbolicLink(atPath: url.path) else {
@@ -837,33 +722,25 @@ public actor LeftoversScanner {
             evidence: owner.map {
                 "This command points into the missing \($0)."
             } ?? "This command points to a missing file at \(target.path).",
-            // Asked, not assumed. These sit in `/usr/local/bin` more often
-            // than anywhere else, and that directory belongs to root.
+            // Asked, not assumed: these are usually in `/usr/local/bin`, which belongs
+            // to root.
             capability: RemovalCapability.forDeleting(url.path),
             lastAccessed: nil
         )
     }
 
-    /// The application or framework a path runs through, if any.
-    ///
-    /// `/Applications/Docker.app/Contents/Resources/bin/docker` is
-    /// Docker's whatever the command at the end is called, and saying
-    /// Docker is the difference between a row somebody understands and a
-    /// row saying `kubectl.docker`.
-    /// Reads through to `BrimCore`, so the sweep and the registrations list
-    /// cannot drift on who owns a path.
+    /// The application or framework a path runs through, if any:
+    /// `/Applications/Docker.app/Contents/Resources/bin/docker` is Docker's.
+    /// Read from `BrimCore`, so the sweep and registrations agree.
     static func ownerOfPath(_ url: URL) -> String? {
         EnclosingBundle.component(of: url)
     }
 
     // MARK: - Vendor folders
 
-    /// Domains where one folder can hold several products.
-    ///
-    /// Settings and saved state are keyed by identifier, one file each,
-    /// so there is nothing below them to descend into. Support, caches
-    /// and logs are where a vendor makes a folder of its own and puts
-    /// each product inside it.
+    /// Domains where one folder can hold several products. Settings and saved
+    /// state are one file per identifier; support, caches and logs are where a
+    /// vendor makes a folder and puts each product inside.
     static let nestable: Set<FileSystemRoot.Domain> = [
         .userApplicationSupport, .systemApplicationSupport,
         .userCaches, .systemCaches,
@@ -875,12 +752,9 @@ public actor LeftoversScanner {
         .userCaches, .userApplicationSupport, .userLogs
     ]
 
-    /// Removed applications as the sweep knows them, longest identifier
-    /// first. An app Brim removed itself left its whole identity in the
-    /// plan, helpers included, which says more than any name history kept.
-    /// Any other keeps every name Brim recorded, so a folder named after the
-    /// app, not its identifier, is recognised as its too. Short names say
-    /// too little to match on.
+    /// Removed applications as the sweep knows them, longest identifier first.
+    /// An app Brim removed itself left its whole identity in the plan; any other
+    /// keeps every name Brim recorded. Short names say too little to match on.
     static func pastIdentities(
         _ identifiers: Set<String>, names: [String: String], aliases: [String: [String]], identities: [Identity]
     ) -> [Identity] {
@@ -936,20 +810,10 @@ public actor LeftoversScanner {
         }
     }
 
-    /// The children to judge in place of this folder, when the folder is
-    /// one vendor's and holds more than one product.
-    ///
-    /// The evidence for calling something a vendor folder is narrow on
-    /// purpose: an installed application is called `<this folder> <something
-    /// else>`. `Google` qualifies while Google Chrome is installed,
-    /// because "Google" is how Chrome's name begins and is not the whole
-    /// of it. `Obsidian` never qualifies, so its subfolders of profile
-    /// data are never offered up one by one. Getting that backwards
-    /// turns a single honest row into many wrong ones.
-    ///
-    /// Without this, `~/Library/Application Support/Google/DeadProduct`
-    /// is invisible: the sweep sees `Google`, finds Chrome behind it,
-    /// and walks away from everything else in there.
+    /// The children to judge in place of this folder, when it is one vendor's
+    /// and holds several products. Narrow on purpose: an installed app must be
+    /// called `<this folder> <something else>`, so `Google` qualifies while
+    /// Google Chrome is installed and `Obsidian` never does.
     nonisolated func vendorFolderChildren(
         _ url: URL, in domain: FileSystemRoot.Domain, activeNames: Set<String>
     ) -> [URL]? {
@@ -973,11 +837,9 @@ public actor LeftoversScanner {
         /// Standardised, so a folder can be tested as one an app runs from.
         let bundlePaths: [String]
 
-        /// The identifier or one of its parents, so a helper, widget or
-        /// extension that appends a component to an installed app's
-        /// identifier is that app's. Asked of the name's own dotted
-        /// prefixes, a handful of set lookups, rather than of every
-        /// installed identifier in turn.
+        /// The identifier or one of its parents, so a helper or extension appending
+        /// a component to an installed app's identifier is that app's. Asked of the
+        /// name's own dotted prefixes, a few set lookups.
         func containsIdentifierOrParent(of lowerName: String) -> Bool {
             var candidate = Substring(lowerName)
             while !candidate.isEmpty {
@@ -1009,8 +871,8 @@ public actor LeftoversScanner {
         if ProvenanceSource.owner(of: item, among: writers) != nil {
             return true
         }
-        // A folder an installed application runs from. Microsoft AutoUpdate
-        // lives in `Application Support/Microsoft/MAU2.0`.
+        // A folder an installed application runs from, such as
+        // `Application Support/Microsoft/MAU2.0`.
         let inside = item.standardizedFileURL.path + "/"
         if installed.bundlePaths.contains(where: { $0.hasPrefix(inside) }) {
             return true
@@ -1046,8 +908,8 @@ public actor LeftoversScanner {
             return true
         }
 
-        // Inside a vendor folder the application's real name is the two
-        // put together, and some installers write it with a dot instead.
+        // Inside a vendor folder the app's real name is the two together, which
+        // some installers write with a dot.
         if let vendor {
             if activeNames.contains("\(vendor) \(name)".lowercased()) {
                 return true
@@ -1094,12 +956,9 @@ public actor LeftoversScanner {
                 if bundleIDs.contains(suffix) || names.contains(suffix.lowercased()) {
                     return true
                 }
-                // A suffix that is not a product's identifier names the
-                // developer's shared container, such as Microsoft's
-                // `UBF8T346G9.ms`, which every app of theirs can use. It
-                // stays while any of them is installed: Remnants offered it
-                // while Visual Studio Code's removal held it. A product's
-                // own container, `TEAM.com.example.app`, is still offered
+                // A suffix that is not a product identifier names a developer's shared
+                // container (`UBF8T346G9.ms`), which stays while any of their apps is
+                // installed. A product's own container, `TEAM.com.example.app`, is offered
                 // once that product is gone.
                 if suffix.split(separator: ".").count < 3 {
                     return true
@@ -1153,9 +1012,8 @@ public actor LeftoversScanner {
     private nonisolated func isCommandLineItemActive(
         _ item: URL, in domain: FileSystemRoot.Domain
     ) -> Bool {
-        // A command-line tool keeps its cache and support folder under its
-        // own name, `SwiftLint` for `swiftlint`, with nothing an app
-        // inventory would ever claim.
+        // A command line tool keeps its cache and support folders under its own
+        // name (`SwiftLint` for `swiftlint`), which no app inventory claims.
         if Self.commandNamedDomains.contains(domain), commandIsInstalled(item.lastPathComponent.lowercased()) {
             return true
         }
@@ -1184,12 +1042,8 @@ public actor LeftoversScanner {
         return urls
     }
 
-    /// Which orphaned cask, if any, this item belongs to.
-    ///
-    /// Matched on a whole component rather than a substring: `warp`
-    /// against `dev.warp` is a match, `warp` against `warpdrive` is not.
-    /// A loose match here would put somebody else's data under a name
-    /// that had nothing to do with it.
+    /// Which orphaned cask this item belongs to, matched on a whole component:
+    /// `warp` matches `dev.warp`, not `warpdrive`.
     static func matchingOrphanedCask(
         ownerID: String, name: String, among casks: Set<String>
     ) -> String? {
@@ -1211,9 +1065,8 @@ public actor LeftoversScanner {
         }
     }
 
-    /// The name Brim recorded for this identifier or the application it is
-    /// inside, the longest match winning, so `com.microsoft.teams2.agent`
-    /// is Microsoft Teams too.
+    /// The name recorded for this identifier or the app it is inside, longest
+    /// match winning, so `com.microsoft.teams2.agent` is Microsoft Teams too.
     static func recordedName(for ownerID: String, in names: [String: String]) -> String? {
         let owner = ownerID.lowercased()
         guard !owner.isEmpty, !names.isEmpty else { return nil }
@@ -1224,9 +1077,7 @@ public actor LeftoversScanner {
     /// Something a person can read, instead of a team identifier and a
     /// reverse-DNS name.
     static func readableName(ownerID: String, url: URL, qualified: String? = nil) -> String {
-        // Inside a vendor folder the vendor is half the name, and
-        // dropping it leaves a row saying "Chrome" beside one saying
-        // "Updater" with nothing to connect them.
+        // Inside a vendor folder the vendor is half the name.
         if let qualified, qualified != url.lastPathComponent {
             return qualified
         }
@@ -1245,10 +1096,8 @@ public actor LeftoversScanner {
             let app = candidate.dropLast(suffix.count)
             return app.prefix(1).uppercased() + app.dropFirst()
         }
-        // The last meaningful component of a reverse DNS name:
-        // com.example.app becomes App. A file's extension is not a
-        // product: two scripts in /usr/local/bin, uninstall-container.sh
-        // and update-container.sh, were one row called "Sh".
+        // The last meaningful part of a reverse-DNS name: `com.example.app` is
+        // App. A file extension is not a product name.
         let parts = candidate.split(separator: ".")
         guard let last = parts.last, parts.count > 2 else { return candidate }
         return String(last).capitalized
@@ -1266,8 +1115,7 @@ public actor LeftoversScanner {
         if domain == .userSavedApplicationState && name.hasSuffix(".savedState") {
             return String(name.dropLast(11))
         }
-        // Both are named <teamID>.<bundle id>, so the owner is what
-        // follows the team.
+        // Both are named `<teamID>.<bundle id>`, so the owner follows the team.
         if domain == .userGroupContainers || domain == .userApplicationScripts {
             if let dotIndex = name.firstIndex(of: ".") {
                 return String(name[name.index(after: dotIndex)...])
@@ -1284,23 +1132,11 @@ public actor LeftoversScanner {
         return name
     }
 
-    /// Whether Brim can remove this, rather than only see it.
-    ///
-    /// A sandbox container carries a `containermanagerd` metadata file that
-    /// cannot be unlinked without Full Disk Access, and not by `sudo`
-    /// either, since TCC is judged on the responsible application rather
-    /// than the effective user. Reported honestly so the UI can explain it
-    /// instead of failing.
-    ///
-    /// Everything else asks the permissions, which is the question the old
-    /// default answer of `.ok` was assuming away. Fourteen broken commands
-    /// in `/usr/local/bin` were offered, ticked, planned, authorized and
-    /// then refused by the kernel, because that directory is `root:wheel`
-    /// and `drwxr-xr-x` and unlinking a name edits the directory holding
-    /// it. The person got a wall of text after the fact saying each one
-    /// needed an administrator, which `RemovalCapability` could have said
-    /// before anything was promised. Same incident as the two Keystone jobs
-    /// in `/Library/LaunchAgents`, in a different module.
+    /// Whether Brim can remove this, rather than only see it. A sandbox
+    /// container's metadata cannot be unlinked without Full Disk Access, and
+    /// `sudo` does not help since TCC judges the responsible app. Everything else
+    /// asks the folder's permissions through `RemovalCapability`, so nothing is
+    /// offered that the kernel will refuse.
     private nonisolated func capability(for url: URL, in domain: FileSystemRoot.Domain) -> Capability {
         switch domain {
         case .userContainers, .userGroupContainers:
@@ -1314,22 +1150,15 @@ public actor LeftoversScanner {
         try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate
     }
 
-    /// Every installed application's identity.
-    ///
-    /// Each one carries both names it answers to. `Identity.name` is the
-    /// bundle's file name, so `Visual Studio Code.app` becomes "Visual
-    /// Studio Code"; `Identity.bundleName` is its `CFBundleName`, which is
-    /// what it names its own support folder after, and Visual Studio
-    /// Code's is "Code". Reading only the file name left `Application
-    /// Support/Code` looking unclaimed while the application sat in
-    /// `/Applications`.
+    /// Every installed application's identity, with both its file name and its
+    /// `CFBundleName`, since an app names its support folder after the latter.
     private func gatherActiveAppIdentities() async -> (identities: [Identity], complete: Bool) {
         let inventory = await Task.detached { InstalledBundleInventory.read(in: self.root) }.value
         var identities: [Identity] = []
         var complete = inventory.completeness.isComplete
         let budget = ScanBudget(total: 20)
-        // Read four at a time: one bundle after another, the claims were
-        // 0.83 of the scan's two seconds for 79 bundles on this Mac.
+        // Read four at a time; one after another, this was the slowest part of the
+        // scan.
         let root = root
         let allClaims = await (try? BoundedTasks.map(inventory.bundles, limit: 4) { bundle in
             budget.hasRunOut ? nil : BundleSurfaceReader.protectionClaims(at: bundle, in: root)
@@ -1340,8 +1169,8 @@ public actor LeftoversScanner {
             }
             let identity = await resolver.resolve(bundleURL: bundle)
             complete = complete && claims.complete
-            // These claims are local to the protective sweep, never passed
-            // to the uninstall evidence engine or used to select a deletion.
+            // These claims stay in the protective sweep: never passed to the uninstall
+            // evidence engine or used to select a deletion.
             identities.append(Identity(bundleID: identity.bundleID, teamID: identity.teamID,
                                        name: identity.name, bundleName: identity.bundleName,
                                        groupContainers: claims.surface.groups,

@@ -1,9 +1,7 @@
 import SwiftUI
 
-/// The Tray and the toast, floating at the bottom of the page.
-///
-/// A safe area inset rather than an overlay, so the last rows of a list
-/// scroll up clear of the glass instead of sitting under it.
+/// The Tray and the toast at the bottom of the page. A safe area inset
+/// rather than an overlay, so the last rows scroll clear of the glass.
 struct ShellOverlay: View {
     let tray: TrayContents?
     @Environment(ShellState.self) private var shell
@@ -41,9 +39,8 @@ struct ShellOverlay: View {
         }
         .padding(.bottom, tray == nil && shell.toast == nil ? 0 : 14)
         .frame(maxWidth: .infinity)
-        // The transitions carry their own timing: 180 ms in for a toast,
-        // 220 ms for the tray, 120 ms out for both. These only make the
-        // change animated at all.
+        // The transitions carry their own timing; this only makes the change
+        // animate.
         .animation(Motion.resolved(Motion.trayArrive, reduceMotion: reduceMotion), value: tray == nil)
         .animation(Motion.resolved(Motion.toastArrive, reduceMotion: reduceMotion), value: shell.toast)
     }

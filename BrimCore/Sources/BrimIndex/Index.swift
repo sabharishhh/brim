@@ -2,8 +2,8 @@ import BrimCore
 import Foundation
 import GRDB
 
-/// A concurrency-safe coordinator for the database.
-/// Manages writes sequentially using actor isolation, while exposing concurrent read paths.
+/// Coordinates the database: writes in order through actor isolation, reads
+/// concurrently.
 public actor Index {
     let dbManager: DatabaseManager
 
@@ -23,29 +23,17 @@ public actor Index {
         }
     }
 
-    /// The most recent change: the latest two snapshots that differ,
-    /// subtracted.
-    ///
-    /// Empty when there is only one, which is the honest answer on a
-    /// first run: nothing has changed because there is nothing to
-    /// compare against, and inventing a list of "new" applications the
-    /// first time somebody opens Brim would be a lie that makes every
-    /// later list untrustworthy.
-    ///
-    /// Not simply the last two. Every launch takes a snapshot, so a
-    /// relaunch compared two identical ones and Home's Changes emptied
-    /// each time Brim opened. Each change carries the two moments it fell
-    /// between, so an older change still says when it happened.
+    /// The most recent change: the latest two snapshots that differ, subtracted.
+    /// Empty with only one snapshot, because there is nothing to compare. Not
+    /// simply the last two: every launch takes a snapshot, so those are usually
+    /// identical. Each change carries the two moments it fell between.
     public nonisolated func changesSinceLastScan(
         growthThreshold: Int64 = 50 * 1024 * 1024, lookBack: Int = 60
     ) async throws -> [InstallChange] {
         try await dbManager.dbPool.read { database in
-            // Ordered by the rowid, not by the timestamp. Two scans a
-            // second apart share a stored `observed_at` at this
-            // resolution, and ordering on it then picks between them
-            // arbitrarily: "what changed" came back with the growth
-            // inverted and with a comparison against the wrong snapshot.
-            // The autoincrement is monotonic whatever the clock does.
+            // Ordered by rowid, not timestamp: two scans a second apart share a stored
+            // `observed_at`, and ordering on it picks between them arbitrarily. The
+            // rowid only grows, whatever the clock does.
             let scans = try Row.fetchAll(database, sql: """
             SELECT scan_id, MAX(observed_at) AS at, MAX(id) AS seq FROM observation
             WHERE scan_id IS NOT NULL
@@ -90,9 +78,8 @@ public actor Index {
                 ))
                 continue
             }
-            // Size only counts when the version did not move. An
-            // update that grew is just an update, and saying both
-            // would be two rows for one event.
+            // Size counts only when the version did not change; an update that grew is
+            // one event, not two.
             if let old = before.sizeBytes, let new = now.sizeBytes {
                 let delta = new - old
                 if delta >= growthThreshold {
@@ -146,25 +133,21 @@ public actor Index {
         return result
     }
 
-    /// When each currently installed application began its latest recorded
-    /// period on the disk. A reinstall starts another period.
-    ///
-    /// An application in the first snapshot has no appearance date: it was
-    /// already installed, and nothing Brim recorded says when it arrived.
-    /// By rowid, for the reason `changesSinceLastScan` gives.
+    /// When each installed app began its latest recorded period on the disk; a
+    /// reinstall starts another. An app in the first snapshot has no date: it
+    /// was already here. Ordered by rowid, as in `changesSinceLastScan`.
     public nonisolated func appearances() async throws -> [String: Date] {
         try await appearanceWindows().mapValues(\.seen)
     }
 
-    /// For each app's current installed period: when it began, and when
-    /// Brim had last looked before that. An app
-    /// whose bundle was already on the disk before that earlier look was
-    /// not installed in between; the list simply had not included it.
+    /// For each app's current installed period: when it began, and when Brim
+    /// last looked before that. An app whose bundle was already on disk before
+    /// that look was not installed in between; the list had just not included
+    /// it.
     public nonisolated func appearanceWindows() async throws -> [String: AppearanceWindow] {
         try await dbManager.dbPool.read { database in
-            // Absence and order are facts about snapshots, not timestamps.
-            // Select only current apps' period starts instead of loading
-            // every historical observation into the process.
+            // Absence and order are facts about snapshots, not timestamps. Only current
+            // apps' period starts are selected, not every observation.
             let rows = try Row.fetchAll(database, sql: """
             WITH scans AS (
                 SELECT scan_id, MAX(observed_at) AS at, MAX(id) AS last_row
@@ -205,8 +188,8 @@ public actor Index {
         }
     }
 
-    /// How many snapshots are on record, so the UI can say "first look"
-    /// rather than "nothing changed".
+    /// How many snapshots there are, so the UI can say "first look" rather than
+    /// "nothing changed".
     public nonisolated func snapshotCount() async throws -> Int {
         try await dbManager.dbPool.read { database in
             try Int.fetchOne(database, sql: """
@@ -239,9 +222,9 @@ public actor Index {
         }
     }
 
-    /// Where Brim last saw each of these applications, by bundle
-    /// identifier. Only the last place: an app that moved away from a path
-    /// before it was removed was not replaced by whatever is there now.
+    /// Where Brim last saw each app, by bundle identifier. Only the last place:
+    /// an app that moved before it was removed was not replaced by whatever is
+    /// there now.
     public nonisolated func lastBundlePaths(of identifiers: [String]) async throws -> [String: String] {
         guard !identifiers.isEmpty else { return [:] }
         return try await dbManager.dbPool.read { database in
@@ -322,15 +305,12 @@ public struct AppearanceWindow: Sendable, Equatable {
 }
 
 public extension Index {
-    /// Every installation the snapshots record, removed apps included.
-    ///
-    /// A period starts where an app is in a snapshot and was not in the one
-    /// before. A first appearance counts only when nothing shows the bundle
-    /// was already on the disk at Brim's previous look, the rule
-    /// `appearanceWindows` gives; an appearance after an absence is a
-    /// reinstall. Apps inside another app arrive with it and are left out.
-    /// The date is Spotlight's date added when it falls inside the window
-    /// between the two looks, and the look that found it otherwise.
+    /// Every installation the snapshots record, removed apps included. A period
+    /// starts where an app is in a snapshot and not the one before; a first
+    /// appearance counts only under `appearanceWindows`' rule, and one after an
+    /// absence is a reinstall. Apps inside another app are left out. The date is
+    /// Spotlight's date added when it falls between the two looks, otherwise the
+    /// look that found it.
     nonisolated func installRecords() async throws -> [InstallRecord] {
         try await dbManager.dbPool.read { database in
             let rows = try Row.fetchAll(database, sql: """

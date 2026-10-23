@@ -14,8 +14,7 @@ extension View {
 
 // MARK: - Status chip
 
-/// A word in a capsule for a state the row is in: Kept, Needs the helper,
-/// Staying.
+/// A word in a capsule for a row's state, such as Staying.
 struct StatusChip: View {
     enum Tone { case neutral, accent, caution }
 

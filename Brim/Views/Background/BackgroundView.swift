@@ -4,18 +4,10 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// What your software runs in the background, and what macOS is still being
-/// told to run for software that is no longer here.
-///
-/// This is the surface the whole product grew out of. Remove an app without
-/// deregistering it and System Settings goes on listing its background item,
-/// often as a bare identifier with no name, and no amount of deleting files
-/// clears it.
-///
-/// Apple's own registrations are not here and there is no switch to add
-/// them. They were 1,398 rows of the 1,421 on this Mac, and nothing among
-/// them could be removed or was worth reading. `BackgroundModel` holds the
-/// measurement.
+/// What your software runs in the background, and what macOS is still told
+/// to run for software that is gone. Removing an app's files does not remove
+/// its background item. Apple's own registrations are left out: almost all
+/// of them, and none removable.
 struct BackgroundView: View {
     @AppStorage(FullDiskAccess.requestedKey) private var accessRequestedAt = 0.0
     @ObservedObject var model: BackgroundModel
@@ -227,8 +219,8 @@ struct BackgroundView: View {
 extension BackgroundView {
     // MARK: - Notices
 
-    /// What could not be read, and what needs the helper. Only genuine
-    /// gaps: a surface left alone on purpose is not a fault and gets nothing.
+    /// What could not be read, and what needs administrator cleanup. Surfaces
+    /// left alone on purpose are not gaps.
     @ViewBuilder
     private var notices: some View {
         let faults = model.faults

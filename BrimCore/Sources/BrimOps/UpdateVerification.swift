@@ -6,8 +6,8 @@ import Security
 extension UpdateInstaller {
     // MARK: - Checking
 
-    /// Nil when the candidate may replace the installed application. An
-    /// outcome when it is not needed, and an error when it is refused.
+    /// Nil when the candidate may replace the installed app; an outcome when it
+    /// is not needed; an error when it is refused.
     static func verify(_ candidate: URL, replacing installed: URL) throws -> UpdateOutcome? {
         guard identifier(of: candidate)?.lowercased() == identifier(of: installed)?.lowercased() else {
             throw Failure.differentApplication
@@ -50,8 +50,8 @@ extension UpdateInstaller {
         else { throw Failure.notSignedBySameDeveloper }
     }
 
-    /// `spctl` is Gatekeeper's own assessment, notarization included; the
-    /// API behind it is not available to Swift.
+    /// `spctl` is Gatekeeper's own assessment, notarization included; its API is
+    /// not available to Swift.
     static func passesGatekeeper(_ candidate: URL, type: String = "execute") -> Bool {
         run("/usr/sbin/spctl", ["--assess", "--type", type, candidate.path], timeout: 120)
     }
@@ -90,15 +90,9 @@ extension UpdateInstaller {
         guard passesGatekeeper(package, type: "install") else { throw Failure.gatekeeper }
     }
 
-    /// The team of the certificate that signed a package, from the first
-    /// entry of `pkgutil --check-signature`'s certificate chain, and from
-    /// nowhere else.
-    ///
-    /// The check used to look for "Developer ID Installer:" and "(TEAM)"
-    /// anywhere in the output and ignored the exit status, but the output
-    /// begins with the file name, which the download server chooses. A
-    /// package signed by anybody's Developer ID and named `Update (TEAM).pkg`
-    /// passed as the app's own developer's.
+    /// The team of the certificate that signed a package, from the first entry
+    /// of `pkgutil --check-signature`'s chain and nowhere else: the output
+    /// begins with the file name, which the download server chooses.
     static func installerTeam(fromSignatureCheck output: String) -> String? {
         let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         guard let chain = lines.firstIndex(of: "Certificate Chain:"), chain + 1 < lines.count else { return nil }

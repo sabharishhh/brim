@@ -10,8 +10,7 @@ final class AppDataLedgerTests: XCTestCase {
     )
     private let xcode = AppDataLedger.App(name: "Xcode", bundlePath: "/Applications/Xcode.app", bundleBytes: 10000)
 
-    /// On this Mac both claimed `~/.claude`: summed as they came, 13 GB
-    /// was counted twice and a 0 MB handler read as a 13 GB app.
+    /// A folder two apps claim is counted once, for the larger bundle.
     func testAFolderTwoAppsClaimGoesOnceToTheLargerBundle() {
         let data = AppDataLedger.attribute(apps: [claude, handler], claims: [
             .init(bundlePath: claude.bundlePath, path: "/Users/me/.claude", bytes: 13000),

@@ -36,15 +36,11 @@ public struct GroupRule<Item> {
     }
 }
 
-/// How every collection is organised before anyone searches it.
-///
-/// Each item lives in exactly one group, the first rule it matches, and
-/// every other fact about it is said on its row. The order rules are
-/// tried in is not the order groups are shown in: macOS's own things are
-/// taken first, so nothing of Apple's is offered as unused, and shown last.
-/// Empty groups are not shown. About four groups are open at once, which
-/// is roughly what a person holds in mind (Cowan), and the rest start
-/// collapsed.
+/// How every collection is organised before anyone searches it. Each item is
+/// in exactly one group, the first rule it matches. Rules are tried in a
+/// different order from how groups are shown: macOS's own things are taken
+/// first, so nothing of Apple's is offered as unused, and shown last. Empty
+/// groups are hidden, and about four start open.
 public enum Grouping {
     public static let openAtOnce = 4
 

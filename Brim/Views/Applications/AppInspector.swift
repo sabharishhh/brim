@@ -2,18 +2,10 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// One app in depth: who made it, how it arrived, and everything it has
-/// put on this Mac, grouped by what removing it would cost.
-///
-/// The footprint is a row of equal groups, App, Settings, Data and the
-/// rest, and one of them is open at a time with its locations below. It
-/// replaced a coloured size bar over one long list: the bar read as a
-/// chart of what removal would free, and the list put the evidence for a
-/// preferences file thirty rows from its group's name. Equal widths say
-/// nothing about proportion, and coverage is said beside the groups rather
-/// than folded into a total.
-///
-/// A `List`, not a scroll view over a stack, so each row is measured once.
+/// One app in depth: who made it, how it arrived, and everything it has put
+/// on this Mac, grouped by what removing it would cost. One group is open
+/// at a time. Coverage is said beside the groups, never folded into a
+/// total. A `List`, so each row is measured once.
 struct AppInspector: View {
     let app: InstalledApplication
     @ObservedObject var model: ApplicationsModel
@@ -22,9 +14,8 @@ struct AppInspector: View {
     let opened: String?
     let remove: () -> Void
 
-    /// The group whose locations are showing, remembered across apps for
-    /// this window: someone checking Data for one app usually wants Data
-    /// for the next. An app without that group opens on its first.
+    /// The open group, remembered across apps in this window. An app without it
+    /// opens on its first group.
     @SceneStorage("apps.footprintGroup") private var openGroup = FootprintLoss.app.rawValue
     /// Locations whose evidence is showing.
     @State private var detailed: Set<String> = []
@@ -77,10 +68,8 @@ struct AppInspector: View {
                 } header: {
                     sectionHeader(section)
                 }
-                // A new group replaces the old one at once. Animated, the list
-                // drew both groups on top of each other, and then scrolled the
-                // incoming rows up under the group buttons for a moment before
-                // settling. The selected button's indicator carries the motion.
+                // A new group replaces the old one at once; animated, both groups were
+                // drawn on top of each other.
                 .id(section.id)
             }
             ListBottomSpacing()
@@ -160,9 +149,8 @@ struct AppInspector: View {
         } else {
             Button("Remove", action: remove)
                 .capsuleAction(prominent: true)
-                // Never disabled while the footprint loads: the review works out
-                // its own plan, and a disabled button drawn at full strength
-                // took a press and did nothing.
+                // Never disabled while the footprint loads: the review works out its own
+                // plan.
                 .buttonBorderShape(.capsule)
             // Said before the press: removing it removes the app it ships in.
             if let host = app.enclosingApp {
@@ -252,10 +240,8 @@ struct AppInspector: View {
     }
 }
 
-/// One place the app lives: Finder's icon, the path from ~, its size, and
-/// an explicit Details control for how Brim knows it is the app's. The
-/// evidence used to be hover help only, which a keyboard or VoiceOver user
-/// never reached.
+/// One place the app lives: icon, path, size, and a Details control for how
+/// Brim knows it is the app's, reachable from the keyboard and VoiceOver.
 private struct LocationRow: View {
     let location: FootprintLocation
     let showsDetails: Bool
@@ -287,9 +273,8 @@ private struct LocationRow: View {
                 .lineLimit(1)
                 .help(location.url.path)
                 Spacer(minLength: 6)
-                // Show in Finder lives in Details, the context menu and a
-                // double-click. A hover-only button here took the room the
-                // name needed and was never reachable from the keyboard.
+                // Show in Finder is in Details, the context menu and a double-click, which
+                // leaves the room to the name.
                 Text(size)
                     .font(.brimFacts)
                     .monospacedDigit()

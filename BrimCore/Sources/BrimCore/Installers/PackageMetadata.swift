@@ -1,11 +1,7 @@
 import Foundation
 
-/// One component of an installer package, from its `PackageInfo`.
-///
-/// `pkgutil --expand` writes this file for every component without
-/// unpacking the payload, so everything here is read before anything is
-/// installed. A product archive has one per component beside its
-/// `Distribution`; a component package has one at its root.
+/// One component of an installer package, from its `PackageInfo`, which
+/// `pkgutil --expand` writes without unpacking the payload.
 public struct PackageComponent: Sendable, Equatable {
     public struct Bundle: Sendable, Equatable {
         /// Relative to the install location, as the package writes it:
@@ -84,11 +80,8 @@ public struct PackageDistribution: Sendable, Equatable {
     }
 }
 
-/// `pkgutil --check-signature`, read for who signed the package.
-///
-/// The certificate chain is numbered from the leaf, so the first line that
-/// starts with `1.` names the developer:
-/// `1. Developer ID Installer: Example Ltd (ABCDE12345)`.
+/// `pkgutil --check-signature`, read for the signer. The chain is numbered
+/// from the leaf, so the first line starting `1.` names the developer.
 public enum PackageSignatureText {
     public static func signer(in text: String) -> (signer: String, team: String?)? {
         for line in text.split(separator: "\n") {

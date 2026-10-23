@@ -2,9 +2,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// Before an install: choose or drop an installer to look inside it, and
-/// install from there. The recording around an install is Brim's own work
-/// and never shows here.
+/// Choose or drop an installer to look inside it and install from there.
+/// The recording around an install is Brim's own work and never shows here.
 struct InstallCard: View {
     @SwiftUI.Environment(ShellState.self) private var shell
     @State private var isTargeted = false
@@ -17,8 +16,7 @@ struct InstallCard: View {
                 Image(systemName: "shippingbox")
                     .foregroundStyle(Palette.inkSecondary)
                     .accessibilityHidden(true)
-                // Named for what it is. "Installing" read as something
-                // already under way.
+                // Named for what it is; "Installing" read as already under way.
                 Text("Installer Preview")
                     .font(.brimGroupTitle)
                     .foregroundStyle(Palette.ink)

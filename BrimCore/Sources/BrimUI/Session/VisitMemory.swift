@@ -1,14 +1,10 @@
 import Foundation
 import Observation
 
-/// What the person saw last time, so this time can say what is new.
-///
-/// Snapshots and subtraction, the same rule as history:
-/// each collection remembers the identifiers it showed when the person
-/// last looked, and "new" is what is here now and was not then. No
-/// watcher, no daemon. A collection that has never been looked at has no
-/// snapshot, and then nothing is new, because there is nothing to compare
-/// against, which is not the same as nothing having changed.
+/// What the person saw last time, so this time can say what is new. Each
+/// collection remembers the identifiers it showed, and "new" is what is here
+/// now and was not then. A collection never looked at has nothing to
+/// compare, so nothing is new.
 @MainActor
 @Observable
 public final class VisitMemory {
@@ -31,8 +27,8 @@ public final class VisitMemory {
         return current.subtracting(before)
     }
 
-    /// The person has seen these. Called a moment after the rows appear,
-    /// so whatever counted them as new is seen before it clears.
+    /// The person has seen these. Called a moment after the rows appear, so the
+    /// new marks are seen before they clear.
     public func acknowledge(_ collection: String, current: Set<String>) {
         guard seen[collection] != current else { return }
         seen[collection] = current

@@ -11,8 +11,8 @@ struct UninstallPlanRow: View {
     let kind: StepKind?
     let tier: EvidenceTier?
     var selection: Binding<Bool>?
-    /// More than one item, shown as one row: the target is then the folder
-    /// they share. 682 scratch folders were 682 identical rows.
+    /// More than one item shown as one row; the target is then the folder they
+    /// share.
     var count = 1
 
     @State private var showsDetails = false
@@ -78,9 +78,7 @@ struct UninstallPlanRow: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Finder's own icon, so a folder reads as a folder and a file as a
-    /// file before anything is read. Every row used to be two lines of text
-    /// and nothing to tell them apart at a glance.
+    /// Finder's own icon, so a folder reads as a folder before anything is read.
     @ViewBuilder
     private var icon: some View {
         let url = URL(fileURLWithPath: target)
@@ -96,9 +94,8 @@ struct UninstallPlanRow: View {
         }
     }
 
-    /// The item's own name. The group heading already says what kind of
-    /// thing it is, and "Cache" under "Cache (1)" said it twice while
-    /// leaving out the one thing that told two rows apart.
+    /// The item's own name; the group heading already says what kind of thing
+    /// it is.
     private var title: String {
         if count > 1 {
             return "\(count) items"

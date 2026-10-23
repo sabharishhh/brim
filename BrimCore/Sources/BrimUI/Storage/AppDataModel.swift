@@ -27,15 +27,10 @@ public struct AppData: Identifiable, Sendable, Equatable {
     }
 }
 
-/// Turns each application's footprint into data no other row counts.
-///
-/// Measured on this Mac, adding up footprints as they came would have
-/// counted 13 GB twice: Claude and the "Claude Code URL Handler" app inside
-/// its folder both claim `~/.claude`, Application Support and the rest. A
-/// folder is counted once, for the claimant with the larger bundle, so the
-/// handler is not listed as a 13 GB app. A folder inside one already
-/// counted is not counted again, and what the Developer caches row counts
-/// is taken out, so the rows on Space never overlap.
+/// Turns each app's footprint into data no other row counts. A folder two
+/// apps claim is counted once, for the one with the larger bundle; a folder
+/// inside one already counted is not counted again; and what Developer
+/// counts is taken out, so Space's rows never overlap.
 public enum AppDataLedger {
     public struct App: Sendable, Equatable {
         public let name: String
@@ -116,12 +111,8 @@ public enum AppDataLedger {
     }
 }
 
-/// Measures every installed application's data for Space.
-///
-/// Uses the same inspection as the Apps inspector, so a folder is an app's
-/// here for the reasons it is an app's there. Three at a time: on this Mac
-/// nineteen apps took thirteen seconds one after another, Xcode five of
-/// them.
+/// Measures every installed app's data for Space with the same inspection as
+/// the Apps inspector, three at a time.
 @MainActor
 public final class AppDataModel: ObservableObject {
     @Published public private(set) var apps: [AppData] = []

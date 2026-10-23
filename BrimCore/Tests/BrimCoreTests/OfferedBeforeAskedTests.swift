@@ -2,23 +2,10 @@ import XCTest
 @testable import BrimCore
 @testable import BrimScan
 
-/// Brim asks whether a removal can succeed before it offers one.
-///
-/// The incident, the second time. Fourteen broken commands in
-/// `/usr/local/bin` were found by the sweep, listed, grouped, ticked by
-/// default, planned, authorized with a fingerprint and then refused by the
-/// kernel. `/usr/local/bin` is `root:wheel` and `drwxr-xr-x`, and unlinking
-/// a name edits the directory holding it, so nothing the person runs can
-/// remove anything there.
-///
-/// `RemovalCapability` has known this since two Google Keystone jobs in
-/// `/Library/LaunchAgents` produced exactly the same sequence. The sweep
-/// never called it: `brokenLink` wrote `capability: .ok` as a literal, and
-/// the general case ended in `default: return .ok`. So one module knew and
-/// another assumed, which is this codebase's recurring defect.
-///
-/// The message that came back afterwards is held by `RefusalCopyTests`,
-/// which lives with the service that writes it.
+/// Brim asks whether a removal can succeed before offering one: a broken
+/// command in root-owned `/usr/local/bin` cannot be removed by the person,
+/// so it must say so up front rather than fail after approval.
+/// `RefusalCopyTests` holds the wording.
 final class OfferedBeforeAskedTests: XCTestCase {
 
     func testABrokenCommandInARootOwnedFolderIsNotOfferedAsRemovable() throws {
@@ -59,8 +46,8 @@ final class OfferedBeforeAskedTests: XCTestCase {
         )
     }
 
-    /// A broken link could not be checked for the restricted flag at all,
-    /// because `stat` follows the link and there is nothing at the far end.
+    /// The restricted flag is checked on the link itself, since `stat` follows
+    /// it to nothing.
     func testTheRestrictedCheckLooksAtTheLinkAndNotItsTarget() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("restricted-\(UUID().uuidString)")

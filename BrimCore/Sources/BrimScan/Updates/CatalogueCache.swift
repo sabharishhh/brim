@@ -1,8 +1,7 @@
 import Foundation
 
-/// Revalidates Homebrew's catalogue once per requested check, only when an
-/// application needs it. An ETag lets the publisher confirm unchanged data
-/// without downloading the whole catalogue again.
+/// Revalidates Homebrew's catalogue once per check, only when an app needs
+/// it, using an ETag so unchanged data is not downloaded again.
 actor CatalogueCache {
     private let directory: URL
     private let fetch: UpdateFinder.Fetch
@@ -14,10 +13,9 @@ actor CatalogueCache {
         self.fetch = fetch
     }
 
-    /// One load, shared. Applications ask at the same time, and an actor
-    /// lets the second one in while the first is waiting on the network:
-    /// a flag set before the download told every other application there
-    /// was no catalogue.
+    /// One load, shared by every app asking at once. The actor lets a second
+    /// caller in while the first waits on the network, so it waits on the same
+    /// load.
     func casks() async -> [CatalogCask]? {
         if let loading {
             return await loading.value

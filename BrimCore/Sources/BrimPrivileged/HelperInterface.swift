@@ -1,62 +1,52 @@
 import Foundation
 import Security
 
-/// The whole of what the root daemon will do.
-///
-/// A few narrow methods. There is no "delete this path", no "run this
-/// command", and nothing that takes a URL, because an interface that
-/// cannot express a dangerous request cannot be talked into one.
+/// Everything the administrator process will do: a few narrow methods. No
+/// "delete this path", no "run this command", nothing that takes a URL,
+/// because an interface that cannot express a dangerous request cannot be
+/// talked into one.
 @objc public protocol BrimJobHelperProtocol {
-    /// Sets aside one launchd job file that is no longer good for
-    /// anything. The daemon builds the path from the domain and the name
-    /// and applies its own rules; see `PrivilegedJobRemoval`.
-    ///
-    /// The reply carries nil when it worked, or a sentence saying why not.
+    /// Sets aside one launchd job file that is no longer good for anything. The
+    /// path is built here from the domain and name, under its own rules
+    /// (`PrivilegedJobRemoval`). Replies nil on success, or why not.
     func removeDefunctJob(
         domain: String, name: String,
         withReply reply: @escaping @Sendable (String?) -> Void
     )
 
-    /// Sets aside one command link that points at nothing. The daemon
-    /// builds the path from the domain and the name and proves the link is
-    /// dead itself; see `PrivilegedLinkRemoval`.
-    ///
-    /// The reply carries nil when it worked, or a sentence saying why not.
+    /// Sets aside one command link that points at nothing, proving it dead here
+    /// (`PrivilegedLinkRemoval`). Replies nil on success, or why not.
     func removeBrokenCommand(
         domain: String, name: String,
         withReply reply: @escaping @Sendable (String?) -> Void
     )
 
-    /// Forgets one installer receipt. Deletes no files: the record lives
-    /// in a folder that belongs to root, which is the only reason this is
-    /// here. The daemon applies its own rules; see
-    /// `PrivilegedReceiptRemoval`.
-    ///
-    /// The reply carries nil when it worked, or a sentence saying why not.
+    /// Forgets one installer receipt. Deletes no files; it is here only because
+    /// the record lives in a root-owned folder (`PrivilegedReceiptRemoval`).
+    /// Replies nil on success, or why not.
     func forgetReceipt(packageID: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
-    /// Sets aside an application or plug-in an installer left owned by
-    /// root. See `PrivilegedBundleRemoval` for what it will and will not
-    /// take. Nil when it worked, otherwise why not.
+    /// Sets aside an app or plug-in an installer left owned by root
+    /// (`PrivilegedBundleRemoval`). Nil on success, otherwise why not.
     func removeInstalledBundle(
         domain: String, name: String,
         withReply reply: @escaping @Sendable (String?) -> Void
     )
 
-    /// Sets aside an application an installer put outside the
-    /// Applications folders, found through the package's own receipt. See
-    /// `PrivilegedPayloadRemoval`. Nil when it worked, otherwise why not.
+    /// Sets aside an app an installer put outside the Applications folders,
+    /// found through the package's own receipt (`PrivilegedPayloadRemoval`).
+    /// Nil on success, otherwise why not.
     func removeInstalledPayload(
         packageID: String, name: String,
         withReply reply: @escaping @Sendable (String?) -> Void
     )
 
-    /// Sets aside one item in `/Library/Caches`. See
-    /// `PrivilegedCacheRemoval`. Nil when it worked, otherwise why not.
+    /// Sets aside one item in `/Library/Caches` (`PrivilegedCacheRemoval`). Nil
+    /// on success, otherwise why not.
     func removeSystemCache(name: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
-    /// Sets aside one preference file in `/Library/Preferences`. See
-    /// `PrivilegedPreferenceRemoval`. Nil when it worked, otherwise why not.
+    /// Sets aside one preference file in `/Library/Preferences`
+    /// (`PrivilegedPreferenceRemoval`). Nil on success, otherwise why not.
     func removeSystemPreference(name: String, withReply reply: @escaping @Sendable (String?) -> Void)
 
     /// Lists only Brim's fixed recovery store. The payload is a JSON array.
@@ -68,20 +58,12 @@ import Security
         withReply reply: @escaping @Sendable (String?) -> Void
     )
 
-    /// So the app can tell whether the installed daemon is the one that
-    /// shipped with it, rather than an older copy left by a previous
-    /// version.
+    /// Lets the app check this helper is the one that shipped with it.
     func version(withReply reply: @escaping @Sendable (String) -> Void)
 
-    /// Clears up what only root can, on the way out.
-    ///
-    /// The quarantine is root owned and holds the job files Brim set aside,
-    /// so an uninstall without this leaves a root-owned folder behind. A product whose
-    /// argument is that it removes every trace does not get to make an
-    /// exception for its own.
-    ///
-    /// Destroys the set-aside files, so it is only ever called when
-    /// somebody has asked for Brim itself to go.
+    /// Clears what only root can, when Brim itself is being removed: the
+    /// root-owned folder of set-aside files. Destroys those files, so it is only
+    /// called when the person has asked for Brim to go.
     func uninstallSelf(withReply reply: @escaping @Sendable (String?) -> Void)
 }
 
@@ -90,19 +72,15 @@ public enum BrimJobHelper {
     /// nothing with launchd or Background Task Management under it.
     public static let machServiceName = "com.sabharishhh.brim.jobhelper"
 
-    /// Bumped whenever the daemon's behaviour changes, so the app can
-    /// replace a stale copy rather than talk to it.
+    /// Bumped whenever the helper's behaviour changes, so the app never talks
+    /// to a stale copy.
     public static let version = "12"
 
     public static let teamID = "9LY29YLFG2"
 
-    /// What the daemon demands of anything that connects to it: the
-    /// application, and nothing else.
-    ///
-    /// Anchored to Apple, pinned to this application and this team. The
-    /// previous attempt at this pinned `com.google.Brim` and team
-    /// `EQHXZ8M8AV`, which is Google's, and then accepted every
-    /// connection anyway because the result was never checked.
+    /// What the administrator process demands of anything connecting to it:
+    /// Brim's application and nothing else. Anchored to Apple and pinned to this
+    /// identifier and team.
     public static func clientRequirement(
         bundleID: String = applicationIdentifier,
         teamID: String = BrimJobHelper.teamID
@@ -110,17 +88,10 @@ public enum BrimJobHelper {
         requirement(identifier: bundleID, teamID: teamID)
     }
 
-    /// What the application demands of the daemon it is talking to.
-    ///
-    /// A separate requirement, because the two are separate identities
-    /// and pinning the wrong one is easy: the first version had the app
-    /// checking the daemon against the *app's* identifier, which nothing
-    /// could ever satisfy. Both directions are checked, because a root
-    /// service accepting whatever answers is how one gets replaced.
-    /// With `codeHash`, only that one build of the helper. Any helper the
-    /// team signed met the requirement alone, so an older one, with
-    /// whatever it allowed, would run as root before the version handshake
-    /// could refuse it.
+    /// What the application demands of the administrator process: a separate
+    /// identity from the app's, and both directions are checked. With
+    /// `codeHash`, only that one build of the helper; the team alone would let
+    /// any older helper the team signed run as root.
     public static func daemonRequirement(
         identifier: String = machServiceName,
         teamID: String = BrimJobHelper.teamID,
@@ -132,9 +103,9 @@ public enum BrimJobHelper {
         return base + " and cdhash H\"\(codeHash.lowercased())\""
     }
 
-    /// The helper's code hash, read only after the application around it
-    /// has passed its own signature check, nested code included, so what
-    /// is pinned is the helper this copy of Brim was signed with.
+    /// The helper's code hash, read only after the application around it passes
+    /// its own signature check, nested code included, so what is pinned is the
+    /// helper this copy of Brim was signed with.
     public static func sealedHelperHash(_ executable: URL) throws -> String {
         let application = executable.deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -174,8 +145,8 @@ public enum BrimJobHelper {
     }
 
     /// Whether a requirement string is one the system can evaluate.
-    /// `setCodeSigningRequirement` raises on one it cannot parse, and the
-    /// daemon refuses rather than crashes.
+    /// `setCodeSigningRequirement` raises on one it cannot parse, so it is
+    /// checked first and refused rather than crashing.
     public static func isWellFormed(_ requirement: String) -> Bool {
         var compiled: SecRequirement?
         let status = SecRequirementCreateWithString(requirement as CFString, [], &compiled)
@@ -191,8 +162,7 @@ public enum BrimJobHelper {
     /// The application this helper serves, the one identity it accepts.
     public static let applicationIdentifier = "com.sabharishhh.brim"
 
-    /// Where a removed job file is kept, so this is undoable. Root owned,
-    /// and on the same volume as both launchd directories, which is what
-    /// lets the move be a rename rather than a copy and a delete.
+    /// Where set-aside items are kept, so a removal can be undone. Root owned,
+    /// and on the same volume as the launchd folders, so a move is a rename.
     public static let quarantineDirectory = "/Library/Application Support/Brim/Set aside"
 }

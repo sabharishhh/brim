@@ -1,13 +1,9 @@
 @testable import BrimPrivileged
 import XCTest
 
-/// What the root daemon refuses when asked to set aside a command link.
-///
-/// The daemon exists so that nine dead links in a root-owned
-/// `/usr/local/bin` can go without the person being asked for anything.
-/// Each case here is a way a caller could try to use that to remove
-/// something alive: a path in the name, a link that still works, a real
-/// file with a link's name, a destination the daemon cannot see.
+/// What the administrator process refuses when asked to set aside a command
+/// link: a path in the name, a link that still works, a real file with a
+/// link's name, a destination it cannot see.
 final class PrivilegedLinkRemovalTests: XCTestCase {
     private var directory: URL!
     private var descriptor: Int32 = -1
@@ -86,17 +82,16 @@ final class PrivilegedLinkRemovalTests: XCTestCase {
     }
 
     func testAnUndecodableDestinationIsRefused() {
-        // CI caught the old C-string decoder. A replacement must not invent
-        // a different path when a link contains bytes UTF-8 cannot represent.
+        // A link with bytes UTF-8 cannot represent must not decode to a different
+        // path.
         var destination: [CChar] = [-1, 0]
         XCTAssertEqual(symlink(&destination, directory.appendingPathComponent("invalid").path), 0)
         XCTAssertEqual(refusal("invalid"), .unreadable)
     }
 
     func testARelativeLinkIsJudgedFromItsOwnFolder() throws {
-        // `python3t -> ../../../Library/Frameworks/...` is how the Python
-        // installer writes them. Relative to the folder, not to wherever
-        // the daemon happens to be running.
+        // Relative targets resolve against the link's folder, not the working
+        // directory.
         try Data().write(to: directory.appendingPathComponent("real-tool"))
         try link("alive", to: "real-tool")
         try link("dead", to: "missing-tool")

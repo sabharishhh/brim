@@ -3,10 +3,9 @@ import BrimCore
 import Foundation
 import Testing
 
-/// Which unclaimed groups Remnants lists. A single small scrap stays out;
+/// Which unclaimed groups Remnants lists: a single small scrap stays out;
 /// several of one developer's leftovers, with nothing of theirs installed,
-/// are listed however small, because seven of Adobe's folders were each
-/// under the megabyte line and none of them was shown.
+/// are listed however small.
 @MainActor
 struct UnclaimedReviewTests {
     private func item(_ name: String, bytes: Int64 = 4096, vendor: String? = nil) -> Leftover {

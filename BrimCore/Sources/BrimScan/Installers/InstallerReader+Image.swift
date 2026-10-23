@@ -4,9 +4,8 @@ import Foundation
 extension InstallerReader {
     // MARK: - Application
 
-    /// An application that is not installed: what its bundle declares it
-    /// will register, and what it may ask permission for. The same reader
-    /// the uninstall uses, so a declaration means the same in both places.
+    /// An application that is not installed: what its bundle declares it will
+    /// register and may ask permission for, read with the uninstall's own reader.
     func readApplication(_ url: URL) -> InstallerPreview {
         let (identity, capabilities) = BundleSurfaceReader.read(at: url, in: root)
         let info = NSDictionary(contentsOf: url.appendingPathComponent("Contents/Info.plist")) as? [String: Any] ?? [:]
@@ -93,10 +92,9 @@ extension InstallerReader {
 
     // MARK: - Disk image
 
-    /// Mounted read-only and hidden from Finder, read, and ejected on
-    /// every way out. A licence or a password stops it before mounting:
-    /// agreeing to a licence is the person's to do, and standard input is
-    /// closed so it can never be agreed to by accident.
+    /// Mounted read-only and hidden, read, and ejected on every way out. A
+    /// licence or password stops it before mounting: agreeing is the person's,
+    /// and standard input is closed so nothing agrees by accident.
     func readDiskImage(_ url: URL) throws -> InstallerPreview {
         guard let info = ToolOutput.run("/usr/bin/hdiutil", ["imageinfo", "-plist", url.path], timeout: 30),
               info.status == 0, let facts = Self.plist(info.output) else { throw InstallerReadError.unreadable }
@@ -146,8 +144,8 @@ extension InstallerReader {
         return try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     }
 
-    /// A flag anywhere in `imageinfo`'s answer; it nests some under
-    /// `Properties` and moves them between releases.
+    /// A flag anywhere in `imageinfo`'s answer, which nests some and moves them
+    /// between releases.
     static func flag(_ key: String, in facts: [String: Any]) -> Bool {
         if let value = facts[key] as? Bool {
             return value

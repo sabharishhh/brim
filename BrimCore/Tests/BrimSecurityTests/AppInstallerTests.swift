@@ -46,9 +46,8 @@ struct AppInstallerTests {
         #expect(FileManager.default.fileExists(atPath: fixture.app.path))
     }
 
-    /// Figma's installer app, copied with its quarantine, ran from a
-    /// translocated copy, could not replace itself and asked to be moved
-    /// to Applications.
+    /// An installer app copied with its quarantine runs translocated and cannot
+    /// replace itself.
     @Test func `an app Gatekeeper accepts loses its quarantine, inside too`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

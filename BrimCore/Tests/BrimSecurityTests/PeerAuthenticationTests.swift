@@ -1,17 +1,9 @@
 @testable import BrimPrivileged
 import XCTest
 
-/// Who is allowed to talk to whom, and the fact that anybody checks.
-///
-/// The requirement string named `com.google.Brim` and team `EQHXZ8M8AV`,
-/// which belongs to Google, so nothing Brim signs could ever have matched
-/// it. The debug branch had no anchor and no team, leaving a bare
-/// identifier that any process can claim by naming itself.
-///
-/// The only connection Brim makes is to its temporary administrator
-/// process, and `TemporaryAdminChannel` checks both ends against the
-/// requirements `BrimJobHelper` builds. There was a second copy of these
-/// for an XPC service the app no longer runs; it went with that service.
+/// Who is allowed to talk to whom. Brim's only connection is to its
+/// temporary administrator process, and `TemporaryAdminChannel` checks both
+/// ends against the requirements `BrimJobHelper` builds.
 final class PeerAuthenticationTests: XCTestCase {
     // MARK: - The requirements
 
@@ -27,9 +19,8 @@ final class PeerAuthenticationTests: XCTestCase {
     }
 
     func testEveryRequirementCompiles() {
-        // `setCodeSigningRequirement` raises rather than returns on a string
-        // it cannot parse, so an unparseable requirement is a crash, not a
-        // refusal. Each one is compiled before it is ever applied.
+        // `setCodeSigningRequirement` raises on a string it cannot parse, so each
+        // requirement is compiled before it is applied.
         for requirement in [BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement()] {
             XCTAssertTrue(
                 BrimJobHelper.isWellFormed(requirement),
@@ -44,14 +35,12 @@ final class PeerAuthenticationTests: XCTestCase {
     }
 
     func testTheTwoDirectionsArePinnedSeparately() {
-        // The first attempt at this had the app checking the administrator
-        // process against the app's own identifier, which nothing could
-        // ever satisfy.
+        // Two identities: checking the administrator process against the app's
+        // identifier could never be satisfied.
         XCTAssertNotEqual(BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement())
     }
 
-    /// The requirement has to name what the administrator process is
-    /// signed as. An earlier copy named a daemon deleted months before.
+    /// The requirement names what the administrator process is signed as.
     func testTheAdministratorProcessIsPinnedToTheNameItIsSignedWith() {
         XCTAssertTrue(
             BrimJobHelper.daemonRequirement().contains("identifier \"\(BrimJobHelper.machServiceName)\""),
@@ -78,9 +67,7 @@ final class PeerAuthenticationTests: XCTestCase {
     }
 
     /// The approval rule rests on the service being reachable only inside
-    /// Brim's process. An XPC listener would put it on the far side of a
-    /// connection again, with a client that has to be authenticated, and
-    /// the last one was kept for months after nothing used it.
+    /// Brim's process. An XPC listener would put it behind a connection again.
     func testNothingOpensAnXPCConnection() throws {
         var found: [String] = []
         for file in Self.productSources() {
@@ -117,35 +104,15 @@ final class PeerAuthenticationTests: XCTestCase {
     }
 }
 
-/// Anything Brim registers with macOS carries Brim's own identifier.
-///
-/// `SafetyChecker` reads Brim's identifier from its own bundle because a
-/// hardcoded list once named `com.google.Brim` and a `devplaceholder`
-/// identifier, matched neither the real application nor anything else, and
-/// silently blocked self-removal. Those two survive only so an upgrade can
-/// clear what they left behind.
-///
-/// What nothing held is the other direction: that Brim never registers
-/// something *new* under one of them. It was doing exactly that. `brim
-/// energy --register` installed a launch agent labelled
-/// `com.google.Brim.energy`, with RunAtLoad and KeepAlive set, and
-/// `build_release.sh` stamped `com.google.Brim` on the bundle it built. A
-/// utility whose whole subject is background agents nobody can account for
-/// cannot be the thing installing one.
-///
-/// Read from the sources, because the registration sites are an executable
-/// target and a shell script, neither of which a test can import. The same
-/// approach `StepVocabularyTests` uses on the planner.
+/// Anything Brim registers with macOS carries Brim's own identifier. The two
+/// retired identifiers survive only so an upgrade can clear what they left,
+/// and nothing new may be registered under them. Read from the sources,
+/// since the registration sites cannot be imported.
 final class RegisteredIdentifierTests: XCTestCase {
     /// Identifiers Brim answers to for cleanup and must never register under.
     private static let retired = ["com.google.Brim", "devplaceholder"]
 
     /// Everywhere Brim creates or names something macOS will persist.
-    ///
-    /// One entry, since the command line tool went. It was the only part of
-    /// Brim that registered a launch agent, which is why removing it was
-    /// worth doing on its own: a utility whose subject is software running
-    /// when nobody asked it to should not leave an agent behind.
     private static let registrationSites = ["scripts/build_release.sh"]
 
     private static func repositoryRoot() -> URL {
@@ -154,9 +121,8 @@ final class RegisteredIdentifierTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent()
     }
 
-    /// Each line with its comment stripped, because a comment may name a
-    /// retired identifier in order to explain it, and the commit that
-    /// removed these did exactly that.
+    /// Comments are stripped, since one may name a retired identifier to explain
+    /// it.
     private static func code(of path: String) throws -> [(line: Int, text: String)] {
         let text = try String(contentsOf: repositoryRoot().appendingPathComponent(path),
                               encoding: .utf8)
@@ -170,8 +136,7 @@ final class RegisteredIdentifierTests: XCTestCase {
     func testNothingRegistersUnderAnIdentifierBrimHasRetired() throws {
         for path in Self.registrationSites {
             for entry in try Self.code(of: path) {
-                // One constant is allowed to hold the old name, so that
-                // `--unregister` can clear an agent an earlier build left.
+                // One constant may hold the old name so an earlier agent can be cleared.
                 guard !entry.text.contains("formerAgentLabel") else { continue }
                 for retired in Self.retired where entry.text.contains(retired) {
                     XCTFail("\(path):\(entry.line) uses \(retired): "
@@ -180,16 +145,11 @@ final class RegisteredIdentifierTests: XCTestCase {
             }
         }
     }
-
-    // `testTheEnergyAgentIsNamedAfterBrim` went with the command line
-    // tool. There is no energy agent now, and nothing in the product
-    // registers one.
 }
 
-/// The administrator helper's requirement named the team and nothing else,
-/// so any helper the team ever signed ran as root before the version
-/// handshake could refuse it. And a development Brim, which any program
-/// can attach to, was accepted as a client by a released helper.
+/// A requirement naming only the team would let any helper the team signed
+/// run as root, and a released helper must refuse a client that can be
+/// attached to.
 final class HelperPinningTests: XCTestCase {
     func testAPinnedRequirementNamesOneBuild() {
         let hash = "67e5308ce03f59f53ff6335f969667b0e17c29da"

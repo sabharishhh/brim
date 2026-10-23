@@ -5,12 +5,8 @@ import Foundation
 import os
 
 extension EvidenceTier {
-    /// Sort order for the footprint list. Lower comes first.
-    ///
-    /// Shared items lead, because they are the ones a person most needs to
-    /// see: everything else in the list is going, and these are staying.
-    /// This is an ordering, not a confidence ranking; S is not on that
-    /// scale at all.
+    /// Sort order for the footprint list, lower first. Shared items lead,
+    /// because they are the ones staying. An ordering, not a confidence ranking.
     var rank: Int {
         switch self {
         case .S: 0
@@ -30,12 +26,9 @@ extension EvidenceTier {
     }
 }
 
-/// Backs the Applications view: the installed list, and the footprint of
-/// whichever one is selected.
-///
-/// The list and the footprint are loaded separately on purpose. Listing is
-/// cheap; discovering a footprint walks the disk, so it is paid for only
-/// when the user asks about one application.
+/// Backs the Applications view: the installed list, and the footprint of the
+/// selected app. Listing is cheap; a footprint walks the disk, so it is
+/// found only when asked for.
 @MainActor
 public final class ApplicationsModel: ObservableObject {
     @Published public private(set) var applications: [InstalledApplication] = []
@@ -53,9 +46,9 @@ public final class ApplicationsModel: ObservableObject {
     @Published public private(set) var isInspecting = false
     /// Why the list could not be read.
     @Published public private(set) var errorMessage: String?
-    /// Why the selected app's footprint could not be read. Its own fact:
-    /// sharing `errorMessage` meant a failed inspection was never shown,
-    /// and the pane read as an app that had put nothing on the Mac.
+    /// Why the selected app's footprint could not be read, kept apart from
+    /// `errorMessage` so a failed inspection is shown rather than reading as an
+    /// app with nothing on the Mac.
     @Published public private(set) var inspectionError: String?
 
     /// When this launch last listed the apps from the disk. Nil while the
@@ -66,9 +59,9 @@ public final class ApplicationsModel: ObservableObject {
     private var inspectionTask: Task<Void, Never>?
     private let cache: PageCache<[InstalledApplication]>?
 
-    /// With a cache, the list opens on what the last launch found while
-    /// this one lists the disk. Every action reads the bundle again, so a
-    /// kept row is safe to select.
+    /// With a cache, the list opens on the last launch's result while this one
+    /// lists the disk. Every action reads the bundle again, so a kept row is
+    /// safe to select.
     public init(cache: PageCache<[InstalledApplication]>? = nil) {
         self.cache = cache
         applications = cache?.load()?.value ?? []
@@ -85,9 +78,8 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
-    /// Current inventory rows installed within five days, newest first.
-    /// Removing a row also removes it here; a reinstall receives its latest
-    /// installation date from the snapshot history.
+    /// Apps installed within five days, newest first. A reinstall gets its
+    /// latest date from the snapshot history.
     public func recentlyInstalled(now: Date = Date()) -> [InstalledApplication] {
         let cutoff = now.addingTimeInterval(-5 * 86400)
         return applications.filter {
@@ -104,9 +96,8 @@ public final class ApplicationsModel: ObservableObject {
     /// Cached once per inspection, rather than regrouped during hover or disclosure.
     @Published public private(set) var footprintSections: [FootprintSection] = []
 
-    /// Lists once per launch; after that the folders' own changes keep it
-    /// current. A visit to the section is a change of view, not a reason
-    /// to list again.
+    /// Lists once per launch; the folders' own changes keep it current after
+    /// that.
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         guard listedAt == nil, !isLoading else { return }
         await load(service: service)
@@ -146,9 +137,8 @@ public final class ApplicationsModel: ObservableObject {
             listedAt = Date()
             cache?.save(found)
             errorMessage = nil
-            // A selection outlives the panel that removed its app, so the
-            // inspector went on offering eqMac's old footprint and a Remove
-            // button after the app was gone. The fresh list is the record.
+            // A selection whose app is gone is cleared, so the inspector does not keep
+            // offering its old footprint.
             let listed = Set(found.map(\.id))
             marked.removeAll { !listed.contains($0.id) }
             if let selected, !listed.contains(selected.id) {
@@ -164,13 +154,9 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
-    /// Drops an application the UI already knows is gone, without waiting
-    /// for a full re-enumeration.
-    ///
-    /// Listing every bundle and sizing each one takes seconds, and a row
-    /// that lingers after the sheet says "nothing remains" reads as a
-    /// failure. The check is on disk rather than on the sheet's word, so a
-    /// removal that quietly did not happen leaves the row where it is.
+    /// Drops an application the UI already knows is gone, without listing every
+    /// app again. Checked on disk, so a removal that did not happen leaves the
+    /// row where it is.
     @discardableResult
     public func forgetIfRemoved(_ application: InstalledApplication) -> Bool {
         guard !FileManager.default.fileExists(atPath: application.url.path) else { return false }
@@ -190,12 +176,9 @@ public final class ApplicationsModel: ObservableObject {
         self.applications = applications
     }
 
-    /// Selects whichever installed application a dropped file belongs to.
-    ///
-    /// Takes the bundle a path is inside, so dropping an application, or
-    /// anything within one, lands on the same row. Returns false when the
-    /// drop was not an installed application, so the view can say so
-    /// rather than doing nothing.
+    /// Selects the installed application a dropped file belongs to, the bundle
+    /// it is inside. False when it is not an installed app, so the view can say
+    /// so.
     @discardableResult
     public func selectApplication(at url: URL) -> Bool {
         let dropped = url.resolvingSymlinksInPath().path
@@ -209,9 +192,8 @@ public final class ApplicationsModel: ObservableObject {
         return true
     }
 
-    /// Command-click: adds the app to the ones marked, or takes it out.
-    /// The app already selected is the first mark, as in Finder. Apps that
-    /// are part of macOS cannot be removed, so they cannot be marked.
+    /// Command-click: marks or unmarks an app. The selected app is the first
+    /// mark, as in Finder. Apps that are part of macOS cannot be marked.
     public func toggleMark(_ application: InstalledApplication) {
         var next = marked
         if next.isEmpty, let selected, selected.id != application.id, !selected.isSystemProtected {
@@ -231,8 +213,7 @@ public final class ApplicationsModel: ObservableObject {
     }
 
     /// Choosing, from the Select button: a click ticks an app rather than
-    /// opening it. Command-click did this already and nobody could find it,
-    /// in the list or the table.
+    /// opening it.
     @Published public private(set) var isChoosing = false
 
     /// Starts with the app already open, as Command-click does.
@@ -246,8 +227,8 @@ public final class ApplicationsModel: ObservableObject {
         marked = []
     }
 
-    /// Ticks or unticks one app while choosing. One or none is allowed
-    /// here: the person is still picking.
+    /// Ticks or unticks one app while choosing. One or none is allowed while the
+    /// person is still picking.
     public func toggleChoice(_ application: InstalledApplication) {
         guard !application.isSystemProtected else { return }
         if let index = marked.firstIndex(where: { $0.id == application.id }) {
@@ -271,10 +252,8 @@ public final class ApplicationsModel: ObservableObject {
         }
     }
 
-    /// Selects an application and discovers its footprint.
-    ///
-    /// Selecting again while a scan is in flight cancels it, so clicking
-    /// down a list does not queue a scan per row.
+    /// Selects an application and finds its footprint. Selecting again cancels a
+    /// scan in flight, so moving down a list does not queue one per row.
     public func select(_ application: InstalledApplication?) {
         marked = []
         isChoosing = false

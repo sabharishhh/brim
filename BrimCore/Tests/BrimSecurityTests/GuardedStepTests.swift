@@ -22,9 +22,8 @@ final class ReceiptRulesTests: XCTestCase {
     }
 
     func testOnlyAnIdentifierShapedStringGetsThrough() {
-        // It reaches pkgutil as an argument and never touches a shell, but
-        // a separator or a leading dash would still let it mean something
-        // else.
+        // It reaches pkgutil as an argument, never a shell, but a separator or a
+        // leading dash could still change its meaning.
         let invalid = ["", "../../etc/passwd", "com.example/../../x", "-v", ".hidden",
                        "com example", "com.example;rm", String(repeating: "a", count: 300)]
         for bad in invalid {
@@ -52,9 +51,8 @@ final class ReceiptRulesTests: XCTestCase {
         )
     }
 
-    /// The daemon applies its own rules rather than trusting the app's, so
-    /// both copies exist. Two copies is how three team identifiers ended
-    /// up in one codebase, so they are held together here.
+    /// The administrator process applies its own rules rather than trusting the
+    /// app's, so both copies exist and are held together here.
     func testTheAppAndTheDaemonAgreeAboutWhatIsAllowed() {
         let candidates = ["com.example.app", "com.apple.pkg.X", "../etc", "-v", "", "com_example_2", "a.b-c"]
         for candidate in candidates {
@@ -116,8 +114,7 @@ final class ImmutableFlagAgreementTests: XCTestCase {
     }
 
     func testAFileSwappedSinceThePlanIsRefused() throws {
-        // The same anti-race binding as every other mutating operation:
-        // the device and inode have to match what was planned.
+        // The device and inode must match what was planned.
         let (file, _) = try lockedFile()
 
         XCTAssertThrowsError(
@@ -139,9 +136,8 @@ final class ImmutableFlagAgreementTests: XCTestCase {
         }
     }
 
-    /// Detection is in `BrimCore` and clearing is in `BrimOps`, because
-    /// `BrimCore` depends on nothing and the planner has to be able to
-    /// ask. Two readings of the same flags, held to one answer.
+    /// Detection is in `BrimCore`, clearing in `BrimOps`; the two readings of
+    /// the flags are held to one answer.
     func testBothHalvesAgreeAboutWhatIsLocked() throws {
         let (locked, _) = try lockedFile("agree-locked")
         let plain = directory.appendingPathComponent("agree-plain")
@@ -186,8 +182,7 @@ final class RunningApplicationTests: XCTestCase {
         )
         XCTAssertNotNil(refusal)
         XCTAssertTrue(refusal?.contains("Example") ?? false)
-        // Both wordings have to explain themselves. A refusal that only
-        // says no is a refusal people learn to route around.
+        // A refusal that only says no gets routed around.
         XCTAssertTrue(
             refusal?.contains("close") ?? false,
             "The refusal has to say why, not just that: \(refusal ?? "nothing")"
@@ -210,8 +205,8 @@ final class RunningApplicationTests: XCTestCase {
     }
 
     func testAHelperInsideTheBundleBlocksToo() {
-        // A login item at App.app/Contents/Library/LoginItems has its own
-        // identifier and is just as able to rewrite what Brim removes.
+        // A login item inside the bundle has its own identifier and can rewrite
+        // what Brim removes.
         let refusal = RunningApplications.refusal(
             bundleID: "com.nothing.matching", bundlePath: "/Applications/Example.app",
             among: running, selfBundleID: "com.sabharishhh.brim"
@@ -228,8 +223,7 @@ final class RunningApplicationTests: XCTestCase {
     }
 
     func testBrimDoesNotBlockItself() {
-        // Uninstalling Brim from inside Brim is supported, and the app
-        // quits itself once the plan has run.
+        // Brim can uninstall itself; it quits once the plan has run.
         let brim = [
             RunningApplications.Running(
                 bundleIdentifier: "com.sabharishhh.brim", name: "Brim",
@@ -257,10 +251,8 @@ final class RunningApplicationTests: XCTestCase {
         ))
     }
 
-    /// WhatsApp's notification extension ran with the app quit, and the
-    /// removal told the person to quit something with no window. Brim quits
-    /// the app's own background parts itself, but never while any part of
-    /// the app has a window, which may hold unsaved work.
+    /// Brim quits the app's own background parts itself, never while any part
+    /// has a window that may hold unsaved work.
     func testBrimQuitsOnlyWindowlessPartsOfTheAppBeingRemoved() {
         let bundle = "/Applications/WhatsApp.app"
         let extensionPart = RunningApplications.Running(

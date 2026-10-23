@@ -1,15 +1,8 @@
 import Foundation
 
-/// The icon for something that has a name and no image.
-///
-/// A leftover whose application is long gone, and whose icon Brim never
-/// saw, still has an owner name. One or two letters on one of eight muted
-/// colours is enough for the eye to tell two owners apart and to find the
-/// same owner again in another list, which a grey question mark is not.
-///
-/// The colour is derived from the name, never stored and never random: the
-/// same owner is the same colour in every list and on every launch, and
-/// there is nothing to migrate.
+/// The icon for something with a name and no image: one or two letters on
+/// one of eight muted greys. The shade comes from the name, so the same
+/// owner looks the same in every list and every launch.
 public struct Monogram: Equatable, Sendable {
     public static let hueCount = 8
 
@@ -40,8 +33,8 @@ public struct Monogram: Equatable, Sendable {
         return String(first).uppercased()
     }
 
-    /// A reverse DNS identifier reads as its last part. `com.vendor.tool`
-    /// is "tool" to a person, and "CV" would name the domain registry.
+    /// A reverse-DNS identifier reads as its last part: `com.vendor.tool` is
+    /// "tool".
     private static func readable(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.contains(" ") else { return trimmed }

@@ -2,26 +2,18 @@ import Foundation
 import XCTest
 import BrimOps
 
-/// Provisions disposable targets in the **real** user domains so the pipeline
-/// can be exercised against the machine Brim actually runs on.
-///
-/// Synthetic fixtures (T-0.3) remain where correctness is proven: they are
-/// deterministic and independent of whoever's Mac is running them. This
-/// fixture exists for the class of defect those cannot reach (TCC refusals,
-/// real Trash semantics, live scanning of protected domains), each of which
-/// has already shipped a bug that every synthetic test passed.
-///
-/// Because it writes to real locations, every path is namespaced and every
-/// removal is checked against that namespace before it happens. The fixture
-/// will refuse to delete anything it did not create.
+/// Disposable targets in the real user domains, for defects synthetic
+/// fixtures cannot reach: TCC refusals, real Trash semantics and live
+/// scanning of protected domains. Every path is namespaced, and the fixture
+/// refuses to delete anything it did not create.
 struct RealEnvironmentFixture {
 
     /// Every path this fixture creates contains this marker, and nothing
     /// without it may be removed.
     static let marker = "BrimHarness-"
 
-    /// Real-environment tests touch the user's own disk and are therefore
-    /// opt-in: `BRIM_REAL_ENV=1 swift test`. CI and ordinary runs skip them.
+    /// Opt-in, because these touch the user's own disk:
+    /// `BRIM_REAL_ENV=1 swift test`.
     static var isEnabled: Bool {
         ProcessInfo.processInfo.environment["BRIM_REAL_ENV"] == "1"
     }
@@ -54,19 +46,16 @@ struct RealEnvironmentFixture {
 
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
-    /// `~/Library/Caches`, low cost of error, so the planner disposes of it
-    /// permanently.
+    /// Low cost of error, so the planner deletes permanently.
     var cachesDomain: URL { home.appendingPathComponent("Library/Caches") }
 
-    /// `~/Library/Application Support`, medium cost, so it is trashed and
-    /// stays recoverable.
+    /// Medium cost, so it is trashed and stays recoverable.
     var applicationSupportDomain: URL { home.appendingPathComponent("Library/Application Support") }
 
     // MARK: - Provisioning
 
-    /// Creates a disposable directory with a sparse payload: it reports the
-    /// requested logical size to the scanner while occupying almost no disk,
-    /// so a harness run costs kilobytes rather than gigabytes.
+    /// A sparse payload that reports the requested logical size while occupying
+    /// almost no disk.
     mutating func makeTarget(
         in domain: URL,
         name: String,
@@ -88,34 +77,18 @@ struct RealEnvironmentFixture {
         return url
     }
 
-    /// A bundle identifier carrying the harness marker, so every path derived
-    /// from it lands inside the namespace the safety rail will allow.
+    /// Carries the harness marker, so every derived path is inside the
+    /// namespace the safety rail allows.
     var harnessBundleID: String { "\(runID).deepuninstall" }
 
-    /// The harness does **not** create sandbox containers, and there is no
-    /// probe that would make it safe to.
-    ///
-    /// Creating `~/Library/Containers/<id>` makes `containermanagerd` adopt
-    /// the directory and write `.com.apple.containermanagerd.metadata.plist`
-    /// inside it. That file cannot be removed afterwards: not by this
-    /// process, not with Full Disk Access, and not as root. It is a data
-    /// vault, and SIP does not yield to any of them; only the owning daemon
-    /// or a process holding the right entitlement can unlink it, which is
-    /// why Finder puts up an authorization dialog instead of simply failing.
-    ///
-    /// An earlier version probed for Full Disk Access and created a
-    /// container when it found it. That probe tested the wrong thing: the
-    /// runs had Full Disk Access, created four containers, and could not
-    /// remove any of them. They are still in the author's Library.
-    ///
-    /// A correct probe is not possible either, because finding out whether
-    /// removal works means creating the container that cannot be removed.
-    /// So the container surface belongs to the synthetic fixtures, which
-    /// own their filesystem root and can delete anything in it.
+    /// The harness never creates sandbox containers. `containermanagerd` writes
+    /// a metadata file into `~/Library/Containers/<id>` that nothing but the
+    /// owning daemon can unlink, not Full Disk Access and not root, and probing
+    /// whether removal works would mean creating one. Containers belong to the
+    /// synthetic fixtures.
 
-    /// Lays down the footprint a real application scatters across the user's
-    /// Library, the whole point of a deep uninstall being that every one of
-    /// these is found from the identity alone, with nothing named explicitly.
+    /// The footprint a real application scatters across Library, to be found
+    /// from the identity alone.
     ///
     /// - Returns: every path created, labelled by the mechanism that should
     ///   discover it, so a failure names what was missed.
@@ -141,14 +114,9 @@ struct RealEnvironmentFixture {
             made.append((label, url))
         }
 
-        // Note: the LaunchAgents plist makes macOS post an "App Background
-        // Activity" notification while the test runs. It names the item
-        // "(null)" because the plist carries a Label and nothing else: no
-        // executable and no owning bundle for Background Task Management to
-        // take a display name from. That is expected, and it is the same
-        // literal `(null)` BTMParser has to cope with when reading the real
-        // database. The plist stays minimal on purpose: this exercises
-        // discovery of a launchd item, not the running of one.
+        // The LaunchAgents plist makes macOS post a background activity
+        // notification naming "(null)", since it carries only a Label. That is
+        // expected: this tests discovery, not running.
         let files: [(String, URL)] = [
             ("Preferences", library.appendingPathComponent("Preferences/\(id).plist")),
             ("LaunchAgents", library.appendingPathComponent("LaunchAgents/\(id).plist"))
@@ -170,12 +138,8 @@ struct RealEnvironmentFixture {
         return made
     }
 
-    /// A real application bundle in `~/Applications`, registered with Launch
-    /// Services exactly as an installed app is.
-    ///
-    /// Needed because the registration is a separate surface from the files:
-    /// deleting the bundle leaves the record behind, and only an actually
-    /// registered bundle can prove the record is retracted.
+    /// A bundle in `~/Applications` registered with Launch Services, because
+    /// only a registered bundle can prove the record is retracted.
     mutating func makeRegisteredAppBundle(suffix: String = "") throws -> URL {
         let applications = home.appendingPathComponent("Applications")
         let bundle = applications.appendingPathComponent("\(runID)\(suffix).app")
@@ -222,20 +186,13 @@ struct RealEnvironmentFixture {
 
     // MARK: - Teardown
 
-    /// Removes everything this run created. Call from `tearDown`, and treat
-    /// failures as test failures: a harness that leaks real directories into
-    /// a user's Library is worse than one that fails.
+    /// Removes everything this run created. Failures are test failures: a
+    /// harness that leaks into a user's Library is worse than one that fails.
     func cleanUp(file: StaticString = #filePath, line: UInt = #line) {
-        // Anything Brim trashed rather than deleted is still on the machine,
-        // in the user's Trash, and stays there until they empty it. Left
-        // alone these accumulate one per run, and for as long as a `.app`
-        // among them exists, Launch Services keeps re-registering it, so
-        // unregistering is futile while the file is there. 58 such records
-        // had built up before this was noticed.
-        //
-        // The harness cannot *list* ~/.Trash without Full Disk Access, but
-        // it can remove a path it can name, and each run's names are unique
-        // so macOS appends no disambiguating suffix.
+        // Anything trashed stays in the user's Trash, and Launch Services keeps
+        // re-registering a `.app` there. The harness cannot list `~/.Trash` without
+        // Full Disk Access, but can remove a path it names, and each run's names
+        // are unique.
         let trash = home.appendingPathComponent(".Trash")
         for url in created {
             let name = url.lastPathComponent
@@ -243,10 +200,8 @@ struct RealEnvironmentFixture {
             try? FileManager.default.removeItem(at: trash.appendingPathComponent(name))
         }
 
-        // Then retract whatever registration is left. Best effort, not an
-        // assertion: with the files gone Launch Services prunes these on its
-        // own schedule, and a harness that fails the suite over the timing
-        // of a system daemon is worse than one that tidies quietly.
+        // Then retract any registration left, best effort: Launch Services prunes
+        // on its own schedule once the files are gone.
         if registeredAnyBundle {
             for url in LaunchServicesRegistration
                 .registeredApplicationURLs(forBundleID: harnessBundleID) {
@@ -266,9 +221,7 @@ struct RealEnvironmentFixture {
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {
-                // Never silent: a harness that cannot clean up after itself
-                // leaves real directories in the user's Library, and a
-                // swallowed error here is how four of them accumulated.
+                // Never silent: a swallowed error leaves real directories behind.
                 XCTFail(
                     "Harness could not remove \(url.path): \(error.localizedDescription). "
                     + "Remove it by hand before running again.",
@@ -278,11 +231,9 @@ struct RealEnvironmentFixture {
         }
     }
 
-    /// The only directories this harness may create in, and therefore the
-    /// only ones it may remove from. `~/Applications` is here because a
-    /// Launch Services registration can only be proven against a bundle that
-    /// really is installed where applications go; the system-wide
-    /// `/Applications` is deliberately absent.
+    /// The only directories the harness may create in or remove from.
+    /// `~/Applications` is here so a registration can be proven; `/Applications`
+    /// is deliberately absent.
     static var removableRoots: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return [
@@ -291,11 +242,10 @@ struct RealEnvironmentFixture {
         ]
     }
 
-    /// The one rule that keeps this harness from being dangerous: a path is
-    /// removable only if the harness marker appears in its own last component
-    /// *and* it sits inside one of the roots above. Checking the whole path
-    /// would let `~/BrimHarness-x/../../Documents` through, so the component
-    /// is checked directly and the path is standardized first.
+    /// Removable only if the marker is in the last component and the path sits
+    /// inside one of the roots. Checking the whole path would let
+    /// `~/BrimHarness-x/../../Documents` through, so the path is standardized
+    /// and the component checked directly.
     static func isSafeToRemove(_ url: URL) -> Bool {
         let standardized = url.standardizedFileURL
         guard standardized.lastPathComponent.hasPrefix(marker) else { return false }

@@ -1,15 +1,7 @@
 import XCTest
 @testable import BrimCore
 
-/// House style for anything a person reads.
-///
-/// Em and en dashes are the giveaway of text written by a model rather than
-/// by someone explaining their own software, and once a few creep in the
-/// whole app starts to read the same way. Every sentence Brim shows should
-/// sound like a person who knows what the software does telling you plainly.
-///
-/// This covers the copy that lives in the model layer, where the reusable
-/// sentences are. Copy in a view is caught by reading it.
+/// House style for anything a person reads: no em or en dashes.
 final class UserFacingCopyTests: XCTestCase {
 
     private func assertPlain(
@@ -60,9 +52,7 @@ final class UserFacingCopyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         var found: [(String, String)] = []
-        // `Brim` rather than `Brim/Views`, which left `BrimApp.swift` out:
-        // the self-uninstall confirmation and its failure alert are as much
-        // copy as anything in a view, and nothing was reading them.
+        // `Brim`, not `Brim/Views`, so `BrimApp.swift` is read too.
         for directory in ["Brim", "BrimCore/Sources/BrimUI"] {
             let base = root.appendingPathComponent(directory)
             guard let walk = FileManager.default.enumerator(
@@ -76,13 +66,9 @@ final class UserFacingCopyTests: XCTestCase {
         return found
     }
 
-    /// Every double-quoted literal in a file, which is close enough: the
-    /// false positives are identifiers and symbol names, and neither of the
-    /// rules below can fire on those.
-    ///
-    /// Comments are dropped first. A comment recording what a sentence used
-    /// to say, which is how this codebase explains its own fixes, otherwise
-    /// fails the very rule it is documenting.
+    /// Every double-quoted literal, close enough: the false positives are
+    /// identifiers, which the rules below cannot fire on. Comments are dropped
+    /// first so one quoting an old sentence does not fail.
     private static func literals(in text: String) -> [String] {
         var results: [String] = []
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -106,14 +92,7 @@ final class UserFacingCopyTests: XCTestCase {
         return results
     }
 
-    /// The house rule applied where it was not being applied.
-    ///
-    /// This file used to say "copy in a view is caught by reading it", and
-    /// reading it is exactly what stopped happening. What it missed: an em
-    /// dash standing in for a table cell with no value, two sentences left
-    /// unfinished by an edit, an empty state explaining which caches Brim had
-    /// been taught about, and a footprint total that guessed it was "probably
-    /// more". None of that is in the model layer, so none of it was covered.
+    /// No dashes in anything a person reads, views included.
     func testNoDashesInAnythingAPersonReads() throws {
         for (name, text) in try Self.sourcesShowingText() {
             for literal in Self.literals(in: text) {
@@ -127,18 +106,13 @@ final class UserFacingCopyTests: XCTestCase {
         }
     }
 
-    /// A placeholder is not a fact.
-    ///
-    /// `group.signedBy ?? "—"` rendered unsigned code, a broken signature and
-    /// code Brim never examined as the same blank cell, and the energy list
-    /// grew a row called Unknown with real joules against it. Every one of
-    /// those states is knowable, and each one has its own sentence already.
+    /// A placeholder is not a fact: unsigned, broken and unexamined code each
+    /// have their own sentence.
     func testNothingRendersAPlaceholderWhereAFactIsKnown() throws {
         let placeholders = ["\"unknown\"", "\"Unknown\"", "\"n/a\"", "\"N/A\"", "\"—\"", "\"-\""]
         for (name, text) in try Self.sourcesShowingText() {
             for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                // Same reason as `literals`: a comment explaining an old
-                // fallback must not count as one.
+                // A comment explaining an old fallback must not count as one.
                 let line = rawLine.components(separatedBy: "//").first ?? ""
                 guard line.contains("??") else { continue }
                 for placeholder in placeholders where line.contains(placeholder) {
@@ -151,16 +125,9 @@ final class UserFacingCopyTests: XCTestCase {
         }
     }
 
-    /// Brim describes the Mac, not itself.
-    ///
-    /// The rule is not that a gap goes unreported. `RegistrationCoverage` and
-    /// `ScanCompleteness` exist precisely so a surface that could not be read
-    /// says so, and a zero nobody measured is still a lie. The rule is that
-    /// the sentence names what is true of the machine and what would change
-    /// it, rather than announcing what Brim has not been taught or cannot
-    /// work out. "Brim did not find any of the build caches it knows about"
-    /// told somebody about Brim's table. "Nothing for the build tools to give
-    /// back" tells them about their disk.
+    /// Brim describes the Mac, not itself. A gap is still reported, but the
+    /// sentence names what is true of the machine and what would change it,
+    /// not what Brim has not been taught.
     func testNothingTellsThePersonAboutBrimsOwnLimitations() throws {
         let banned = [
             "Brim does not know", "Brim cannot tell", "Brim has no idea",

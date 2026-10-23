@@ -42,16 +42,9 @@ public extension Index {
         }
     }
 
-    /// Writes one snapshot of what is installed. Nothing is ever updated
-    /// or deleted here.
-    ///
-    /// Append-only is not tidiness. A row that is overwritten cannot be
-    /// subtracted from, so "what changed since last time" would need a
-    /// process watching for changes, and a resident watcher is the thing
-    /// nobody wants: it costs battery, it
-    /// needs permissions, and it is one more daemon on a Mac whose whole
-    /// complaint is that it has too many. Two snapshots and a difference
-    /// answer the same question for nothing.
+    /// Writes one snapshot of what is installed. Nothing here is ever updated or
+    /// deleted: an overwritten row cannot be subtracted from, and "what changed"
+    /// would then need a resident watcher, which costs battery and permissions.
     @discardableResult
     func recordInstalled(
         _ applications: [InstallObservation], at moment: Date = Date()
@@ -88,7 +81,7 @@ public extension Index {
     }
 
     /// The names as one JSON array, or nothing when there are none, so a
-    /// snapshot that learned nothing new keeps what was recorded before.
+    /// snapshot that learned nothing keeps what was recorded before.
     internal static func encodedNames(_ names: [String]) -> String? {
         guard !names.isEmpty, let data = try? JSONEncoder().encode(names) else { return nil }
         return String(bytes: data, encoding: .utf8)

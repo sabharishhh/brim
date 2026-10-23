@@ -10,9 +10,7 @@ final class HomeStatusTests: XCTestCase {
     }
 
     func testNothingIsClearBeforeTheScanFinishes() {
-        // The old header printed a confident "Empty" seconds before the real
-        // figure arrived. A zero nobody measured is the number this product
-        // must never print.
+        // Not "Empty" before the figure has been measured.
         XCTAssertEqual(HomeStatus.leftovers(.init(hasChecked: false)).status, .checking)
         XCTAssertEqual(HomeStatus.background(leftOver: 0, hasChecked: false).status, .checking)
     }

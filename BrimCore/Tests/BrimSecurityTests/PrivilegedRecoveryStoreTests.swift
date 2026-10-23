@@ -31,8 +31,7 @@ final class PrivilegedRecoveryStoreTests: XCTestCase {
     }
 
     func testRecoveryCopiesAreListedAndOnlyTheSelectedCopyIsRemoved() throws {
-        // Privileged removals were retained invisibly, leaving an app copy
-        // that macOS continued to recognise after uninstalling it.
+        // Privileged removals are listed, not retained invisibly.
         let first = try file("First.plist")
         let second = try file("Second.plist")
         let items = try store.items()

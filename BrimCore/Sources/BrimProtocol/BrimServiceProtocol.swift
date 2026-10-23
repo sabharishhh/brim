@@ -1,7 +1,6 @@
 import BrimCore
 import Foundation
 
-/// The single API, behind which everything hides.
 /// What Brim's views ask of the service, which runs in Brim's own process.
 public protocol BrimServiceProtocol: Sendable {
     func inspect(identity: Identity) async throws -> Footprint
@@ -16,10 +15,9 @@ public protocol BrimServiceProtocol: Sendable {
     /// Re-observe a bounded set of unfinished removals once when the app opens.
     /// This never repeats an execution or obtains approval.
     func recheckPendingRemovals() async
-    /// Looks again, by path only, at recent removals that were confirmed,
-    /// and says whether what they took is still gone. `installed` is the
-    /// identifiers of the applications on the Mac now, so a reinstall is
-    /// recognised rather than reported as files coming back.
+    /// Looks again, by path, at recent confirmed removals and says whether what
+    /// they took is still gone. `installed` lets a reinstall be recognised
+    /// rather than reported as files coming back.
     func recheckRemovals(installed: Set<String>) async -> [RemovalRecheck]
     func history() async throws -> [Plan]
     func undo(planId: UUID) async throws
@@ -40,14 +38,8 @@ public protocol BrimServiceProtocol: Sendable {
     /// First-run setup: one confirmation that this Mac belongs to the person
     /// using it. Never asked again.
     func enroll() async throws
-    /// Everything macOS has registered on behalf of software: launchd
-    /// jobs, and the login items and background services in Background
-    /// Task Management.
-    ///
-    /// This used to take a flag, because background items came from
-    /// `sfltool` and reading them cost an administrator prompt. They are
-    /// read from the store directly now, so there is nothing left to opt
-    /// into and no reason to withhold half the answer.
+    /// Everything macOS has registered on behalf of software: launchd jobs, and
+    /// the login items and background services in Background Task Management.
     func registrations() async -> RegistrationReport
     /// Space on each local volume, kept as separate figures rather than
     /// collapsed into one.
@@ -67,10 +59,8 @@ public protocol BrimServiceProtocol: Sendable {
     /// Hands the service a way to remove something in a folder that
     /// belongs to root, through administrator cleanup.
     func usePrivilegedRemover(_ remover: (@Sendable (String) async -> String?)?) async
-    /// Hands the service a way to forget an installer receipt. Receipts
-    /// live in a folder that belongs to root, so without administrator
-    /// cleanup the step records that the record remains rather than half
-    /// succeeding.
+    /// Hands the service a way to forget an installer receipt, which lives in a
+    /// root-owned folder. Without it the step records that the record remains.
     func usePrivilegedReceiptForgetter(_ forgetter: (@Sendable (String) async -> String?)?) async
     /// Starts protected work after approval and stops it on every exit path.
     func usePrivilegedBatch(begin: (@Sendable () async -> String?)?,
@@ -78,9 +68,8 @@ public protocol BrimServiceProtocol: Sendable {
     func useRecoveryVerifier(_ reader: (@Sendable () async throws -> [RecoveryCopy])?) async
     func useRecoveryCopies(reader: (@Sendable () async throws -> [RecoveryCopy])?,
                            remover: (@Sendable (String, TargetFingerprint) async -> String?)?) async
-    /// What has been installed, removed or updated since Brim last
-    /// looked, worked out by subtracting one snapshot from the one
-    /// before it. Nothing watches, and nothing runs at login.
+    /// What has been installed, removed or updated since Brim last looked, by
+    /// subtracting one snapshot from the one before. Nothing watches.
     func whatChanged() async -> InstallHistory
     /// Every installation Brim's snapshots record, removed apps included.
     func installRecords() async -> [InstallRecord]
@@ -117,12 +106,10 @@ public extension BrimServiceProtocol {
         []
     }
 
-    /// Ask, wait for the answer, then act on it.
-    ///
-    /// The one route from a plan to a removal, so there is one place where
-    /// the gate is enforced rather than one per caller. A service that
-    /// cannot ask a person does not conform to `ApprovalGranting`, and this
-    /// stops before anything is touched.
+    /// Ask, wait for the answer, then act: the one route from a plan to a
+    /// removal, so the gate is enforced in one place. A service that cannot ask
+    /// a person does not conform to `ApprovalGranting`, and this stops before
+    /// anything is touched.
     func approveAndApply(planId: UUID, requesterIdentity: String) async throws {
         let receipt = try await requestApproval(
             planId: planId, requesterIdentity: requesterIdentity

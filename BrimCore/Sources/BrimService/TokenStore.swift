@@ -9,20 +9,10 @@ public struct TokenRecord: Codable, Sendable {
     public let expiresAt: Date
 }
 
-/// The minted tokens, held in memory and nowhere else.
-///
-/// This used to write `tokens.json` so that `brim approve-request` in one
-/// process and `brim apply` in another could share a token. That made a
-/// token a file: something that outlived the person who granted it, that
-/// survived a relaunch, and that anything able to read the user's
-/// Application Support directory could pick up and spend. Approval is a
-/// claim about a person being present at this moment, and a claim about
-/// now does not belong on disk.
-///
-/// The cost is real and deliberate: two separate processes cannot share an
-/// approval any more. A requester that is not the app has to be connected
-/// to the service that minted the token. That is the shape the architecture
-/// was always meant to have.
+/// The minted tokens, held in memory and nowhere else. Approval is a claim
+/// that a person is present now, which does not belong on disk where it
+/// could outlive them or be read and spent by another program. Two
+/// processes cannot share an approval, on purpose.
 public actor TokenStore {
     private var tokens: [UUID: TokenRecord] = [:]
     private let timeToLive: TimeInterval = 300 // 5 minutes
@@ -37,9 +27,8 @@ public actor TokenStore {
         self.currentTime = currentTime
     }
 
-    /// Called from exactly one place: `BrimService.grantApproval(for:)`,
-    /// after a person has answered. Nothing else in `Sources` calls this,
-    /// and `ApprovalGateTests` fails if that stops being true.
+    /// Called from exactly one place, `BrimService.grantApproval(for:)`, after a
+    /// person has answered. `ApprovalGateTests` fails if that changes.
     public func mintToken(planId: UUID, planHash: String, requesterIdentity: String) -> ApprovalToken {
         let now = currentTime()
         let expiry = now.addingTimeInterval(timeToLive)
@@ -56,12 +45,8 @@ public actor TokenStore {
         )
     }
 
-    /// Why a token was refused, said plainly.
-    ///
-    /// A refusal is the whole message a person gets. "Error
-    /// Domain=TokenError Code=0" tells someone holding a token that
-    /// something went wrong and nothing about what, which is how a refusal
-    /// gets mistaken for a bug and worked around.
+    /// Why a token was refused, in plain words: a refusal is the whole message a
+    /// person gets.
     public enum TokenError: LocalizedError, Equatable {
         case notFound
         case expired
@@ -98,18 +83,16 @@ public actor TokenStore {
             throw TokenError.expired
         }
 
-        // Single use: spent on the first attempt, successful or not. A
-        // token that survives a failed apply is a token worth retrying
-        // against a changed disk.
+        // Single use: spent on the first attempt, successful or not, so it cannot
+        // be retried against a changed disk.
         tokens.removeValue(forKey: token.nonce)
 
         guard record.planId == expectedPlanId && record.planHash == expectedPlanHash else {
             throw TokenError.planMismatch
         }
 
-        // The token's own copy of the binding has to agree with the record.
-        // They are minted together, so a disagreement means the value the
-        // caller handed over was not the value that was minted.
+        // The token's copy of the binding must match the record; they are minted
+        // together, so a mismatch means the token was not the one minted.
         guard token.planHash == record.planHash,
               token.requester == record.requesterIdentity else {
             throw TokenError.planMismatch

@@ -4,14 +4,10 @@ import BrimProtocol
 import Combine
 import Foundation
 
-/// Live view of what is still recoverable from the Trash.
-///
-/// The app must not go stale when the user empties the Trash in Finder, so
-/// the state is refreshed from four triggers: when the view appears, whenever
-/// the watcher reports a change, when Brim itself removes something, and when
-/// the app becomes active again. Everything is recomputed from the service
-/// rather than adjusted incrementally, so an external change can never leave
-/// a drifting local tally.
+/// What is still recoverable from the Trash, kept current when the person
+/// empties it in Finder: refreshed when the view appears, when the watcher
+/// reports a change, when Brim removes something, and when the app becomes
+/// active. Always recomputed from the service, so nothing drifts.
 @MainActor
 public final class RecoveryStatusModel: ObservableObject {
     @Published public private(set) var items: [RecoverableItem] = []
@@ -41,8 +37,7 @@ public final class RecoveryStatusModel: ObservableObject {
 
     deinit {
         refreshTask?.cancel()
-        // Observers are removed in stop(); a nonisolated deinit cannot touch
-        // main-actor state, and NSWorkspace drops them when we deallocate.
+        // Removed in `stop()`; a nonisolated deinit cannot touch main-actor state.
     }
 
     /// Loads the current state and begins watching. Safe to call repeatedly:
@@ -87,9 +82,8 @@ public final class RecoveryStatusModel: ObservableObject {
         Task { await refresh() }
     }
 
-    /// Coming back from Finder is the moment a user is most likely to have
-    /// just emptied the Trash, so treat it as a refresh point and let the
-    /// watcher stand down while we are in the background.
+    /// Becoming active is when the person has most likely just emptied the
+    /// Trash, so refresh then and let the watcher rest in the background.
     private func observeActivation() {
         let center = NSWorkspace.shared.notificationCenter
         let watcher = watcher
@@ -149,8 +143,8 @@ public final class RecoveryStatusModel: ObservableObject {
                     isAvailable = false
                 }
                 guard !Task.isCancelled else { return }
-                // Clear registrations pointing at vanished bundles after publishing
-                // the current Trash state. Maintenance must not delay that count.
+                // Clear registrations pointing at vanished bundles after publishing the
+                // Trash state, so maintenance never delays the count.
                 await service.reconcileRegistrations()
             }
         }

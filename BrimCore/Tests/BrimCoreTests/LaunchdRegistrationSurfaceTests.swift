@@ -46,8 +46,8 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
     }
 
     func testApplicationJobScopeDoesNotMistakeSystemPolicyForAnUnreadableAppJob() async throws {
-        // macOS stores a jetsam policy plist in its job folder without a
-        // Label. Scanning it as an app job caused a permanent read warning.
+        // macOS keeps a policy plist without a Label in its job folder; it is not a
+        // job and must not leave a permanent read warning.
         try writeJob(domain: "System/Library/LaunchDaemons", fileName: "policy.plist", label: nil, program: nil)
         try writeJob(domain: "Users/tester/Library/LaunchAgents", fileName: "app.plist",
                      label: "org.example.app.worker", program: nil)
@@ -116,8 +116,8 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
     }
 
     func testAJobWithoutRequiredLabelLeavesAReadGap() async throws {
-        // launchd.plist requires Label. The previous reader invented a label
-        // from the filename, permitting a command against an unproven service.
+        // A job needs a Label. Inventing one from the file name would allow a
+        // command against an unproven service.
         try writeJob(domain: "Users/tester/Library/LaunchAgents",
                      fileName: "com.example.unlabelled.plist", label: nil, program: nil)
         let snapshot = await LaunchdRegistrationSurface().snapshot(
@@ -143,9 +143,8 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
     }
 
     func testAppleJobsInSystemDomainsAreNotOfferedAsCleanable() async throws {
-        // Apple ships launchd jobs whose programs are absent. They are not
-        // leftovers, they cannot be removed, and a sweep that lists them is
-        // telling the user to delete part of macOS.
+        // Apple ships jobs whose programs are absent; they are not leftovers and
+        // cannot be removed.
         try writeJob(
             domain: "System/Library/LaunchDaemons",
             fileName: "com.apple.ghost.plist",
@@ -192,8 +191,7 @@ final class LaunchdRegistrationSurfaceTests: XCTestCase {
             evidence: "test"
         )
 
-        // The neighbouring app must not claim it just because its identifier
-        // is a prefix: that is how an uninstall removes a sibling's job.
+        // A neighbouring app must not claim it because its identifier is a prefix.
         let neighbour = Identity(bundleID: "com.example.suite", name: "Suite")
         XCTAssertFalse(job.belongs(to: neighbour, bundleURL: nil))
 

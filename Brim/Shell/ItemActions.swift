@@ -3,9 +3,8 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// The menu items every row that stands for files carries: the three
-/// things a Mac user expects of anything that is a file, in the order
-/// Finder uses. A row adds its own (Keep, Add to Tray) after a divider.
+/// The menu items every file row carries, in Finder's order. A row adds its
+/// own after a divider.
 struct ItemMenuItems: View {
     let urls: [URL]
     @SwiftUI.Environment(ShellState.self) private var shell
@@ -37,9 +36,8 @@ extension View {
 // MARK: - Put Back
 
 extension ShellState {
-    /// After a removal the check proved: says how much went, and offers it
-    /// back while the Trash still holds it. Remnants and Background said
-    /// this in two copies of the same function.
+    /// After a verified removal: says how much went, and offers it back while
+    /// the Trash still holds it.
     func offerPutBack(
         planId: UUID, count: Int, noun: (one: String, many: String), service: any BrimServiceProtocol,
         afterPutBack: @escaping @MainActor () async -> Void
@@ -72,12 +70,9 @@ extension ShellState {
 
 // MARK: - Tray
 
-/// What a page has picked to remove, drawn as its Tray.
-///
-/// The page keeps the selection, and this only describes it, so there is
-/// one reading of what is picked rather than a copy to keep in step.
-/// Compares without the closures, for the same reason `FocusedAction`
-/// does: a closure is never equal to the last one.
+/// What a page has picked to remove, drawn as its Tray. The page owns the
+/// selection; this only describes it. Compares without the closures, which
+/// are never equal.
 struct TrayContents: Equatable {
     let count: Int
     let bytes: Int64?

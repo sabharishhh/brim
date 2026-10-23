@@ -1,27 +1,13 @@
 import BrimCore
 import Foundation
 
-/// What macOS records this application as having written, where it is also
-/// named for the application (Tier B).
-///
-/// Since Ventura, a file created by an application that came through
-/// Gatekeeper carries `com.apple.provenance`, and the application's own
-/// bundle carries the same value. That is the system's record of who wrote
-/// something, which no name can give. ChatGPT's uninstall claimed 1.6 GB
-/// and left 2.9 GB: `~/.codex`, `~/.cache/codex-runtimes` and folders called
-/// `Codex` were all matched on a name or not at all, while every one of
-/// them carried ChatGPT's provenance and a tool's folder beside them did not.
-///
-/// **Provenance alone is not ownership.** A process an application starts
-/// inherits its provenance, so an application that runs shell commands
-/// stamps whatever those commands create, `~/.npm` included. So both have to
-/// hold: the name ties the item to the application, and the provenance
-/// proves the application wrote it. When another installed bundle carries
-/// the same value and is named for the same item, the two cannot be told
-/// apart and nothing is claimed.
-///
-/// Only the first level of the places applications keep data is read, so
-/// this costs one listing and a few attribute reads per folder.
+/// What macOS records this application as having written, where the item
+/// is also named for it (Tier B). A file created by an app that came
+/// through Gatekeeper carries `com.apple.provenance`, as does the app's
+/// bundle. Provenance alone is not ownership: processes an app starts
+/// inherit it, so the name must tie the item to the app as well. When
+/// another bundle with the same value is named for the item, nothing is
+/// claimed. Only the first level of data folders is read.
 public struct ProvenanceSource: EvidenceSource {
     private let budget: @Sendable () -> ScanBudget
     private let readProvenance: @Sendable (String) -> Data?
@@ -49,9 +35,8 @@ public struct ProvenanceSource: EvidenceSource {
         var search = DirectorySearch(budget: budget())
         let inventory = await Task.detached { InstalledBundleInventory.read(in: root) }.value
         let subject = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
-        // Bundles carrying the same value. One is enough to make the value
-        // ambiguous for anything named for it too, and says nothing about
-        // anything named only for this application.
+        // Bundles carrying the same value make it ambiguous for anything named for
+        // them too, but say nothing about items named only for this app.
         let resolver = IdentityResolver(root: root)
         var others: [Owner] = []
         for bundle in inventory.bundles where bundle.resolvingSymlinksInPath().path != subject {
@@ -81,9 +66,8 @@ public struct ProvenanceSource: EvidenceSource {
         return EvidenceFindings(evidence: evidence, completeness: inventory.completeness.merging(search.completeness))
     }
 
-    /// Where applications keep their own data, and whether only hidden
-    /// entries count there. The home folder itself holds the person's own
-    /// things, so only its dot folders are considered.
+    /// Where applications keep their own data, and whether only hidden entries
+    /// count there: in the home folder, only dot folders.
     static func places(in root: FileSystemRoot) -> [(URL, Bool)] {
         let library = root.url(for: .userLibrary)
         let home = library.deletingLastPathComponent()
@@ -95,11 +79,9 @@ public struct ProvenanceSource: EvidenceSource {
             .map { (library.appendingPathComponent($0), false) }
     }
 
-    /// The application's names as a folder would spell them: its own names
-    /// and the ones worked out from them, such as the last label of its
-    /// identifier, which is usually the product (`codex` in
-    /// `com.openai.codex`). Component names are left out: Sparkle's
-    /// `Updater` is in half the applications here.
+    /// The application's names as a folder would spell them, including derived
+    /// ones such as the identifier's last label. Component names are left out:
+    /// a helper called `Updater` ships in many apps.
     static func names(for identity: Identity) -> [String] {
         let generic: Set = [
             "client", "desktop", "macos", "application", "helper", "agent", "launcher",
@@ -111,8 +93,7 @@ public struct ProvenanceSource: EvidenceSource {
     }
 
     /// Named for the application: an identifier, the name in any case or
-    /// spacing, or a name followed by a separator, as in `codex-runtimes`
-    /// or `.codex`.
+    /// spacing, or a name followed by a separator (`codex-runtimes`, `.codex`).
     static func isNamed(_ entry: String, identifiers: [String], names: [String]) -> Bool {
         let lowered = entry.lowercased()
         let visible = lowered.hasPrefix(".") ? String(lowered.dropFirst()) : lowered
@@ -132,14 +113,9 @@ public struct ProvenanceSource: EvidenceSource {
         let names: [String]
     }
 
-    /// Every installed application with a provenance value.
-    ///
-    /// Two bundles can share one: anything an application creates carries
-    /// its value, bundles included. Claude Code's URL handler was created
-    /// from inside Visual Studio Code and carries Visual Studio Code's, and
-    /// a rule that gave up whenever a value was shared left all of Visual
-    /// Studio Code's data unclaimed. Sharing is settled per item instead, in
-    /// `owner(of:among:)`.
+    /// Every installed application with a provenance value. Two bundles can
+    /// share one, because anything an app creates carries its value, so sharing
+    /// is settled per item in `owner(of:among:)`.
     public static func owners(of identities: [Identity]) -> [Owner] {
         identities.compactMap { identity in
             guard let path = identity.bundlePath, let stamp = provenance(path) else { return nil }

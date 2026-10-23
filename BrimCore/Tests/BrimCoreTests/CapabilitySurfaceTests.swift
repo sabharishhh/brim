@@ -262,8 +262,8 @@ final class CapabilitySurfaceTests: XCTestCase {
 
 extension CapabilitySurfaceTests {
     func testEmbeddedJobsAreSavedForRuntimeVerificationBeforeTheBundleMoves() async throws {
-        // An embedded SMAppService declaration is absent from global job folders.
-        // Dropping it here meant verification never asked whether its job survived.
+        // An embedded SMAppService declaration is not in the global job folders,
+        // so it must be read from the bundle or its job is never verified.
         try info(["CFBundleIdentifier": "org.example.editor"], at: app)
         let plist = app.appendingPathComponent("Contents/Library/LaunchAgents/misleading-name.plist")
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(),

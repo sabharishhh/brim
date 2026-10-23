@@ -3,10 +3,8 @@ import BrimCore
 import BrimUI
 import SwiftUI
 
-/// The Apps list: one section per group, seven rows then "Show all",
-/// drawn by `GroupedStacks` like every other grouped page. It was a copy of
-/// that view with the same header, folding, Show All and arrow keys, which
-/// is two places to fix each of them.
+/// The Apps list: one section per group, drawn by `GroupedStacks` like every
+/// other grouped page.
 struct AppStacks: View {
     @ObservedObject var model: ApplicationsModel
     let groups: [ItemGroup<InstalledApplication>]
@@ -106,9 +104,8 @@ struct AppTable: View {
         .padding(.bottom, Metrics.pagePadding)
     }
 
-    /// A plain click on a row. Outside choosing it opens that app, even one
-    /// of several selected. While choosing it ticks or unticks the row, the
-    /// way the list does; Shift and Command extend as they always have.
+    /// A plain click opens the app, even one of several selected. While choosing
+    /// it ticks or unticks the row; Shift and Command extend as usual.
     private func choose(_ ids: Set<String>) {
         let rows = sorted.filter { ids.contains($0.id) }
         guard model.isChoosing else { return model.mark(rows) }

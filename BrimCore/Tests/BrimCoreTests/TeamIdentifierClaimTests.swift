@@ -2,20 +2,9 @@ import XCTest
 import BrimCore
 @testable import BrimScan
 
-/// A team identifier names a vendor, not an application.
-///
-/// `TeamIDSource` rated every `TEAMID.*` group container Tier B, which means
-/// ticked for removal by default, on the strength of a string Microsoft puts
-/// on Word, Teams, OneDrive and Visual Studio Code alike. It went unnoticed
-/// because it never ran: `IdentityResolver` asked macOS for the wrong class
-/// of signing information, so every `Identity.teamID` was nil and this source
-/// returned nothing every time.
-///
-/// Fixing that flag turned a dormant over-claim into a live one. On the Mac
-/// this was measured on, uninstalling Visual Studio Code offered up
-/// `UBF8T346G9.com.microsoft.teams` and `UBF8T346G9.com.microsoft.oneauth`,
-/// pre-selected, with Microsoft Teams installed. Visual Studio Code declares
-/// no application groups at all.
+/// A team identifier names a vendor, not an application. Rating every
+/// `TEAMID.*` group container Tier B offered one product's containers,
+/// pre-selected, with another of the vendor's products installed.
 final class TeamIdentifierClaimTests: XCTestCase {
 
     private var rootURL: URL!
@@ -42,8 +31,7 @@ final class TeamIdentifierClaimTests: XCTestCase {
         return url
     }
 
-    /// A sibling application on disk. Unsigned in a fixture, so the team is
-    /// supplied directly where the resolver cannot read one.
+    /// Fixture bundles are unsigned, so the team is supplied directly.
     private func makeApplication(named name: String, identifier: String) throws {
         let bundle = root.url(for: .applications).appendingPathComponent("\(name).app")
         let contents = bundle.appendingPathComponent("Contents")
@@ -65,8 +53,7 @@ final class TeamIdentifierClaimTests: XCTestCase {
 
     // MARK: - The incident
 
-    /// **Teams' data is not Visual Studio Code's.** Whatever else changes,
-    /// this must never come back selected.
+    /// Another product's data must never come back selected.
     func testAContainerMatchedOnTheTeamAloneIsNeverSelected() async throws {
         try makeGroupContainer("\(team).com.microsoft.teams")
 
@@ -84,8 +71,7 @@ final class TeamIdentifierClaimTests: XCTestCase {
         )
     }
 
-    /// Selection is what actually matters, so check the thing the person
-    /// sees rather than only the label on it.
+    /// Checks the selection the person sees, not only the label.
     func testTheSafetyEngineDoesNotTickATeamMatchedContainer() async throws {
         let container = try makeGroupContainer("\(team).com.microsoft.teams")
 
@@ -110,14 +96,13 @@ final class TeamIdentifierClaimTests: XCTestCase {
         }
     }
 
-    /// When a sibling is installed the row says so by name, because "shared"
-    /// on its own tells nobody anything.
+    /// An installed sibling is named, because "shared" alone tells nobody
+    /// anything.
     func testAnInstalledSiblingVetoesAndIsNamed() async throws {
         try makeGroupContainer("\(team).com.microsoft.teams")
         try makeApplication(named: "Microsoft Teams", identifier: "com.microsoft.teams")
 
-        // The fixture bundles are unsigned, so the sibling's team cannot be
-        // read from a signature. Supplied directly to exercise the rule.
+        // Unsigned fixtures, so the sibling's team is supplied directly.
         let siblings = [Identity(
             bundleID: "com.microsoft.teams", teamID: team, name: "Microsoft Teams"
         )]
@@ -126,8 +111,8 @@ final class TeamIdentifierClaimTests: XCTestCase {
         XCTAssertEqual(claimant?.name, "Microsoft Teams")
     }
 
-    /// A group the application actually declares is proof, and that is
-    /// `GroupContainerSource`'s job at Tier A. This source never claims one.
+    /// A declared group is `GroupContainerSource`'s at Tier A; this source never
+    /// claims one.
     func testADeclaredGroupIsTheOtherSourcesJobAndIsTierA() async throws {
         let container = try makeGroupContainer("\(team).group.com.microsoft.shared")
         let declaring = Identity(
@@ -147,8 +132,7 @@ final class TeamIdentifierClaimTests: XCTestCase {
         }
     }
 
-    /// An application with no team identifier claims nothing, which is what
-    /// kept this hidden for so long.
+    /// No team identifier, no claims.
     func testNoTeamIdentifierClaimsNothing() async throws {
         try makeGroupContainer("\(team).com.microsoft.teams")
         let unsigned = Identity(bundleID: "com.microsoft.VSCode", name: "Visual Studio Code")

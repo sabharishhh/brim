@@ -48,19 +48,11 @@ extension BundleSurfaceReader {
         }
     }
 
-    /// The folder in the home folder an Electron editor says it keeps its
-    /// data in. Every editor built from Visual Studio Code carries a
-    /// `product.json` naming it: `.vscode`, `.cursor`, `.antigravity-ide`.
-    /// Nothing about the application's name predicts `.vscode` or the
-    /// `-ide` suffix, and Antigravity's 400 MB of extensions outlived its
-    /// removal because of it. The bundle's own declaration is a record, so
-    /// it is trusted where a name alone is not.
-    ///
-    /// A declaration is still only a string the bundle wrote. It is taken
-    /// only when it names the product, as every real one does (`.vscode`
-    /// for VS Code, `.cursor`, `.antigravity-ide`), and never when it names
-    /// a folder every tool shares or credentials live in: one saying `.ssh`
-    /// made the person's keys this app's data, ticked for removal.
+    /// The home folder an Electron editor declares in its `product.json`
+    /// (`.vscode`, `.cursor`, `.antigravity-ide`), which the app's name does not
+    /// predict. The declaration is a record, but still only a string the bundle
+    /// wrote: it is taken only when it names the product, never a shared or
+    /// credentials folder such as `.ssh`.
     static func declaredHomeFolders(of bundle: URL) -> [String] {
         let product = bundle.appendingPathComponent("Contents/Resources/app/product.json")
         guard let size = (try? product.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size < 1_000_000,

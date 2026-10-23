@@ -5,19 +5,11 @@
 import Foundation
 import XCTest
 
-/// The gate that makes Brim safe to give root to.
-///
-/// `requestApproval` used to mint a token outright whenever `ApprovalPolicy`
-/// judged the plan reversible, which is nearly every plan. Inside the app
-/// that was defensible: the review sheet had been read and a person had
-/// pressed the button. Anywhere else there is no review sheet, so plan,
-/// request, apply ran end to end with nobody involved. The product's whole
-/// claim is that this cannot happen, so it is tested here rather than
-/// asserted in a document.
+/// The gate that makes Brim safe to give root to: nothing runs from plan to
+/// apply without a person approving in Brim's window.
 final class ApprovalGateTests: XCTestCase {
-    /// Counts how many times the gate asked for a fingerprint, without
-    /// raising one. The real check puts a system dialog on screen and
-    /// waits, which stopped the whole suite the first time these ran.
+    /// Counts fingerprint requests without raising one; the real check puts a
+    /// system dialog on screen and stops the suite.
     actor PresenceSpy {
         private(set) var asks: [String] = []
         private var refusing = false
@@ -88,8 +80,7 @@ final class ApprovalGateTests: XCTestCase {
     }
 
     func testAServiceWithNobodyToAskCannotApprove() async throws {
-        // Any process that is not Brim's app. It runs the same code and
-        // holds the same kind of object; what it has not got is a window.
+        // Any process that is not Brim's app: same code, no window.
         let (service, gen, rootURL, _) = try makeService(consent: nil)
         defer { gen.destroy() }
         let plan = try await plan(from: service, in: rootURL)
@@ -161,17 +152,16 @@ final class ApprovalGateTests: XCTestCase {
             planId: original.planId, requesterIdentity: "user"
         )
 
-        // Same identifier, different contents: what the person was shown is
-        // no longer what would happen.
+        // Same identifier, different contents: what the person was shown is no
+        // longer what would happen.
         let swapped = Plan(
             planId: original.planId, createdAt: original.createdAt,
             engineVersion: original.engineVersion, osVersion: original.osVersion,
             intent: original.intent, steps: Array(original.steps.dropLast()),
             excludedItems: original.excludedItems, expectedTotalBytes: original.expectedTotalBytes
         )
-        // Written straight to the store's directory: `PlanStore.save`
-        // refuses to overwrite, which is correct and is the reason this has
-        // to go around it to stage the attack.
+        // Written straight to the store's directory, because `PlanStore.save`
+        // refuses to overwrite.
         try swapped.canonicalData().write(
             to: planDir.appendingPathComponent("\(original.planId.uuidString).json"),
             options: .atomic
@@ -185,10 +175,8 @@ final class ApprovalGateTests: XCTestCase {
         }
     }
 
-    /// The review happens before the request: approval was asked for when
-    /// Remove was pressed, and hashed whatever the file said by then. Any
-    /// program the person runs can write that folder, so a plan rewritten
-    /// while it was on screen was approved, administrator password and all.
+    /// Any program the person runs can write the plans folder, so a plan
+    /// rewritten while the review was on screen must never be approved.
     func testAPlanRewrittenDuringTheReviewIsNeverApproved() async throws {
         let (service, gen, rootURL, planDir) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
@@ -239,11 +227,8 @@ final class ApprovalGateTests: XCTestCase {
         }
     }
 
-    /// The app's own configuration, with the debug shortcut switched off.
-    ///
-    /// The gate has to refuse a service with no window and let Brim
-    /// through, and a test that only proves the first half would be
-    /// satisfied by a gate that refuses everybody.
+    /// The gate refuses a service with no window and lets Brim through; proving
+    /// only the first half would pass a gate that refuses everybody.
     func testTheAppItselfCanStillApplyAnApprovedRemoval() async throws {
         let (service, gen, rootURL, _) = try makeService(consent: ConsentSource { _ in true })
         defer { gen.destroy() }
@@ -259,10 +244,8 @@ final class ApprovalGateTests: XCTestCase {
     }
 
     func testADestructivePlanStillCostsAFingerprint() async throws {
-        // Consent and presence are different claims. The review sheet says
-        // the person agreed; the fingerprint says somebody is at the
-        // machine now rather than software driving the app. A plan that
-        // destroys something nothing can restore needs both.
+        // Consent says the person agreed; presence says somebody is at the Mac now.
+        // A plan that destroys something unrecoverable needs both.
         let spy = PresenceSpy()
         let (service, gen, rootURL, _) = try makeService(
             consent: ConsentSource { _ in true }, presence: spy.check()
@@ -306,7 +289,7 @@ final class ApprovalGateTests: XCTestCase {
 
     // MARK: - Shape
 
-    /// T-1.12's acceptance criterion, as a test rather than as a promise.
+    /// One function in the product mints a token, and only one.
     func testOnlyOneFunctionInTheProductProducesAToken() throws {
         let allowed: [String: Set<String>] = [
             // The mint itself.
@@ -380,9 +363,8 @@ final class ApprovalGateTests: XCTestCase {
             .deletingLastPathComponent() // repo
     }
 
-    /// Everything that ships: the package sources and the app target. Tests
-    /// are excluded on purpose, because a test reaching past the gate to set
-    /// up a fixture is not a way in for anybody else.
+    /// Everything that ships: package sources and the app target. Tests reaching
+    /// past the gate to set up fixtures are excluded.
     private static func productSources() -> [URL] {
         let root = repositoryRoot()
         var files: [URL] = []

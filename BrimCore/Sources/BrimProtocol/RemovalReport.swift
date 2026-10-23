@@ -3,14 +3,10 @@ import Darwin
 import Foundation
 
 // swiftformat:disable wrapMultilineStatementBraces
-/// What a removal can honestly say afterwards, in three parts.
-///
-/// "Every location checked again" was one sentence covering three different
-/// facts. Some things Brim looked at after the removal and found gone. Some
-/// kinds of registration the app's own bundle says it never had, so there was
-/// nothing to find. And some things macOS kept, or would not let Brim read.
-/// Folding them together is how a removal ends up claiming more than it
-/// checked, so each is counted on its own and nothing moves between them.
+/// What a removal can honestly say afterwards, in three separate parts: what
+/// Brim checked and found gone, kinds of registration the app's bundle says
+/// it never had, and what macOS kept or would not let Brim read. Folding
+/// them together would claim more than was checked.
 public struct RemovalReport: Codable, Equatable, Sendable {
     /// Something that is still there because macOS decides, not Brim.
     public struct Kept: Codable, Equatable, Hashable, Sendable {
@@ -66,10 +62,8 @@ public struct RemovalReport: Codable, Equatable, Sendable {
     public let keptByMacOS: [Kept]
     /// Still there for another reason: written back, skipped, or failed.
     public let stillThere: Int
-    /// Found, left unticked, and still on the disk. Antigravity's removal
-    /// said "Nothing left" over four of these: every ticked item was gone,
-    /// which is all the sentence was checking, and the person read it as
-    /// everything.
+    /// Found, left unticked, and still on the disk, so "Nothing left" is never
+    /// said over them.
     public let leftUnticked: [String]
     /// Excluded paths that are still present or whose absence could not be confirmed.
     public let protectedItems: [ProtectedItem]
@@ -132,14 +126,10 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         scanCompleteness = try container.decodeIfPresent(ScanCompleteness.self, forKey: .scanCompleteness)
     }
 
-    /// Built from the plan, what is still on the disk, and what the journal
-    /// recorded for it.
-    ///
+    /// Built from the plan, what is still on disk, and what the journal recorded.
     /// A path counts as kept by macOS only when the journal says the system
-    /// refused, or nothing was recorded and the path is one macOS protects.
-    /// A file an app wrote back, or a step that failed for its own reasons,
-    /// is still there, and saying macOS kept it would be a claim about who
-    /// is responsible that nothing supports.
+    /// refused, or nothing was recorded and macOS protects the path. A file an
+    /// app wrote back is still there, but not macOS's doing.
     public static func build(
         plan: Plan,
         remaining: Set<String>,
@@ -219,11 +209,9 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             .map(\.capability)
     }
 
-    /// Checks that could not be answered for a kind of registration the
-    /// review had reason to expect. One that could not be read for a kind
-    /// the app never declared and the review never found answers nothing
-    /// anyone asked: configuration profiles cannot be fully read on this
-    /// Mac, and eqMac's clean removal was marked incomplete because of it.
+    /// Checks that could not be answered for a kind of registration the review
+    /// had reason to expect. A gap for a kind the app never declared and the
+    /// review never found answers nothing anyone asked.
     public static func unansweredChecks(
         _ observations: [RegistrationVerification], declaredNone: [DeclaredCapability]
     ) -> [RegistrationVerification] {

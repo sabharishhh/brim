@@ -9,16 +9,15 @@ public struct FootprintProjector: Sendable {
         self.engine = engine
     }
 
-    /// Generates the footprint for an identity.
-    /// Re-evaluates sizes and presence dynamically, fulfilling the "query, never a stored object" invariant.
+    /// Builds the footprint for an identity, reading sizes and presence fresh
+    /// each time.
     public func project(
         identity: Identity, in root: FileSystemRoot, explicitEvidence: [Evidence]? = nil
     ) async throws -> Footprint {
         let evidenceList: [Evidence]
         var completeness = ScanCompleteness.complete
         if let explicit = explicitEvidence {
-            // The caller named the targets, so there was no search to be
-            // incomplete.
+            // The caller named the targets, so there was no search to be incomplete.
             evidenceList = explicit
         } else {
             let app = try await engine.discover(identity: identity, in: root)
@@ -45,8 +44,8 @@ public struct FootprintProjector: Sendable {
             if lstat(evidence.url.path, &information) != 0, errno == ENOENT || errno == ENOTDIR {
                 return nil
             }
-            // Protected by macOS for itself: named for the app, perhaps,
-            // but never the app's to remove, and never removable by anyone.
+            // Protected by macOS for itself: never the app's to remove, and never
+            // removable by anyone.
             if RemovalCapability.isProtectedBySystem(evidence.url.path) {
                 return nil
             }
@@ -62,14 +61,9 @@ public struct FootprintProjector: Sendable {
         return items.compactMap(\.self)
     }
 
-    /// The same answer the leftovers sweep gives, from the same rule.
-    ///
-    /// This used to ask the item with `access(path, W_OK)`. That follows a
-    /// link, so three broken links in `~/.local/bin` found nothing at the
-    /// far end, fell through to "needs an administrator", and were skipped
-    /// after the person approved them while the sweep had called them
-    /// removable. It was also the wrong question for a read-only file,
-    /// which its folder lets go perfectly well.
+    /// The same answer the leftovers sweep gives, from the same rule: the
+    /// folder's permission, asked with `lstat`, not the item's with `access`,
+    /// which follows links and is the wrong question for a read-only file.
     private nonisolated static func determineCapability(for path: String) -> Capability {
         RemovalCapability.forDeleting(path)
     }

@@ -64,8 +64,8 @@ public actor IdentityResolver {
         let bundle = Bundle(url: bundleURL)
         let bundleID = bundle?.bundleIdentifier
         let version = bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
-        // The name the bundle uses for itself, which is what it names its
-        // support and cache folders after and is not always its file name.
+        // The name the bundle uses for itself, which it names its folders after
+        // and which is not always its file name.
         let declaredName = (bundle?.infoDictionary?["CFBundleName"] as? String)
             .flatMap { $0.isEmpty ? nil : $0 }
 
@@ -74,17 +74,10 @@ public actor IdentityResolver {
         var isSandboxed = false
         var groupContainers: [String] = []
 
-        // Two flags, and asking for one of them was a silent hole. The
-        // team identifier is signing information and the entitlements are
-        // requirement information, so a call that asks only for the latter
-        // reports a sandbox and group containers correctly while leaving
-        // `teamID` nil for every application on the machine. Nothing threw
-        // and nothing was logged: `TeamIDSource` opens by returning an
-        // empty array when there is no team, so the whole of it, and every
-        // team-prefixed rule in the inventory, read as "nothing found"
-        // rather than "never asked". `CodeSignature` in `BrimScan` had the
-        // flags right all along, which is the two-readings-of-one-fact
-        // hazard again.
+        // Both flags: the team identifier is signing information and the
+        // entitlements are requirement information. Asking for only the latter
+        // leaves `teamID` nil for every app without any error. `CodeSignature` in
+        // `BrimScan` reads the same fact, and a test holds the two to one answer.
         var staticCode: SecStaticCode?
         if SecStaticCodeCreateWithPath(bundleURL as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode {
             var signInfo: CFDictionary?

@@ -52,8 +52,7 @@ import Testing
 }
 
 extension StopDownloadTests {
-    /// "Claude did not quit" read as an amber "Update failed", though the
-    /// update was downloaded, checked and only waiting for the app to quit.
+    /// An app that stays open is waited for, not reported as a failed update.
     @Test func `an app that stays open is waited for, not failed`() async {
         let model = UpdatesModel()
         let service = SlowDownload(installing: false, stillOpen: true)

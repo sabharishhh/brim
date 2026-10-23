@@ -67,9 +67,8 @@ public enum HomebrewCatalog {
     /// Compiled once, not for every cask.
     private static let identifierPattern = try? NSRegularExpression(pattern: #"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){2,}"#)
 
-    /// Bundle identifiers a cask names in its uninstall and zap stanzas,
-    /// which is how two casks installing an app of the same name are told
-    /// apart.
+    /// Bundle identifiers a cask names in its uninstall and zap stanzas, which
+    /// tell apart two casks installing an app of the same name.
     static func identifiers(in artifacts: [[String: Any]]) -> Set<String> {
         guard let data = try? JSONSerialization.data(withJSONObject: artifacts),
               let text = String(data: data, encoding: .utf8) else { return [] }
@@ -79,9 +78,9 @@ public enum HomebrewCatalog {
         })
     }
 
-    /// The cask for an installed application: the one whose application
-    /// has this file name, and when several do, the one that names this
-    /// bundle identifier. Anything still ambiguous is not a match.
+    /// The cask for an installed app: the one with this file name, and when
+    /// several have it, the one naming this bundle identifier. Anything still
+    /// ambiguous is not a match.
     public static func match(fileName: String, bundleID: String?, in casks: [CatalogCask]) -> CatalogCask? {
         let name = fileName.lowercased()
         let named = casks.filter { $0.appNames.contains(name) }
@@ -97,8 +96,8 @@ public enum HomebrewCatalog {
 // MARK: - App Store
 
 public enum AppStoreCatalog {
-    /// Built once, not for every listing. Safe to share between threads,
-    /// as Apple documents; Swift cannot see that.
+    /// Built once. Safe to share between threads, as Apple documents; Swift
+    /// cannot see that.
     private nonisolated(unsafe) static let releaseDates = ISO8601DateFormatter()
 
     public struct Listing: Equatable, Sendable {
@@ -108,9 +107,8 @@ public enum AppStoreCatalog {
         public let notes: String?
         public let released: Date?
         public let minimumSystem: String?
-        /// A listing shared with iPhone and iPad carries one version for
-        /// all of them, and it can be the iPhone's. Prime Video's said
-        /// 10.150.2 while the Mac build was 10.148.
+        /// A listing shared with iPhone and iPad carries one version for all of
+        /// them, which can be the iPhone's.
         public var isShared = false
     }
 

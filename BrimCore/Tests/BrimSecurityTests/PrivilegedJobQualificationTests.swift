@@ -5,8 +5,8 @@ import Testing
 struct PrivilegedJobQualificationTests {
     @Test(arguments: [0, 1, 2, 3, 4, 5])
     func malformedProgramFieldsDoNotAuthorizeJobRemoval(_ variant: Int) throws {
-        // A failed cast formerly became an empty job and could authorize
-        // stopping a loaded service whose replacement plist was malformed.
+        // A failed cast must not become an empty job that authorizes stopping a
+        // loaded service whose replacement plist is malformed.
         let fields: [[String: Any]] = [
             ["Program": 42], ["Program": ""], ["ProgramArguments": "helper"],
             ["ProgramArguments": [42]], ["ProgramArguments": [String]()],

@@ -96,11 +96,8 @@ final class LeftoversModelTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
-    /// The grouped lists are stored now rather than recomputed on read, so
-    /// they have to be reassigned everywhere the flat lists are. Grouping two
-    /// hundred and fifty leftovers ran several times per body evaluation when
-    /// it was a computed property, which is why it moved; the price of moving
-    /// it is that a stale group list is now possible and was not before.
+    /// The grouped lists are stored, so they must be reassigned wherever the
+    /// flat lists are, or they lag behind.
     func testTheGroupedListsNeverLagBehindTheFlatOnes() async {
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([
@@ -132,9 +129,8 @@ final class LeftoversModelTests: XCTestCase {
     }
 
     func testOnlyOrphansArePreSelected() async {
-        // The whole point of the two-category model. An unclaimed item is
-        // one the search could not attribute: pre-selecting it would turn
-        // an absence of evidence into a recommendation to delete.
+        // Unclaimed means the search could not attribute it; pre-selecting would
+        // turn no evidence into a recommendation to delete.
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([
             leftover("orphan-a", .orphaned),
@@ -167,8 +163,8 @@ final class LeftoversModelTests: XCTestCase {
     }
 
     func testSomethingBrimCannotRemoveIsNotPreSelected() async {
-        // A sandbox container without Full Disk Access. Selecting it would
-        // promise a removal that cannot happen.
+        // Without Full Disk Access a sandbox container cannot be removed, so it is
+        // not selected.
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([
             leftover("container", .orphaned, capability: .needsFullDiskAccess)
@@ -211,10 +207,8 @@ final class LeftoversModelTests: XCTestCase {
     }
 
     func testRemovalNamesTargetsRatherThanAnIdentity() async throws {
-        // Leftovers have no owner by definition, so there is no footprint to
-        // discover. Naming targets also keeps the planner out of whole-app
-        // territory: it must not clear privacy grants or retract a
-        // registration for software that is already gone.
+        // Leftovers have no owner, so targets are named. That also keeps the
+        // planner from clearing grants or registrations for software already gone.
         let model = LeftoversModel()
         await model.load(service: LeftoversStub([leftover("orphan", .orphaned)]))
 
@@ -233,8 +227,8 @@ final class LeftoversModelTests: XCTestCase {
     }
 
     func testMixedGroupCanBeDeselectedWithoutSelectingBlockedItems() async throws {
-        // A blocked location used to keep the whole card unchecked even
-        // when every removable location was selected, so toggling could not clear it.
+        // A blocked location must not keep the card unchecked when every removable
+        // location is selected.
         let owner = Identity(bundleID: "com.example.removed", name: "Removed App")
         let items = [
             Leftover(url: URL(fileURLWithPath: "/tmp/leftovers/cache"), size: 100,

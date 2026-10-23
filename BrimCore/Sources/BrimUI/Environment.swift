@@ -3,9 +3,8 @@ import BrimProtocol
 import BrimCore
 
 public struct BrimServiceKey: EnvironmentKey {
-    // The placeholder for previews. The app injects a real one at launch, and
-    // anything reaching this one is a view that was rendered outside that
-    // chain.
+    // The placeholder for previews. The app injects the real service at
+    // launch.
     public static let defaultValue: any BrimServiceProtocol = DummyBrimService()
 }
 
@@ -16,17 +15,9 @@ public extension EnvironmentValues {
     }
 }
 
-/// Stands in for the service before the app has injected the real one.
-///
-/// Two things were wrong with the previous version, and they pulled in
-/// opposite directions. Half its methods called `fatalError()`, so a view
-/// rendered outside the injection chain took the whole app down rather than
-/// showing anything. The other half returned an empty array, which is worse
-/// in a quieter way: a list that answers "no leftovers" without having looked
-/// is the zero this product exists not to print.
-///
-/// Every method here throws the same refusal, so both cases come out as a
-/// message somebody can read and report.
+/// Stands in for the service before the app injects the real one. Every
+/// method throws the same refusal: crashing would take the app down, and an
+/// empty answer would be a zero nobody measured.
 public struct DummyBrimService: BrimServiceProtocol {
     public init() {}
 

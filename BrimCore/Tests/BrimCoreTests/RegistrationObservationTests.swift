@@ -13,8 +13,8 @@ struct RegistrationObservationTests {
     }
 
     @Test func ambiguousParentsDoNotInventMissingHelpers() async {
-        // Two copies formerly resolved a relative helper against whichever
-        // parent happened to be inserted last, and falsely called it gone.
+        // Two copies must not resolve a relative helper against whichever parent
+        // was inserted last.
         let records = [record("a", path: "/Applications/First.app"),
                        record("b", path: "/Applications/Second.app"),
                        record("child", path: "Contents/Helper.app", parent: "2.com.example.app",
@@ -43,8 +43,8 @@ struct RegistrationObservationTests {
     }
 
     @Test func cloudProviderDataCannotBePromotedIntoRemoval() async throws {
-        // Provider containers may hold unsynced files. An identifier match
-        // formerly selected them with the application's regenerable data.
+        // Provider containers may hold unsynced files, so an identifier match must
+        // not select them with the app's regenerable data.
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -3,16 +3,10 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// First-run setup for reading protected locations and confirming ownership.
-/// Administrator authentication is requested separately for protected operations.
-///
-/// It is setup, not a gate. Every step can be skipped and the app still
-/// opens and works, because a scan without Full Disk Access is not wrong,
-/// it is smaller, and it says so.
-///
-/// The step is remembered. Turning on Full Disk Access makes macOS quit
-/// Brim, and setup used to start again from the welcome when it reopened,
-/// as though nothing had happened.
+/// First-run setup for reading protected locations. Every step can be
+/// skipped and Brim still works: a scan without Full Disk Access is smaller,
+/// not wrong, and says so. The step is remembered across the relaunch that
+/// granting access causes.
 struct OnboardingSheet: View {
     let service: any BrimServiceProtocol
     let onFinished: () -> Void
@@ -34,9 +28,8 @@ struct OnboardingSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // The next step replaces this one where it stands: a short fade
-            // with at most 4 points of travel, and under Reduce Motion an
-            // immediate change. Next is never held up by it.
+            // The next step replaces this one with a short fade and at most 4 points
+            // of travel, or at once under Reduce Motion.
             content
                 .id(step)
                 .transition(.asymmetric(
@@ -82,8 +75,8 @@ struct OnboardingSheet: View {
             HStack(alignment: .top) {
                 title("Welcome to Brim", "Finds what software leaves behind, and proves it is gone")
                 Spacer(minLength: 12)
-                // The character beside the welcome, not above it, so the
-                // fixed-size sheet keeps its room for the steps below.
+                // The character beside the welcome, not above it, so the fixed-size sheet
+                // keeps room for the steps.
                 CharacterArtwork(size: 80)
                     .padding(.top, -20)
             }
@@ -234,8 +227,7 @@ struct OnboardingSheet: View {
             try await service.enroll()
             go(to: .ready)
         } catch {
-            // Declining is not a failure worth blocking on, since nothing
-            // depends on it. Say so plainly and let them carry on.
+            // Declining is fine, since nothing depends on it.
             errorMessage = error.localizedDescription
         }
     }
@@ -289,8 +281,8 @@ extension OnboardingSheet {
         case .what:
             primary("Continue") { go(to: .access) }
         case .access:
-            // Skipping is a real choice, so it is the plain button until
-            // the setting is on and continuing is the obvious next move.
+            // Skipping is a real choice, so it is the plain button until the setting
+            // is on.
             if access.isGranted {
                 primary("Continue") { go(to: .confirm) }
             } else {

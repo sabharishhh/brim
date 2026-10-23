@@ -130,9 +130,8 @@ private struct BatchEntryRow: View {
                 if case let .verified(result) = removal.phase {
                     RemovalResultView(result: result, plan: removal.plan, groups: removal.reviewGroups, scrolls: false)
                 } else if removal.plan != nil {
-                    // What the single review shows: files, not the records
-                    // kept alongside them. A privacy reset listed here read as
-                    // a file to be deleted permanently.
+                    // Files only, not the records kept alongside them: a privacy reset listed
+                    // here read as a file deleted permanently.
                     VStack(alignment: .leading, spacing: 2) {
                         if let installation = removal.plan?.homebrewInstallation {
                             Text(installation.explanation).font(.brimFacts)

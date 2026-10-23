@@ -4,22 +4,13 @@ import BrimCore
 
 private let log = BrimLog.make("presence")
 
-/// What Brim remembers about the person at the machine.
-///
-/// Two facts, both deliberately small:
-///
-/// - **Enrolment.** The owner authenticated once, when Brim was first opened.
-///   This is setup, not a gate: nothing is withheld until it happens, and it
-///   never happens again.
-/// - **Presence.** When someone last proved they were here. Persisted across
-///   launches on purpose: `sudo` keeps its timestamp in `/var/db/sudo` for
-///   exactly the same reason, and an in-memory version would charge a
-///   fingerprint for the first destructive action of every session, which is
-///   most of what made this tiring during development.
-///
-/// Neither fact authorises anything on its own. A plan still has to be
-/// reviewed and approved in the UI; this only decides whether a *second*
-/// confirmation, from the hardware, is worth asking for.
+/// What Brim remembers about the person at the Mac:
+/// - Enrolment: the owner authenticated once, at first launch. Setup, not a
+///   gate.
+/// - Presence: when someone last proved they were here.
+/// Neither authorises anything. A plan is still reviewed and approved in the
+/// window; this only decides whether a hardware confirmation is worth
+/// asking for.
 public actor PresenceStore {
 
     struct Record: Codable, Sendable {
@@ -34,11 +25,10 @@ public actor PresenceStore {
         self.storeURL = directoryURL.appendingPathComponent("presence.json")
         if let data = try? Data(contentsOf: storeURL),
            var loaded = try? JSONDecoder().decode(Record.self, from: data) {
-            // Enrolment carries over; the last fingerprint does not. The
-            // file is the person's to write, and so any program's: a time
-            // written there before launch skipped the prompt for a
-            // permanent deletion. A grace window starts with a prompt in
-            // this run, never from the disk.
+            // Enrolment carries over; the last fingerprint does not. The file is the
+            // person's, so any program can write it, and a time written before launch
+            // would skip the prompt for a permanent deletion. A grace window starts
+            // with a prompt in this run, never from the disk.
             loaded.lastPresence = nil
             self.record = loaded
         } else {
@@ -48,9 +38,9 @@ public actor PresenceStore {
 
     public var isEnrolled: Bool { record.enrolledAt != nil }
 
-    /// When presence was last proved, or nil if never, or if the record is
-    /// dated in the future, which a clock change can produce and which must
-    /// not be readable as an unending grace window.
+    /// When presence was last proved, or nil if never or if dated in the future,
+    /// which a clock change can produce and which must not read as an unending
+    /// grace window.
     public var lastPresence: Date? {
         guard let last = record.lastPresence, last <= Date() else { return nil }
         return last
@@ -67,8 +57,6 @@ public actor PresenceStore {
         persist()
     }
 
-    /// Used by the tests, and by a future "require me to confirm again"
-    /// control in settings.
     public func forgetPresence() {
         record.lastPresence = nil
         persist()
@@ -79,13 +67,10 @@ public actor PresenceStore {
             try FileManager.default.createDirectory(
                 at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            // `.atomic` already writes beside the file and renames it into
-            // place. It used to do that to a second temporary file, which
-            // was then swapped in with `replaceItemAt`: two atomic writes.
             try JSONEncoder().encode(record).write(to: storeURL, options: .atomic)
         } catch {
-            // Losing this costs one extra prompt, never correctness, so it
-            // must not fail an operation the user asked for.
+            // Losing this costs one extra prompt, never correctness, so it must not
+            // fail an operation.
             log.notice("could not persist presence: \(error.localizedDescription)")
         }
     }

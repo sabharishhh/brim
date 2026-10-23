@@ -3,23 +3,9 @@ import SwiftUI
 // MARK: - Page title
 
 extension View {
-    /// The page's name, alone, in the toolbar's row, starting exactly where
-    /// the page's content starts.
-    ///
-    /// Every page used to draw its own title row under the toolbar, which
-    /// left the toolbar's row empty and pushed every list down. The system's
-    /// toolbar title was tried next, with the page's facts as a subtitle:
-    /// two lines squeezed into the row made the name small and crowded.
-    /// Then a toolbar item, which sits where the toolbar puts it, a few
-    /// points from the sidebar, while the cards below began further in. So
-    /// the page draws its own name into the toolbar's row, in its own
-    /// coordinates: on a list page at the page padding, on a card page
-    /// (`centredWidth`) at the left edge of the centred column. The window
-    /// keeps the name as its title for the Window menu and Mission Control.
-    ///
-    /// `shown: false` keeps the window's title but draws none, where the
-    /// toolbar already says it: Apps and Updates sat beside an Apps and
-    /// Updates switch. Apple's guidance leaves a redundant title area empty.
+    /// The page's name, alone, in the toolbar row and aligned with the page's
+    /// content. `shown: false` keeps the window title but draws nothing, where
+    /// the toolbar already says it.
     @ViewBuilder
     func pageTitle(_ title: String, centredWidth: CGFloat? = nil, shown: Bool = true) -> some View {
         if shown {
@@ -71,13 +57,8 @@ private struct PageTitleBar: ViewModifier {
 
 // MARK: - Search
 
-/// The search field at the top of a list: a faint capsule with the
-/// magnifying glass inside it and a clear button once there is text.
-///
-/// The rounded-border text field it replaces was the one square, sunken
-/// control on a window of capsules. It is not glass: glass belongs to the
-/// controls floating above content, and this sits in it. Escape clears the
-/// search and Command-F reaches it from anywhere on the page.
+/// The search field at the top of a list: a flat capsule, not glass, because
+/// it sits in the content. Escape clears it and Command-F focuses it.
 struct BrimSearchField: View {
     @Binding var text: String
     let prompt: String

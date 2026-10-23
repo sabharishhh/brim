@@ -33,7 +33,7 @@ let package = Package(
         .target(name: "BrimOps", dependencies: ["BrimScanShim", "BrimCore", "BrimProcess"]),
         .target(name: "BrimProtocol", dependencies: ["BrimCore"]),
         .target(name: "BrimService", dependencies: ["BrimIndex", "BrimProtocol", "BrimScan", "BrimCore", "BrimOps"]),
-        // Only the bounded process primitive is shared with the root daemon.
+        // Only the bounded process primitive is shared with the administrator process.
         // No engine, scanner, app or service dependency belongs here.
         .target(name: "BrimPrivileged", dependencies: ["BrimProcess"]),
         .target(name: "BrimUI", dependencies: ["BrimProtocol", "BrimCore", "BrimService", "BrimPrivileged"]),

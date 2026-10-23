@@ -57,8 +57,8 @@ final class RegistrationExecutionTests: XCTestCase {
     }
 
     func testFailedJobStopKeepsItsDeclarationButIndependentRemovalContinues() async throws {
-        // A missing Label formerly became the filename, a failed bootout was
-        // ignored, and its declaration was deleted as though the job stopped.
+        // A missing Label must not become the file name, and a failed bootout must
+        // not delete the declaration as though the job stopped.
         let declaration = folder.appendingPathComponent("wrong-label.plist")
         try PropertyListSerialization.data(fromPropertyList: ["Program": "/bin/sleep"], format: .xml, options: 0)
             .write(to: declaration)

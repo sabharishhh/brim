@@ -5,9 +5,8 @@ import Testing
 struct ModelInputTests {
     // MARK: - Release notes
 
-    /// boringNotch's notes for 2.7.2 were one fix followed by the whole of
-    /// 2.7.1 and 2.7. A summary of the full text described 2.7's Shelf
-    /// update, which 2.7.2 did not contain.
+    /// Notes that repeat earlier versions are cut to the version they are
+    /// about, so a summary describes this release.
     @Test func `notes are cut to the version they are about`() {
         let notes = """
         🚀 v2.7.2— Flying Rabbit Fixes: Fixed default sneak peak
@@ -18,9 +17,8 @@ struct ModelInputTests {
             == "🚀 v2.7.2— Flying Rabbit Fixes: Fixed default sneak peak")
     }
 
-    /// 2.8-rc.1's notes had no heading of their own and ended with
-    /// "Compare v2.8-rc.0 → v2.8-rc.1". Matching on 2.8 alone took that
-    /// link for the heading and kept only the changelog after it.
+    /// A pre-release is its own version, and a "Compare v2.8-rc.0 → v2.8-rc.1"
+    /// changelog link is not a heading.
     @Test func `a pre-release is its own version, and a changelog link is not a heading`() {
         let notes = "What's New: Adds a compact player. Fixes artwork. "
             + "Full Changelog Compare v2.7.3 → v2.8-rc.0. Full Changelog Compare v2.8-rc.0 → v2.8-rc.1"
@@ -44,9 +42,8 @@ struct ModelInputTests {
 
     // MARK: - Install scripts
 
-    /// The model, asked to find what a script does, missed `killall` and
-    /// cited the line before `rm -rf`. Brim's rules choose the lines now,
-    /// so every line number is one the script has.
+    /// Brim's rules choose the script lines, so every line that does something
+    /// is found and every line number is real.
     @Test func `every line that does something is found, with its number`() {
         let script = """
         #!/bin/bash

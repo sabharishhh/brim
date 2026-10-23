@@ -19,9 +19,8 @@ public enum ApplicationSource: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// The facts about an application that are read from its bundle and
-/// Spotlight rather than from Brim's own history, and the rules that turn
-/// raw values into something a person reads.
+/// Facts about an application read from its bundle and Spotlight, and the
+/// rules that turn them into something a person reads.
 public enum ApplicationFacts {
     /// Apple's own applications, whether they came with macOS or from the
     /// App Store. Apple signs these, so the identifier is the claim.
@@ -29,9 +28,9 @@ public enum ApplicationFacts {
         bundleID?.hasPrefix("com.apple.") ?? false
     }
 
-    /// The first match wins: Apple before the App Store, because Pages
-    /// from the App Store is still Apple's, and Homebrew before a plain
-    /// download, because the cask is how it will be updated and removed.
+    /// The first match wins: Apple before the App Store, because Apple's App
+    /// Store apps are still Apple's, and Homebrew before a plain download,
+    /// because the cask is how it is updated and removed.
     public static func source(
         bundleID: String?, path: String, hasAppStoreReceipt: Bool, isHomebrewCask: Bool
     ) -> ApplicationSource {
@@ -50,14 +49,11 @@ public enum ApplicationFacts {
         return .direct
     }
 
-    /// The organisation in a signing certificate's summary.
-    ///
-    /// "Developer ID Application: Adobe Inc. (JQ525L2MZD)" is "Adobe Inc.".
-    /// An App Store app is re-signed by Apple, so its summary names Apple's
-    /// signing service rather than the developer, and gives nothing here.
+    /// The organisation in a signing certificate's summary, such as "Adobe Inc."
+    /// An App Store app is re-signed by Apple, so it gives nothing here.
     public static func organisation(fromCertificateSummary summary: String) -> String? {
-        // Only Developer ID: a development certificate names a person or
-        // an email address, which is nobody's idea of a developer's name.
+        // Only Developer ID: a development certificate names a person or an email
+        // address.
         guard summary.hasPrefix("Developer ID Application: ") else { return nil }
         var name = summary[summary.index(after: summary.firstIndex(of: ":")!)...]
             .trimmingCharacters(in: .whitespaces)
@@ -73,8 +69,8 @@ public enum ApplicationFacts {
         guard let parts = bundleID?.split(separator: "."), parts.count >= 3 else { return nil }
         let vendor = String(parts[1])
         guard vendor.count > 1 else { return nil }
-        // The product often spells the vendor properly: net.whatsapp.WhatsApp
-        // read "Whatsapp" under WhatsApp's own name.
+        // The product often spells the vendor properly: `net.whatsapp.WhatsApp`
+        // gives "WhatsApp", not "Whatsapp".
         let spelled = parts.dropFirst(2).first { $0.lowercased() == vendor.lowercased() && $0 != $0.lowercased() }
         if let spelled {
             return String(spelled)

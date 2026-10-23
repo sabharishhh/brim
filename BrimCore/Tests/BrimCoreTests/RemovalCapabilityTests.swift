@@ -2,18 +2,11 @@ import XCTest
 import BrimCore
 
 /// Whether Brim can take a path away, asked before it promises to.
-///
-/// The incident: two Google Keystone job files in `/Library/LaunchAgents`
-/// were offered for removal, authorized with a fingerprint, and then
-/// reported as "2 targets still remain" with no reason. Both sat in a
-/// directory owned by root. Nothing had asked whether the removal could
-/// succeed, and nothing said why it had not.
 final class RemovalCapabilityTests: XCTestCase {
 
     func testRemovingAsksTheDirectoryAndNotTheFile() throws {
-        // The rule that was backwards. Unlinking edits the directory, so
-        // the directory decides. A read-only file in a writable directory
-        // removes perfectly well.
+        // Unlinking edits the folder, so the folder decides: a read-only file in a
+        // writable folder is removable.
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("cap-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -28,8 +21,8 @@ final class RemovalCapabilityTests: XCTestCase {
     }
 
     func testARootOwnedDirectoryNeedsAnAdministrator() throws {
-        // The real case. /Library/LaunchAgents is root:wheel 755, so a job
-        // file there cannot be removed by the person using the Mac.
+        // `/Library/LaunchAgents` is `root:wheel` 755, so the person cannot remove
+        // a job file there.
         try XCTSkipUnless(FileManager.default.fileExists(atPath: "/Library/LaunchAgents"))
         try XCTSkipIf(getuid() == 0, "Running as root would make this pass for the wrong reason")
 
@@ -43,10 +36,8 @@ final class RemovalCapabilityTests: XCTestCase {
         XCTAssertEqual(RemovalCapability.forDeleting(mine.path), .ok)
     }
 
-    /// WebKit's folders in the per-user temporary folder carry
-    /// `SF_NOUNLINK`, and eqMac's removal planned three and had all three
-    /// refused. A test cannot set that flag without root, so the check is
-    /// held against `/System`, which carries its sibling `SF_RESTRICTED`.
+    /// What macOS protects with `SF_NOUNLINK` or `SF_RESTRICTED` is never an
+    /// app's to remove. A test cannot set those flags, so it uses `/System`.
     func testWhatMacOSProtectsForItselfIsNeverAnAppsToRemove() throws {
         XCTAssertTrue(RemovalCapability.isProtectedBySystem("/System"))
         let mine = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

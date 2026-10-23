@@ -3,8 +3,8 @@ import Foundation
 import XCTest
 
 final class PlannerNestingTests: XCTestCase {
-    /// A large review used to compare every item with every selected path.
-    /// Retain independent siblings while emitting a containing removal once.
+    /// A large review keeps independent siblings and emits a containing removal
+    /// once, without comparing every item with every path.
     func testLargeReviewKeepsSiblingsAndCollapsesSelectedDescendants() {
         let siblings = (0 ..< 2800).map { row("/tmp/review/cache-\($0)") }
         let items = siblings + [

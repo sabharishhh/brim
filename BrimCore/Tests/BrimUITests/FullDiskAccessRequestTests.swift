@@ -2,11 +2,9 @@
 import Foundation
 import XCTest
 
-/// Turning on Full Disk Access is a round trip through System Settings, and
-/// usually through macOS quitting and reopening Brim. Brim remembers the
-/// request so the next launch returns to where it was made, and so a Brim
-/// that is still running offers to reopen itself instead of sending the
-/// person back to a switch that is already on.
+/// Turning on Full Disk Access usually goes through System Settings and a
+/// relaunch. Brim remembers the request so the next launch returns to it,
+/// and a running Brim offers to reopen itself.
 @MainActor
 final class FullDiskAccessRequestTests: XCTestCase {
     override func tearDown() {

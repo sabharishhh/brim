@@ -3,12 +3,9 @@ import BrimProtocol
 import BrimUI
 import SwiftUI
 
-/// What happened on this Mac, newest first: what Brim removed and whether
-/// it can still be put back, and what was installed.
-///
-/// Installs come only from snapshots. An app that was here the first time
-/// Brim looked has no install to show, and Spotlight's date added moves
-/// on every update, so it cannot stand in.
+/// What happened on this Mac, newest first: what Brim removed and whether it
+/// can still be put back, and what was installed. Installs come only from
+/// snapshots, because Spotlight's date added moves on every update.
 struct JournalView: View {
     @ObservedObject var model: RemovalHistoryModel
     @ObservedObject var recovery: RecoveryStatusModel
@@ -30,8 +27,7 @@ struct JournalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // A Put Back's outcome is shown beside its record, once, rather
-            // than in a banner above a list the person has scrolled.
+            // A Put Back's outcome is shown beside its record rather than in a banner.
             content
         }
         .pageTitle("Journal")
@@ -82,9 +78,8 @@ struct JournalView: View {
         }
     }
 
-    /// What the timeline is rebuilt on: which removals, whether each can
-    /// still be put back, and how many installs. Not the records themselves,
-    /// whose equality compares every step of every plan on each update.
+    /// What the timeline is rebuilt on. Not the records themselves, whose
+    /// equality compares every step of every plan.
     private struct Signature: Equatable {
         let records: [UUID]
         let putBack: [Bool]
@@ -99,13 +94,11 @@ struct JournalView: View {
 
     // MARK: - Header
 
-    /// Emptying the Trash and clearing the Journal, as two buttons in the
-    /// toolbar beside Check Again. They sat in a More menu, where neither
-    /// could be seen until it was looked for. Each still asks first.
+    /// Emptying the Trash and clearing the Journal, in the toolbar where they
+    /// can be seen. Each asks first.
     @ToolbarContentBuilder
     private var journalActions: some ToolbarContent {
-        // Their own group, apart from Check Again: a refresh and two actions
-        // that delete were one capsule.
+        // Their own group, apart from Check Again, which only refreshes.
         ToolbarSpacer(.fixed, placement: .primaryAction)
         ToolbarItemGroup(placement: .primaryAction) {
             Button("Empty Removed Items from Trash", systemImage: "trash") {
@@ -119,8 +112,7 @@ struct JournalView: View {
         }
     }
 
-    /// The same two commands for the Action menu, when there is something
-    /// for them to do.
+    /// The same two commands for the Action menu, when they would do something.
     private var menuActions: [FocusedAction<Void>] {
         var actions: [FocusedAction<Void>] = []
         if model.records.contains(where: \.canUndo) {
@@ -134,8 +126,8 @@ struct JournalView: View {
         return actions
     }
 
-    /// Names one removal, counts several, and says how much goes: what each
-    /// still has in the Trash, not what its plan estimated for everything.
+    /// Names one removal or counts several, with what each still has in the
+    /// Trash rather than what its plan estimated.
     private var trashTitle: String {
         let bytes = trashRequest.reduce(Int64(0)) { $0 + ($1.recoverable?.bytes ?? 0) }
         let what = trashRequest.count == 1 ? "\(trashRequest[0].name)'s items"
@@ -178,8 +170,8 @@ struct JournalView: View {
                 .padding(.top, 8)
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if groups.isEmpty, !model.visibleRecords.isEmpty || !model.visibleInstalls.isEmpty {
-            // The rows are built a moment after the page opens. Until then
-            // there is something to show, so "Nothing yet" would be untrue.
+            // The rows are built a moment after the page opens, and "Nothing yet"
+            // would be untrue until then.
             Color.clear
         } else if groups.isEmpty, let problem = model.loadError {
             EmptyState.couldNotRead(problem) { Task { await model.reload() } }
@@ -189,8 +181,8 @@ struct JournalView: View {
             List {
                 ForEach(groups) { group in
                     Section {
-                        // The group's title as its first row, not a pinned header:
-                        // a pinned header is drawn on its own band with a rule under it.
+                        // A section's title as its first row, not a pinned header, which draws its
+                        // own band and rule.
                         Group {
                             Text(group.title)
                                 .font(.brimDayHeader)
@@ -258,8 +250,8 @@ struct JournalView: View {
         }
     }
 
-    /// Every confirmed removal, looked at again by path. Cheap: the last
-    /// hundred removals are a few thousand `lstat` calls.
+    /// Every confirmed removal, looked at again by path: a few thousand `lstat`
+    /// calls for the last hundred removals.
     private func recheckRemovals() async {
         let installed = Set(applications.applications.compactMap(\.identity.bundleID))
         await model.recheck(installed: installed)

@@ -2,12 +2,9 @@ import BrimCore
 import Foundation
 
 /// The model's words for the lines Brim found in an installer's scripts.
-///
-/// Brim's own rules choose the lines (`InstallScriptReading`), so nothing
-/// the model misses goes missing and every line number is real. The model
-/// only describes them, and a description for a line Brim did not ask
-/// about is dropped. It never replaces Brim's phrase: a script can try to
-/// steer what is said about it.
+/// Brim's rules choose the lines, so nothing the model misses goes missing.
+/// A description for a line Brim did not ask about is dropped, and it never
+/// replaces Brim's phrase: a script can try to steer what is said about it.
 @MainActor
 public final class ScriptLinesModel: ObservableObject {
     /// How many findings a script shows before "and N more".

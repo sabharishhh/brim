@@ -2,16 +2,11 @@ import BrimCore
 import BrimProtocol
 import Foundation
 
-/// Several apps removed from one review.
-///
-/// People clear out three or four apps at once, and one review at a time
-/// made that four reviews. This is the same removal four times, not a new
-/// one: each app gets its own plan from `UninstallExecutionModel`, planned,
-/// approved, applied and checked exactly as it would be alone, so every rule
-/// that holds for one app holds for each. One press starts them in turn.
-/// Touch ID, where a plan needs it, is asked once, because the approval
-/// holds for five minutes. An app whose plan could not be made, or that
-/// would not quit, is reported and does not stop the others.
+/// Several apps removed from one review. Each app gets its own plan from
+/// `UninstallExecutionModel`, planned, approved, applied and checked exactly
+/// as it would be alone. One press runs them in turn; Touch ID is asked once
+/// because approval lasts five minutes. An app whose plan fails or that will
+/// not quit is reported and does not stop the others.
 @MainActor
 public final class BatchRemovalModel: ObservableObject {
     public struct Entry: Identifiable {
@@ -29,13 +24,13 @@ public final class BatchRemovalModel: ObservableObject {
 
     public init() {}
 
-    /// Plans for each app, one after another, so a large suite does not
-    /// scan the disk several times at once.
+    /// Planned one after another, so a suite does not scan the disk several
+    /// times at once.
     public func prepare(_ apps: [InstalledApplication], service: any BrimServiceProtocol) async {
         isPreparing = true
         isFinished = false
-        // Two apps inside one host both come here as the host, and one app
-        // is one plan.
+        // Two apps inside one host both arrive as the host, and one app is one
+        // plan.
         var seen = Set<String>()
         let unique = apps.filter { !$0.isSystemProtected && seen.insert($0.id).inserted }
         entries = unique.map { Entry(app: $0, removal: UninstallExecutionModel()) }

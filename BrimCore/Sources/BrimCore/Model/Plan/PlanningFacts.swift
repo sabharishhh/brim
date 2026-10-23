@@ -1,11 +1,8 @@
 import Foundation
 
-/// A lock that stops a file being removed.
-///
-/// Detection lives here and clearing lives in `BrimOps`, because
-/// `BrimCore` depends on nothing and the planner has to be able to ask the
-/// question. `ImmutableFlagAgreementTests` holds the two halves to the
-/// same answer.
+/// A lock that stops a file being removed. Detected here, cleared in
+/// `BrimOps`, because the planner must be able to ask and `BrimCore` depends
+/// on nothing. `ImmutableFlagAgreementTests` holds the two to one answer.
 public enum ArtifactLock: String, Codable, Equatable, Sendable {
     /// `UF_IMMUTABLE`, which is what Finder's "Locked" checkbox sets.
     /// Whoever owns the file can take it off, so Brim can offer to.
@@ -17,11 +14,8 @@ public enum ArtifactLock: String, Codable, Equatable, Sendable {
     /// Whether Brim can take this off as the person running the app.
     public var canBeCleared: Bool { self == .user }
 
-    /// Which lock is on a file, if any.
-    ///
-    /// `lstat`, so a symlink answers about itself. `attributesOfItem`
-    /// follows the link and would report the target's flags, which is the
-    /// same trap that made symlinks count as their target's size.
+    /// Which lock is on a file, if any. `lstat`, so a symbolic link answers for
+    /// itself rather than its target.
     public static func on(path: String) -> ArtifactLock? {
         var info = stat()
         guard lstat(path, &info) == 0 else { return nil }
@@ -31,12 +25,9 @@ public enum ArtifactLock: String, Codable, Equatable, Sendable {
     }
 }
 
-/// Finding the uninstaller a vendor ships, so Brim can point at it rather
-/// than guess.
-///
-/// Detection only. Revealing it in Finder is `BrimOps.VendorUninstaller`,
-/// and running it is nobody's job: the whole value of the step is that a
-/// person decides whether to trust somebody else's executable.
+/// Finds the uninstaller a vendor ships, so Brim can point at it. Detection
+/// only: Brim reveals it in Finder and never runs it, because whether to
+/// trust another developer's executable is the person's decision.
 public enum VendorUninstallerDetector {
 
     public struct Found: Equatable, Sendable {
@@ -49,11 +40,9 @@ public enum VendorUninstallerDetector {
         }
     }
 
-    /// Looks inside an application bundle, shallowly and on purpose.
-    ///
-    /// A deep search matches every framework that ships a string with
-    /// "uninstall" in it, and a false positive here tells somebody to run
-    /// a stranger's binary.
+    /// Looks inside a bundle shallowly, on purpose: a deep search matches every
+    /// framework containing "uninstall", and a false positive tells someone to
+    /// run a stranger's binary.
     public static func insideBundle(
         at bundleURL: URL, fileManager: FileManager = .default
     ) -> Found? {
@@ -79,12 +68,9 @@ public enum VendorUninstallerDetector {
         return nil
     }
 
-    /// Whether a file name is an uninstaller rather than something that
-    /// merely contains the word.
-    ///
-    /// Matched on whole words in the stem, so "Uninstaller.app" and
-    /// "Adobe Uninstaller.app" qualify and "UninstallHelperStrings.loctable"
-    /// does not.
+    /// Whether a file name is an uninstaller, matched on whole words in the
+    /// stem: "Adobe Uninstaller.app" is, "UninstallHelperStrings.loctable" is
+    /// not.
     public static func looksLikeAnUninstaller(_ name: String) -> Bool {
         let lowered = name.lowercased()
         guard lowered.contains("uninstall") else { return false }

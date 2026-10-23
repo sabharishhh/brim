@@ -1,17 +1,9 @@
-// Dumps a running app's real accessibility tree, with no depth limit.
-//
-// Written because a claim was made on the strength of an automation tool
-// that walks only a few levels: it reported seventeen elements for a window
-// full of rows, and the app was blamed for what the tool could not see. The
-// real tree had seventy-seven. Reading the tree directly is the only way to
-// tell an app defect from a tool limitation, and the defects it did find
-// were real ones: rows arriving as a dozen unrelated fragments, a path
-// exposed twice, and combined elements with no role at all.
+// Dumps a running app's real accessibility tree, with no depth limit, to
+// tell an app defect from an automation tool's limitation.
 //
 //   swiftc -o /tmp/ax_tree scripts/ax_tree.swift && /tmp/ax_tree
 //
-// Needs Accessibility permission for whatever runs it, which is a different
-// grant from Full Disk Access and is given in
+// Needs Accessibility permission for whatever runs it, granted in
 // System Settings > Privacy & Security > Accessibility.
 //
 // What to look for:
@@ -20,7 +12,7 @@
 //   repeated text        textSelection adds a child, so the same string is
 //                        spoken twice
 //   a pile of AXStaticText under one row
-//                        the row was never composed, so a reader is handed
+//                        the row was never composed, so a reader gets
 //                        fragments with nothing connecting them
 //   AXCheckBox with no desc
 //                        Toggle("") exposes nothing to press

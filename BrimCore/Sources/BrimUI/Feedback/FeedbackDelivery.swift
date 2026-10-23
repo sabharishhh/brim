@@ -49,8 +49,8 @@ public enum FeedbackDelivery {
 
     public typealias Send = @Sendable (FeedbackReport) async throws -> FeedbackReceipt
 
-    /// No labels parameter: people with ordinary GitHub access cannot assign
-    /// labels through a URL, which can make the draft link return a 404.
+    /// No labels parameter: people without write access cannot set labels
+    /// through a URL, which can make the draft link return a 404.
     public static func browserURL(for report: FeedbackReport) throws -> URL {
         var components = URLComponents(url: newIssueURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [

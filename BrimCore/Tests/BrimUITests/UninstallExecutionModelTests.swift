@@ -85,16 +85,8 @@ final class UninstallExecutionModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .failed("User cancelled authentication."))
     }
 
-    /// The files are gone and the check could not run, which is a different
-    /// outcome from the removal having failed.
-    ///
-    /// This was already the intent, and the wording carried it: the phase
-    /// was `.failed("Removed, but verification could not run: …")`. The
-    /// sheets then drew every `.failed` in red under the heading "Stopped",
-    /// so somebody whose uninstall had gone through was told it had been
-    /// stopped, with the sentence that said otherwise underneath it. A
-    /// distinction that only exists inside a string is a distinction the
-    /// interface cannot act on, so it has its own case now.
+    /// Removed, but the check could not run: its own outcome, not a failed
+    /// removal shown under "Stopped".
     func testAFailedVerificationIsNotReportedAsAFailedRemoval() async {
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
         let stub = UninstallStub(plan: plan, verifyError: Oops.unavailable)
@@ -113,8 +105,7 @@ final class UninstallExecutionModelTests: XCTestCase {
     }
 
     func testAnApprovalThatFailsIsAFailureAndAppliesNothing() async {
-        // The other side of the case above: here nothing ran, so this one
-        // really is `.failed` and the sheet's red heading is correct.
+        // Nothing ran, so this really is `.failed`.
         let plan = makePlan([step(0, kind: .trashPath, target: "/a")])
         let stub = UninstallStub(plan: plan, applyError: Oops.unavailable)
         let model = UninstallExecutionModel()
@@ -262,8 +253,7 @@ final class BatchRemovalModelTests: XCTestCase {
 @Suite("Removal capacity explanations")
 @MainActor
 struct RemovalCapacityExplanationTests {
-    /// A refused capacity read used to become zero and trigger a confident
-    /// snapshot explanation. A failed removal made the same false claim.
+    /// An unmeasured or failed removal does not claim delayed recovery.
     @Test("Unmeasured or failed removals do not claim delayed recovery",
           arguments: [(false, Optional(true)), (true, Optional(false)), (true, nil)])
     func unavailableCapacity(success: Bool, measured: Bool?) async {

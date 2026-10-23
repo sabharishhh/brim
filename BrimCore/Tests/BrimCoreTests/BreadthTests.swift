@@ -2,13 +2,9 @@ import BrimCore
 @testable import BrimScan
 import XCTest
 
-/// Reach, not rules for particular apps.
-///
-/// On a real Mac, Brim found 15 of the 17 things Antigravity had left, and
-/// both misses were one class: something the app kept inside a folder that
-/// was not its own, `~/.gemini/antigravity` among them. Searching by name
-/// alone would have caught them and also caught Python's `antigravity.py`
-/// and somebody's `~/Documents/antigravity`. These hold the line between.
+/// Reach, not rules for particular apps: an app's data inside a folder that
+/// is not its own (`~/.gemini/antigravity`) is found, while Python's
+/// `antigravity.py` and `~/Documents/antigravity` are not.
 final class BreadthTests: XCTestCase {
     private var rootURL: URL!
     private var root: FileSystemRoot!
@@ -47,9 +43,8 @@ final class BreadthTests: XCTestCase {
         XCTAssertFalse(found.contains(documents.standardizedFileURL))
     }
 
-    /// Inside another application's folder, an identifier in somebody
-    /// else's namespace is shipped by other applications too. eqMac's
-    /// removal ticked Codex's Sparkle cache this way.
+    /// Inside another app's folder, an identifier in someone else's namespace
+    /// ships in other apps too, so it is only a name match.
     func testAnotherNamespaceInsideAnotherFolderIsOnlyANameMatch() async throws {
         let foreign = try put("Users/tester/Library/Caches/com.other.app/com.vendor.shared/data")
         let own = try put("Users/tester/Library/Caches/com.other.app/com.example.sample.agent/data")
@@ -66,9 +61,8 @@ final class BreadthTests: XCTestCase {
         XCTAssertEqual(tiers[own.standardizedFileURL], .B)
     }
 
-    /// Sentry keeps an application's crash reports under its bundle name,
-    /// `Caches/SentryCrash/eqMac`, and nothing else names them. The name
-    /// counts only because the bundle ships Sentry.
+    /// `Caches/SentryCrash/<bundle name>` counts only because the bundle ships
+    /// Sentry.
     func testACrashReporterFolderCountsOnlyWhenTheBundleShipsIt() async throws {
         let reports = try put("Users/tester/Library/Caches/SentryCrash/Sample/Reports/r")
         let other = try put("Users/tester/Library/Caches/SentryCrash/Sampler/Reports/r")
@@ -86,10 +80,8 @@ final class BreadthTests: XCTestCase {
         XCTAssertTrue(without.isEmpty)
     }
 
-    /// Sentry names its folder `Caches/io.sentry/<SHA-1 of the address>`.
-    /// eqMac's address is in its executable, and hashing it gave exactly
-    /// the folder that outlived its removal. Another app's folder there
-    /// hashes to something else and is left alone.
+    /// `Caches/io.sentry/<SHA-1 of the DSN>` counts when the DSN in the app's
+    /// executable hashes to the folder's name; another app's folder does not.
     func testASentryFolderCountsWhenItIsNamedForTheAddressInTheApp() async throws {
         let address = "https://afd95e4c332b4b1da4bb23b9cc66782c@sentry.io/1243254"
         XCTAssertEqual(CrashReporterFolders.sha1(address), "a456d41a8479da4fe7ad5452565d41fafe14cb35")
@@ -119,9 +111,8 @@ final class BreadthTests: XCTestCase {
                                   teamIdentifier: "TEAM", groups: [], urlSchemes: [], exportedTypes: [])
     }
 
-    /// A helper application inside one of the app's folders, or run by one
-    /// of its launch jobs, names more of the app. One in an Applications
-    /// folder is another application and is not followed.
+    /// A helper app inside one of the app's folders, or run by its launch job,
+    /// names more of the app; one in an Applications folder is another app.
     func testTheTrailFollowsHelpersButNotOtherApplications() throws {
         let support = rootURL.appendingPathComponent("Users/tester/Library/Application Support/Sample")
         let helper = support.appendingPathComponent("Updater/SampleUpdater.app")

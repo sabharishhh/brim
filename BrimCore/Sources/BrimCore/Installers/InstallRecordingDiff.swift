@@ -1,14 +1,10 @@
 import Foundation
 
-/// The second snapshot less the first, attributed.
-///
-/// Timing alone is not ownership: anything else running during the
-/// recording writes too. So an item is linked to the install only when it
-/// is named for one of the apps that appeared, comes from the same
-/// developer, or was registered by it. Something named for another
-/// installed app is that app's and is only counted. Whatever is left is
-/// shown unticked, because only the person knows whether it came with the
-/// install.
+/// The second snapshot less the first, attributed. Timing alone is not
+/// ownership, so an item is linked to the install only when it is named for
+/// a new app, comes from the same developer or was registered by it.
+/// Anything named for another installed app is that app's; the rest is
+/// shown unticked.
 public enum InstallRecordingDiff {
     public static func result(
         before: InstallSnapshot, after: InstallSnapshot, installed: [InstallClaimant]
@@ -71,9 +67,9 @@ public enum InstallRecordingDiff {
         }
     }
 
-    /// Named for an app, or from its developer. New apps before updated
-    /// ones, so an app that happened to update itself while recording
-    /// does not take what the new one made.
+    /// Named for an app, or from its developer. New apps before updated ones,
+    /// so an app that updated itself during the recording does not take what
+    /// the new one made.
     static func link(_ name: String, to apps: [RecordedApp]) -> (RecordedApp, String)? {
         let ordered = apps.filter { !$0.wasUpdated } + apps.filter(\.wasUpdated)
         if let app = ordered.first(where: { matchesName(name, of: $0.bundleID, names: $0.names) }) {

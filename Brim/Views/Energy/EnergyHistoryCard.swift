@@ -3,31 +3,16 @@ import BrimUI
 import Charts
 import SwiftUI
 
-/// The last day of charge and sleep, from power management's own log.
-///
-/// The question it answers is the one people bring to an energy page: the
-/// battery is lower than I left it, so what happened? The charge is a line
-/// on a fixed 0 to 100% scale, since the range means something, and the
-/// stretches asleep are shaded behind it, so a slope while asleep reads as
-/// what sleeping cost. Everything here already happened; nothing is drawn
-/// past now.
-///
-/// The first version drew one flat white line across the whole day on a
-/// Mac that sat at its charge limit and restarted in the morning: true, and
-/// it said nothing. Time on the adapter is now dashed, so a flat line at
-/// the limit explains itself, and the line breaks at a restart, which is
-/// marked, because the hours before one may have been spent switched off.
-/// The sentence beside the title used to read "Last asleep 1 h 3 min" for
-/// a nap the afternoon before, which sounded like the night just gone; it
-/// now says when.
+/// The last day of charge and sleep, from power management's log. Charge is
+/// a line on a fixed 0 to 100% scale with sleep shaded behind it, so a slope
+/// while asleep shows what sleeping cost. Time on the adapter is dashed, the
+/// line breaks at a restart, and nothing is drawn past now.
 struct EnergyHistoryCard: View {
     let history: PowerHistory
     let battery: BatteryReport?
     let now: Date
 
-    /// Worked out once, when the card is made. As computed properties the
-    /// line was rebuilt for the chart and twice more for its legend on
-    /// every draw, and each rebuild filtered every restart once per point.
+    /// Worked out once when the card is made, not on every draw.
     private let start: Date
     private let restarts: [Date]
     private let points: [PowerHistory.ChargePoint]
@@ -150,8 +135,8 @@ struct EnergyHistoryCard: View {
                 RuleMark(x: .value("Restarted", restart))
                     .foregroundStyle(Palette.frost)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-                    // Beside the line at the top of the plot. Below it, the
-                    // label sat on the hour labels and hid one of them.
+                    // Beside the line at the top of the plot; below it, the label hid an hour
+                    // label.
                     .annotation(
                         position: .trailing, alignment: .top, spacing: 4,
                         overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
@@ -203,9 +188,8 @@ struct EnergyHistoryCard: View {
         }
     }
 
-    /// Whether any stretch has two points to draw a line between. Charge is
-    /// logged only at sleep and wake, so a Mac awake since its restart has
-    /// only the charge now, and the card showed a blank day with no reason.
+    /// Whether any stretch has two points to draw between. Charge is logged only
+    /// at sleep and wake, so a Mac awake since its restart has just one point.
     private var hasLine: Bool {
         runs.contains { $0.points.count > 1 }
     }
@@ -251,10 +235,8 @@ struct EnergyHistoryCard: View {
         return formatter
     }()
 
-    /// What the most recent long sleep in the last day cost the battery,
-    /// said by when it was, so it is never read as the night just gone. A
-    /// sleep on the adapter cost nothing measurable, and the shaded band
-    /// already shows it, so it is not described.
+    /// What the latest long sleep in the last day cost the battery, said with
+    /// when it was. A sleep on the adapter is not described.
     private var summary: String? {
         guard let sleep = history.lastSleep, sleep.span.end > start, let used = sleep.chargeUsed else { return nil }
         let from = Self.time.string(from: sleep.span.start), until = Self.time.string(from: sleep.span.end)

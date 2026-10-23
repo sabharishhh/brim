@@ -4,10 +4,8 @@ import BrimScan
 import Testing
 import XCTest
 
-/// After Muse was removed, Launch Services still listed Sparkle's
-/// `Updater.app` inside `Muse.app` and two copies Sparkle kept in its cache
-/// folder, all pointing at nothing. Unregistering the application does not
-/// reach the applications inside it, so they are found before it goes.
+/// Unregistering an app does not reach the apps inside it, such as an
+/// updater's `Updater.app`, so they are found before it goes.
 final class NestedRegistrationTests: XCTestCase {
     func testApplicationsInsideSomethingRemovedAreFound() throws {
         let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("nested-\(UUID().uuidString)")
@@ -26,9 +24,8 @@ final class NestedRegistrationTests: XCTestCase {
         XCTAssertEqual(LaunchServicesRegistration.nestedApplications(in: absent.path), [])
     }
 
-    /// Teams' embedded browser had already moved to a newer version folder,
-    /// and three helpers in the old one stayed registered through the
-    /// uninstall: nothing on disk named them any more.
+    /// Records inside a removed path that point at nothing, such as helpers in
+    /// an old version folder, are found too.
     func testRecordsInsideARemovedPathThatPointAtNothingAreFound() async throws {
         let dump = """
         path:                       /Applications/Gone.app/Contents/Helpers/Helper (GPU).app (0x653c)

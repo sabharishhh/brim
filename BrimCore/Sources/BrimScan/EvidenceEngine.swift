@@ -10,9 +10,8 @@ public struct DiscoveredApp: AppArtifact {
     public let name: String
     public let evidence: [Evidence]
     public let engineVersion: String
-    /// What the search did not manage to see. Carried rather than
-    /// discarded, because a list that came from an unfinished search
-    /// cannot support the claim that it is the whole footprint.
+    /// What the search did not see. A list from an unfinished search cannot
+    /// claim to be the whole footprint.
     public let completeness: ScanCompleteness
 
     public init(
@@ -58,15 +57,11 @@ public struct EvidenceEngine: Sendable {
             completeness = completeness.merging(found.completeness)
         }
 
-        // Follow the trail. What was found names more of the application:
-        // a helper application the same installer put down outside the
-        // Applications folders (Microsoft AutoUpdate came with Teams and kept
-        // its caches under its own name), a helper inside one of the
-        // application's folders, or the program one of its launch jobs runs.
-        // Each is searched for in turn, and what it finds may name another,
-        // for up to three rounds. A helper found any way but the installer's
-        // receipt counts only when the same developer signed it, so a shared
-        // updater another product installed is never pulled in.
+        // Follow the trail: what was found can name more of the application, such
+        // as a helper an installer put outside the Applications folders, a helper
+        // inside its folders, or a launch job's program. Up to three rounds. A
+        // helper found any way but the installer's receipt counts only when the
+        // same developer signed it, so a shared updater is never pulled in.
         let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
         var followed = Set([subject].compactMap(\.self))
         var frontier = Self.parts(in: rawEvidence, excluding: followed)
@@ -90,8 +85,8 @@ public struct EvidenceEngine: Sendable {
                 for found in try await scanSources(identity: part, in: root, forPart: true) {
                     completeness = completeness.merging(found.completeness)
                     next += found.evidence.map { evidence in
-                        // What a part keeps is known through the part, one step
-                        // further from the application than its own files.
+                        // What a part keeps is known through the part, one step further from the
+                        // application than its own files.
                         Evidence(url: evidence.url, tier: evidence.tier == .A ? .B : evidence.tier,
                                  mechanism: evidence.mechanism,
                                  humanSentence: evidence.tier == .S ? evidence.humanSentence : sentence)
@@ -116,20 +111,9 @@ public struct EvidenceEngine: Sendable {
     }
 
     private func deduplicatedEvidence(_ evidence: [Evidence]) -> [Evidence] {
-        // Deduplicate and resolve tier conflicts.
-        //
-        // Keyed on the file itself rather than on the string naming it.
-        // Almost every Mac has a case-insensitive volume, so
-        // `/usr/local/bin/Code` and `/usr/local/bin/code` are one file, and
-        // two sources that spell it differently were producing two rows: one
-        // from a name match, one from following the symbolic link, each with
-        // its own tier and its own sentence. A plan that offers to remove
-        // the same file twice is wrong twice over, because the second row
-        // says something is there that is not.
-        //
-        // `dev` and `ino` are what `TargetFingerprint` already uses to decide
-        // whether a plan is still pointing at what it was built against, so
-        // this is the same notion of sameness the executor holds.
+        // Deduplicate and resolve tier conflicts, keyed on the file (`dev` and
+        // `ino`, as `TargetFingerprint` uses) rather than its spelling, so one file
+        // under two spellings on a case-insensitive volume is one row.
         var bestEvidenceByFile = [String: Evidence]()
 
         for found in evidence {
@@ -246,13 +230,9 @@ public struct EvidenceEngine: Sendable {
         }
     }
 
-    /// Which of two pieces of evidence for the same path to keep.
-    ///
-    /// S is deliberately the heaviest, and not because it is the most
-    /// confident. It is the opposite: it says something else claims this
-    /// path. Whichever source noticed that has to survive being merged
-    /// with a confident one, or the veto is thrown away at exactly the
-    /// moment it matters.
+    /// Which of two pieces of evidence for one path to keep. S is the heaviest
+    /// not because it is the most confident but because it says something else
+    /// claims the path, and the veto must survive the merge.
     private func isStronger(_ t1: EvidenceTier, than t2: EvidenceTier) -> Bool {
         func weight(_ tier: EvidenceTier) -> Int {
             switch tier {
@@ -265,15 +245,9 @@ public struct EvidenceEngine: Sendable {
         return weight(t1) > weight(t2)
     }
 
-    /// What makes two pieces of evidence the same thing.
-    ///
-    /// The volume's own answer where it has one, read with `lstat` so a
-    /// symbolic link is itself rather than whatever it points at. A link and
-    /// its target are two files and both can be residue; the same file under
-    /// two spellings is one.
-    ///
-    /// Falls back to the path for anything that cannot be stated, which
-    /// includes a path that no longer exists by the time the merge runs.
+    /// What makes two pieces of evidence the same thing: the volume's `dev` and
+    /// `ino` via `lstat`, so a link is itself, not its target. Falls back to the
+    /// path when it cannot be stated.
     static func identity(of url: URL) -> String {
         var info = stat()
         guard lstat(url.standardized.path, &info) == 0 else {

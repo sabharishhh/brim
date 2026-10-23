@@ -1,20 +1,10 @@
 import Foundation
 import IOKit.ps
 
-/// How the Mac is coping, from the interfaces Apple publishes for it.
-///
-/// Everything here is a documented public API. That is a deliberate
-/// constraint rather than a shortage of ambition: every tool that prints a
-/// CPU temperature in degrees on Apple Silicon reads it through
-/// `IOHIDEventSystemClient` or raw SMC keys, both private, both undocumented,
-/// and both liable to change in a September release. Apple has never shown a
-/// temperature anywhere in macOS, including in Activity Monitor.
-///
-/// What Apple does publish is `ProcessInfo.thermalState`, and it answers the
-/// question a person actually has. Nobody wants to know that a core is at
-/// 87 degrees. They want to know whether the Mac is being slowed down to
-/// cool itself, which is what thermal state says, in Apple's own terms, with
-/// Apple's own meanings behind them.
+/// How the Mac is coping, from documented public APIs only. A temperature in
+/// degrees would need private, undocumented interfaces, and the question a
+/// person has is whether the Mac is slowing down to cool itself, which
+/// `ProcessInfo.thermalState` answers.
 public struct SystemCondition: Sendable, Equatable {
 
     public enum Thermal: Sendable, Equatable {
@@ -43,8 +33,7 @@ public struct SystemCondition: Sendable, Equatable {
             }
         }
 
-        /// What it means for the person, taken from Apple's own description
-        /// of each state in the Energy Efficiency Guide rather than invented.
+        /// What each state means, taken from Apple's Energy Efficiency Guide.
         public var meaning: String {
             switch self {
             case .normal:
@@ -93,9 +82,8 @@ public struct SystemCondition: Sendable, Equatable {
             }
         }
 
-        /// Whether what an app is doing right now costs the person anything.
-        /// On the adapter it does not, and saying so stops the panel reading
-        /// as a warning when there is nothing to warn about.
+        /// Whether what an app is doing costs anything right now. On the adapter it
+        /// does not, so the panel does not warn.
         public var isOnBattery: Bool {
             if case .battery = self { return true }
             return false
@@ -124,10 +112,7 @@ public struct SystemCondition: Sendable, Equatable {
         )
     }
 
-    /// `IOPSCopyPowerSourcesInfo`, which is the documented way to ask.
-    ///
-    /// Returns nil on a machine with no battery, where "on battery" is not a
-    /// thing that can be said.
+    /// `IOPSCopyPowerSourcesInfo`. Nil on a Mac with no battery.
     public static func readPowerSource() -> Power? {
         guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef]
@@ -151,11 +136,8 @@ public struct SystemCondition: Sendable, Equatable {
         return nil
     }
 
-    /// One line, or nil when there is nothing worth saying.
-    ///
-    /// Silence is the common case and the right one. A Mac that is cool, on
-    /// the adapter and not throttling has nothing to report, and a card that
-    /// insists on saying so every time teaches people to stop reading it.
+    /// One line, or nil when there is nothing worth saying, which is the common
+    /// case.
     public var note: String? {
         if thermal.isNoteworthy { return thermal.meaning }
         if lowPowerMode {

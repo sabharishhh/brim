@@ -1,20 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// Brim's colours.
-///
-/// Brim is dark only (`AppDelegate` sets the appearance at launch). The
-/// canvas is the system's own dark window background, and cards sit one
-/// step up from it the way grouped rows do in System Settings, so Brim
-/// looks like the Mac it runs on. It used to draw its own near-black canvas,
-/// `#0F0F11` against the system's `#1E1E1E`, which made every page darker
-/// than any app beside it. Text, fills and the group colours are the
-/// system's semantic colours, so Increase Contrast reaches them the way it
-/// reaches any Mac app. The colour on screen comes from the person's app
-/// icons and from status, never from an accent.
-///
-/// Regions are told apart by shade, never by a line: the canvas, cards one
-/// step up from it, and the system sidebar.
+/// Brim's colours. Dark only: the canvas is the system's window background
+/// and cards sit one step up from it, as grouped rows do in System Settings.
+/// Text and fills are system semantic colours, so Increase Contrast reaches
+/// them. Colour comes from app icons and status, never from an accent, and
+/// regions are told apart by shade, never by a line.
 enum Palette {
     /// The window's one background, under the toolbar, every page and
     /// every side pane alike.
@@ -23,10 +14,8 @@ enum Palette {
     static let surface = Color("Surface")
     static let ink = Color(nsColor: .labelColor)
     static let inkSecondary = Color(nsColor: .secondaryLabelColor)
-    /// The faintest text. The system's tertiary label measured 2.3:1 on
-    /// the canvas and on cards, under the 4.5:1 text needs, and it carried
-    /// the Journal's times and reasons and every section count. Nine tenths
-    /// of the secondary label is 4.6:1 on a card and still a step quieter.
+    /// The faintest text. The system tertiary label is 2.3:1 on the canvas,
+    /// under the 4.5:1 text needs; this is 4.6:1 on a card.
     static let inkTertiary = Color(nsColor: .secondaryLabelColor).opacity(0.9)
     /// Fills behind bars, meters, chips and placeholders.
     static let well = Color(nsColor: .tertiarySystemFill)
@@ -39,19 +28,16 @@ enum Palette {
     /// The row the inspector is showing, or the highlighted result.
     static let selected = Color.white.opacity(0.1)
 
-    // Brim is monochrome. Its accent was the person's system accent, and a
-    // red accent turned the Space meter, Energy's bars, the selected row and
-    // the put-back icon red, so ordinary facts read as errors and clashed
-    // with the red that means a permanent deletion. Measures and selection
-    // are shades of white instead, and colour is left to status alone.
+    // Brim is monochrome. Measures and selection are shades of white, and
+    // colour is left to status: a red system accent made ordinary facts read
+    // as errors.
 
     /// The tint for controls Brim does not draw itself: checkboxes,
     /// switches, the sidebar's selection. Mid grey, so a white checkmark on
     /// it still reads.
     static let tint = Color(white: 0.5)
-    /// Off-white: the first thing a measure shows, icons, and what is
-    /// selected. A step down from pure white so it is not sharp on the
-    /// eyes, and never grey: at 90% it read as grey beside white text.
+    /// Off-white for what a measure shows first, icons and selection. Softer
+    /// than pure white, but never grey: at 90% it read as grey beside white text.
     static let snow = Color(white: 0.93)
     /// Text and symbols on `snow`, near black rather than black.
     static let onSnow = Color(red: 0x1E / 255, green: 0x1E / 255, blue: 0x1E / 255)
@@ -62,36 +48,29 @@ enum Palette {
 
     /// The light that sweeps across loading placeholders.
     static let shimmer = Color.white.opacity(0.06)
-    // Status colours: a colour-blind-safe palette,
-    // chosen because its hues stay apart under protanopia, deuteranopia and
-    // tritanopia, where the usual green and red collapse into one. They
-    // differ in lightness too, so they survive greyscale. Each is checked
-    // against the dark canvas (#1E1E1E) and cards (#2A2A2C): 4.5:1 or more
-    // wherever it can colour text, 3:1 or more for marks. Colour is never
-    // the only signal; every status also has a word or a symbol.
-    //
-    // Selection and progress are the greys above (`tint`, `snow`), never
-    // one of these and never the person's system accent.
+    // Status colours from a colour-blind-safe palette, whose hues stay apart under
+    // protanopia, deuteranopia and tritanopia and differ in lightness too.
+    // Each is checked against the canvas and cards: 4.5:1 or more where it
+    // colours text, 3:1 for marks. Every status also has a word or a symbol,
+    // and selection and progress never use these.
 
-    /// Done and checked. bluish green #009E73, lifted 6% toward
+    /// Done and checked. Bluish green #009E73, lifted 6% toward
     /// white so it reaches 4.5:1 on a card (4.51; 4.19 before).
     static let success = Color(hex: 0x0FA47B)
-    /// Staying, needs a look. orange #E69F00 (6.4:1 on a card).
+    /// Staying, needs a look. Orange #E69F00 (6.4:1 on a card).
     static let caution = Color(hex: 0xE69F00)
     /// Permanent deletion, stopped work and errors, as a mark only.
-    /// vermilion #D55E00 (3.7:1 on a card), so never body text:
+    /// Vermilion #D55E00 (3.7:1 on a card), so never body text:
     /// the words beside it carry the meaning.
     static let destructive = Color(hex: 0xD55E00)
-    /// Neutral information. sky blue #56B4E9 (6.2:1 on a card).
+    /// Neutral information. Sky blue #56B4E9 (6.2:1 on a card).
     static let info = Color(hex: 0x56B4E9)
-    /// Low Power Mode. yellow #F0E442, the colour macOS gives the
+    /// Low Power Mode. Yellow #F0E442, the colour macOS gives the
     /// battery in that mode, and readable on the dark canvas.
     static let lowPower = Color(hex: 0xF0E442)
 
     /// Greys for monograms and symbol tiles, in the order `Monogram.hue`
-    /// indexes them. They were eight system colours, and a column of
-    /// letters in teal, pink and indigo read as decoration; neighbouring
-    /// tiles still differ by a shade.
+    /// indexes them. Neighbouring tiles differ by a shade.
     static let hues: [Color] = [
         Color(white: 0.34),
         Color(white: 0.42),
@@ -140,25 +119,19 @@ enum Metrics {
     /// can be compared at a glance without scrolling inside a group.
     static let rowsBeforeShowAll = 7
 
-    /// The smallest window. A list and its pane need 860 points side by
-    /// side; narrower than that the pane floats over the list
-    /// (`AdaptivePanes`), so every page still works at 900.
+    /// The smallest window. Below the 860 points a list and its pane need side
+    /// by side, the pane floats over the list (`AdaptivePanes`).
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 640
     /// A list column never narrower than this.
     static let listMinWidth: CGFloat = 440
-    /// The inspector or review beside a list. One width for both: the
-    /// pane used to widen from 360 to 440 when a review opened, and the
-    /// review's list re-measured at every step of the animation, which is
-    /// the hitch halfway through the swap.
+    /// The inspector or review beside a list. One width for both, so a review
+    /// opening does not re-measure its list at every animation step.
     static let detailWidth: CGFloat = 420
 }
 
-/// Type styles. No serif anywhere. SF Pro for everything read in lists,
-/// and SF Pro Rounded where Brim speaks rather than lists: the Home
-/// headline, the big figures and the Journal's day headers. Rounded is the
-/// system's own, so it renders as crisply as the rest, and it is warmer
-/// than the default without looking like a web font.
+/// Type styles. No serif. SF Pro for lists, SF Pro Rounded where Brim speaks
+/// rather than lists: headlines, big figures and the Journal's day headers.
 extension Font {
     static let brimHeadline = Font.system(size: 26, weight: .semibold, design: .rounded)
     static let brimDayHeader = Font.system(.title3, design: .rounded, weight: .semibold)
@@ -172,8 +145,7 @@ extension Font {
     static let brimFigure = Font.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit()
 }
 
-/// Brim is dark only, so a status colour is one colour. These were dynamic
-/// colours with a light and a dark value, every pair identical.
+/// Brim is dark only, so each status colour is a single colour.
 private extension Color {
     init(hex: UInt32) {
         self.init(

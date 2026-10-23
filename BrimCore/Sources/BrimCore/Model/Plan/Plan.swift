@@ -26,10 +26,9 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     case clearImmutableFlag
     case delegateToolCleanup
     case revealVendorUninstaller
-    /// Removes the bundle's Launch Services registration, after the bundle
-    /// itself is gone. Deleting an app does not retract its registration:
-    /// the record survives, so the app keeps appearing in "Open With" and
-    /// keeps claiming its document types and URL schemes.
+    /// Removes the bundle's Launch Services registration after the bundle has
+    /// gone. Deleting an app does not retract it, so the app would stay in
+    /// "Open With" and keep claiming its document types and URL schemes.
     case unregisterLaunchServices
 }
 
@@ -62,16 +61,8 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
         self.mtime = mtime
     }
 
-    /// Equal when the file is the same file, allowing 10ms of drift in the
-    /// modification time because a date that has been through JSON is not
-    /// the date that went in.
-    ///
-    /// This used to print on every mismatch. An `==` is not the place: it
-    /// runs for comparisons that are not safety decisions, it has no plan or
-    /// step to name, and the one caller where a mismatch means something,
-    /// `BrimService.apply` re-planning and comparing, already builds a
-    /// message naming the step, the target and both fingerprints, and throws
-    /// it as `ApplyError.validationFailed`.
+    /// The same file, allowing 10 ms of drift in the modification time, because
+    /// a date that has been through JSON is not exactly the date that went in.
     public static func == (lhs: TargetFingerprint, rhs: TargetFingerprint) -> Bool {
         let timeDiff = abs(lhs.mtime.timeIntervalSince1970 - rhs.mtime.timeIntervalSince1970)
         return lhs.dev == rhs.dev && lhs.ino == rhs.ino && timeDiff <= 0.01
@@ -79,17 +70,15 @@ public struct TargetFingerprint: Codable, Equatable, Sendable {
 }
 
 public enum ExecutionPhase: Int, Codable, Equatable, Sendable, Comparable {
-    /// Clearing privacy grants, which must happen while the application
-    /// bundle is still present: tccutil resolves the bundle through Launch
-    /// Services, so after removal the grants can never be cleared again.
+    /// Clearing privacy grants while the bundle still exists: `tccutil` finds
+    /// the bundle through Launch Services, so afterwards the grants can never be
+    /// cleared.
     case privacyReset = -2
     case auxiliary = 0
     case launchd = 1
     case appBundle = 2
-    /// Retracting registrations that name the bundle. This runs *after* the
-    /// bundle is removed, the mirror image of `privacyReset`. Unregistering
-    /// a bundle that is still on disk achieves nothing, because Launch
-    /// Services re-registers it the moment anything looks at it again.
+    /// Retracting registrations after the bundle is removed, the mirror of
+    /// `privacyReset`: Launch Services re-registers a bundle still on disk.
     case registration = 3
 
     public static func < (lhs: ExecutionPhase, rhs: ExecutionPhase) -> Bool {
@@ -105,9 +94,8 @@ public enum StepDisposition: String, Codable, Equatable, Sendable {
     /// Removed outright. Frees the space immediately and cannot be undone.
     case delete
 
-    /// Nobody restores a rebuilt cache, and leaving it in the Trash means the
-    /// space the user was promised is not actually returned. Anything that
-    /// carries settings or user data stays reversible.
+    /// A rebuilt cache is deleted outright so its space really comes back.
+    /// Anything with settings or user data stays reversible.
     public static func `default`(for costOfError: CostOfError) -> StepDisposition {
         switch costOfError {
         case .low: .delete
@@ -162,15 +150,13 @@ public struct Step: Codable, Equatable, Sendable {
 public struct ExcludedItem: Codable, Equatable, Sendable {
     public let target: String
     public let reason: String
-    /// What Brim knows about the row, written the way a step's evidence is,
-    /// so a row the sheet offers says how Brim found it.
+    /// What Brim knows about the row, written like a step's evidence.
     public let evidence: String?
     public let sizeBytes: Int64?
     public let tier: EvidenceTier?
-    /// Whether the person may tick this row in the uninstall sheet. True for
-    /// a row Brim found and left unticked; false for one that was vetoed,
-    /// which stays out whatever is asked. Nil in plans written before the
-    /// sheet could offer a row, and read as false.
+    /// Whether the person may tick this row in the review: true for a row Brim
+    /// found and left unticked, false for a vetoed one. Nil in older plans,
+    /// read as false.
     public let canBeTickedByHand: Bool?
 
     public init(target: String, reason: String, evidence: String? = nil, sizeBytes: Int64? = nil, canBeTickedByHand: Bool? = nil, tier: EvidenceTier? = nil) {
@@ -195,26 +181,15 @@ public struct PlanIntent: Codable, Equatable, Sendable {
     public let requesterIdentity: String
     public let toolCleanup: ToolCleanupRequest?
     public let specificTarget: URL?
-    /// Several explicitly chosen targets planned as one unit, so a multi-item
-    /// selection produces a single plan the user approves once. Absent in
-    /// plans written before batching existed, hence optional.
+    /// Several chosen targets planned as one unit, approved once. Optional for
+    /// older plans.
     public let specificTargets: [URL]?
     public let excludedFolders: [URL]?
-    /// Rows Brim found for this application and did not tick, which the
-    /// person ticked in the uninstall sheet. Paths, exactly as the plan's
-    /// excluded rows name them.
-    ///
-    /// On the intent rather than beside it, so it is part of what the person
-    /// approves, since the plan's hash covers the intent, and part of what
-    /// `apply` rebuilds when it checks the plan again before touching
-    /// anything. Absent in plans written before the sheet could offer an
-    /// unticked row, hence optional, and absent from the encoding when nil so
-    /// every other plan hashes as it always has.
-    ///
-    /// It can only promote. A path here that the evidence engine did not
-    /// find for this application is ignored, and a row that was vetoed stays
-    /// vetoed; `Planner` holds both, and `TickedByHandPlannerTests` holds the
-    /// planner to them.
+    /// Rows Brim found and did not tick that the person ticked in the review.
+    /// On the intent, so the plan's hash covers them and `apply` rebuilds them.
+    /// It can only promote: a path the evidence engine did not find is ignored
+    /// and a vetoed row stays vetoed (`TickedByHandPlannerTests`). Absent from
+    /// the encoding when nil, so other plans hash as before.
     public private(set) var tickedByHand: [String]?
 
     /// The explicit targets this intent asks for, however they were supplied.
@@ -241,13 +216,9 @@ public struct PlanIntent: Codable, Equatable, Sendable {
         self.tickedByHand = tickedByHand
     }
 
-    /// The same intent with a different set of rows ticked by hand. Sorted,
-    /// so one choice always makes one intent and one plan hash, and nil when
-    /// nothing is ticked, so it encodes as though the sheet never offered.
-    ///
-    /// A copy with one field changed rather than a new intent built from the
-    /// old one's fields, so a field added to the intent later cannot be
-    /// quietly dropped from every plan the sheet rebuilds.
+    /// The same intent with different rows ticked by hand. Sorted, so one choice
+    /// gives one plan hash; nil when nothing is ticked. A copy with one field
+    /// changed, so a field added later is never dropped.
     public func tickingByHand(_ paths: Set<String>) -> PlanIntent {
         var copy = self
         copy.tickedByHand = paths.isEmpty ? nil : paths.sorted()
@@ -341,8 +312,7 @@ public struct Plan: Codable, Equatable, Sendable {
         ordinaryFileRemovals.filter { $0.effectiveDisposition == .delete }.reduce(0) { $0 + $1.expectedBytes }
     }
 
-    /// Bytes that only come back once the user empties the Trash. Reporting
-    /// these as reclaimed is what made the headline figure misleading.
+    /// Bytes that come back only once the Trash is emptied.
     public var trashedBytes: Int64 {
         ordinaryFileRemovals.filter { $0.effectiveDisposition == .trash }.reduce(0) { $0 + $1.expectedBytes }
     }
@@ -367,10 +337,9 @@ public struct Plan: Codable, Equatable, Sendable {
         }
     }
 
-    /// Steps in the order they must be applied: privacy grants while the
-    /// bundle still exists, then auxiliary files, then launchd jobs
-    /// (unloaded before their plist goes), and the app bundle last. Ties
-    /// within a phase keep the planner's own order.
+    /// Steps in the order they must run: privacy grants while the bundle
+    /// exists, then auxiliary files, then launchd jobs (unloaded before their
+    /// plist goes), and the app bundle last. Ties keep the planner's order.
     public var executionOrderedSteps: [Step] {
         steps.sorted { a, b in
             if a.executionPhase != b.executionPhase {
@@ -380,10 +349,8 @@ public struct Plan: Codable, Equatable, Sendable {
         }
     }
 
-    /// Steps in the order they must be undone: the exact reverse of
-    /// `executionOrderedSteps`, so the app bundle is put back before the
-    /// auxiliary files that live beneath it and a launchd job is only
-    /// reloaded once its plist has been restored.
+    /// The exact reverse of `executionOrderedSteps`, so the bundle comes back
+    /// before the files beneath it and a job reloads only after its plist.
     public var undoOrderedSteps: [Step] {
         steps.sorted { a, b in
             if a.executionPhase != b.executionPhase {

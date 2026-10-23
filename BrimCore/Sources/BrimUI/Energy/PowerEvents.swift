@@ -2,13 +2,10 @@ import AppKit
 import Foundation
 import IOKit.ps
 
-/// macOS saying the battery, the temperature or Low Power Mode changed.
-///
-/// Each is pushed by the system the moment it happens, so following them
-/// costs nothing while nothing changes: the battery through IOKit's power
-/// source notification, the others through `ProcessInfo`. A stream lasts as
-/// long as the task reading it, and removes everything it installed when
-/// that task ends.
+/// macOS saying the battery, the temperature or Low Power Mode changed:
+/// IOKit's power source notification and `ProcessInfo`, both pushed by the
+/// system, so following them costs nothing. A stream lasts as long as the
+/// task reading it.
 public enum PowerEvents {
     public static func changes() -> AsyncStream<Void> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -58,9 +55,8 @@ public enum PowerEvents {
     }
 }
 
-/// Whether any of Brim's windows can be seen: not hidden, not minimised,
-/// not covered. Readings that are only worth taking for someone looking
-/// wait on this rather than run for a window nobody sees.
+/// Whether any of Brim's windows can be seen: not hidden, minimised or
+/// covered. Readings worth taking only for someone looking wait on this.
 @MainActor
 public enum AppVisibility {
     public static var isVisible: Bool {

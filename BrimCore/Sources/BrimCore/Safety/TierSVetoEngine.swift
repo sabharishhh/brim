@@ -112,9 +112,8 @@ public struct TierSVetoEngine: Sendable {
             ?? Self.sharesName(targetURL, with: context.applications) {
             return (Self.excluded(item, reason: "Named for \(owner), which is still installed."), completeness)
         }
-        // The installer's own record already says whose this is:
-        // a driver installed in the same run carries its own
-        // identifier, and that is not a second owner.
+        // The installer's own record already says whose this is: a driver from the
+        // same run carries its own identifier, which is not a second owner.
         if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
            let sharedWith = await checkSharedClaims(
                for: targetURL, identity: context.identity, resolver: context.resolver
@@ -145,12 +144,9 @@ public struct TierSVetoEngine: Sendable {
                              costOfError: item.costOfError)
     }
 
-    /// The installed application an identifier-named item belongs to, when
-    /// that application's identifier is more specific than this one's.
-    ///
-    /// Prefix rules take `com.google.Chrome.canary.plist` for Chrome,
-    /// because it begins with Chrome's identifier and a dot. It is Chrome
-    /// Canary's, and Canary is still installed.
+    /// The installed application an identifier-named item belongs to, when its
+    /// identifier is more specific than this one's:
+    /// `com.google.Chrome.canary.plist` is Chrome Canary's, not Chrome's.
     static func namedFor(_ url: URL, among others: [String: String], besides identity: Identity) -> String? {
         var name = url.lastPathComponent.lowercased()
         if name.hasPrefix(".") {
@@ -273,16 +269,13 @@ public struct TierSVetoEngine: Sendable {
     }
 
     private func checkSharedClaims(for url: URL, identity: Identity, resolver: IdentityResolver) async -> Identity? {
-        // Cross-identity resolution
-        // If the path resolves to an identity that is NOT the footprint's identity, it is shared/owned by someone else
+        // A path that resolves to a different identity is shared with, or owned
+        // by, someone else.
         let resolved = await resolver.resolve(bundleURL: url)
         guard let resolvedID = resolved.bundleID, let footprintID = identity.bundleID,
               resolvedID != footprintID else { return nil }
-        // A bundle named inside one of this application's own identifiers
-        // is a part of it: ChatGPT's sign-in plug-in is
-        // `com.openai.sky.CUAService.AuthorizationPlugin`, inside its Computer
-        // Use component. Vetoed as somebody else's, the review said it was
-        // "claimed by CodexComputerUseAuthorizationPlugin", which is itself.
+        // A bundle named inside one of this application's own identifiers is part
+        // of it, not another owner.
         let lowered = resolvedID.lowercased()
         let own = identity.searchBundleIdentifiers.map { $0.lowercased() }
         if own.contains(where: { lowered == $0 || lowered.hasPrefix($0 + ".") }) {
@@ -328,9 +321,9 @@ private struct OtherClaimants: Sendable {
 }
 
 extension TierSVetoEngine {
-    /// The installed application whose own name the item has, in any case
-    /// or spacing. A name match can now be ticked, so a folder two
-    /// applications both answer to must belong to neither by default.
+    /// The installed application whose own name the item has, in any case or
+    /// spacing. A name match can be ticked, so a folder two apps answer to
+    /// belongs to neither by default.
     static func sharesName(_ url: URL, with applications: [Identity]) -> String? {
         guard url.pathExtension.lowercased() != "app" else { return nil }
         var name = url.lastPathComponent

@@ -21,8 +21,8 @@ extension Executor {
                 try await LaunchServicesRegistration.unregisterBounded(bundlePath: step.target)
                 return "ok"
             } catch {
-                // Retracting a path Launch Services never recorded fails, as
-                // for a helper nobody opened. Only then is the database asked.
+                // Retracting a path Launch Services never recorded fails, as for a helper
+                // nobody opened. Only then is the database asked.
                 if try await componentIsAlreadyUnregistered(step: step) {
                     return "already_gone"
                 }

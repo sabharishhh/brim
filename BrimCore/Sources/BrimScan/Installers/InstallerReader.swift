@@ -22,10 +22,9 @@ public enum InstallerReadError: LocalizedError, Equatable {
     }
 }
 
-/// Reads an installer without installing it: a package's own file list
-/// and scripts, a disk image's contents mounted read-only and hidden, and
-/// an application's bundle. Nothing here writes outside a private
-/// temporary folder, which is removed before it returns.
+/// Reads an installer without installing it: a package's file list and
+/// scripts, a disk image mounted read-only and hidden, or an app's bundle.
+/// Writes only to a private temporary folder, removed before it returns.
 public struct InstallerReader: Sendable {
     /// An application on this Mac now, by identifier in lower case.
     public struct Installed: Sendable {

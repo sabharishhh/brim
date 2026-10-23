@@ -108,8 +108,7 @@ final class RemovalHistoryModelTests: XCTestCase {
     }
 
     func testExplainsWhyAnEmptiedTrashCannotBeUndone() async throws {
-        // Trashed, so the plan is reversible in principle, but no longer
-        // listed as recoverable: the user emptied the Trash.
+        // Trashed, but no longer recoverable: the Trash was emptied.
         let trashed = makePlan(name: "Settings", disposition: .trash)
         let stub = HistoryStub(plans: [trashed], recoverable: [])
 
@@ -174,9 +173,8 @@ final class RemovalHistoryModelTests: XCTestCase {
         XCTAssertEqual(model.records.map(\.name), ["Newer", "Older"])
     }
 
-    /// Clearing the Journal takes out what has happened so far, but never a
-    /// removal that can still be put back: hiding it would hide the only way
-    /// back to the person's files. The clear point survives a relaunch.
+    /// Clearing the Journal never hides a removal that can still be put back.
+    /// The clear point survives a relaunch.
     func testClearingKeepsWhatCanStillBePutBack() async throws {
         let suite = "brim.tests.journal.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

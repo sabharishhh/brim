@@ -18,9 +18,8 @@ enum BackgroundScope {
         })
         return records.filter { record in
             guard !record.isSystemOwned, record.kind != .shellProfileLine else { return false }
-            // A permission held for a program that is gone has no app to
-            // belong to, which is exactly why it has to be shown: Full Disk
-            // Access kept Microsoft AutoUpdate's helper long after it went.
+            // A permission held for a program that is gone has no app to belong to,
+            // which is why it must be shown.
             if record.kind == .privacyGrant, record.isStale {
                 return true
             }
@@ -53,12 +52,9 @@ enum BackgroundScope {
     }
 }
 
-/// One application's registrations as a row on the Background page, with
-/// which of the model's three lists it came from.
-///
-/// The same application can be in two of them at once, one job pointing
-/// at nothing and another still running, so the list it came from is part
-/// of its identity: two rows, never one row claiming both.
+/// One application's registrations as a Background row, with which of the
+/// model's lists it came from. An app can be in two at once, so that list is
+/// part of its identity.
 public struct BackgroundEntry: Identifiable, Equatable, Sendable {
     public enum State: String, Sendable {
         /// Points at a program that is not there, and stays until removed.

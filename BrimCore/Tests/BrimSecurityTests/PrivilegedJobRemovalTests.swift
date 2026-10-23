@@ -2,12 +2,8 @@ import XCTest
 import BrimCore
 @testable import BrimPrivileged
 
-/// What the root daemon refuses.
-///
-/// These are the tests that matter most in the project. Everything else
-/// protects a user from a wrong answer; these protect them from a daemon
-/// running as root being talked into something. Each case is an attack on
-/// the interface rather than a mistake in it.
+/// What the administrator process refuses. Each case is an attack on the
+/// interface rather than a mistake in it.
 final class PrivilegedJobRemovalTests: XCTestCase {
 
     private func refusal(domain: String = "localAgents", name: String) -> PrivilegedJobRemoval.Refusal? {
@@ -24,8 +20,8 @@ final class PrivilegedJobRemovalTests: XCTestCase {
     // MARK: - The interface cannot express a dangerous request
 
     func testAPathCannotBeSmuggledThroughTheName() {
-        // The whole reason the caller names a domain and a file rather
-        // than a path. None of these may become a path.
+        // The caller names a domain and a file, never a path, so none of these may
+        // become one.
         for attempt in [
             "../../../etc/sudoers",
             "/etc/sudoers",
@@ -47,16 +43,14 @@ final class PrivilegedJobRemovalTests: XCTestCase {
             try? PrivilegedJobRemoval.target(domain: "localDaemons", name: "com.vendor.d.plist").path,
             "/Library/LaunchDaemons/com.vendor.d.plist"
         )
-        // A user's own Library needs no privileges and must never come
-        // through here, so there is no domain for it.
+        // A user's own Library needs no privileges, so it has no domain here.
         XCTAssertEqual(refusal(domain: "userAgents", name: "x.plist"),
                        .unknownDomain("userAgents"))
         XCTAssertEqual(refusal(domain: "/etc", name: "sudoers"), .unknownDomain("/etc"))
     }
 
     func testNothingOfApplesEverGoes() {
-        // Refused by the daemon by name, rather than trusting the caller
-        // to have filtered them out.
+        // Refused by name here rather than trusting the caller to filter them.
         XCTAssertEqual(refusal(name: "com.apple.safaridavclient.plist"),
                        .belongsToApple("com.apple.safaridavclient.plist"))
     }
@@ -80,9 +74,8 @@ final class PrivilegedJobRemovalTests: XCTestCase {
     }
 
     func testAJobWhoseProgramIsStillThereIsRefused() {
-        // The rule that makes the daemon safe to expose at all. Even a
-        // caller that satisfied the code signing check cannot use this to
-        // switch off a working service.
+        // Even a caller that passes the signing check cannot switch off a working
+        // service.
         let working = plist(["Label": "com.vendor.agent",
                              "ProgramArguments": ["/usr/bin/true", "-x"]])
 
@@ -99,14 +92,13 @@ final class PrivilegedJobRemovalTests: XCTestCase {
     }
 
     func testAnEmptyJobFileIsDefunct() {
-        // Google's uninstaller leaves four of these: an empty dictionary,
-        // no program, nothing for launchd to run.
+        // An empty dictionary, no program, nothing for launchd to run.
         XCTAssertTrue(PrivilegedJobRemoval.isDefunct(plist: plist([:])) { _ in true })
     }
 
     func testSomethingThatIsNotAPlistIsNotALicenceToDelete() {
-        // launchd would ignore it, but a daemon guessing at a file it
-        // cannot parse is how a helper removes the wrong thing.
+        // A root process guessing at a file it cannot parse removes the wrong
+        // thing.
         let rubbish = Data("not a plist at all".utf8)
         XCTAssertFalse(PrivilegedJobRemoval.isDefunct(plist: rubbish) { _ in false })
         XCTAssertFalse(PrivilegedJobRemoval.isDefunct(plist: Data()) { _ in false })
@@ -115,18 +107,15 @@ final class PrivilegedJobRemovalTests: XCTestCase {
     // MARK: - Who may connect
 
     func testTheAppAndTheDaemonArePinnedSeparately() {
-        // They are two identities, and pinning the wrong one is easy: the
-        // first version had the app checking the daemon against the
-        // *app's* identifier, which nothing could ever satisfy, so the
-        // connection would have been dropped every time.
+        // Two identities, and checking the administrator process against the app's
+        // identifier could never be satisfied.
         XCTAssertTrue(BrimJobHelper.clientRequirement().contains("\"com.sabharishhh.brim\""))
         XCTAssertTrue(BrimJobHelper.daemonRequirement().contains("\"com.sabharishhh.brim.jobhelper\""))
         XCTAssertNotEqual(BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement())
     }
 
     func testBothDirectionsAreAnchoredToApple() {
-        // A root service accepting whatever answers, or an app trusting
-        // whatever holds the mach name, is how one of them gets replaced.
+        // Both ends check the other's signature.
         for requirement in [BrimJobHelper.clientRequirement(), BrimJobHelper.daemonRequirement()] {
             XCTAssertTrue(requirement.contains("anchor apple generic"))
             XCTAssertTrue(requirement.contains("subject.OU] = \"9LY29YLFG2\""))
@@ -147,18 +136,10 @@ final class PrivilegedJobRemovalTests: XCTestCase {
 }
 
 /// One selection, one plan, whoever owns the folders.
-///
-/// The first version made it all or nothing: either everything ticked
-/// needed the daemon or nothing did, so a person who picked one file of
-/// their own and one of root's had to do it twice. Whose folder something
-/// sits in is Brim's problem, not a distinction to make anyone sort their
-/// selection by.
 final class MixedPrivilegeSelectionTests: XCTestCase {
 
     func testAPlanCanCarryBothKindsOfRemoval() throws {
-        // Deliberately checks the step vocabulary rather than the planner
-        // internals: what matters is that one plan can express both, so
-        // one review and one confirmation covers the selection.
+        // One plan can express both, so one review covers the selection.
         XCTAssertTrue(StepKind.trashPath.targetIsPath)
         XCTAssertTrue(StepKind.trashPathPrivileged.targetIsPath)
 
@@ -187,10 +168,8 @@ final class MixedPrivilegeSelectionTests: XCTestCase {
     }
 
     func testAPrivilegedRemovalIsReversibleAndSoNeedsNoExtraPrompt() {
-        // The reason there is no fingerprint per cleanup. The daemon
-        // renames the file into a root owned holding folder; it does not
-        // unlink it. Brim's rule is that reversible things do not
-        // interrupt, and this is reversible.
+        // Setting aside renames into a root-owned folder rather than unlinking, so
+        // it is reversible and needs no fingerprint.
         XCTAssertTrue(BrimJobHelper.quarantineDirectory.hasPrefix("/Library/"),
                       "The holding folder has to be somewhere only root can write")
     }

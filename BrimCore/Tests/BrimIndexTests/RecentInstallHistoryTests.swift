@@ -9,8 +9,8 @@ struct RecentInstallHistoryTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let day: TimeInterval = 86400
 
-    /// A reinstalled app used its first-ever observation and stayed dated as
-    /// the old installation, even after a snapshot had confirmed its absence.
+    /// A reinstall starts a new period once a snapshot has confirmed the
+    /// absence.
     @Test func aRecordedReinstallStartsANewCurrentPeriod() async throws {
         try await withIndex { index in
             let anchor = app("Anchor")
@@ -29,12 +29,10 @@ struct RecentInstallHistoryTests {
         }
     }
 
-    /// The Journal showed Figma removed, removed, and later eqMac the same
-    /// way: installs were read from the apps on the disk now, so removing
-    /// an app took every install it had out of the history. Each install
-    /// stays, dated by Spotlight's date added inside its window. An app
-    /// already here at the first look, one whose bundle predates the look
-    /// before it appeared, and an app inside another are not installs.
+    /// Each install stays in the history after its app is removed, dated by
+    /// Spotlight's date added inside its window. An app present at the first
+    /// look, one whose bundle predates the look before it appeared, and an app
+    /// inside another are not installs.
     @Test func everyInstallStaysInTheHistoryAfterItsAppIsRemoved() async throws {
         try await withIndex { index in
             let anchor = app("Anchor")
@@ -66,8 +64,7 @@ struct RecentInstallHistoryTests {
         }
     }
 
-    /// Changes kept one nonempty comparison forever. A new event displaced
-    /// earlier activity from the same week, and old activity never expired.
+    /// The week includes every recorded event, and older ones expire.
     @Test func theWeekIncludesAllRecordedAppEventsAndExpiresOlderOnes() async throws {
         try await withIndex { index in
             _ = try await index.recordInstalled([app("Anchor")], at: now - 10 * day)

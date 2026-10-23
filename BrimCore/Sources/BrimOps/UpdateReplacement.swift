@@ -20,10 +20,9 @@ extension UpdateInstaller {
             }
         }
 
-        // Staged beside the old copy, and exchanged with it in one atomic
-        // rename, so the app is always there: old, or new, never neither.
-        // The intent is written first, so an update cut off by a quit, a
-        // crash or a power cut is settled the next time Brim looks.
+        // Staged beside the old copy and exchanged with it in one atomic rename, so
+        // the app is always there, old or new. The intent is written first, so an
+        // update cut off by a quit, crash or power cut is settled next time.
         let folder = installed.deletingLastPathComponent()
         let staged = folder.appendingPathComponent(".\(UUID().uuidString)-\(installed.lastPathComponent)")
         do {
@@ -37,8 +36,8 @@ extension UpdateInstaller {
         defer { try? FileManager.default.removeItem(at: intentFile) }
 
         if renamex_np(staged.path, installed.path, UInt32(RENAME_SWAP)) == 0 {
-            // The old version is now at the staged path, and the new one is
-            // in, so the old one is deleted.
+            // The old version is now at the staged path and the new one is in, so the
+            // old one is deleted.
             Self.removeOldVersion(staged)
         } else {
             let swapError = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM)
@@ -59,8 +58,8 @@ extension UpdateInstaller {
     private static func replaceWithoutExchange(
         _ installed: URL, staged: URL, folder: URL, remover: PrivilegedRemover?, swapError: POSIXError
     ) async throws {
-        // A folder an installer left owned by root cannot be exchanged.
-        // The old copy is set aside first, as before.
+        // A folder an installer left owned by root cannot be exchanged, so the old
+        // copy is set aside first.
         var cleanUp = true
         defer {
             if cleanUp {
@@ -90,11 +89,9 @@ extension UpdateInstaller {
         }
     }
 
-    /// Deletes the version an update replaced. It used to go to the Trash,
-    /// where a 1.6 GB copy of an app sat until someone emptied it, to keep
-    /// a rollback nobody was offered. If something inside cannot be
-    /// deleted, an installer having left it owned by root, what remains
-    /// goes to the Trash rather than staying hidden beside the new version.
+    /// Deletes the version an update replaced. What cannot be deleted, because an
+    /// installer left it owned by root, goes to the Trash rather than staying
+    /// hidden beside the new version.
     static func removeOldVersion(_ url: URL) {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { return }
@@ -127,17 +124,12 @@ extension UpdateInstaller {
         }
     }
 
-    /// Settles updates another run of Brim left unfinished, and clears the
-    /// downloads it left. Returns, for each application whose update did
-    /// not finish, why, keyed by its path.
-    ///
-    /// - The app is there and the staged copy too: the exchange either
-    ///   never happened, and the staged copy is the unused download, or it
-    ///   did, and the staged copy is the old version. Either way the staged
-    ///   copy is deleted.
-    /// - The app is missing and the staged copy is there: the old version
-    ///   went to the Trash and the new one never moved in. The new one,
-    ///   already checked, is moved into place.
+    /// Settles updates another run left unfinished and clears its downloads.
+    /// Returns why each unfinished update stopped, keyed by app path.
+    /// - App and staged copy both there: the staged copy is either the unused
+    ///   download or the old version, and is deleted.
+    /// - App missing, staged copy there: the new version, already checked, is
+    ///   moved into place.
     @discardableResult
     public static func recoverInterrupted(in workspace: URL) -> [String: String] {
         let manager = FileManager.default
@@ -188,9 +180,8 @@ extension UpdateInstaller {
         return interrupted
     }
 
-    /// Packages are kept after an update only so Installer can read them.
-    /// Once it has quit they are finished with, and were never cleared:
-    /// every update that went through Installer left its package behind.
+    /// Packages are kept only so Installer can read them, and cleared once it
+    /// has quit.
     static func clearPackages(in workspace: URL, installerIsOpen: Bool) {
         guard !installerIsOpen else { return }
         try? FileManager.default.removeItem(at: workspace.appendingPathComponent("Packages", isDirectory: true))

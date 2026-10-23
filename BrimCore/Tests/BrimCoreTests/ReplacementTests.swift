@@ -1,9 +1,8 @@
 @testable import BrimCore
 import XCTest
 
-/// "Replaced by" is said only on proof: a record of where the old app was,
-/// an installed app with another identifier at exactly that path, and the
-/// same developer's namespace. Every way it could be wrong has a case here.
+/// "Replaced by" only on proof: a record of where the old app was, a
+/// different installed app at exactly that path, and the same developer.
 final class ReplacementTests: XCTestCase {
     private let codex = Replacement.Installed(bundleID: "com.openai.codex", name: "ChatGPT",
                                               path: "/Applications/ChatGPT.app")
@@ -14,8 +13,8 @@ final class ReplacementTests: XCTestCase {
         XCTAssertEqual(found, Replacement(name: "ChatGPT", path: "/Applications/ChatGPT.app"))
     }
 
-    /// The real case on the Mac this was written on: nothing records where
-    /// com.openai.chat was, so nothing is claimed, whatever the names say.
+    /// Nothing records where the old app was, so nothing is claimed, whatever
+    /// the names say.
     func testNoRecordOfWhereItWasMeansNoClaim() {
         XCTAssertNil(Replacement.find(removed: "com.openai.chat", formerPaths: [], installed: [codex]))
     }
@@ -76,8 +75,8 @@ final class ReplacementTests: XCTestCase {
         XCTAssertNil(Replacement.developer(of: "io.github.someone"))
     }
 
-    /// A namespace is the developer's, not a shared root: two apps under
-    /// `com.github` from different people are not one developer's.
+    /// On a shared root such as `com.github`, two people's apps are not one
+    /// developer's.
     func testASharedRootNamespaceNeedsTheSameOwner() {
         let original = Replacement.Installed(
             bundleID: "com.github.someone.tool",

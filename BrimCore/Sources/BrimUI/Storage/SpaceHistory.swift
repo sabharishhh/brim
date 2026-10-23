@@ -1,13 +1,8 @@
 import Foundation
 
-/// What Space measured on one visit, kept so the next visit can say what
-/// changed.
-///
-/// History is snapshots and subtraction: nothing watches the
-/// disk between visits. Each finished visit records the figures it showed,
-/// and "Since you last looked" is the latest of these subtracted from the
-/// one before. With only one there is nothing to compare, and the card says
-/// so rather than showing a row of zeros.
+/// What Space measured on one visit, so the next can say what changed:
+/// the latest snapshot subtracted from the one before. With only one, there
+/// is nothing to compare, and the card says so.
 public struct SpaceSnapshot: Codable, Sendable, Equatable {
     public let date: Date
     public let used: Int64

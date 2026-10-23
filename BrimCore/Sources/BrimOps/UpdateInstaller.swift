@@ -4,16 +4,12 @@ import CryptoKit
 import Foundation
 import Security
 
-/// Puts a newer version of an application in place of the installed one.
-///
-/// The installed copy is the trust anchor, as it is for Sparkle's own
-/// installer: the download has to match what its source published, and the
-/// application inside has to satisfy the installed application's designated
-/// requirement, which names its identifier and its developer. So a catalogue
-/// entry or a feed that pointed somewhere else could at worst offer an
-/// application that is refused here. It also has to pass Gatekeeper, be
-/// newer, and run on this Mac, and all of that is settled before the
-/// installed application is asked to quit.
+/// Puts a newer version of an app in place of the installed one. The
+/// installed copy is the trust anchor: the download must match what its
+/// source published, and the app inside must satisfy the installed app's
+/// designated requirement (identifier and developer). It must also
+/// pass Gatekeeper, be newer and run on this Mac, all settled before the
+/// installed app is asked to quit.
 public struct UpdateInstaller: Sendable {
     public typealias Progress = @Sendable (DownloadProgress) -> Void
     /// Moves something only root can move, as the helper does for removals.
@@ -65,8 +61,8 @@ public struct UpdateInstaller: Sendable {
     }
 
     public func install(_ update: AppUpdate, progress: @escaping Progress = { _ in }) async -> UpdateOutcome {
-        // Named for this process, so recovery can tell a folder another
-        // run left behind from one in use now.
+        // Named for this process, so recovery can tell a folder another run left
+        // from one in use.
         let folder = workspace.appendingPathComponent("\(getpid())-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         do {
@@ -74,8 +70,8 @@ public struct UpdateInstaller: Sendable {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let file: URL
             if let kept = ReadyDownloads.file(for: download.url, in: workspace) {
-                // Downloaded and checked on an attempt whose app would not
-                // quit. Checked again below before it is used.
+                // Downloaded and checked on an attempt whose app would not quit; checked
+                // again below before use.
                 file = kept
                 let bytes = (try? kept.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init) ?? 1
                 progress(DownloadProgress(received: bytes, expected: bytes))
@@ -103,8 +99,7 @@ public struct UpdateInstaller: Sendable {
                 return refusal
             }
             let outcome = try await replace(update.appURL, with: candidate)
-            // Only the app staying open is worth keeping the download for:
-            // quitting it is all that stands between this one and success.
+            // Kept only when the app staying open was the one thing in the way.
             if case .stillOpen = outcome {
                 ReadyDownloads.keep(file, for: download.url, in: workspace)
             } else {
@@ -153,8 +148,7 @@ public struct UpdateInstaller: Sendable {
 
     enum Kind { case zip, diskImage, tar, package, unknown }
 
-    /// By content, not by name: Visual Studio Code's download is called
-    /// `stable`.
+    /// By content, not name: some downloads are named `stable`.
     static func kind(of file: URL) -> Kind {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return .unknown }
         defer { try? handle.close() }
@@ -250,10 +244,8 @@ public struct UpdateInstaller: Sendable {
     }
 
     /// macOS asks for App Management before one developer's app replaces
-    /// another's, and says nothing to the app that was refused. Full Disk
-    /// Access covered it on macOS 27 when VS Code was updated, so Brim does
-    /// not ask up front; a refusal is its own outcome, and the row offers
-    /// the setting rather than a sentence about it.
+    /// another's, and tells the refused app nothing. Not asked up front; a
+    /// refusal is its own outcome, and the row offers the setting.
     static func refusal(_ error: Error, folder: URL) -> Failure {
         let code = (error as NSError).code
         guard [NSFileWriteNoPermissionError, NSFileReadNoPermissionError, Int(EPERM), Int(EACCES)].contains(code)
@@ -273,8 +265,8 @@ public struct UpdateInstaller: Sendable {
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
     }
 
-    /// Moves a package out of the folder that is cleaned up, so Installer
-    /// can still read it.
+    /// Moves a package out of the folder that is cleaned up, so Installer can
+    /// still read it.
     static func keep(_ file: URL, in workspace: URL) -> URL {
         let kept = workspace.appendingPathComponent("Packages", isDirectory: true)
         try? FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
@@ -285,8 +277,8 @@ public struct UpdateInstaller: Sendable {
         return destination
     }
 
-    /// A tool with a deadline (`BoundedTool`). Five minutes covers attaching
-    /// and copying an application of several gigabytes.
+    /// A tool with a deadline (`BoundedTool`). Five minutes covers attaching and
+    /// copying a large app.
     @discardableResult
     static func run(
         _ tool: String, _ arguments: [String], input: String? = nil, timeout: TimeInterval = 300

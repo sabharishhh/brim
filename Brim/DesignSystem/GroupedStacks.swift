@@ -1,13 +1,9 @@
 import BrimUI
 import SwiftUI
 
-/// A collection as titled groups on the page: a header that folds, up to
-/// seven rows, then "Show all".
-///
+/// Titled groups that fold, showing up to seven rows and then Show all.
 /// A styled `List` rather than a stack in a scroll view, so rows are
-/// measured once and reused. No box behind a group: the
-/// title and the indent already say what belongs together. Apps,
-/// Background, Developer and Updates all draw their groups with this.
+/// measured once and reused.
 struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
     let sections: [ItemGroup<Item>]
     /// "3 · 1.2 GB" beside a group's title.
@@ -154,25 +150,16 @@ extension GroupedStacks where Accessory == EmptyView {
     }
 }
 
-/// A row's hover, press and selection wash: the one highlight every row
-/// in Brim uses, so a row answers the pointer the same way on every page.
-///
-/// The press shows on mouse-down, before the click completes, one step
-/// stronger than hover. That is the click's feedback: a colour change the
-/// eye catches, rather than motion on something clicked all day (HIG,
-/// Motion).
-///
-/// The row's click is attached here, before the press tracking, and only
-/// here. Tracking the press as a gesture inside a row whose click was added
-/// outside it took every click for itself, and no row opened its inspector.
-/// A row with no click of its own gets no press tracking, so a row inside a
-/// button leaves the button its click.
+/// The one hover, press and selection highlight every row uses. The press
+/// shows on mouse-down. The row's click is attached here, before press
+/// tracking: a press gesture inside a row whose click was added outside it
+/// swallowed every click. A row without a click gets no press tracking, so a
+/// row inside a button leaves the button its click.
 struct RowHighlight: ViewModifier {
     let isInspected: Bool
     var action: (() -> Void)?
-    /// Command-click, where the row offers one. Its own gesture, because a
-    /// list takes a Command-click as its own selection gesture and a plain
-    /// tap never hears it.
+    /// Command-click, if offered. Its own gesture, because a list takes
+    /// Command-click for selection.
     var commandAction: (() -> Void)?
     @State private var isHovering = false
     @GestureState private var isPressed = false
