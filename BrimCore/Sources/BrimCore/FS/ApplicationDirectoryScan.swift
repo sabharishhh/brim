@@ -70,8 +70,10 @@ public enum ApplicationDirectoryScan {
             while let entry = readdir(stream) {
                 guard !budget.hasRunOut else { timedOut.insert(directory.path); break }
                 let type = entry.pointee.d_type
-                guard type == DT_DIR || type == DT_LNK || type == DT_UNKNOWN else { continue }
-                guard let child = child(entry.pointee, in: directory) else { continue }
+                guard type == DT_DIR || type == DT_LNK || type == DT_UNKNOWN, let child = child(
+                    entry.pointee,
+                    in: directory
+                ) else { continue }
                 if shouldDescend(into: child) {
                     children.append(child)
                 }
