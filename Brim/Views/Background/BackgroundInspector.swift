@@ -202,6 +202,7 @@ private struct RecordRow: View {
         .padding(10)
         .rowHighlight(isInspected: false)
         .contentShape(.rect)
+        .actionPointer()
         .onTapGesture(count: 2) {
             if let url = reveals[registration.id] {
                 shell.showInFinder(url)

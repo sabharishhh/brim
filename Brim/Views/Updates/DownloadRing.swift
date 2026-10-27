@@ -51,6 +51,7 @@ private struct RingBody: View {
         }
         .frame(width: 22, height: 22)
         .contentShape(.circle)
+        .actionPointer()
         .scaleEffect(isPressed && !reduceMotion ? 0.9 : 1)
         .onHover { isHovering = $0 }
         .animation(Motion.resolved(Motion.quick, reduceMotion: reduceMotion), value: isHovering)

@@ -142,6 +142,7 @@ public struct RemovalReport: Codable, Equatable, Sendable {
         unknownPaths: Set<String> = [],
         registrationObservations: [RegistrationVerification]? = nil,
         completedActions: [String] = [],
+        failedActions: [String] = [],
         verificationStartedAt: Date? = nil
     ) -> RemovalReport {
         let planned = Set(plan.steps.filter(\.kind.targetIsPath).map(\.target))
@@ -188,7 +189,7 @@ public struct RemovalReport: Codable, Equatable, Sendable {
             unknownPaths: unknown.sorted(),
             registrationObservations: registrationObservations,
             completedActions: completedActions,
-            failedActions: privacyResetFailed ? ["Permission reset command did not complete."] : []
+            failedActions: (privacyResetFailed ? ["Permission reset command did not complete."] : []) + failedActions
         )
     }
 

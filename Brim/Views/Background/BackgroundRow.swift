@@ -91,6 +91,7 @@ struct BackgroundRow: View {
                     })
                 )
                 .toggleStyle(.checkbox)
+                .actionPointer()
                 .labelsHidden()
                 .disabled(!canPick)
                 .help(canPick ? (isPicked ? "Remove from Tray" : "Add to Tray") : "Brim cannot remove this")

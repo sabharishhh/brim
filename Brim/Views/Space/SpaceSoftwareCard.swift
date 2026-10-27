@@ -155,7 +155,7 @@ struct SpaceSoftwareCard: View {
             .contentShape(.rect)
             .rowHighlight(isInspected: false)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PointerButtonStyle(.plain))
         .accessibilityLabel("\(row.title), \(figure)")
         .accessibilityHint("Opens \(row.destination.rawValue)")
     }

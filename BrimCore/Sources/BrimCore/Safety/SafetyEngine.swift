@@ -50,7 +50,7 @@ public struct SafetyEngine: Sendable {
         self.vetoEngine = vetoEngine
     }
 
-    public func evaluate(footprint: Footprint) async -> EvaluatedFootprint {
+    public func evaluate(footprint: Footprint, useCachedProtection: Bool = false) async -> EvaluatedFootprint {
         // A footprint is a claim about what is on the disk, and a search that did
         // not finish cannot support it, so nothing from an unfinished pass is
         // selected. Everything is still shown, and every row can be ticked by hand.
@@ -89,7 +89,8 @@ public struct SafetyEngine: Sendable {
                     ? .selected
                     : .unselected
             case .C:
-                searchFinished && Self.isClearlyNamedData(url, for: footprint.identity)
+                searchFinished && (Self.isClearlyNamedData(url, for: footprint.identity)
+                    || Self.isNamedRebuildable(item, for: footprint.identity))
                     ? .selected
                     : .unselected
             }
@@ -104,7 +105,7 @@ public struct SafetyEngine: Sendable {
         let preVeto = EvaluatedFootprint(
             identity: footprint.identity, items: evaluatedItems, completeness: footprint.completeness
         )
-        return await vetoEngine.applyVeto(to: preVeto)
+        return await vetoEngine.applyVeto(to: preVeto, useCachedProtection: useCachedProtection)
     }
 
     /// The folders an app keeps its own data in, where a folder clearly named
@@ -119,6 +120,24 @@ public struct SafetyEngine: Sendable {
         let parent = url.deletingLastPathComponent().standardizedFileURL.path
         guard namedDataFolders.contains(where: { parent.hasSuffix("/" + $0) }) else { return false }
         return identity.isClearlyNamed(url.lastPathComponent)
+    }
+
+    /// Crash reports and suffixed cache/log names were left for individual
+    /// clicks even when the inventory proved the app's name and location.
+    /// Timing-only recordings and names outside these folders stay optional.
+    static func isNamedRebuildable(_ item: FootprintItem, for identity: Identity) -> Bool {
+        guard item.evidence.mechanism == "LocationInventorySource" else { return false }
+        let url = item.evidence.url
+        let parent = url.deletingLastPathComponent().path
+        let name = url.lastPathComponent
+        if parent.hasSuffix("/Library/Logs/DiagnosticReports") {
+            return identity.ownNames.contains { LocationInventory.Location.isReport(name, of: $0) }
+        }
+        guard parent.hasSuffix("/Library/Caches") || parent.hasSuffix("/Library/Logs") else { return false }
+        return name.indices.contains { index in
+            name[index] == "-" && name.index(after: index) < name.endIndex
+                && identity.isClearlyNamed(String(name[..<index]))
+        }
     }
 
     private static func preservedData(_ item: FootprintItem, identity: Identity) -> EvaluatedItem? {

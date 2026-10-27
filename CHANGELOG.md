@@ -3,6 +3,21 @@
 All notable changes to Brim are recorded here. Versions follow
 [semantic versioning](https://semver.org).
 
+## [1.1] - 2026-10-27
+
+- Load removal previews in the background and reuse scans when selections change.
+- Fix false scan timeouts in deep application folders and recognize wrapped apps.
+- Keep scan details out of the removal list and load additional rows on demand.
+- Select optional removal items by subgroup, with clearly attributed cache
+  folders and crash reports selected after a complete search. Category buttons
+  stay available while other selections update.
+- Include companion launchers and their files when their executable links
+  into the app being removed. Broken executable wrappers no longer keep
+  files out of removal as though the wrapper were still usable.
+- Remove the app's exact Dock shortcut after its bundle is gone.
+- Show native pointer feedback over clickable controls, selectable text and
+  ordinary space, with an arrow over disabled actions.
+
 ## [1.0] - 2026-10-17
 
 The first release.
@@ -20,4 +35,5 @@ The first release.
 - Space, Developer and Energy show where storage goes, which build caches
   can be cleared and which apps use power.
 
+[1.1]: https://github.com/sabharishhh/brim/releases/tag/v1.1
 [1.0]: https://github.com/sabharishhh/brim/releases/tag/v1.0

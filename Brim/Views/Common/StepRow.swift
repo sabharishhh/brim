@@ -49,7 +49,7 @@ struct StepRow: View {
             Spacer(minLength: 6)
             if hovering {
                 RevealButton(urls: [url])
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .transition(.opacity)
             }
             Text(sizeText)

@@ -65,9 +65,15 @@ final class FootprintAuditTests: XCTestCase {
     static func installed(in root: FileSystemRoot) async -> [Identity] {
         var identities: [Identity] = []
         for folder in [root.url(for: .applications), root.url(for: .userApplications)] {
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            for name in names where name.hasSuffix(".app") {
-                let bundle = folder.appendingPathComponent(name)
+            // Keep this independent of the production inventory. The audit
+            // previously missed vendor subfolders, so shared vendor data looked
+            // like the lone top-level app's private folder.
+            guard let entries = FileManager.default.enumerator(
+                at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            ) else { continue }
+            while let bundle = entries.nextObject() as? URL {
+                guard bundle.pathExtension.lowercased() == "app" else { continue }
+                entries.skipDescendants()
                 await identities.append(IdentityResolver(root: root).resolve(bundleURL: bundle))
             }
         }

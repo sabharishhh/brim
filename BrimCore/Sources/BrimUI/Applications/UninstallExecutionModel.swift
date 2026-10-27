@@ -94,17 +94,29 @@ public final class UninstallExecutionModel: ObservableObject {
         tickedByHand.contains(path)
     }
 
+    /// Another group's pending plan does not disable this group's selection.
+    public func canSelectAll(in group: UninstallReviewGroup) -> Bool {
+        guard phase == .ready else { return false }
+        return group.offers.contains { !tickedByHand.contains($0.target) }
+    }
+
     /// Ticks or unticks one row and plans again. Only while the plan waits for
     /// approval.
     public func setTicked(_ ticked: Bool, path: String) async {
+        await setTicked(ticked, paths: [path])
+    }
+
+    /// A subgroup changes in one request, rather than rescanning once per row.
+    public func setTicked(_ ticked: Bool, paths: Set<String>) async {
         guard case .ready = phase else { return }
-        guard ticked != tickedByHand.contains(path),
-              !ticked || rowsToOffer.contains(where: { $0.target == path }) else { return }
+        let previous = tickedByHand
         if ticked {
-            tickedByHand.insert(path)
+            let offered = Set(rowsToOffer.map(\.target))
+            tickedByHand.formUnion(paths.intersection(offered))
         } else {
-            tickedByHand.remove(path)
+            tickedByHand.subtract(paths)
         }
+        guard previous != tickedByHand else { return }
         generation += 1
         await rebuild()
     }
@@ -138,7 +150,7 @@ public final class UninstallExecutionModel: ObservableObject {
     /// Steps that remove something, without the bookkeeping ones, so "12
     /// locations" means twelve things on disk.
     private nonisolated static let bookkeepingKinds: Set<StepKind> = [
-        .resetPrivacyGrants, .unloadLaunchdJob, .unregisterLaunchServices
+        .resetPrivacyGrants, .unloadLaunchdJob, .unregisterLaunchServices, .removeDockShortcut
     ]
 
     public var removalSteps: [Step] {

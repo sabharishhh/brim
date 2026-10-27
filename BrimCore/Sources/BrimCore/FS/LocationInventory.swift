@@ -33,6 +33,8 @@ public struct LocationInventory: Sendable {
         case groupContainer
         /// A file or folder named exactly the application's name.
         case applicationName
+        /// An exact application name followed by a known filename suffix.
+        case applicationNameFile(String)
         /// The application's name in lower case, the convention outside `~/Library`
         /// (`~/.local/share/claude`). Matched exactly, because a case-insensitive
         /// volume would match by accident and stop on a case-sensitive one.
@@ -90,7 +92,7 @@ public struct LocationInventory: Sendable {
                 return .B
             case .groupContainer:
                 return .A
-            case .applicationName, .applicationNameLowercased,
+            case .applicationName, .applicationNameFile, .applicationNameLowercased,
                  .applicationNameDelimitedPrefix, .homeDotFolder, .diagnosticReport:
                 return .C
             }
@@ -119,6 +121,8 @@ public struct LocationInventory: Sendable {
                 return subject.identifiers.map { "group.\($0)" }
             case .applicationName:
                 return subject.names
+            case let .applicationNameFile(suffix):
+                return subject.names.map { $0 + suffix }
             case .applicationNameLowercased:
                 return subject.lowercasedNames
             case .homeDotFolder:
@@ -138,6 +142,9 @@ public struct LocationInventory: Sendable {
             // identifier says `codex`.
             case .applicationName, .applicationNameLowercased:
                 subject.nameKeys.contains(NameKey.of(name)) ? tier : nil
+            case let .applicationNameFile(suffix):
+                name.lowercased().hasSuffix(suffix.lowercased())
+                    && subject.nameKeys.contains(NameKey.of(String(name.dropLast(suffix.count)))) ? tier : nil
             case let .applicationNameDelimitedPrefix(separator):
                 delimitedPrefixTier(name: name, keys: subject.prefixKeys, separator: separator)
             case .groupContainer:
@@ -175,7 +182,7 @@ public struct LocationInventory: Sendable {
                 // A plug-in is often named inside a component's identifier,
                 // `com.openai.sky.CUAService.AuthorizationPlugin` for one.
                 return declaredIdentifierTier(declaredIdentifier, subject: subject)
-            case .applicationName, .applicationNameLowercased,
+            case .applicationName, .applicationNameFile, .applicationNameLowercased,
                  .applicationNameDelimitedPrefix, .groupContainer, .homeDotFolder, .diagnosticReport:
                 return nil
             }
@@ -420,6 +427,10 @@ public struct LocationInventory: Sendable {
         Location(domain: .userLogs, rule: .applicationNameDelimitedPrefix("-"),
                  describes: "logs",
                  sentence: "A log folder beginning with the application's name."),
+        Location(domain: .userLogs, rule: .applicationNameFile(".log"),
+                 describes: "logs", sentence: "A log file named after the application."),
+        Location(domain: .userLogs, rule: .applicationNameFile("Install.log"),
+                 describes: "installation logs", sentence: "An installation log named after the application."),
         Location(domain: .userLogs, rule: .applicationName,
                  describes: "logs",
                  sentence: "A log folder named after the application rather than its "

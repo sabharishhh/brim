@@ -61,7 +61,7 @@ public struct LocationInventorySource: EvidenceSource {
             let needsListing = switch location.rule {
             case .bundleIdentifierPrefix, .bundleIdentifierDelimitedPrefix,
                  .applicationNameDelimitedPrefix, .temporaryDirectory, .clientOfService,
-                 .homeDotFolder, .diagnosticReport, .applicationName, .applicationNameLowercased:
+                 .homeDotFolder, .diagnosticReport, .applicationName, .applicationNameFile, .applicationNameLowercased:
                 true
             default:
                 false

@@ -6,6 +6,13 @@ import Foundation
 public struct InstalledBundleInventory: Sendable {
     public let bundles: [URL]
     public let completeness: ScanCompleteness
+    private let root: FileSystemRoot
+
+    /// Broken executable wrappers remain discoverable for cleanup, but cannot
+    /// protect another app's files as a usable installation.
+    public var claimingBundles: [URL] {
+        bundles.filter { !ApplicationBundle.hasMissingLinkedExecutable($0, in: root) }
+    }
 
     public static func read(
         in root: FileSystemRoot, including identifiers: [String] = [], knownLocations: [URL] = [],
@@ -21,9 +28,10 @@ public struct InstalledBundleInventory: Sendable {
             directories.append(volume.appendingPathComponent("Applications"))
             directories.append(volume.appendingPathComponent("Users/\(root.userName)/Applications"))
         }
-        for directory in directories {
-            reader.walk(directory, depth: 0)
-        }
+        let scan = ApplicationDirectoryScan.read(in: directories, boundary: root.rootURL, budget: reader.budget)
+        reader.bundles += scan.bundles
+        reader.unreadable.formUnion(scan.completeness.unreadable)
+        reader.timedOut.formUnion(scan.completeness.timedOut)
         // Applications a package put beside the Applications folders, the same
         // ones the Apps list shows, so their folders are never offered as
         // leftovers while they run.
@@ -44,7 +52,7 @@ public struct InstalledBundleInventory: Sendable {
         let unique = reader.uniqueBundles()
         return Self(bundles: unique.sorted { $0.path < $1.path },
                     completeness: ScanCompleteness(unreadable: Array(reader.unreadable),
-                                                   timedOut: Array(reader.timedOut)))
+                                                   timedOut: Array(reader.timedOut)), root: root)
     }
 
     /// Folders under `/Library` a non-Apple package installed into, read from
@@ -72,7 +80,6 @@ public struct InstalledBundleInventory: Sendable {
         let root: FileSystemRoot
         let budget = ScanBudget(total: 5)
         var bundles: [URL] = []
-        var visited = Set<String>()
         var unreadable = Set<String>()
         var timedOut = Set<String>()
 
@@ -90,7 +97,10 @@ public struct InstalledBundleInventory: Sendable {
                     unreadable.insert(candidate.path); continue
                 }
                 guard presence.isPresent else { continue }
-                let metadata = candidate.appendingPathComponent("Contents/Info.plist")
+                let code = ApplicationBundle.codeLocation(of: candidate)
+                let metadata = code == candidate
+                    ? candidate.appendingPathComponent("Contents/Info.plist")
+                    : code.appendingPathComponent("Info.plist")
                 guard let contents = NSDictionary(contentsOf: metadata),
                       let identifier = contents["CFBundleIdentifier"] as? String
                 else {
@@ -131,32 +141,6 @@ public struct InstalledBundleInventory: Sendable {
                     unreadable.insert(directory.path)
                 }
                 return []
-            }
-        }
-
-        mutating func walk(_ directory: URL, depth: Int) {
-            var info = stat()
-            if lstat(directory.path, &info) != 0, errno == ENOENT {
-                return
-            }
-            let path = directory.resolvingSymlinksInPath().path
-            let boundary = root.rootURL.resolvingSymlinksInPath().path
-            guard boundary == "/" || path == boundary || path.hasPrefix(boundary + "/") else {
-                unreadable.insert(directory.path)
-                return
-            }
-            guard visited.insert(path).inserted else { return }
-            guard depth < 8, visited.count <= 4096 else { timedOut.insert(directory.path); return }
-            for item in entries(directory) {
-                do {
-                    let values = try item.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-                    guard values.isDirectory == true else { continue }
-                    if item.pathExtension.lowercased() == "app" {
-                        bundles.append(item)
-                    } else if values.isPackage != true {
-                        walk(item, depth: depth + 1)
-                    }
-                } catch { unreadable.insert(item.path) }
             }
         }
     }

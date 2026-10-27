@@ -120,7 +120,7 @@ private struct BatchEntryRow: View {
                 Spacer(minLength: 8)
                 if removal.plan != nil {
                     Button(showsItems ? "Hide" : "Details") { showsItems.toggle() }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(PointerButtonStyle(.borderless))
                         .controlSize(.small)
                 }
             }
@@ -136,7 +136,7 @@ private struct BatchEntryRow: View {
                         if let installation = removal.plan?.homebrewInstallation {
                             Text(installation.explanation).font(.brimFacts)
                             if let command = installation.manualCommand {
-                                Text(command).font(.caption.monospaced()).textSelection(.enabled)
+                                Text(command).font(.caption.monospaced()).selectableText()
                             }
                         }
                         ForEach(removal.removalSteps, id: \.index) { step in

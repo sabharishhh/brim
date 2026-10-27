@@ -22,7 +22,9 @@ public enum BundleSurfaceReader {
         at bundle: URL, in root: FileSystemRoot
     ) -> (surface: IdentitySurface, complete: Bool) {
         var complete = true
-        let (surface, coverage) = read(at: bundle, in: root, budget: ScanBudget(total: 5)) { url in
+        let (surface, coverage) = read(
+            at: bundle, in: root, budget: ScanBudget(total: 5), protectingOnly: true
+        ) { url in
             let signature = Signature.read(url, validate: false)
             if signature.gap != nil, signature.gap != "Unsigned code." {
                 complete = false
@@ -34,9 +36,10 @@ public enum BundleSurfaceReader {
 
     static func read(
         at bundle: URL, in root: FileSystemRoot, budget: ScanBudget,
+        protectingOnly: Bool = false,
         signature: (URL) -> Signature
     ) -> (IdentitySurface, CapabilitySurface) {
-        var reader = Reader(bundle: bundle, root: root, budget: budget)
+        var reader = Reader(bundle: bundle, root: root, budget: budget, protectingOnly: protectingOnly)
         reader.visit(bundle, signature: signature)
         return (
             IdentitySurface(bundlePath: bundle.path, components: reader.components,
@@ -51,6 +54,7 @@ public enum BundleSurfaceReader {
         let bundle: URL
         let root: FileSystemRoot
         let budget: ScanBudget
+        let protectingOnly: Bool
         var components: [IdentitySurface.Component] = []
         var declarations: [CapabilitySurface.Declaration] = []
         var signatureGaps: [CapabilitySurface.Gap] = []
@@ -82,7 +86,7 @@ public enum BundleSurfaceReader {
             let real = url.resolvingSymlinksInPath().standardizedFileURL.path
             let boundary = bundle.resolvingSymlinksInPath().standardizedFileURL.path
             let rootPath = root.rootURL.resolvingSymlinksInPath().standardizedFileURL.path
-            guard Self.contains(real, within: boundary), Self.contains(real, within: rootPath) else {
+            guard protectingOnly || Self.contains(real, within: boundary), Self.contains(real, within: rootPath) else {
                 unreadable.insert(url.path)
                 return
             }
@@ -95,7 +99,7 @@ public enum BundleSurfaceReader {
                 return
             }
             let info = isDirectory.boolValue ? readInfo(url) : [:]
-            let signing = signature(url)
+            let signing = signature(ApplicationBundle.codeLocation(of: url))
             if let reason = signing.gap {
                 signatureGaps.append(.init(path: url.path, reason: reason))
             }
@@ -151,14 +155,14 @@ public enum BundleSurfaceReader {
         }
 
         mutating func readInfo(_ url: URL) -> [String: Any] {
-            for relative in ["Contents/Info.plist", "Resources/Info.plist", "Info.plist"] {
+            for relative in ["Contents/Info.plist", "Resources/Info.plist", "Info.plist", "WrappedBundle/Info.plist"] {
                 let plist = url.appendingPathComponent(relative)
                 var info = stat()
                 if lstat(plist.path, &info) != 0, errno == ENOENT {
                     continue
                 }
                 let real = plist.resolvingSymlinksInPath().path
-                guard Self.contains(real, within: bundle.resolvingSymlinksInPath().path) else {
+                guard permits(real) else {
                     unreadable.insert(plist.path)
                     continue
                 }
@@ -188,8 +192,7 @@ public enum BundleSurfaceReader {
 
         /// Read bounded, regular metadata files within the bundle, including symlink targets.
         func metadata(at url: URL) throws -> Data {
-            guard Self.contains(url.resolvingSymlinksInPath().path,
-                                within: bundle.resolvingSymlinksInPath().path) else {
+            guard permits(url.resolvingSymlinksInPath().path) else {
                 throw CocoaError(.fileReadNoPermission)
             }
             let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
@@ -211,26 +214,10 @@ public enum BundleSurfaceReader {
         /// inside any bundle, bounded so a large Node module tree cannot stall the
         /// scan.
         mutating func nestedApplications(in resources: URL) -> [URL] {
-            guard !budget.hasRunOut,
-                  let walk = FileManager.default.enumerator(
-                      at: resources, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-                      options: [.skipsPackageDescendants, .skipsHiddenFiles]
-                  ) else { return [] }
-            var found: [URL] = []
-            var seen = 0
-            while let next = walk.nextObject() as? URL {
-                seen += 1
-                guard seen <= 50000, !budget.hasRunOut else { timedOut.insert(resources.path); break }
-                if walk.level >= 8 {
-                    walk.skipDescendants()
-                }
-                guard next.pathExtension.lowercased() == "app" else { continue }
-                let values = try? next.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                if values?.isDirectory == true, values?.isSymbolicLink != true {
-                    found.append(next)
-                }
-            }
-            return found
+            let scan = ApplicationDirectoryScan.read(in: [resources], boundary: bundle, budget: budget)
+            unreadable.formUnion(scan.completeness.unreadable)
+            timedOut.formUnion(scan.completeness.timedOut)
+            return scan.bundles
         }
 
         mutating func entries(_ url: URL) -> [URL] {
@@ -240,7 +227,7 @@ public enum BundleSurfaceReader {
                 return []
             }
             let real = url.resolvingSymlinksInPath().path
-            guard Self.contains(real, within: bundle.resolvingSymlinksInPath().path) else {
+            guard permits(real) else {
                 unreadable.insert(url.path)
                 return []
             }
@@ -254,6 +241,11 @@ public enum BundleSurfaceReader {
                 }
                 return []
             }
+        }
+
+        private func permits(_ path: String) -> Bool {
+            Self.contains(path, within: root.rootURL.resolvingSymlinksInPath().path)
+                && (protectingOnly || Self.contains(path, within: bundle.resolvingSymlinksInPath().path))
         }
 
         // swiftlint:disable:next cyclomatic_complexity function_body_length

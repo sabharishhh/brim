@@ -296,3 +296,14 @@ final class LocationInventorySourceTests: XCTestCase {
         }
     }
 }
+
+extension LocationInventoryTests {
+    func testLogSuffixRequiresTheWholeApplicationName() {
+        let identity = Identity(bundleID: "org.example.core", name: "Core Sync")
+        let rules = LocationInventory.standard.locations.filter { $0.domain == .userLogs }
+        XCTAssertTrue(rules.contains { $0.matchTier(name: "CoreSyncInstall.log", identity: identity) == .C })
+        XCTAssertTrue(rules.contains { $0.matchTier(name: "Core Sync.log", identity: identity) == .C })
+        XCTAssertFalse(rules.contains { $0.matchTier(name: "CoreSyncInstalled.log", identity: identity) != nil })
+        XCTAssertFalse(rules.contains { $0.matchTier(name: "CoreSyncInstall.documents", identity: identity) != nil })
+    }
+}

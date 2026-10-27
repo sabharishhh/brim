@@ -129,7 +129,7 @@ struct InstallerItemSection: View {
             }
             if items.count > Metrics.rowsBeforeShowAll, !showsAll {
                 Button("Show all \(items.count)") { showsAll = true }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .font(.brimFacts)
                     .padding(.leading, 28)
             }

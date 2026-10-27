@@ -23,7 +23,7 @@ struct FeedbackTextInput: View {
                             .frame(width: 22, height: 22)
                             .contentShape(.rect)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .help("Dictate")
                     .accessibilityLabel("Dictate \(title.lowercased())")
                 }

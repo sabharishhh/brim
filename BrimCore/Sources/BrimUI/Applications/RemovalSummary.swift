@@ -134,6 +134,7 @@ public struct RemovalSummary: Sendable {
         for check in report?.unansweredChecks ?? [] {
             rows.append(Stayed(label: check.capability.title, detail: "Could not be checked"))
         }
+        rows += (report?.failedActions ?? []).map { Stayed(label: $0, detail: nil) }
         let paths = Set(failed + unticked + protected.map(\.target).filter { $0.hasPrefix("/") })
         return (rows, paths.sorted())
     }

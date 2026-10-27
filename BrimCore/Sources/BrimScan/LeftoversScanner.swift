@@ -207,6 +207,18 @@ public actor LeftoversScanner {
                     || claimedPaths.contains(item.standardizedFileURL.path) {
                     continue
                 }
+                // SDK cache roots are shared storage, never one app's residue.
+                // Named children can be judged separately; hashed Sentry clients
+                // need the address evidence used by the app's own removal.
+                if domain == .userCaches, vendor == nil {
+                    if item.lastPathComponent == "io.sentry" {
+                        continue
+                    }
+                    if CrashReporterFolders.byBundleName[item.lastPathComponent] != nil {
+                        queue.append(contentsOf: scanDirectoryLevel1(item).map { ($0, nil) })
+                        continue
+                    }
+                }
                 let name = item.lastPathComponent
                 let containerOwnership = domain == .userContainers || domain == .systemContainers
                     ? ContainerOwnershipReader.read(at: item) : nil
@@ -1160,10 +1172,11 @@ public actor LeftoversScanner {
         // Read four at a time; one after another, this was the slowest part of the
         // scan.
         let root = root
-        let allClaims = await (try? BoundedTasks.map(inventory.bundles, limit: 4) { bundle in
+        let bundles = inventory.claimingBundles
+        let allClaims = await (try? BoundedTasks.map(bundles, limit: 4) { bundle in
             budget.hasRunOut ? nil : BundleSurfaceReader.protectionClaims(at: bundle, in: root)
         }) ?? []
-        for (index, bundle) in inventory.bundles.enumerated() {
+        for (index, bundle) in bundles.enumerated() {
             guard index < allClaims.count, let claims = allClaims[index], !Task.isCancelled else {
                 complete = false; break
             }

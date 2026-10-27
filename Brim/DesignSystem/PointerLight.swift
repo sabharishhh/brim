@@ -135,6 +135,7 @@ private struct ActionBody: View {
             }
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(.capsule)
+            .actionPointer()
             .onHover { isHovering = $0 }
             .animation(Motion.quick, value: isHovering)
             .animation(Motion.quick, value: configuration.isPressed)

@@ -368,3 +368,26 @@ final class LeftoversScannerGapAuditTests: XCTestCase {
         )
     }
 }
+
+extension LeftoversScannerGapAuditTests {
+    /// The real audit found the whole SentryCrash folder offered while an
+    /// installed application's removal held a child inside it.
+    func testSharedCrashCacheIsJudgedByItsChildren() async throws {
+        let (root, folder) = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try writeApp(root, folderName: "Live", bundleID: "org.example.live", bundleName: "Live")
+        let cache = root.url(for: .userCaches).appendingPathComponent("SentryCrash")
+        for child in ["Live", "org.example.gone"] {
+            let directory = cache.appendingPathComponent(child)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("report".utf8).write(to: directory.appendingPathComponent("report"))
+        }
+        let leftovers = try await LeftoversScanner(root: root).scanLeftovers(
+            knownPastBundleIDs: ["org.example.gone"], knownNames: ["org.example.gone": "Gone"]
+        )
+        let names = Set(leftovers.map(\.url.lastPathComponent))
+        XCTAssertFalse(names.contains("SentryCrash"))
+        XCTAssertFalse(names.contains("Live"))
+        XCTAssertTrue(names.contains("org.example.gone"))
+    }
+}

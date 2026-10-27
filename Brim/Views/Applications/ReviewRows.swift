@@ -38,25 +38,38 @@ struct ReviewHeading: View {
     var count: Int?
     var bytes: Int64?
     var isFirst = false
+    var selectAll: (() -> Void)?
+    var allSelected = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.brimGroupTitle)
-                .foregroundStyle(Palette.ink)
-            if let count {
-                Text([count.formatted(), bytes.map { ByteText.short($0) }].compactMap(\.self)
-                    .joined(separator: " · "))
-                    .font(.brimFacts)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkTertiary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.brimGroupTitle)
+                    .foregroundStyle(Palette.ink)
+                if let count {
+                    Text([count.formatted(), bytes.map { ByteText.short($0) }].compactMap(\.self)
+                        .joined(separator: " · "))
+                        .font(.brimFacts)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkTertiary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            if let selectAll {
+                Spacer(minLength: 8)
+                Button("Select All", action: selectAll)
+                    .capsuleAction()
+                    .controlSize(.small)
+                    .disabled(allSelected)
+                    .accessibilityLabel("Select all in \(title)")
+                    .help(allSelected ? "All removable items are selected" : "Include optional items in this group")
             }
         }
         // Space is what separates one group from the next.
         .padding(.top, isFirst ? 2 : 16)
         .padding(.bottom, 2)
         .listRowSeparator(.hidden)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
     }
 }

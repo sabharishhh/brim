@@ -306,7 +306,7 @@ private struct ViewToggle: View {
                 .background(isOn ? Palette.snow : .clear, in: .rect(cornerRadius: 5, style: .continuous))
                 .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PointerButtonStyle(.plain))
         .help(label)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn ? .isSelected : [])

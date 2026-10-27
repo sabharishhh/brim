@@ -22,8 +22,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         brimAppURL
     }
 
-    private let engine: EvidenceEngine
-    private let safetyEngine: SafetyEngine
+    let engine: EvidenceEngine
+    let safetyEngine: SafetyEngine
+    let removalDiscoveries = PreviewCache<Identity, RemovalDiscovery>(capacity: 32, lifetime: 120)
+    let removalPreviews = PreviewCache<Identity, RemovalPreview>(capacity: 12, lifetime: 120)
+    let inspectionPreviews = PreviewCache<Identity, Footprint>(capacity: 64, lifetime: 120)
+    let removalOwnership: PreviewCache<URL, BundleProtection>
     private let planner: Planner
     public let planStore: PlanStore
     public let tokenStore: TokenStore
@@ -42,6 +46,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     private var applicationInventoryReader: (@Sendable () async -> [InstalledApplication])?
     private var updateRecoveryReader: (@Sendable () async -> [String: String])?
     private var activePlans = Set<UUID>()
+    var removalInputStamp: RemovalInputStamp?
+    var removalInvalidation: Task<Void, Never>?
+    let removalInputReads = PreviewCache<Bool, RemovalInputStamp>(capacity: 1, lifetime: 0)
 
     /// Whether a removal, restoration or check is changing this plan now.
     func isOperating(on planId: UUID) -> Bool {
@@ -88,10 +95,12 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         ])
 
         let checker = SafetyChecker(root: root, brimAppURL: brimAppURL)
+        let ownership = PreviewCache<URL, BundleProtection>(capacity: 256, lifetime: 120)
+        removalOwnership = ownership
         let vetoEngine = TierSVetoEngine(root: root, lookup: { identifier in
             guard root.rootURL.standardizedFileURL.path == "/" else { return [] }
             return try LaunchServicesRegistration.checkedApplicationURLs(forBundleID: identifier)
-        })
+        }, protectionCache: ownership)
         safetyEngine = SafetyEngine(safetyChecker: checker, vetoEngine: vetoEngine)
         planner = Planner()
         planStore = PlanStore(directoryURL: planStoreDirectory)
@@ -113,21 +122,24 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         executor = Executor(
             journalStore: journalStore,
             toolCleanupClient: toolCleanupClient,
-            launchdRuntime: launchdRuntime
+            launchdRuntime: launchdRuntime,
+            dockShortcuts: .init(root: root)
         )
     }
 
     public func inspect(identity: Identity) async throws -> Footprint {
-        let projector = FootprintProjector(engine: engine)
-        let resolved = try await enriched(identity)
-        let footprint = try await projector.project(identity: resolved.identity, in: root)
-        let accounting = await StorageAccountant().account(for: footprint.items)
-        try Task.checkCancellation()
-        return accounting.applying(to: footprint, additionalCompleteness: resolved.completeness)
+        await refreshRemovalPreviewInputs()
+        return try await inspectionPreview(identity: identity)
     }
 
     public func plan(intent: PlanIntent) async throws -> Plan {
-        let plan = try await makePlan(intent: intent)
+        let plan: Plan
+        if intent.type == .uninstall, intent.explicitTargets.isEmpty, intent.toolCleanup == nil {
+            await refreshRemovalPreviewInputs()
+            plan = try await removalPreview(identity: intent.subjectIdentity).plan(intent: intent, root: root)
+        } else {
+            plan = try await makePlan(intent: intent)
+        }
         try Task.checkCancellation()
         try await planStore.save(plan: plan)
         return plan
@@ -173,6 +185,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
         try Task.checkCancellation()
+        let payloads = reviewedReceiptPayloads(in: evaluated)
+        let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
+                                                    footprint: footprint, payloads: payloads)
+        try Task.checkCancellation()
+        let dock = DockShortcutReview(root: root)
+        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
+                                      capabilityReport: report, receiptPayloads: payloads, dockPinnedPaths: dock.pins)
+        return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
+            .recordingDockShortcutError(dock.failure)
+    }
+
+    func reviewedReceiptPayloads(in evaluated: EvaluatedFootprint) -> [String: [String]] {
         var payloads: [String: [String]] = [:]
         for item in evaluated.items where item.footprintItem.evidence.mechanism == "InstallerReceiptSource" {
             guard case .selected = item.selection else { continue }
@@ -182,18 +206,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 payloads[identifier] = paths
             }
         }
-        let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
-                                                    footprint: footprint, payloads: payloads)
-        try Task.checkCancellation()
-        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
-                                      capabilityReport: report, receiptPayloads: payloads)
-        return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
+        return payloads
     }
 
-    private func registrationSearchReport(
+    func registrationSearchReport(
         evaluated: EvaluatedFootprint, intent: PlanIntent, footprint: Footprint, payloads: [String: [String]]
     ) async -> CapabilitySearchReport? {
-        let selected = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
+        let possible = Set(evaluated.items.compactMap { item -> String? in
+            guard case .unselected = item.selection else { return nil }
+            return item.footprintItem.evidence.url.path
+        })
+        let selected = planner.createPlan(from: evaluated, intent: intent.tickingByHand(possible),
+                                          engineVersion: EvidenceEngineRevision,
                                           receiptPayloads: payloads)
         let removalLocations = selected.steps.filter {
             [.trashPath, .trashPathPrivileged].contains($0.kind)
@@ -211,7 +235,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             ? nil : CapabilitySearchReport(checks: [check], signatureCoverage: [])
     }
 
-    private func enriched(_ identity: Identity) async throws -> (identity: Identity, completeness: ScanCompleteness) {
+    func enriched(_ identity: Identity) async throws -> (identity: Identity, completeness: ScanCompleteness) {
         let clean = identity.withoutDerivedSurfaces()
         let candidates = SymlinkIntoBundleSource.bundleLocations(for: identity, in: root)
         let rootPath = root.rootURL.resolvingSymlinksInPath().standardizedFileURL.path
@@ -564,6 +588,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     private func applyApprovedPlan(planId: UUID, token: ApprovalToken, authenticated: Bool) async throws {
+        await invalidateRemovalPreviews()
         let plan = try await planStore.load(planId: planId)
         let hash = try plan.contentHash()
 
@@ -609,6 +634,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             appliedPlanIds.insert(planId)
 
             let journal = try await executor.execute(plan: plan)
+            await invalidateRemovalPreviews()
 
             let ledgerEntry = Self.ledgerEntry(for: plan, hash: hash, journal: journal)
             try await ledgerStore.write(entry: ledgerEntry)
@@ -652,6 +678,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             && plan.survivingCopies == revalidatedPlan.survivingCopies
             && plan.protectedComponentIdentifiers == revalidatedPlan.protectedComponentIdentifiers
             && plan.receiptPayloads == revalidatedPlan.receiptPayloads
+            && plan.dockShortcutReadError == revalidatedPlan.dockShortcutReadError
         guard searchIsCurrent else {
             throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
         }
@@ -769,7 +796,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return outcome != "ok" && outcome != "already_gone"
         }
 
-        let success = targetsRemaining == 0 && staleRegistrations.isEmpty
+        let dockCheck = DockShortcutVerification(plan: plan, root: root)
+        let success = targetsRemaining == 0 && staleRegistrations.isEmpty && dockCheck.isComplete
             && !privacyResetFailed && !otherActionsFailed && !executionEvidenceUnavailable
             && !postChecks.contains(where: { !$0.remaining.isEmpty })
             && RemovalReport.unansweredChecks(postChecks, declaredNone: RemovalReport.declaredNone(in: plan)).isEmpty
@@ -782,7 +810,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
         let receiptReason = executionEvidenceUnavailable
             ? "Brim's record of this removal could not be read, so what it did is not known." : nil
-        let reason = [observedReason, receiptReason]
+        let reason = ([observedReason, receiptReason] + dockCheck.failures.map(Optional.some))
             .compactMap(\.self).joined(separator: "\n\n")
 
         // Core Audio keeps a removed driver's device listed until it restarts.
@@ -809,7 +837,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 unknownPaths: unknownPaths, registrationObservations: postChecks,
                 completedActions: plan.steps.filter {
                     $0.kind == .resetPrivacyGrants && journal?.stepOutcomes[$0.index] == "ok"
-                }.map { "Permission reset command completed for " + $0.target },
+                }.map { "Permission reset command completed for " + $0.target }
+                    + dockCheck.completed,
+                failedActions: dockCheck.failures,
                 verificationStartedAt: verificationStartedAt
             ),
             packageRecord: plan.homebrewInstallation.map(PackageRecordResult.observe),
@@ -1087,6 +1117,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
     }
 
     public func undo(planId: UUID) async throws {
+        await invalidateRemovalPreviews()
         try beginOperation(planId: planId)
         defer { activePlans.remove(planId) }
         let plan = try await planStore.load(planId: planId)

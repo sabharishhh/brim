@@ -2,7 +2,7 @@ import BrimCore
 import Foundation
 
 /// The engine revision, bumped whenever heuristic logic changes.
-public let EvidenceEngineRevision = "1.2.0"
+public let EvidenceEngineRevision = "1.3.0"
 
 /// The discovered application artifact containing deduplicated and sorted evidence.
 public struct DiscoveredApp: AppArtifact {
@@ -36,7 +36,8 @@ public struct EvidenceEngine: Sendable {
         EvidenceEngine(sources: [
             AppBundleSource(), SandboxContainerSource(), InstallerReceiptSource(),
             BundleIdentifierComponentSource(), LocationInventorySource(),
-            SymlinkIntoBundleSource(), GroupContainerSource(), BundleIdentifierStateSource(),
+            SymlinkIntoBundleSource(), CompanionApplicationSource(), GroupContainerSource(),
+            BundleIdentifierStateSource(),
             TeamIDSource(), LaunchServicesSource(), SMAppServiceSource(), LaunchdSource(),
             ProvenanceSource(), NestedFolderSource()
         ])
@@ -70,8 +71,12 @@ public struct EvidenceEngine: Sendable {
             for (helper, receiptProven) in frontier {
                 followed.insert(helper.standardizedFileURL.path)
                 let part = await IdentityResolver(root: root).resolve(bundleURL: helper)
-                guard receiptProven || (part.teamID != nil && part.teamID == identity.teamID) else { continue }
-                let sentence = receiptProven
+                let companionProven = Self.companionProof(for: helper, in: rawEvidence)
+                guard receiptProven || companionProven || (part.teamID != nil && part.teamID == identity.teamID)
+                else { continue }
+                let sentence = companionProven
+                    ? "Belongs to \(part.name), whose executable links into \(identity.name)."
+                    : receiptProven
                     ? "Belongs to \(part.name), which was installed with \(identity.name)."
                     : "Belongs to \(part.name), a helper of \(identity.name) from the same developer."
                 // Listed only where nothing already in the removal holds it,
@@ -144,6 +149,7 @@ public struct EvidenceEngine: Sendable {
             let path = url.standardizedFileURL.path
             guard !followed.contains(path), !followed.contains(where: { path.hasPrefix($0 + "/") }),
                   !path.contains("/Applications/") || receipt
+                  || evidence.contains(where: { $0.url == url && $0.mechanism == "CompanionApplicationSource" })
             else { return }
             parts[path] = (url, (parts[path]?.1 ?? false) || receipt)
         }
@@ -254,5 +260,11 @@ public struct EvidenceEngine: Sendable {
             return url.standardized.path
         }
         return "\(info.st_dev):\(info.st_ino)"
+    }
+}
+
+private extension EvidenceEngine {
+    static func companionProof(for helper: URL, in evidence: [Evidence]) -> Bool {
+        evidence.contains { $0.url == helper && $0.mechanism == "CompanionApplicationSource" && $0.tier == .B }
     }
 }

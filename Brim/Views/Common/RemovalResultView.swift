@@ -142,7 +142,7 @@ struct RemovalResultView: View {
                 Button(summary.revealable.count == 1 ? "Show in Finder" : "Show All in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(summary.revealable.map { URL(fileURLWithPath: $0) })
                 }
-                .buttonStyle(.link)
+                .buttonStyle(PointerButtonStyle(.link))
                 .font(.brimFacts)
             }
         }

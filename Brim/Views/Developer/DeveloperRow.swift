@@ -146,6 +146,7 @@ struct DeveloperRow: View {
                     }
                 }))
                 .toggleStyle(.checkbox)
+                .actionPointer()
                 .labelsHidden()
                 .help(isPicked ? "Remove from Tray" : "Add to Tray")
             }
@@ -272,7 +273,7 @@ struct DeveloperInspector: View {
                     Text(command)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(Palette.ink)
-                        .textSelection(.enabled)
+                        .selectableText()
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Palette.well, in: .rect(cornerRadius: 8))
@@ -311,6 +312,7 @@ struct DeveloperInspector: View {
         .padding(8)
         .background(Palette.well, in: .rect(cornerRadius: 10))
         .contentShape(.rect)
+        .actionPointer()
         .onTapGesture(count: 2) { shell.showInFinder(cache.url) }
         .accessibilityElement(children: .combine)
     }

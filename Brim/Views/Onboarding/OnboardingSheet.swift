@@ -265,7 +265,7 @@ extension OnboardingSheet {
                     let index = Step.allCases.firstIndex(of: step) ?? 0
                     go(to: Step.allCases[max(0, index - 1)])
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
                 .disabled(isWorking)
             }
             buttons

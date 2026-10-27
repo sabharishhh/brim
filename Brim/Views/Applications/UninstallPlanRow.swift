@@ -22,6 +22,7 @@ struct UninstallPlanRow: View {
             if let selection {
                 Toggle("Include \(target)", isOn: selection)
                     .toggleStyle(.checkbox)
+                    .actionPointer()
                     .labelsHidden()
                     .accessibilityHint("\(title), \(ByteText.short(bytes))")
             }
@@ -62,11 +63,12 @@ struct UninstallPlanRow: View {
                 showsDetails = true
             }
             .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            .buttonStyle(PointerButtonStyle(.borderless))
             .foregroundStyle(Palette.inkTertiary)
             .accessibilityLabel("Details for \(target)")
             .popover(isPresented: $showsDetails) {
                 Text(evidence)
+                    .selectableText()
                     .font(.callout)
                     .padding()
                     .frame(width: 320, alignment: .leading)
@@ -101,6 +103,7 @@ struct UninstallPlanRow: View {
             return "\(count) items"
         }
         switch kind {
+        case .removeDockShortcut: return "Dock shortcut"
         case .clearImmutableFlag: return "Locked file"
         case .forgetReceipt: return target
         case .revealVendorUninstaller: return "Vendor uninstaller"
@@ -110,6 +113,7 @@ struct UninstallPlanRow: View {
 
     private var action: String? {
         switch kind {
+        case .removeDockShortcut: return "Unpin"
         case .clearImmutableFlag: return "Unlock"
         case .forgetReceipt: return "Remove record"
         case .revealVendorUninstaller: return "Show in Finder"

@@ -271,7 +271,7 @@ struct UpdatesView: View {
                 if !check.unchecked.isEmpty {
                     Text("·")
                     Button("\(check.unchecked.count) can't be checked") { showsUnchecked = true }
-                        .buttonStyle(.link)
+                        .buttonStyle(PointerButtonStyle(.link))
                         .popover(isPresented: $showsUnchecked, arrowEdge: .top) { unchecked(check.unchecked) }
                 }
                 Spacer()
@@ -362,14 +362,14 @@ private struct FailureDetails: View {
     var body: some View {
         Button("Details", systemImage: "info.circle") { shows = true }
             .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            .buttonStyle(PointerButtonStyle(.borderless))
             .foregroundStyle(Palette.inkSecondary)
             .help(reason)
             .accessibilityLabel("Why the update failed")
             .popover(isPresented: $shows, arrowEdge: .bottom) {
                 Text(reason)
                     .font(.callout)
-                    .textSelection(.enabled)
+                    .selectableText()
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(14)
                     .frame(width: 300, alignment: .leading)

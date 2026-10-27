@@ -39,7 +39,7 @@ struct SpaceLargestApps: View {
                             .foregroundStyle(Palette.inkSecondary)
                     }
                     Button("Show all") { shell.go(to: .apps, lens: .all) }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(PointerButtonStyle(.borderless))
                         .font(.brimFacts)
                         .padding(.leading, 8)
                 }
@@ -102,7 +102,7 @@ struct SpaceLargestApps: View {
             .contentShape(.rect)
             .rowHighlight(isInspected: false)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PointerButtonStyle(.plain))
         .accessibilityLabel(app.name)
         .accessibilityValue(spoken(app))
     }

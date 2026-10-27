@@ -5,7 +5,7 @@ import Foundation
 public struct Planner: Sendable {
     public init() {}
 
-    public func createPlan(from evaluatedFootprint: EvaluatedFootprint, intent: PlanIntent, engineVersion: String, osVersion: String = ProcessInfo.processInfo.operatingSystemVersionString, capabilityReport: CapabilitySearchReport? = nil, receiptPayloads: [String: [String]] = [:]) -> Plan {
+    public func createPlan(from evaluatedFootprint: EvaluatedFootprint, intent: PlanIntent, engineVersion: String, osVersion: String = ProcessInfo.processInfo.operatingSystemVersionString, capabilityReport: CapabilitySearchReport? = nil, receiptPayloads: [String: [String]] = [:], dockPinnedPaths: Set<String> = []) -> Plan {
         var steps = [Step]()
         var excludedItems = [ExcludedItem]()
         var expectedTotalBytes: Int64 = 0
@@ -38,18 +38,11 @@ public struct Planner: Sendable {
                $0.selection == .selected && $0.footprintItem.evidence.url.pathExtension == "app"
            }),
            let bundleID = intent.subjectIdentity.bundleID {
-            let host = evaluatedFootprint.identity.bundlePath ?? ""
-            let componentIDs = evaluatedFootprint.identity.identitySurface?.components
-                .compactMap { component -> String? in
-                    guard component.path.hasPrefix(host + "/"),
-                          ["app", "appex", "xpc"].contains(URL(fileURLWithPath: component.path).pathExtension),
-                          PathObservation.observe(component.path).isPresent,
-                          let identifier = component.bundleIdentifier,
-                          evaluatedFootprint.identity.searchBundleIdentifiers.contains(identifier) else { return nil }
-                    return identifier
-                } ?? []
+            let componentIDs = CompanionRelationships.embeddedPrivacyIdentifiers(in: evaluatedFootprint.identity)
             let protected = Set(evaluatedFootprint.protectedComponentIdentifiers)
-            for resetID in Set([bundleID] + componentIDs).subtracting(protected).sorted() {
+            let companionIDs = CompanionRelationships.privacyIdentifiers(in: evaluatedItems)
+            for resetID in Set([bundleID] + componentIDs + companionIDs)
+                .filter({ !protected.contains($0.lowercased()) }).sorted() {
                 steps.append(Step(
                     index: index,
                     kind: .resetPrivacyGrants,
@@ -336,6 +329,8 @@ public struct Planner: Sendable {
             for registrationPath in paths.sorted() {
                 let identifier = registered.first { $0.programPath == registrationPath }?.identifier
                     ?? components.first { $0.path == registrationPath }?.bundleIdentifier
+                    ?? (NSDictionary(contentsOf: URL(fileURLWithPath: registrationPath)
+                            .appendingPathComponent("Contents/Info.plist"))?["CFBundleIdentifier"] as? String)
                     ?? (hosts.contains(registrationPath) ? evaluatedFootprint.identity.bundleID : nil)
                 steps.append(Step(
                     index: index, kind: .unregisterLaunchServices,
@@ -345,6 +340,22 @@ public struct Planner: Sendable {
                     expectedBytes: 0, capability: .ok, reversible: false, costOfError: .low,
                     executionPhase: .registration, disposition: .delete,
                     registrationBundleID: identifier
+                ))
+                index += 1
+            }
+        }
+
+        if intent.type == .uninstall {
+            let removedApps = Set(steps.filter {
+                [.trashPath, .trashPathPrivileged].contains($0.kind)
+                    && ApplicationBundle.isBundle(atPath: $0.target)
+            }.map(\.target))
+            for path in removedApps.intersection(dockPinnedPaths).sorted() {
+                steps.append(Step(
+                    index: index, kind: .removeDockShortcut, target: path, targetFingerprint: nil,
+                    tier: .B, evidence: "Removes the Dock shortcut for this application path after the app is gone.",
+                    expectedBytes: 0, capability: .ok, reversible: false, costOfError: .low,
+                    executionPhase: .registration, disposition: .delete
                 ))
                 index += 1
             }

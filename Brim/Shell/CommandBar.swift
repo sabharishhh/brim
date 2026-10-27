@@ -81,7 +81,7 @@ struct CommandBar: View {
                                 } label: {
                                     row(result, isHighlighted: index == highlighted)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PointerButtonStyle(.plain))
                                 .id(result.id)
                             }
                         }

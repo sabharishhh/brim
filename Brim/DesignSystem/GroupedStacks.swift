@@ -88,12 +88,12 @@ struct GroupedStacks<Item: Identifiable, Row: View, Accessory: View>: View {
                         .foregroundStyle(Palette.inkSecondary)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PointerButtonStyle(.plain))
             .accessibilityLabel("\(section.title), \(summary(section))")
             .accessibilityValue(isCollapsed(section) ? "Collapsed" : "Expanded")
             Spacer()
             accessory(section)
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
                 .font(.brimFacts)
         }
         .padding(.horizontal, 24)
@@ -174,6 +174,7 @@ struct RowHighlight: ViewModifier {
         Group {
             if let action {
                 shaped
+                    .actionPointer()
                     .onTapGesture(perform: action)
                     .highPriorityGesture(
                         TapGesture().modifiers(.command).onEnded { (commandAction ?? action)() }

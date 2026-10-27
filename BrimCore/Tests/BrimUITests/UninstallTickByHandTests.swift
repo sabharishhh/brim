@@ -162,6 +162,44 @@ final class UninstallTickByHandTests: XCTestCase {
 
     // MARK: - Offering and ticking
 
+    func testOtherSubgroupsStaySelectableWhileOneGroupsPlanIsPending() async throws {
+        let stub = TickingStub(offered: [code, logs])
+        let model = await prepared(stub)
+        let data = try XCTUnwrap(model.reviewGroups.first { $0.loss == .data })
+        let rebuilds = try XCTUnwrap(model.reviewGroups.first { $0.loss == .rebuilds })
+        await stub.hold()
+        let first = Task { await model.setTicked(true, paths: Set(data.offers.map(\.target))) }
+        await settle { await stub.pending() == 1 }
+        XCTAssertTrue(model.isUpdating)
+        XCTAssertFalse(model.canSelectAll(in: data))
+        XCTAssertTrue(model.canSelectAll(in: rebuilds))
+        await model.setTicked(true, paths: Set(rebuilds.offers.map(\.target)))
+        XCTAssertFalse(model.canSelectAll(in: rebuilds))
+        XCTAssertFalse(model.canAuthorize)
+        await stub.releaseAll()
+        await first.value
+        XCTAssertEqual(model.tickedByHand, [code, logs])
+        XCTAssertTrue(model.canAuthorize)
+    }
+
+    /// The removal review used to require a new click and scan for each row.
+    func testSelectingASubgroupBuildsOnePlanAndKeepsVetoesOut() async {
+        let cache = "/Users/me/Library/Caches/Code-extension"
+        let stub = TickingStub(offered: [code, logs, cache], vetoed: [teams])
+        let model = await prepared(stub)
+
+        await model.setTicked(true, paths: [logs, cache, teams, "/Users/me/Documents/Thesis.md"])
+
+        XCTAssertEqual(model.tickedByHand, [logs, cache])
+        XCTAssertEqual(model.rowsToOffer.map(\.target), [code])
+        let requests = await stub.recorded()
+        XCTAssertEqual(requests.count, 2, "One initial plan and one for the entire subgroup")
+        XCTAssertEqual(requests.last?.tickedByHand, [logs, cache].sorted())
+        await model.setTicked(true, paths: [logs, cache])
+        let repeated = await stub.recorded()
+        XCTAssertEqual(repeated.count, 2)
+    }
+
     /// **Application Support/Code**, offered and ticked.
     func testTickingARowBuildsAPlanThatRemovesIt() async {
         let stub = TickingStub(offered: [code])

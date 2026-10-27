@@ -143,7 +143,7 @@ struct RemovalPanel: View {
                     Text(installation.explanation)
                         .font(.brimFacts)
                     if let command = installation.manualCommand {
-                        Text(command).font(.caption.monospaced()).textSelection(.enabled)
+                        Text(command).font(.caption.monospaced()).selectableText()
                         Button("Copy Uninstall Command") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(command, forType: .string)
@@ -161,7 +161,7 @@ struct RemovalPanel: View {
                     ForEach(Array(copies.enumerated()), id: \.offset) { _, installation in
                         Text(installation.bundlePath ?? installation.name)
                             .font(.caption.monospaced())
-                            .textSelection(.enabled)
+                            .selectableText()
                     }
                 }
             }
@@ -214,7 +214,7 @@ extension RemovalPanel {
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                    .selectableText()
             }
             .padding(24)
             .frame(maxWidth: .infinity)

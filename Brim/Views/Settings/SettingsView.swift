@@ -44,7 +44,7 @@ struct SettingsView: View {
             .frame(width: 72, height: 50)
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PointerButtonStyle(.plain))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }

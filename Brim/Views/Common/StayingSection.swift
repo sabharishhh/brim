@@ -14,7 +14,7 @@ struct StayingSection: View {
                     Spacer()
                     if items.count > 1 {
                         RevealButton(urls: items.map { URL(fileURLWithPath: $0.target) }, title: "Show All in Finder")
-                            .buttonStyle(.borderless)
+                            .buttonStyle(PointerButtonStyle(.borderless))
                             .font(.caption)
                     }
                 }
@@ -49,7 +49,7 @@ struct StayingRow: View {
             }
             Spacer(minLength: 6)
             RevealButton(urls: [URL(fileURLWithPath: item.target)])
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
         }
         .padding(.vertical, 4)
         .listRowSeparator(.hidden)

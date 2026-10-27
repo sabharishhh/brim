@@ -30,6 +30,8 @@ public enum StepKind: String, Codable, Equatable, Sendable, CaseIterable {
     /// gone. Deleting an app does not retract it, so the app would stay in
     /// "Open With" and keep claiming its document types and URL schemes.
     case unregisterLaunchServices
+    /// Removes only the Dock shortcut for the reviewed application path.
+    case removeDockShortcut
 }
 
 public extension StepKind {
@@ -38,7 +40,7 @@ public extension StepKind {
     /// a path (the "already gone" check, verification) has to ask first.
     var targetIsPath: Bool {
         switch self {
-        case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup:
+        case .resetPrivacyGrants, .forgetReceipt, .delegateToolCleanup, .removeDockShortcut:
             // Each of these names an identifier: a bundle id, a package id,
             // or which cleanup to run. None is a file.
             false
@@ -247,6 +249,8 @@ public struct Plan: Codable, Equatable, Sendable {
     public let protectedComponentIdentifiers: [String]?
     /// Complete receipt payloads reviewed before forgetting any installer record.
     public let receiptPayloads: [String: [String]]?
+    /// Dock failure is a review note, not a reason to abandon the app removal.
+    public private(set) var dockShortcutReadError: String?
 
     public let expectedTotalBytes: Int64
 
@@ -285,6 +289,12 @@ public struct Plan: Codable, Equatable, Sendable {
     public func recording(_ installation: HomebrewInstallation?) -> Plan {
         var copy = self
         copy.homebrewInstallation = installation
+        return copy
+    }
+
+    public func recordingDockShortcutError(_ error: String?) -> Plan {
+        var copy = self
+        copy.dockShortcutReadError = error
         return copy
     }
 
