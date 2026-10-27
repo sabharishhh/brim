@@ -267,7 +267,7 @@ private extension LeftoversView {
             }
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PointerButtonStyle(.plain))
         .padding(.horizontal, 4)
         .padding(.bottom, 6)
         .accessibilityLabel("Unknown, \(unknowns.count)")
@@ -298,6 +298,7 @@ private extension LeftoversView {
             set: { _ in model.toggle(group) }
         ))
         .toggleStyle(.checkbox)
+        .actionPointer()
         .labelsHidden()
         .disabled(model.isScanning || model.isProvisional || !group.items.contains(where: \.canBeRemovedByBrim))
     }
@@ -338,7 +339,7 @@ private struct LeftoverBatchActions: View {
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)
             if selectedCount > 0 {
-                Button("Clear", action: clear).buttonStyle(.borderless)
+                Button("Clear", action: clear).buttonStyle(PointerButtonStyle(.borderless))
             }
             Spacer()
             // Both open a review, and what is approved there goes to the Trash first,
@@ -410,7 +411,7 @@ private struct RemnantCard: View {
                 .padding(.bottom, isOpen ? 6 : 10)
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PointerButtonStyle(.plain))
             .padding(.leading, 44)
             .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
 
@@ -547,7 +548,7 @@ private struct UnknownRow: View {
                 .foregroundStyle(Palette.inkTertiary)
             if group.items.contains(where: \.canBeRemovedByBrim) {
                 Button("Review", action: review)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .controlSize(.small)
                     .disabled(isScanning)
             } else if group.items.contains(where: { $0.url.path == RecoveryCopy.directory }) {
@@ -558,12 +559,12 @@ private struct UnknownRow: View {
                         isReadingRecovery = false
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
                 .controlSize(.small)
                 .disabled(isScanning || isReadingRecovery)
             } else {
                 RevealButton(urls: group.items.map(\.url), title: "Show")
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .controlSize(.small)
             }
         }

@@ -162,6 +162,24 @@ final class UninstallTickByHandTests: XCTestCase {
 
     // MARK: - Offering and ticking
 
+    /// The removal review used to require a new click and scan for each row.
+    func testSelectingASubgroupBuildsOnePlanAndKeepsVetoesOut() async {
+        let cache = "/Users/me/Library/Caches/Code-extension"
+        let stub = TickingStub(offered: [code, logs, cache], vetoed: [teams])
+        let model = await prepared(stub)
+
+        await model.setTicked(true, paths: [logs, cache, teams, "/Users/me/Documents/Thesis.md"])
+
+        XCTAssertEqual(model.tickedByHand, [logs, cache])
+        XCTAssertEqual(model.rowsToOffer.map(\.target), [code])
+        let requests = await stub.recorded()
+        XCTAssertEqual(requests.count, 2, "One initial plan and one for the entire subgroup")
+        XCTAssertEqual(requests.last?.tickedByHand, [logs, cache].sorted())
+        await model.setTicked(true, paths: [logs, cache])
+        let repeated = await stub.recorded()
+        XCTAssertEqual(repeated.count, 2)
+    }
+
     /// **Application Support/Code**, offered and ticked.
     func testTickingARowBuildsAPlanThatRemovesIt() async {
         let stub = TickingStub(offered: [code])

@@ -22,7 +22,7 @@ struct AboutView: View {
                 .font(.brimFacts)
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkSecondary)
-                .textSelection(.enabled)
+                .selectableText()
             Text("See what apps leave behind,\nand make sure it’s gone.")
                 .font(.brimFacts)
                 .foregroundStyle(Palette.inkSecondary)

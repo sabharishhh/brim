@@ -233,7 +233,7 @@ struct AppInspector: View {
             if !access.isGranted {
                 let offer = AccessOffer.current(requestedAt: accessRequestedAt)
                 Button(offer.title, action: offer.action)
-                    .buttonStyle(.link)
+                    .buttonStyle(PointerButtonStyle(.link))
                     .font(.caption)
             }
         }
@@ -287,7 +287,7 @@ private struct LocationRow: View {
                         .frame(width: 20, height: 20)
                         .contentShape(.rect)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
                 .foregroundStyle(Palette.inkTertiary)
                 .help(showsDetails ? "Hide details" : "Details")
                 .accessibilityLabel(showsDetails ? "Hide details" : "Details")
@@ -305,6 +305,7 @@ private struct LocationRow: View {
         }
         .rowHighlight(isInspected: false)
         .contentShape(.rect)
+        .actionPointer()
         .onTapGesture(count: 2) { shell.showInFinder(location.url) }
         .contextMenu { ItemMenuItems(urls: [location.url]) }
         .accessibilityElement(children: .contain)
@@ -327,7 +328,7 @@ private struct LocationRow: View {
                         .font(.caption)
                         .foregroundStyle(Palette.ink)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                        .selectableText()
                 }
             }
             if location.isShared {
@@ -341,7 +342,7 @@ private struct LocationRow: View {
                     .foregroundStyle(Palette.caution)
             }
             Button("Show in Finder") { shell.reveal([location.url]) }
-                .buttonStyle(.link)
+                .buttonStyle(PointerButtonStyle(.link))
                 .font(.caption)
         }
     }

@@ -90,7 +90,7 @@ struct BrimSearchField: View {
                         .foregroundStyle(Palette.inkTertiary)
                         .contentShape(.circle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PointerButtonStyle(.plain))
                 .help("Clear Search")
                 .accessibilityLabel("Clear Search")
                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
@@ -99,6 +99,7 @@ struct BrimSearchField: View {
         .padding(.horizontal, 11)
         .frame(height: 30)
         .contentShape(.capsule)
+        .pointerStyle(.horizontalText)
         .onTapGesture { isFocused = true }
         .background(Color.white.opacity(0.07), in: .capsule)
         .overlay {

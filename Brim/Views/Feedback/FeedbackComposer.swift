@@ -65,7 +65,7 @@ struct FeedbackComposer: View {
                                 Text("Steps and expected result (optional)")
                                     .contentShape(.rect)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PointerButtonStyle(.plain))
                         }
                         .font(.callout)
                     }

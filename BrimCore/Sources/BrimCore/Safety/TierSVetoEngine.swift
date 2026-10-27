@@ -36,7 +36,9 @@ public struct TierSVetoEngine: Sendable {
         let hasGroupTarget = footprint.items.contains {
             Self.isGroupPath($0.footprintItem.evidence.url)
         }
-        let inventory = await otherApplications(besides: footprint.identity, includeGroups: hasGroupTarget)
+        let companions = CompanionRelationships.bundles(in: footprint.items)
+        let inventory = await otherApplications(besides: footprint.identity, includeGroups: hasGroupTarget,
+                                                removingCompanions: companions)
         let applications = inventory.identities
         let groupClaims = hasGroupTarget ? Self.mergingGroupClaims(
             inventory.groupClaims, applications: applications, complete: inventory.completeness.isComplete
@@ -46,10 +48,11 @@ public struct TierSVetoEngine: Sendable {
             Self.protectionIdentifiers(of: other).map { ($0, other.name) }
         }, uniquingKeysWith: { first, _ in first })
         let survivingCopies = Self.survivingCopies(of: footprint.identity, among: applications)
+        let companionIdentifiers = CompanionRelationships.identifiers(in: companions)
 
         let context = VetoContext(identity: footprint.identity, applications: applications,
                                   survivingCopies: survivingCopies, groupClaims: groupClaims,
-                                  others: others, resolver: resolver)
+                                  others: others, resolver: resolver, companionIdentifiers: companionIdentifiers)
         for item in footprint.items {
             let result = await vet(item, context: context)
             vettedItems.append(result.item)
@@ -66,19 +69,11 @@ public struct TierSVetoEngine: Sendable {
         return EvaluatedFootprint(
             identity: footprint.identity, items: vettedItems, completeness: completeness,
             survivingCopies: survivingCopies,
-            protectedComponentIdentifiers: footprint.identity.searchBundleIdentifiers.filter { identifier in
-                applications.contains { Self.protectionIdentifiers(of: $0).contains(identifier.lowercased()) }
-            }
+            protectedComponentIdentifiers: Set(footprint.identity.searchBundleIdentifiers)
+                .union(companionIdentifiers).filter { identifier in
+                    applications.contains { Self.protectionIdentifiers(of: $0).contains(identifier.lowercased()) }
+                }.sorted()
         )
-    }
-
-    private struct VetoContext {
-        let identity: Identity
-        let applications: [Identity]
-        let survivingCopies: [Identity]
-        let groupClaims: (owners: [String: String], complete: Bool)
-        let others: [String: String]
-        let resolver: IdentityResolver
     }
 
     private func vet(
@@ -112,9 +107,15 @@ public struct TierSVetoEngine: Sendable {
             ?? Self.sharesName(targetURL, with: context.applications) {
             return (Self.excluded(item, reason: "Named for \(owner), which is still installed."), completeness)
         }
+        if let owner = CompanionRelationships.dataOwner(of: targetURL, identifiers: context.companionIdentifiers,
+                                                        others: context.others) {
+            return (Self.excluded(item, reason: "Shared with \(owner), which is still installed."), completeness)
+        }
         // The installer's own record already says whose this is: a driver from the
         // same run carries its own identifier, which is not a second owner.
-        if item.footprintItem.evidence.mechanism != "InstallerPayloadSource",
+        let companion = item.footprintItem.evidence.mechanism == "CompanionApplicationSource"
+            && item.footprintItem.evidence.tier == .B
+        if item.footprintItem.evidence.mechanism != "InstallerPayloadSource", !companion,
            let sharedWith = await checkSharedClaims(
                for: targetURL, identity: context.identity, resolver: context.resolver
            ) {
@@ -167,7 +168,7 @@ public struct TierSVetoEngine: Sendable {
     /// Other installations, retaining paths even when identifiers agree.
     @concurrent
     private func otherApplications(
-        besides identity: Identity, includeGroups: Bool
+        besides identity: Identity, includeGroups: Bool, removingCompanions: Set<String>
     ) async -> OtherClaimants {
         guard !Task.isCancelled else {
             return OtherClaimants(identities: [], completeness: ScanCompleteness(timedOut: [root.rootURL.path]),
@@ -184,10 +185,9 @@ public struct TierSVetoEngine: Sendable {
         )
         var completeness = inventory.completeness
         let budget = ScanBudget(total: 10)
-        for bundle in inventory.bundles {
-            // Embedded components of the subject are not other owners.
+        for bundle in inventory.claimingBundles {
             let path = bundle.resolvingSymlinksInPath().path
-            if let subject, path == subject || path.hasPrefix(subject + "/") {
+            if CompanionRelationships.includes(bundle, subject: subject, companions: removingCompanions, root: root) {
                 continue
             }
             guard !budget.hasRunOut else {
@@ -283,6 +283,16 @@ public struct TierSVetoEngine: Sendable {
         }
         return resolved
     }
+}
+
+private struct VetoContext {
+    let identity: Identity
+    let applications: [Identity]
+    let survivingCopies: [Identity]
+    let groupClaims: (owners: [String: String], complete: Bool)
+    let others: [String: String]
+    let resolver: IdentityResolver
+    let companionIdentifiers: Set<String>
 }
 
 extension TierSVetoEngine {

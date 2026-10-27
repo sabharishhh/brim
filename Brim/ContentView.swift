@@ -77,6 +77,8 @@ struct ContentView: View {
         // The window's own background. The sidebar draws its own over it,
         // the desktop seen through AppKit's material (`SidebarBackdrop`).
         .containerBackground(Palette.canvas, for: .window)
+        .pointerStyle(.default)
+        .buttonStyle(PointerButtonStyle(.automatic))
         .onAppear { LaunchSignpost.shellAppeared() }
         // Each page draws its own name in the toolbar (`pageTitle`); the
         // system's title would repeat it beside a subtitle.

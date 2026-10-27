@@ -20,7 +20,7 @@ struct LensSwitch: View {
                 } label: {
                     segment(item)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PointerButtonStyle(.plain))
             }
         }
         .padding(4)

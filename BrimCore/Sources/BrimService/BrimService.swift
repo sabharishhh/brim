@@ -113,7 +113,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         executor = Executor(
             journalStore: journalStore,
             toolCleanupClient: toolCleanupClient,
-            launchdRuntime: launchdRuntime
+            launchdRuntime: launchdRuntime,
+            dockShortcuts: .init(root: root)
         )
     }
 
@@ -173,6 +174,18 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
 
         let evaluated = await safetyEngine.evaluate(footprint: footprint)
         try Task.checkCancellation()
+        let payloads = reviewedReceiptPayloads(in: evaluated)
+        let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
+                                                    footprint: footprint, payloads: payloads)
+        try Task.checkCancellation()
+        let dock = DockShortcutReview(root: root)
+        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
+                                      capabilityReport: report, receiptPayloads: payloads, dockPinnedPaths: dock.pins)
+        return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
+            .recordingDockShortcutError(dock.failure)
+    }
+
+    private func reviewedReceiptPayloads(in evaluated: EvaluatedFootprint) -> [String: [String]] {
         var payloads: [String: [String]] = [:]
         for item in evaluated.items where item.footprintItem.evidence.mechanism == "InstallerReceiptSource" {
             guard case .selected = item.selection else { continue }
@@ -182,12 +195,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 payloads[identifier] = paths
             }
         }
-        let report = await registrationSearchReport(evaluated: evaluated, intent: intent,
-                                                    footprint: footprint, payloads: payloads)
-        try Task.checkCancellation()
-        let plan = planner.createPlan(from: evaluated, intent: intent, engineVersion: EvidenceEngineRevision,
-                                      capabilityReport: report, receiptPayloads: payloads)
-        return plan.attaching(report).recording(package.installation).addingRecoveryRemoval(recoveryCopies)
+        return payloads
     }
 
     private func registrationSearchReport(
@@ -652,6 +660,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             && plan.survivingCopies == revalidatedPlan.survivingCopies
             && plan.protectedComponentIdentifiers == revalidatedPlan.protectedComponentIdentifiers
             && plan.receiptPayloads == revalidatedPlan.receiptPayloads
+            && plan.dockShortcutReadError == revalidatedPlan.dockShortcutReadError
         guard searchIsCurrent else {
             throw ApplyError.validationFailed("Search coverage changed. Review the plan again.")
         }
@@ -769,7 +778,8 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
             return outcome != "ok" && outcome != "already_gone"
         }
 
-        let success = targetsRemaining == 0 && staleRegistrations.isEmpty
+        let dockCheck = DockShortcutVerification(plan: plan, root: root)
+        let success = targetsRemaining == 0 && staleRegistrations.isEmpty && dockCheck.isComplete
             && !privacyResetFailed && !otherActionsFailed && !executionEvidenceUnavailable
             && !postChecks.contains(where: { !$0.remaining.isEmpty })
             && RemovalReport.unansweredChecks(postChecks, declaredNone: RemovalReport.declaredNone(in: plan)).isEmpty
@@ -782,7 +792,7 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
         )
         let receiptReason = executionEvidenceUnavailable
             ? "Brim's record of this removal could not be read, so what it did is not known." : nil
-        let reason = [observedReason, receiptReason]
+        let reason = ([observedReason, receiptReason] + dockCheck.failures.map(Optional.some))
             .compactMap(\.self).joined(separator: "\n\n")
 
         // Core Audio keeps a removed driver's device listed until it restarts.
@@ -809,7 +819,9 @@ public actor BrimService: BrimServiceProtocol, ApprovalGranting {
                 unknownPaths: unknownPaths, registrationObservations: postChecks,
                 completedActions: plan.steps.filter {
                     $0.kind == .resetPrivacyGrants && journal?.stepOutcomes[$0.index] == "ok"
-                }.map { "Permission reset command completed for " + $0.target },
+                }.map { "Permission reset command completed for " + $0.target }
+                    + dockCheck.completed,
+                failedActions: dockCheck.failures,
                 verificationStartedAt: verificationStartedAt
             ),
             packageRecord: plan.homebrewInstallation.map(PackageRecordResult.observe),

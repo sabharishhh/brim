@@ -216,6 +216,7 @@ private struct DisclosureBody: View {
             .background(isHovering ? Palette.hover : Palette.well.opacity(0.6), in: Capsule())
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .contentShape(.capsule)
+            .actionPointer()
             .onHover { isHovering = $0 }
             .animation(Motion.quick, value: isHovering)
             .animation(Motion.quick, value: configuration.isPressed)

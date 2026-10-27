@@ -136,7 +136,7 @@ struct MainSidebar: View {
                         .padding(.vertical, 10)
                         .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PointerButtonStyle(.plain))
                 .help("Settings (⌘,)")
                 .padding(10)
             }
@@ -179,7 +179,7 @@ struct MainSidebar: View {
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered == destination)
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PointerButtonStyle(.plain))
             .onHover { inside in
                 hovered = inside ? destination : (hovered == destination ? nil : hovered)
             }

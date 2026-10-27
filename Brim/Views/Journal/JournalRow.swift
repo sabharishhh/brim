@@ -155,14 +155,14 @@ struct JournalRow: View {
                     Label("Could not put back", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(Palette.inkSecondary, Palette.caution)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(PointerButtonStyle(.borderless))
                 .font(.caption)
                 .help(reason)
                 .accessibilityHint("Shows why")
                 .popover(isPresented: $showsFailure) {
                     Text(reason)
                         .font(.callout)
-                        .textSelection(.enabled)
+                        .selectableText()
                         .padding()
                         .frame(width: 300, alignment: .leading)
                 }

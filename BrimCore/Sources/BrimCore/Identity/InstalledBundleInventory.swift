@@ -6,6 +6,13 @@ import Foundation
 public struct InstalledBundleInventory: Sendable {
     public let bundles: [URL]
     public let completeness: ScanCompleteness
+    private let root: FileSystemRoot
+
+    /// Broken executable wrappers remain discoverable for cleanup, but cannot
+    /// protect another app's files as a usable installation.
+    public var claimingBundles: [URL] {
+        bundles.filter { !ApplicationBundle.hasMissingLinkedExecutable($0, in: root) }
+    }
 
     public static func read(
         in root: FileSystemRoot, including identifiers: [String] = [], knownLocations: [URL] = [],
@@ -44,7 +51,7 @@ public struct InstalledBundleInventory: Sendable {
         let unique = reader.uniqueBundles()
         return Self(bundles: unique.sorted { $0.path < $1.path },
                     completeness: ScanCompleteness(unreadable: Array(reader.unreadable),
-                                                   timedOut: Array(reader.timedOut)))
+                                                   timedOut: Array(reader.timedOut)), root: root)
     }
 
     /// Folders under `/Library` a non-Apple package installed into, read from

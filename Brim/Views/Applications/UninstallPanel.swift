@@ -138,18 +138,23 @@ struct UninstallPanel: View {
 
     private var planList: some View {
         List {
+            if let failure = model.plan?.dockShortcutReadError {
+                Section("Dock") {
+                    Text(failure).font(.brimFacts).selectableText()
+                }
+            }
             if let gaps = model.plan?.scanCompleteness {
                 if !gaps.unreadable.isEmpty {
                     Section("Could not read") {
                         ForEach(gaps.unreadable, id: \.self) { path in
-                            Text(path).font(.caption).textSelection(.enabled)
+                            Text(path).font(.caption).selectableText()
                         }
                     }
                 }
                 if !gaps.timedOut.isEmpty {
                     Section("Scan timed out") {
                         ForEach(gaps.timedOut, id: \.self) { path in
-                            Text(path).font(.caption).textSelection(.enabled)
+                            Text(path).font(.caption).selectableText()
                         }
                     }
                 }
@@ -162,7 +167,11 @@ struct UninstallPanel: View {
                     // no "0" over the rows it offers or keeps.
                     ReviewHeading(title: group.title, count: group.steps.isEmpty ? nil : group.steps.count,
                                   bytes: group.steps.reduce(0) { $0 + $1.expectedBytes },
-                                  isFirst: group.id == model.reviewGroups.first?.id)
+                                  isFirst: group.id == model.reviewGroups.first?.id,
+                                  selectAll: {
+                                      Task { await model.setTicked(true, paths: Set(group.offers.map(\.target))) }
+                                  },
+                                  allSelected: group.offers.isEmpty || model.isUpdating)
                     ForEach(ReviewRun.runs(of: group.steps)) { run in
                         if run.steps.count > 1 {
                             UninstallPlanRow(
@@ -198,7 +207,7 @@ struct UninstallPanel: View {
 
             if model.plan?.capabilityReport != nil {
                 Button("What Brim checked") { showingSearchDetails = true }
-                    .buttonStyle(.link)
+                    .buttonStyle(PointerButtonStyle(.link))
                     .font(.brimFacts)
             }
             ListBottomSpacing()
@@ -307,7 +316,7 @@ private extension UninstallPanel {
                     .font(.brimFacts)
                     .foregroundStyle(Palette.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                    .selectableText()
                 Text(next)
                     .font(.brimFacts)
                     .foregroundStyle(Palette.ink)

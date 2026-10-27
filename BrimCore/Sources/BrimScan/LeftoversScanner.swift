@@ -1160,10 +1160,11 @@ public actor LeftoversScanner {
         // Read four at a time; one after another, this was the slowest part of the
         // scan.
         let root = root
-        let allClaims = await (try? BoundedTasks.map(inventory.bundles, limit: 4) { bundle in
+        let bundles = inventory.claimingBundles
+        let allClaims = await (try? BoundedTasks.map(bundles, limit: 4) { bundle in
             budget.hasRunOut ? nil : BundleSurfaceReader.protectionClaims(at: bundle, in: root)
         }) ?? []
-        for (index, bundle) in inventory.bundles.enumerated() {
+        for (index, bundle) in bundles.enumerated() {
             guard index < allClaims.count, let claims = allClaims[index], !Task.isCancelled else {
                 complete = false; break
             }

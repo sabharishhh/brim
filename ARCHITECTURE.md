@@ -53,6 +53,24 @@ be tested without a window.
 5. Verification looks at every path again and reports what went, what
    stayed and what could not be checked.
 
+`CompanionApplicationSource` finds standalone launchers whose declared
+executable links into the selected app. The evidence engine follows their
+identities to find their files, and the veto keeps data and permissions
+claimed by surviving installations. Wrappers with a provably missing linked
+executable remain discoverable but cannot protect files as installed apps.
+
+Dock cleanup is a separate `removeDockShortcut` step, bound to the app's
+exact path. It runs only after that app is confirmed absent, updates only
+matching persistent Dock tiles through the preferences API, and asks the
+current user's Dock to reload. Verification reads the pins again. Tests use
+an isolated preferences file and never change the person's Dock.
+
+`PointerButtonStyle` preserves each native button style and adds a link
+cursor over the control. Shared custom controls use the same enabled-state
+modifier. Selectable text uses the horizontal text cursor, while ordinary
+canvas space uses the default pointer. SwiftUI owns the cursor regions, so
+no global cursor stack or event monitor is needed for cursor changes.
+
 ## Tests
 
 | Suite | What it covers |

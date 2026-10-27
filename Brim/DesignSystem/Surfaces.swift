@@ -199,7 +199,7 @@ struct TrayBar: View {
                             .contentTransition(.identity)
                     }
                     Button("Clear", action: clear)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(PointerButtonStyle(.borderless))
                         .foregroundStyle(Palette.inkSecondary)
                 }
                 .padding(.horizontal, 18)
@@ -209,7 +209,7 @@ struct TrayBar: View {
                     BrimTips.learned(TrayTip())
                     review()
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(PointerButtonStyle(.glassProminent))
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
                 .disabled(!canReview)
@@ -255,7 +255,7 @@ struct Toast: View {
                 .foregroundStyle(Palette.ink)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PointerButtonStyle(.borderless))
                     .foregroundStyle(Palette.ink)
             }
         }

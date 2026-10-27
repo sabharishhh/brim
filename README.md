@@ -10,7 +10,10 @@ alone.
 - **Remnants** finds files, settings and background jobs left by apps you
   have already removed.
 - **Apps** lists everything installed and removes an app together with the
-  files it keeps elsewhere on your Mac, in one review.
+  files it keeps elsewhere on your Mac, in one review. Each subgroup has a
+  Select All button. Clearly attributed caches and crash reports start
+  selected after a complete search. Companion launchers that link into the
+  app and its exact Dock shortcut go with it.
 - **Background** shows login items and launch jobs, including those that
   point at software no longer installed.
 - **Updates** finds new versions of your apps and installs one only when the

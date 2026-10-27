@@ -15,7 +15,7 @@ struct RowAction: View {
                 .frame(width: 28, height: 28)
                 .contentShape(.rect)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PointerButtonStyle(.borderless))
         .foregroundStyle(Palette.inkSecondary)
         .help(help)
         .accessibilityLabel(help)

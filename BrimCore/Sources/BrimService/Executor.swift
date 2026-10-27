@@ -11,6 +11,7 @@ public actor Executor {
     private let fm = FileManager.default
     private let toolCleanupClient: ToolCleanup.Client
     private let launchdRuntime: LaunchdRuntimeClient
+    private let dockShortcuts: DockShortcuts.Client
 
     /// Removes something this process cannot reach, through administrator
     /// cleanup. Nil when unavailable, which is not an error: the step records
@@ -32,9 +33,11 @@ public actor Executor {
     public init(
         journalStore: JournalStore,
         toolCleanupClient: ToolCleanup.Client = .init(),
-        launchdRuntime: LaunchdRuntimeClient = .init()
+        launchdRuntime: LaunchdRuntimeClient = .init(),
+        dockShortcuts: DockShortcuts.Client = .init()
     ) {
         self.launchdRuntime = launchdRuntime
+        self.dockShortcuts = dockShortcuts
         self.toolCleanupClient = toolCleanupClient
         self.journalStore = journalStore
     }
@@ -190,6 +193,11 @@ public actor Executor {
                         journal.stepOutcomes[step.index] =
                             "cleanup_execution_failed: \(error.localizedDescription)"
                     }
+                } else if step.kind == .removeDockShortcut {
+                    // Never unpin an app that a failed removal left in place.
+                    try await Self.removeDockShortcut(step: step, plan: plan,
+                                                      outcomes: journal.stepOutcomes, client: dockShortcuts)
+                    journal.stepOutcomes[step.index] = "ok"
                 } else if step.kind == .unregisterLaunchServices {
                     // Only the path the app was installed at. A trashed bundle is registered in
                     // the Trash, accurately, and retracting that belongs to emptying the

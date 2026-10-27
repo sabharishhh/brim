@@ -3,6 +3,17 @@
 All notable changes to Brim are recorded here. Versions follow
 [semantic versioning](https://semver.org).
 
+## Unreleased
+
+- Select optional removal items by subgroup, with clearly attributed cache
+  folders and crash reports selected after a complete search.
+- Include companion launchers and their files when their executable links
+  into the app being removed. Broken executable wrappers no longer keep
+  files out of removal as though the wrapper were still usable.
+- Remove the app's exact Dock shortcut after its bundle is gone.
+- Show native pointer feedback over clickable controls, selectable text and
+  ordinary space, with an arrow over disabled actions.
+
 ## [1.0] - 2026-10-17
 
 The first release.
