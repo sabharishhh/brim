@@ -28,9 +28,10 @@ public struct InstalledBundleInventory: Sendable {
             directories.append(volume.appendingPathComponent("Applications"))
             directories.append(volume.appendingPathComponent("Users/\(root.userName)/Applications"))
         }
-        for directory in directories {
-            reader.walk(directory, depth: 0)
-        }
+        let scan = ApplicationDirectoryScan.read(in: directories, boundary: root.rootURL, budget: reader.budget)
+        reader.bundles += scan.bundles
+        reader.unreadable.formUnion(scan.completeness.unreadable)
+        reader.timedOut.formUnion(scan.completeness.timedOut)
         // Applications a package put beside the Applications folders, the same
         // ones the Apps list shows, so their folders are never offered as
         // leftovers while they run.
@@ -79,7 +80,6 @@ public struct InstalledBundleInventory: Sendable {
         let root: FileSystemRoot
         let budget = ScanBudget(total: 5)
         var bundles: [URL] = []
-        var visited = Set<String>()
         var unreadable = Set<String>()
         var timedOut = Set<String>()
 
@@ -138,32 +138,6 @@ public struct InstalledBundleInventory: Sendable {
                     unreadable.insert(directory.path)
                 }
                 return []
-            }
-        }
-
-        mutating func walk(_ directory: URL, depth: Int) {
-            var info = stat()
-            if lstat(directory.path, &info) != 0, errno == ENOENT {
-                return
-            }
-            let path = directory.resolvingSymlinksInPath().path
-            let boundary = root.rootURL.resolvingSymlinksInPath().path
-            guard boundary == "/" || path == boundary || path.hasPrefix(boundary + "/") else {
-                unreadable.insert(directory.path)
-                return
-            }
-            guard visited.insert(path).inserted else { return }
-            guard depth < 8, visited.count <= 4096 else { timedOut.insert(directory.path); return }
-            for item in entries(directory) {
-                do {
-                    let values = try item.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-                    guard values.isDirectory == true else { continue }
-                    if item.pathExtension.lowercased() == "app" {
-                        bundles.append(item)
-                    } else if values.isPackage != true {
-                        walk(item, depth: depth + 1)
-                    }
-                } catch { unreadable.insert(item.path) }
             }
         }
     }

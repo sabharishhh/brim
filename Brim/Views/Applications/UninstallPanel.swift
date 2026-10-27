@@ -16,6 +16,7 @@ struct UninstallPanel: View {
 
     @StateObject private var model = UninstallExecutionModel()
     @State private var showingSearchDetails = false
+    @State private var visibleRows: [String: Int] = [:]
     /// Something was removed here, possibly before a Review Again the person
     /// closed without removing more.
     @State private var removedSomething = false
@@ -45,6 +46,9 @@ struct UninstallPanel: View {
     /// A fresh plan from the disk as it is now, from identity only. Review
     /// Again comes here too, so a retry needs its own approval.
     private func startReview() async {
+        if isFinished {
+            await service.invalidateRemovalPreviews()
+        }
         await model.prepare(
             intent: PlanIntent(
                 type: .uninstall,
@@ -77,6 +81,8 @@ struct UninstallPanel: View {
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
+            RowAction(symbol: "info.circle", help: "Review details") { showingSearchDetails.toggle() }
+                .disabled(model.phase != .ready)
             RowAction(symbol: "xmark", help: "Close", action: close)
                 .disabled(model.phase == .executing)
         }
@@ -128,8 +134,10 @@ struct UninstallPanel: View {
         // One branch for waiting and running, so it is one list that becomes
         // disabled; two branches cross-faded two lists over each other.
         case .ready, .executing:
-            if model.phase == .ready, showingSearchDetails, let report = model.plan?.capabilityReport {
-                SearchDetailsView(report: report) { showingSearchDetails = false }
+            if model.phase == .ready, showingSearchDetails {
+                SearchDetailsView(report: model.plan?.capabilityReport,
+                                  completeness: model.plan?.scanCompleteness, staying: model.staying,
+                                  dockFailure: model.plan?.dockShortcutReadError) { showingSearchDetails = false }
             } else {
                 planList.disabled(model.phase == .executing)
             }
@@ -138,31 +146,12 @@ struct UninstallPanel: View {
 
     private var planList: some View {
         List {
-            if let failure = model.plan?.dockShortcutReadError {
-                Section("Dock") {
-                    Text(failure).font(.brimFacts).selectableText()
-                }
-            }
-            if let gaps = model.plan?.scanCompleteness {
-                if !gaps.unreadable.isEmpty {
-                    Section("Could not read") {
-                        ForEach(gaps.unreadable, id: \.self) { path in
-                            Text(path).font(.caption).selectableText()
-                        }
-                    }
-                }
-                if !gaps.timedOut.isEmpty {
-                    Section("Scan timed out") {
-                        ForEach(gaps.timedOut, id: \.self) { path in
-                            Text(path).font(.caption).selectableText()
-                        }
-                    }
-                }
-            }
             // The inspector's groups, in its order: within each, what moves,
             // then what the person may include, then what stays and why.
-            ForEach(model.reviewGroups) { group in
+            ForEach(model.reviewGroups.filter { !$0.steps.isEmpty || !$0.offers.isEmpty }) { group in
                 Section {
+                    let runs = ReviewRun.runs(of: group.steps)
+                    let limit = visibleRows[group.id] ?? 10
                     // Counts what moves; a group with nothing moving shows
                     // no "0" over the rows it offers or keeps.
                     ReviewHeading(title: group.title, count: group.steps.isEmpty ? nil : group.steps.count,
@@ -171,8 +160,8 @@ struct UninstallPanel: View {
                                   selectAll: {
                                       Task { await model.setTicked(true, paths: Set(group.offers.map(\.target))) }
                                   },
-                                  allSelected: group.offers.isEmpty || model.isUpdating)
-                    ForEach(ReviewRun.runs(of: group.steps)) { run in
+                                  allSelected: !model.canSelectAll(in: group))
+                    ForEach(runs.prefix(limit)) { run in
                         if run.steps.count > 1 {
                             UninstallPlanRow(
                                 target: run.folder, evidence: run.steps[0].evidence,
@@ -190,7 +179,7 @@ struct UninstallPanel: View {
                             )
                         }
                     }
-                    ForEach(group.offers, id: \.target) { row in
+                    ForEach(group.offers.prefix(max(0, limit - runs.count)), id: \.target) { row in
                         UninstallPlanRow(
                             target: row.target, evidence: row.evidence ?? row.reason,
                             bytes: row.sizeBytes ?? 0, disposition: nil,
@@ -198,18 +187,17 @@ struct UninstallPanel: View {
                             selection: selection(for: row.target)
                         )
                     }
-                    ForEach(group.staying, id: \.target) { item in
-                        StayingRow(item: item)
+                    let remaining = runs.count + group.offers.count - limit
+                    if remaining > 0 {
+                        Button("Show \(min(40, remaining)) More") { visibleRows[group.id] = limit + 40 }
+                            .capsuleAction().controlSize(.small)
+                            .accessibilityLabel("Show more items in \(group.title)")
+                            .help("\(remaining) more rows. Select All includes the entire group.")
                     }
                 }
                 .listSectionSeparator(.hidden)
             }
 
-            if model.plan?.capabilityReport != nil {
-                Button("What Brim checked") { showingSearchDetails = true }
-                    .buttonStyle(PointerButtonStyle(.link))
-                    .font(.brimFacts)
-            }
             ListBottomSpacing()
         }
         .listStyle(.plain)
@@ -227,15 +215,13 @@ private extension UninstallPanel {
     var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .ready = model.phase, let plan = model.plan {
-                if model.isUpdating {
-                    Label("Updating", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.brimFacts)
-                        .foregroundStyle(Palette.inkSecondary)
-                } else {
+                HStack {
                     Text("\(PlanSpace.count(model.removalSteps.count)) · \(PlanSpace.phrase(plan))")
-                        .font(.brimFacts)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkSecondary)
+                        .font(.brimFacts).monospacedDigit().foregroundStyle(Palette.inkSecondary)
+                    Spacer()
+                    if model.isUpdating {
+                        ProgressView().controlSize(.small).appearsAfterBriefWait()
+                    }
                 }
             }
             if isFinished {
@@ -282,7 +268,7 @@ private extension UninstallPanel {
         switch model.phase {
         case .preparing: "Checking"
         case .executing: "Removing"
-        default: model.isUpdating ? "Updating" : "Remove"
+        default: "Remove"
         }
     }
 }

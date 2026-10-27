@@ -27,8 +27,8 @@ extension EvidenceTier {
 }
 
 /// Backs the Applications view: the installed list, and the footprint of the
-/// selected app. Listing is cheap; a footprint walks the disk, so it is
-/// found only when asked for.
+/// selected app. Foreground selection shares the service's bounded preview
+/// cache with window-scoped read-ahead.
 @MainActor
 public final class ApplicationsModel: ObservableObject {
     @Published public private(set) var applications: [InstalledApplication] = []
@@ -101,6 +101,33 @@ public final class ApplicationsModel: ObservableObject {
     public func loadIfNeeded(service: any BrimServiceProtocol) async {
         guard listedAt == nil, !isLoading else { return }
         await load(service: service)
+    }
+
+    /// Recent apps get a complete review first; remaining apps get discovery
+    /// only. One utility-priority read at a time avoids competing disk scans.
+    /// The window owns cancellation, and the service owns bounded memory.
+    public func preload(service: any BrimServiceProtocol) async {
+        guard listedAt != nil else { return }
+        let candidates = applications.filter { !$0.isSystemProtected && $0.enclosingApp == nil }.sorted {
+            if $0.id == $1.id {
+                return false
+            }
+            if $0.id == selected?.id {
+                return true
+            }
+            if $1.id == selected?.id {
+                return false
+            }
+            if $0.lastOpened != $1.lastOpened {
+                return ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast)
+            }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        for (index, application) in candidates.enumerated() {
+            guard !Task.isCancelled else { return }
+            await service.preloadApplication(identity: application.identity, includeReview: index < 8)
+            await Task.yield()
+        }
     }
 
     private var loadTask: Task<Void, Never>?
@@ -276,6 +303,9 @@ public final class ApplicationsModel: ObservableObject {
                 guard !Task.isCancelled, self.selected?.id == application.id else { return }
                 self.footprint = discovered
                 self.isInspecting = false
+                if !application.isSystemProtected {
+                    await service.preloadApplication(identity: application.identity, includeReview: true)
+                }
             } catch {
                 guard !Task.isCancelled, self.selected?.id == application.id else { return }
                 self.inspectionError = error.localizedDescription

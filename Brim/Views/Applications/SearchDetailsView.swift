@@ -4,7 +4,10 @@ import SwiftUI
 /// What the capability search checked for one app, behind the review's
 /// Search details button.
 struct SearchDetailsView: View {
-    let report: CapabilitySearchReport
+    let report: CapabilitySearchReport?
+    var completeness: ScanCompleteness?
+    var staying: [ExcludedItem] = []
+    var dockFailure: String?
     let onBack: () -> Void
 
     var body: some View {
@@ -14,7 +17,23 @@ struct SearchDetailsView: View {
                 .buttonBorderShape(.capsule)
                 .padding()
             List {
-                ForEach(report.checks) { check in
+                if let completeness, !completeness.isComplete {
+                    Section("Search coverage") {
+                        ForEach(completeness.unreadable, id: \.self) { Text($0).font(.caption).selectableText() }
+                        ForEach(completeness.timedOut, id: \.self) { Text($0).font(.caption).selectableText() }
+                    }
+                }
+                if let dockFailure {
+                    Text(dockFailure).font(.caption)
+                }
+                if !staying.isEmpty {
+                    Section("Kept items") {
+                        ForEach(staying, id: \.target) { item in
+                            LabeledContent(URL(fileURLWithPath: item.target).lastPathComponent, value: item.reason)
+                        }
+                    }
+                }
+                ForEach(report?.checks ?? []) { check in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(check.capability.title)
                         Text("\(declarationText(check.declaration)) · \(coverageText(check.coverage))")
@@ -39,8 +58,8 @@ struct SearchDetailsView: View {
                         }
                     }
                 }
-                ForEach(report.signatureCoverage.indices, id: \.self) { index in
-                    if let limitation = report.signatureCoverage[index].limitation {
+                ForEach(Array((report?.signatureCoverage ?? []).enumerated()), id: \.offset) { _, coverage in
+                    if let limitation = coverage.limitation {
                         LabeledContent("Signature", value: limitation)
                     }
                 }

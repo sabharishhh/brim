@@ -1,5 +1,7 @@
 import AppKit
+import BrimProtocol
 import BrimUI
+import Combine
 import SwiftUI
 
 /// Keeps every page current while the window is open, without a refresh
@@ -15,13 +17,32 @@ struct KeepsCurrent: ViewModifier {
     let models: SectionModels
     let shell: ShellState
     @SwiftUI.Environment(\.brimService) private var service
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @State private var listedForPreload: Date?
+
+    private struct PreloadKey: Equatable {
+        let active: Bool
+        let listedAt: Date?
+    }
+
+    private var preloadKey: PreloadKey {
+        PreloadKey(active: scenePhase == .active && [.home, .apps].contains(shell.selection),
+                   listedAt: listedForPreload)
+    }
 
     func body(content: Content) -> some View {
         content
             .task { await followApplications() }
             .task { await followBackground() }
+            .task(id: preloadKey, priority: .utility) {
+                guard scenePhase == .active, [.home, .apps].contains(shell.selection),
+                      models.applications.listedAt != nil else { return }
+                await service.invalidateRemovalPreviews()
+                await models.applications.preload(service: service)
+            }
             .task(id: shell.selection) { await followFreeSpace() }
             .onReceive(models.applications.$applications) { models.updates.reconcile(with: $0) }
+            .onReceive(models.applications.$listedAt.removeDuplicates()) { listedForPreload = $0 }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 Task { await catchUp() }
             }
@@ -48,6 +69,7 @@ struct KeepsCurrent: ViewModifier {
             guard now != known else { continue }
             let arrivedOrLeft = Set(now.keys) != Set(known.keys)
             known = now
+            await service.invalidateRemovalPreviews()
             await models.applications.load(service: service)
             if arrivedOrLeft {
                 models.leftovers.markStale()
@@ -67,6 +89,7 @@ struct KeepsCurrent: ViewModifier {
             URL(fileURLWithPath: "/var/db/com.apple.backgroundtaskmanagement")
         ]
         for await _ in FolderWatch.changes(in: folders) {
+            await service.invalidateRemovalPreviews()
             // Not yet looked at is not stale; Background reads when opened.
             guard models.background.hasLoaded else { continue }
             await models.background.load(service: service, applications: models.applications.applications)

@@ -53,6 +53,23 @@ be tested without a window.
 5. Verification looks at every path again and reports what went, what
    stayed and what could not be checked.
 
+Removal previews share bounded, two-minute memory caches for discovery,
+measured footprints and protection claims. The window preloads recent apps
+first at utility priority, then the remaining footprints, one app at a time.
+Selecting an app promotes its full review. Folder events and installed-bundle
+metadata changes invalidate previews. Leaving the page or deactivating Brim
+stops further queued work. No cache survives the process.
+
+Selection changes only rebuild the plan from the evaluated preview. Approval
+still covers the saved plan, and execution independently rediscovers files,
+claims and registrations before validating it. Cached previews never authorize
+removal. Native directory enumeration skips ordinary resource files and reads
+wrapped iOS apps; incomplete reads retain the existing conservative rules.
+
+The review lists actionable rows, loads additional rows on demand and keeps
+other category buttons available while a selection updates. Coverage and
+protected-item reasons remain available through Review details.
+
 `CompanionApplicationSource` finds standalone launchers whose declared
 executable links into the selected app. The evidence engine follows their
 identities to find their files, and the veto keeps data and permissions

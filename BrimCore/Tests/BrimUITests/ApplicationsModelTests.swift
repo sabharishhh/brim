@@ -10,6 +10,9 @@ private actor AppsStub: BrimServiceProtocol {
     /// Blocks `inspect` until released, so cancellation can be exercised.
     private var gate: CheckedContinuation<Void, Never>?
     private var gated = false
+    private(set) var preloadCalls: [(String, Bool)] = []
+    private var preloadHeld = false
+    private var preloadGate: CheckedContinuation<Void, Never>?
 
     init(apps: [InstalledApplication], footprints: [String: Footprint] = [:], gated: Bool = false) {
         self.apps = apps
@@ -38,6 +41,23 @@ private actor AppsStub: BrimServiceProtocol {
 
     func calls() -> [String] {
         inspectCalls
+    }
+
+    func preloadApplication(identity: Identity, includeReview: Bool) async {
+        preloadCalls.append((identity.name, includeReview))
+        if preloadHeld {
+            await withCheckedContinuation { preloadGate = $0 }
+        }
+    }
+
+    func holdPreloads() {
+        preloadHeld = true
+    }
+
+    func releasePreloads() {
+        preloadHeld = false
+        preloadGate?.resume()
+        preloadGate = nil
     }
 
     func plan(intent _: PlanIntent) async throws -> Plan {
@@ -100,6 +120,37 @@ private func item(
 
 @MainActor
 final class ApplicationsModelTests: XCTestCase {
+    func testPreloadingStagesRecentReviewsBeforeRemainingFootprintsAndSkipsProtectedApps() async {
+        let apps = (0 ..< 10).map { app("App\($0)") } + [app("System", protected: true)]
+        let stub = AppsStub(apps: apps)
+        let model = ApplicationsModel()
+        await model.load(service: stub)
+        await model.preload(service: stub)
+        let calls = await stub.preloadCalls
+        XCTAssertEqual(calls.map(\.0), (0 ..< 10).map { "App\($0)" })
+        XCTAssertEqual(calls.map(\.1), Array(repeating: true, count: 8) + [false, false])
+        XCTAssertFalse(model.isInspecting)
+    }
+
+    func testLeavingThePreloadScopeDoesNotQueueTheRemainingApps() async {
+        let stub = AppsStub(apps: [app("Alpha"), app("Beta"), app("Gamma")])
+        let model = ApplicationsModel()
+        await model.load(service: stub)
+        await stub.holdPreloads()
+        let task = Task { await model.preload(service: stub) }
+        for _ in 0 ..< 200 {
+            if await !stub.preloadCalls.isEmpty {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        task.cancel()
+        await stub.releasePreloads()
+        await task.value
+        let calls = await stub.preloadCalls
+        XCTAssertEqual(calls.map(\.0), ["Alpha"])
+    }
+
     /// Command-click marks apps for one review, as in Finder: the app
     /// already selected is the first mark, one mark is just a selection, and
     /// an app that is part of macOS cannot be marked.

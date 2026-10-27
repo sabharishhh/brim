@@ -162,6 +162,26 @@ final class UninstallTickByHandTests: XCTestCase {
 
     // MARK: - Offering and ticking
 
+    func testOtherSubgroupsStaySelectableWhileOneGroupsPlanIsPending() async throws {
+        let stub = TickingStub(offered: [code, logs])
+        let model = await prepared(stub)
+        let data = try XCTUnwrap(model.reviewGroups.first { $0.loss == .data })
+        let rebuilds = try XCTUnwrap(model.reviewGroups.first { $0.loss == .rebuilds })
+        await stub.hold()
+        let first = Task { await model.setTicked(true, paths: Set(data.offers.map(\.target))) }
+        await settle { await stub.pending() == 1 }
+        XCTAssertTrue(model.isUpdating)
+        XCTAssertFalse(model.canSelectAll(in: data))
+        XCTAssertTrue(model.canSelectAll(in: rebuilds))
+        await model.setTicked(true, paths: Set(rebuilds.offers.map(\.target)))
+        XCTAssertFalse(model.canSelectAll(in: rebuilds))
+        XCTAssertFalse(model.canAuthorize)
+        await stub.releaseAll()
+        await first.value
+        XCTAssertEqual(model.tickedByHand, [code, logs])
+        XCTAssertTrue(model.canAuthorize)
+    }
+
     /// The removal review used to require a new click and scan for each row.
     func testSelectingASubgroupBuildsOnePlanAndKeepsVetoesOut() async {
         let cache = "/Users/me/Library/Caches/Code-extension"

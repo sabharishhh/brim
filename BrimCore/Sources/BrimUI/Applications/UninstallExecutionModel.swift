@@ -94,6 +94,12 @@ public final class UninstallExecutionModel: ObservableObject {
         tickedByHand.contains(path)
     }
 
+    /// Another group's pending plan does not disable this group's selection.
+    public func canSelectAll(in group: UninstallReviewGroup) -> Bool {
+        guard phase == .ready else { return false }
+        return group.offers.contains { !tickedByHand.contains($0.target) }
+    }
+
     /// Ticks or unticks one row and plans again. Only while the plan waits for
     /// approval.
     public func setTicked(_ ticked: Bool, path: String) async {

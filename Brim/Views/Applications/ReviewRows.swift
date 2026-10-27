@@ -60,8 +60,8 @@ struct ReviewHeading: View {
             if let selectAll {
                 Spacer(minLength: 8)
                 Button("Select All", action: selectAll)
-                    .buttonStyle(PointerButtonStyle(.borderless))
-                    .font(.brimFacts)
+                    .capsuleAction()
+                    .controlSize(.small)
                     .disabled(allSelected)
                     .accessibilityLabel("Select all in \(title)")
                     .help(allSelected ? "All removable items are selected" : "Include optional items in this group")

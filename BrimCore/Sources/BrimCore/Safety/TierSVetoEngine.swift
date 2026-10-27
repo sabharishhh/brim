@@ -6,12 +6,15 @@ public struct TierSVetoEngine: Sendable {
     private let root: FileSystemRoot
     private let readClaims: @Sendable (URL, FileSystemRoot) -> (surface: IdentitySurface, complete: Bool)
     private let readGroups: (@Sendable (URL, FileSystemRoot) -> (groups: Set<String>, complete: Bool))?
+    private let protectionCache: PreviewCache<URL, BundleProtection>?
 
-    public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] }) {
+    public init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] },
+                protectionCache: PreviewCache<URL, BundleProtection>? = nil) {
         self.lookup = lookup
         self.root = root
         readClaims = { BundleSurfaceReader.protectionClaims(at: $0, in: $1) }
         readGroups = nil
+        self.protectionCache = protectionCache
     }
 
     init(root: FileSystemRoot,
@@ -20,6 +23,7 @@ public struct TierSVetoEngine: Sendable {
         self.root = root
         readClaims = { BundleSurfaceReader.protectionClaims(at: $0, in: $1) }
         self.readGroups = readGroups
+        protectionCache = nil
     }
 
     init(root: FileSystemRoot, lookup: @escaping @Sendable (String) throws -> [URL] = { _ in [] },
@@ -28,9 +32,12 @@ public struct TierSVetoEngine: Sendable {
         self.root = root
         self.readClaims = readClaims
         readGroups = nil
+        protectionCache = nil
     }
 
-    public func applyVeto(to footprint: EvaluatedFootprint) async -> EvaluatedFootprint {
+    public func applyVeto(
+        to footprint: EvaluatedFootprint, useCachedProtection: Bool = false
+    ) async -> EvaluatedFootprint {
         var vettedItems = [EvaluatedItem]()
         let resolver = IdentityResolver(root: root)
         let hasGroupTarget = footprint.items.contains {
@@ -38,7 +45,8 @@ public struct TierSVetoEngine: Sendable {
         }
         let companions = CompanionRelationships.bundles(in: footprint.items)
         let inventory = await otherApplications(besides: footprint.identity, includeGroups: hasGroupTarget,
-                                                removingCompanions: companions)
+                                                removingCompanions: companions,
+                                                useCachedProtection: useCachedProtection)
         let applications = inventory.identities
         let groupClaims = hasGroupTarget ? Self.mergingGroupClaims(
             inventory.groupClaims, applications: applications, complete: inventory.completeness.isComplete
@@ -165,63 +173,6 @@ public struct TierSVetoEngine: Sendable {
         }?.value
     }
 
-    /// Other installations, retaining paths even when identifiers agree.
-    @concurrent
-    private func otherApplications(
-        besides identity: Identity, includeGroups: Bool, removingCompanions: Set<String>
-    ) async -> OtherClaimants {
-        guard !Task.isCancelled else {
-            return OtherClaimants(identities: [], completeness: ScanCompleteness(timedOut: [root.rootURL.path]),
-                                  groupClaims: ([:], false))
-        }
-        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-        var found: [Identity] = []
-        var owners: [String: String] = [:]
-        var groupsComplete = true
-        let inventory = InstalledBundleInventory.read(
-            in: root, including: identity.searchBundleIdentifiers,
-            knownLocations: identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? [],
-            lookup: lookup
-        )
-        var completeness = inventory.completeness
-        let budget = ScanBudget(total: 10)
-        for bundle in inventory.claimingBundles {
-            let path = bundle.resolvingSymlinksInPath().path
-            if CompanionRelationships.includes(bundle, subject: subject, companions: removingCompanions, root: root) {
-                continue
-            }
-            guard !budget.hasRunOut else {
-                completeness = completeness.merging(ScanCompleteness(timedOut: [bundle.path]))
-                break
-            }
-            let claims = readClaims(bundle, root)
-            if !claims.complete {
-                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
-            }
-            if includeGroups {
-                // Keep raw claims even when the host has no usable identifier.
-                // The injected reader still controls group coverage in its fixtures.
-                let groups = readGroups.map { $0(bundle, root) }
-                    ?? (groups: Set(claims.surface.groups), complete: claims.complete)
-                groupsComplete = groupsComplete && groups.complete
-                for group in groups.groups.sorted() {
-                    owners[group] = bundle.deletingPathExtension().lastPathComponent
-                }
-            }
-            guard let identifier = claims.surface.components.first?.bundleIdentifier else {
-                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
-                continue
-            }
-            found.append(Self.claimantIdentity(identifier: identifier, path: path,
-                                               claims: claims.surface, subject: identity))
-        }
-        if Task.isCancelled {
-            completeness = completeness.merging(ScanCompleteness(timedOut: [root.rootURL.path]))
-        }
-        return OtherClaimants(identities: found, completeness: completeness,
-                              groupClaims: (owners: owners, complete: groupsComplete))
-    }
-
     private static func claimantIdentity(
         identifier: String, path: String, claims: IdentitySurface, subject: Identity
     ) -> Identity {
@@ -282,6 +233,91 @@ public struct TierSVetoEngine: Sendable {
             return nil
         }
         return resolved
+    }
+}
+
+extension TierSVetoEngine {
+    /// Other installations, retaining paths even when identifiers agree.
+    @concurrent
+    private func otherApplications(
+        besides identity: Identity, includeGroups: Bool, removingCompanions: Set<String>, useCachedProtection: Bool
+    ) async -> OtherClaimants {
+        guard !Task.isCancelled else {
+            return OtherClaimants(identities: [], completeness: ScanCompleteness(timedOut: [root.rootURL.path]),
+                                  groupClaims: ([:], false))
+        }
+        let subject = identity.bundlePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        let inventory = InstalledBundleInventory.read(
+            in: root, including: identity.searchBundleIdentifiers,
+            knownLocations: identity.bundlePath.map { [URL(fileURLWithPath: $0)] } ?? [],
+            lookup: lookup
+        )
+        let budget = ScanBudget(total: 10)
+        let candidates = inventory.claimingBundles.filter {
+            !CompanionRelationships.includes($0, subject: subject, companions: removingCompanions, root: root)
+        }
+        let claimsByBundle = await (try? BoundedTasks.map(candidates, limit: 4) { bundle -> BundleProtection? in
+            guard !budget.hasRunOut else { return nil }
+            return try await protection(for: bundle, cached: useCachedProtection)
+        }) ?? []
+        return claimants(in: candidates, claims: claimsByBundle, includeGroups: includeGroups,
+                         subject: identity, completeness: inventory.completeness)
+    }
+
+    private func protection(for bundle: URL, cached: Bool) async throws -> BundleProtection {
+        if cached, let protectionCache {
+            return try await protectionCache.value(for: bundle) {
+                let claims = readClaims(bundle, root)
+                try Task.checkCancellation()
+                return BundleProtection(surface: claims.surface, complete: claims.complete)
+            }
+        }
+        let claims = readClaims(bundle, root)
+        return BundleProtection(surface: claims.surface, complete: claims.complete, cancelled: Task.isCancelled)
+    }
+
+    private func claimants(
+        in candidates: [URL], claims claimsByBundle: [BundleProtection?], includeGroups: Bool,
+        subject: Identity, completeness initial: ScanCompleteness
+    ) -> OtherClaimants {
+        var found: [Identity] = []
+        var owners: [String: String] = [:]
+        var groupsComplete = true
+        var completeness = initial
+        for (index, bundle) in candidates.enumerated() {
+            let path = bundle.resolvingSymlinksInPath().path
+            guard index < claimsByBundle.count, let claims = claimsByBundle[index] else {
+                completeness = completeness.merging(ScanCompleteness(timedOut: [bundle.path]))
+                continue
+            }
+            if claims.cancelled {
+                completeness = completeness.merging(ScanCompleteness(timedOut: [root.rootURL.path]))
+            }
+            if !claims.complete {
+                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+            }
+            if includeGroups {
+                // Keep raw claims even when the host has no usable identifier.
+                // The injected reader still controls group coverage in its fixtures.
+                let groups = readGroups.map { $0(bundle, root) }
+                    ?? (groups: Set(claims.surface.groups), complete: claims.complete)
+                groupsComplete = groupsComplete && groups.complete
+                for group in groups.groups.sorted() {
+                    owners[group] = bundle.deletingPathExtension().lastPathComponent
+                }
+            }
+            guard let identifier = claims.surface.components.first?.bundleIdentifier else {
+                completeness = completeness.merging(ScanCompleteness(unreadable: [bundle.path]))
+                continue
+            }
+            found.append(Self.claimantIdentity(identifier: identifier, path: path,
+                                               claims: claims.surface, subject: subject))
+        }
+        if Task.isCancelled {
+            completeness = completeness.merging(ScanCompleteness(timedOut: [root.rootURL.path]))
+        }
+        return OtherClaimants(identities: found, completeness: completeness,
+                              groupClaims: (owners: owners, complete: groupsComplete))
     }
 }
 

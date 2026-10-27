@@ -50,7 +50,7 @@ public struct SafetyEngine: Sendable {
         self.vetoEngine = vetoEngine
     }
 
-    public func evaluate(footprint: Footprint) async -> EvaluatedFootprint {
+    public func evaluate(footprint: Footprint, useCachedProtection: Bool = false) async -> EvaluatedFootprint {
         // A footprint is a claim about what is on the disk, and a search that did
         // not finish cannot support it, so nothing from an unfinished pass is
         // selected. Everything is still shown, and every row can be ticked by hand.
@@ -105,7 +105,7 @@ public struct SafetyEngine: Sendable {
         let preVeto = EvaluatedFootprint(
             identity: footprint.identity, items: evaluatedItems, completeness: footprint.completeness
         )
-        return await vetoEngine.applyVeto(to: preVeto)
+        return await vetoEngine.applyVeto(to: preVeto, useCachedProtection: useCachedProtection)
     }
 
     /// The folders an app keeps its own data in, where a folder clearly named

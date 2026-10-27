@@ -5,6 +5,9 @@ import Foundation
 public protocol BrimServiceProtocol: Sendable {
     func inspect(identity: Identity) async throws -> Footprint
     func plan(intent: PlanIntent) async throws -> Plan
+    /// Window-scoped read-ahead, never approval or execution.
+    func preloadApplication(identity: Identity, includeReview: Bool) async
+    func invalidateRemovalPreviews() async
     /// Asks for a person's approval. Returns an acknowledgement, never
     /// permission: there is deliberately no method here that produces an
     /// `ApprovalToken`. The answer comes back through `ApprovalGranting`,
@@ -99,6 +102,8 @@ public protocol BrimServiceProtocol: Sendable {
 }
 
 public extension BrimServiceProtocol {
+    func preloadApplication(identity _: Identity, includeReview _: Bool) async {}
+    func invalidateRemovalPreviews() async {}
     func recheckPendingRemovals() async {}
 
     /// A service with no journal has no removals to look at again.
