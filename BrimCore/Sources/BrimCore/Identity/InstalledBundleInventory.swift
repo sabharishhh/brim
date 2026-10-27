@@ -97,7 +97,10 @@ public struct InstalledBundleInventory: Sendable {
                     unreadable.insert(candidate.path); continue
                 }
                 guard presence.isPresent else { continue }
-                let metadata = candidate.appendingPathComponent("Contents/Info.plist")
+                let code = ApplicationBundle.codeLocation(of: candidate)
+                let metadata = code == candidate
+                    ? candidate.appendingPathComponent("Contents/Info.plist")
+                    : code.appendingPathComponent("Info.plist")
                 guard let contents = NSDictionary(contentsOf: metadata),
                       let identifier = contents["CFBundleIdentifier"] as? String
                 else {

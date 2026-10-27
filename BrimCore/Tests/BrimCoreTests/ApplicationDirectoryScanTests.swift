@@ -47,6 +47,11 @@ struct ApplicationDirectoryScanTests {
         #expect(read.1.completeness.isComplete)
         #expect(read.0.bundleIdentifiers.contains("org.example.mobile"))
         #expect(ApplicationBundle.isBundle(atPath: outer.path))
+        let inventory = InstalledBundleInventory.read(
+            in: root, including: ["org.example.mobile"], knownLocations: [outer], lookup: { _ in [outer] }
+        )
+        #expect(inventory.completeness.isComplete)
+        #expect(inventory.bundles.contains { $0.path == outer.path })
     }
 
     @Test func realDeadlineIsStillReportedAndSymlinkCyclesTerminate() throws {
