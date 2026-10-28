@@ -46,6 +46,8 @@ requirement_for() {
     printf 'anchor apple generic and identifier "%s" and certificate leaf[subject.OU] = "%s"\n' "$1" "$team"
 }
 codesign --verify --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$team\"" "$dmg"
+xcrun stapler validate "$dmg"
+spctl --assess --type open --verbose=4 "$dmg"
 
 mount=$(mktemp -d)
 cleanup() {
@@ -61,6 +63,7 @@ if [[ ${#apps[@]} != 1 || ! -d ${apps[0]} ]]; then
 fi
 app=${apps[0]}
 codesign --verify --deep --strict -R="$(requirement_for "$app_identifier")" "$app"
+spctl --assess --type execute --verbose=4 "$app"
 # The administrator helper is copied out and run only for an approved batch,
 # so it ships as a plain executable. Brim registers nothing with launchd: a
 # bundled LaunchDaemons plist made macOS list Brim under background activity.

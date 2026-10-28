@@ -31,30 +31,11 @@ it.
 
 ## Installing
 
-Brim needs macOS 27 or later.
-
-1. Download `Brim-<version>.dmg` and its `.sha256` file from
-   [Releases](https://github.com/sabharishhh/brim/releases/latest). Confirm
-   the download before opening it:
-
-```bash
-shasum -a 256 ~/Downloads/Brim-<version>.dmg
-```
-
-   The hash must match the one in `Brim-<version>.dmg.sha256`.
-2. Open the disk image. macOS may say it cannot verify the disk image and
-   offer to move it to the Bin. Choose **Done**.
-3. Open **System Settings > Privacy & Security**, scroll to Security, and
-   choose **Open Anyway** for `Brim-<version>.dmg`. Confirm **Open** in the
-   next prompt. Then drag Brim to Applications.
-4. Open Brim. If macOS shows the same warning for `Brim.app`, choose **Done**,
-   return to **Privacy & Security**, and choose **Open Anyway** for Brim. This
-   is a separate approval because the disk image and app are separate files.
-
-Brim's GitHub release is signed with a free Apple Development certificate,
-but is not notarised. Gatekeeper therefore requires these one-time approvals
-on each Mac. This is Apple's documented override for software you trust; Brim
-does not ask you to disable Gatekeeper or remove the download's quarantine.
+Brim needs macOS 27 or later. Brim 1.1 is signed with an Apple Development
+certificate but is not notarised. Gatekeeper can block the downloaded DMG
+itself, and **Open Anyway** is not offered for that alert. Clicking **Done**
+only dismisses it. We need a Developer ID signed and notarised release to
+provide a straightforward DMG installation.
 
 ## Permissions
 

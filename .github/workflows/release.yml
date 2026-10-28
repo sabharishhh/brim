@@ -73,7 +73,7 @@ jobs:
       ref: ${{ needs.prepare.outputs.commit }}
 
   publish:
-    name: Verify package and publish
+    name: Verify notarized package and publish
     needs: [prepare, checks]
     runs-on: xcode-27
     timeout-minutes: 15
@@ -85,7 +85,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.commit }}
           persist-credentials: false
 
-      - name: Download and verify signed package
+      - name: Download and verify notarized package
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
