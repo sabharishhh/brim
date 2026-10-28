@@ -47,7 +47,7 @@ requirement_for() {
 }
 codesign --verify --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$team\"" "$dmg"
 xcrun stapler validate "$dmg"
-spctl --assess --type open --verbose=4 "$dmg"
+spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
 
 mount=$(mktemp -d)
 cleanup() {
