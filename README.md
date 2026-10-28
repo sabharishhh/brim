@@ -29,14 +29,6 @@ Removed items go to the Trash where possible, so most of them can be put
 back. Anything that would be deleted permanently is shown before you approve
 it.
 
-## Installing
-
-Brim needs macOS 27 or later. Brim 1.1 is signed with an Apple Development
-certificate but is not notarised. Gatekeeper can block the downloaded DMG
-itself, and **Open Anyway** is not offered for that alert. Clicking **Done**
-only dismisses it. We need a Developer ID signed and notarised release to
-provide a straightforward DMG installation.
-
 ## Permissions
 
 - **Full Disk Access** lets Brim read the folders where apps keep most of
@@ -57,21 +49,6 @@ check for updates: the App Store, Homebrew and each app's own update feed for
 your apps, and GitHub for Brim itself. Feedback you send from Settings is
 posted as a public GitHub issue containing your message, Brim's version, the
 macOS version and the processor type.
-
-## Building from source
-
-You need Xcode 27 and an Apple ID signed in to Xcode.
-
-```bash
-git clone https://github.com/sabharishhh/brim.git
-cd brim
-make run
-```
-
-Brim and its administrator process check that both were signed by the same
-team. To run a build signed by your own team, replace `9LY29YLFG2` in
-`BrimCore/Sources/BrimPrivileged/HelperInterface.swift` with your team
-identifier.
 
 ## Contributing
 

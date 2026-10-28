@@ -6,7 +6,7 @@ on:
       - 'Services/FeedbackRelay/**'
       - '.github/workflows/feedback-relay.yml'
   push:
-    branches: [main, ui-ux-redesign]
+    branches: [main]
     paths:
       - 'Services/FeedbackRelay/**'
       - '.github/workflows/feedback-relay.yml'

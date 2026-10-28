@@ -109,6 +109,15 @@ description, say what the problem was, what the change does, and how you
 tested it, including anything you did not test. A few short paragraphs are
 enough; the pull request template only reminds you of these.
 
+Changes to `main` go through a pull request. Build & Test and Lint & Format
+must pass with the branch up to date, and review conversations must be
+resolved. Contributions need approval from the code owner, @sabharishhh;
+new commits dismiss an earlier approval. The owner can merge their own pull
+requests after the required checks pass.
+
+Use a branch name that describes the change, such as
+`fix/remnants-wrong-owner`. GitHub deletes merged branches automatically.
+
 ## Conduct
 
 Please follow the [code of conduct](CODE_OF_CONDUCT.md).
