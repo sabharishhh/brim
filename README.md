@@ -33,21 +33,28 @@ it.
 
 Brim needs macOS 27 or later.
 
-1. Download `Brim-<version>.dmg` from
-   [Releases](https://github.com/sabharishhh/brim/releases/latest) and drag
-   Brim to Applications.
-2. Open Brim. macOS says it cannot check Brim for malicious software. Choose
-   **Done**.
-3. Open **System Settings > Privacy & Security**, find the message about Brim
-   under Security, and choose **Open Anyway**.
-
-macOS asks this once because Brim is signed with a free Apple Development
-certificate and is not notarised. To confirm that your download is the one
-published, compare its checksum with the `.sha256` file beside it:
+1. Download `Brim-<version>.dmg` and its `.sha256` file from
+   [Releases](https://github.com/sabharishhh/brim/releases/latest). Confirm
+   the download before opening it:
 
 ```bash
 shasum -a 256 ~/Downloads/Brim-<version>.dmg
 ```
+
+   The hash must match the one in `Brim-<version>.dmg.sha256`.
+2. Open the disk image. macOS may say it cannot verify the disk image and
+   offer to move it to the Bin. Choose **Done**.
+3. Open **System Settings > Privacy & Security**, scroll to Security, and
+   choose **Open Anyway** for `Brim-<version>.dmg`. Confirm **Open** in the
+   next prompt. Then drag Brim to Applications.
+4. Open Brim. If macOS shows the same warning for `Brim.app`, choose **Done**,
+   return to **Privacy & Security**, and choose **Open Anyway** for Brim. This
+   is a separate approval because the disk image and app are separate files.
+
+Brim's GitHub release is signed with a free Apple Development certificate,
+but is not notarised. Gatekeeper therefore requires these one-time approvals
+on each Mac. This is Apple's documented override for software you trust; Brim
+does not ask you to disable Gatekeeper or remove the download's quarantine.
 
 ## Permissions
 

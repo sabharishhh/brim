@@ -84,7 +84,7 @@ if [[ -n ${APPLE_ID:-} && -n ${APPLE_APP_SPECIFIC_PASSWORD:-} && -n ${APPLE_TEAM
     xcrun stapler staple "$DMG"
     xcrun stapler validate "$DMG"
 else
-    echo 'This build is signed and not notarised. People open it through Privacy & Security, Open Anyway.'
+    echo 'This build is signed but not notarised. On a downloaded copy, approve both the DMG and Brim.app once in System Settings > Privacy & Security > Open Anyway.'
 fi
 (cd "$BUILD_DIR" && shasum -a 256 "$(basename "$DMG")" | tee "$(basename "$DMG").sha256")
 ./scripts/verify_release.sh "v$VERSION" "$BUILD_DIR" "$SOURCE_REVISION"
