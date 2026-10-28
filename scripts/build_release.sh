@@ -16,6 +16,17 @@ ARCHIVE="$BUILD_DIR/Brim.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 SOURCE_DIR="$BUILD_DIR/source"
 
+# A public DMG must pass Gatekeeper without per-user overrides. Fail before
+# touching previous build output if distribution credentials are unavailable.
+if [[ -z ${APPLE_ID:-} || -z ${APPLE_APP_SPECIFIC_PASSWORD:-} || -z ${APPLE_TEAM_ID:-} ]]; then
+    echo 'A Developer ID certificate and Apple notarization credentials are required to build a public release.' >&2
+    exit 1
+fi
+if [[ "$APPLE_TEAM_ID" != "$TEAM_ID" ]]; then
+    echo "APPLE_TEAM_ID must match Brim's signing team ($TEAM_ID)." >&2
+    exit 1
+fi
+
 # The identifier in a certificate's display name can differ from its team.
 SIGNING_FINGERPRINT=$(python3 scripts/signing_identity.py "$TEAM_ID" "${APPLE_SIGNING_IDENTITY:-}")
 APPLE_SIGNING_IDENTITY=$(security find-identity -v -p codesigning | python3 -c '
@@ -27,6 +38,10 @@ for digest, name in re.findall(r"([A-F0-9]{40}) \"(.+)\"", sys.stdin.read()):
         sys.exit(0)
 sys.exit("The selected signing identity is no longer available.")
 ' "$SIGNING_FINGERPRINT")
+if [[ "$APPLE_SIGNING_IDENTITY" != Developer\ ID\ Application:* ]]; then
+    echo 'Public releases must use a Developer ID Application certificate.' >&2
+    exit 1
+fi
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$SOURCE_DIR"
@@ -78,14 +93,10 @@ ln -s /Applications "$BUILD_DIR/dmg/Applications"
 hdiutil create -volname Brim -srcfolder "$BUILD_DIR/dmg" -ov -format UDZO "$DMG"
 codesign --force --sign "$SIGNING_FINGERPRINT" "$DMG"
 
-if [[ -n ${APPLE_ID:-} && -n ${APPLE_APP_SPECIFIC_PASSWORD:-} && -n ${APPLE_TEAM_ID:-} ]]; then
-    xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
-        --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-    xcrun stapler staple "$DMG"
-    xcrun stapler validate "$DMG"
-else
-    echo 'This build is signed and not notarised. People open it through Privacy & Security, Open Anyway.'
-fi
+xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+xcrun stapler staple "$DMG"
+xcrun stapler validate "$DMG"
 (cd "$BUILD_DIR" && shasum -a 256 "$(basename "$DMG")" | tee "$(basename "$DMG").sha256")
 ./scripts/verify_release.sh "v$VERSION" "$BUILD_DIR" "$SOURCE_REVISION"
 echo "Release package: $DMG"

@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -38,6 +39,42 @@ class ReleaseChecksTests(unittest.TestCase):
         result = self.check_package(tag="v1.0; echo unexpected")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("version tag", result.stderr)
+
+    def test_disk_image_uses_gatekeeper_primary_signature_context(self):
+        # Without the disk-image context, Gatekeeper can reject a valid DMG.
+        # Stop at the assessment so this test never mounts or opens anything.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "Brim-1.0.dmg"
+            package.write_bytes(b"test package")
+            digest = hashlib.sha256(package.read_bytes()).hexdigest()
+            package.with_suffix(".dmg.sha256").write_text(f"{digest}  {package.name}\n")
+            commands = root / "commands"
+            commands.mkdir()
+            for name in ("codesign", "xcrun"):
+                command = commands / name
+                command.write_text("#!/bin/sh\nexit 0\n")
+                command.chmod(0o755)
+            assessment = commands / "spctl"
+            assessment.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "args = sys.argv[1:]\n"
+                "if '--context' not in args or "
+                "args[args.index('--context') + 1] != 'context:primary-signature':\n"
+                "    sys.exit('Missing disk-image assessment context')\n"
+                "print('Disk-image assessment reached', file=sys.stderr)\n"
+                "sys.exit(73)\n"
+            )
+            assessment.chmod(0o755)
+            result = subprocess.run(
+                ["bash", str(Path(__file__).with_name("verify_release.sh")),
+                 "v1.0", directory, "a" * 40],
+                env={**os.environ, "PATH": f"{commands}{os.pathsep}{os.environ['PATH']}"},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 73, result.stderr)
+            self.assertIn("Disk-image assessment reached", result.stderr)
 
 
 if __name__ == "__main__":

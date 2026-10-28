@@ -10,7 +10,7 @@ def select_identity(team, requested=""):
         check=True, capture_output=True, text=True,
     ).stdout
     for fingerprint, name in re.findall(r'([A-F0-9]{40}) "(.+)"', identities):
-        if not name.startswith(("Apple Development:", "Developer ID Application:")):
+        if not name.startswith("Developer ID Application:"):
             continue
         if requested not in ("", name, fingerprint):
             continue
@@ -33,7 +33,10 @@ def select_identity(team, requested=""):
                     re.search(rf"(?:^|,)OU={re.escape(team)}(?:,|$)", subject.group(1)) and
                     digest.group(1).replace(":", "").upper() == fingerprint):
                 return fingerprint
-    raise ValueError(f"No valid Apple signing identity for team {team}. Check its certificate in Xcode.")
+    raise ValueError(
+        f"No valid Developer ID Application certificate for team {team}. "
+        "Join the Apple Developer Program and install the distribution certificate."
+    )
 
 
 if __name__ == "__main__":

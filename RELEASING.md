@@ -5,8 +5,9 @@ maintainer's Mac, and no certificate or password is stored on GitHub.
 
 ## 1. Build
 
-Start from a clean commit on `main`, with Xcode 27 and an Apple Development
-or Developer ID certificate in the keychain.
+Start from a clean commit on `main`, with Xcode 27, a Developer ID Application
+certificate in the keychain and the notarisation credentials required by
+`scripts/build_release.sh`.
 
 ```bash
 ./scripts/build_release.sh
@@ -37,10 +38,5 @@ gh workflow run release.yml -f tag=v1.0
 ```
 
 The workflow repeats the build, test and lint checks. It publishes the draft
-only after verifying the checksum, the signatures, the helper layout, the
-version and the source commit.
-
-A build signed with a free Apple Development certificate is not notarised,
-so people open it once through System Settings > Privacy & Security > Open
-Anyway, as the README explains. A Developer ID build is notarised when
-`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set.
+only after verifying the checksum, the signatures, the notarisation ticket,
+Gatekeeper acceptance, the helper layout, the version and the source commit.

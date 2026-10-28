@@ -32,7 +32,7 @@ jobs:
     outputs:
       commit: ${{ steps.candidate.outputs.commit }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -73,19 +73,19 @@ jobs:
       ref: ${{ needs.prepare.outputs.commit }}
 
   publish:
-    name: Verify package and publish
+    name: Verify notarized package and publish
     needs: [prepare, checks]
     runs-on: xcode-27
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.commit }}
           persist-credentials: false
 
-      - name: Download and verify signed package
+      - name: Download and verify notarized package
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}

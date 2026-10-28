@@ -29,26 +29,6 @@ Removed items go to the Trash where possible, so most of them can be put
 back. Anything that would be deleted permanently is shown before you approve
 it.
 
-## Installing
-
-Brim needs macOS 27 or later.
-
-1. Download `Brim-<version>.dmg` from
-   [Releases](https://github.com/sabharishhh/brim/releases/latest) and drag
-   Brim to Applications.
-2. Open Brim. macOS says it cannot check Brim for malicious software. Choose
-   **Done**.
-3. Open **System Settings > Privacy & Security**, find the message about Brim
-   under Security, and choose **Open Anyway**.
-
-macOS asks this once because Brim is signed with a free Apple Development
-certificate and is not notarised. To confirm that your download is the one
-published, compare its checksum with the `.sha256` file beside it:
-
-```bash
-shasum -a 256 ~/Downloads/Brim-<version>.dmg
-```
-
 ## Permissions
 
 - **Full Disk Access** lets Brim read the folders where apps keep most of
@@ -69,21 +49,6 @@ check for updates: the App Store, Homebrew and each app's own update feed for
 your apps, and GitHub for Brim itself. Feedback you send from Settings is
 posted as a public GitHub issue containing your message, Brim's version, the
 macOS version and the processor type.
-
-## Building from source
-
-You need Xcode 27 and an Apple ID signed in to Xcode.
-
-```bash
-git clone https://github.com/sabharishhh/brim.git
-cd brim
-make run
-```
-
-Brim and its administrator process check that both were signed by the same
-team. To run a build signed by your own team, replace `9LY29YLFG2` in
-`BrimCore/Sources/BrimPrivileged/HelperInterface.swift` with your team
-identifier.
 
 ## Contributing
 
